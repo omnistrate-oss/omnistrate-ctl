@@ -3,7 +3,9 @@ package dataaccess
 import (
 	"context"
 	"net/http"
+	"time"
 
+	"github.com/omnistrate-oss/omnistrate-ctl/internal/model"
 	openapiclientfleet "github.com/omnistrate-oss/omnistrate-sdk-go/fleet"
 )
 
@@ -140,4 +142,109 @@ func GetKubeConfigForHostCluster(
 	}
 
 	return kubeConfig, nil
+}
+
+// CheckDeploymentCellConfigurationDrift checks for configuration drift in deployment cells
+// This is a placeholder implementation - the actual API endpoint may not exist yet
+func CheckDeploymentCellConfigurationDrift(ctx context.Context, token string, deploymentCellID string, organizationID string, environment string) (*model.DeploymentCellAmenitiesStatus, error) {
+	// TODO: Replace with actual API call once backend is available
+	
+	// Mock drift detection results
+	driftDetails := []model.ConfigurationDrift{
+		{
+			Path:         "logging.level",
+			CurrentValue: "DEBUG",
+			TargetValue:  "INFO",
+			DriftType:    "different",
+		},
+		{
+			Path:         "monitoring.grafana",
+			CurrentValue: nil,
+			TargetValue:  true,
+			DriftType:    "missing",
+		},
+	}
+	
+	status := &model.DeploymentCellAmenitiesStatus{
+		DeploymentCellID:      deploymentCellID,
+		HasConfigurationDrift: len(driftDetails) > 0,
+		DriftDetails:          driftDetails,
+		HasPendingChanges:     false,
+		Status:               "drift_detected",
+		LastCheck:            time.Now(),
+	}
+	
+	return status, nil
+}
+
+// SyncDeploymentCellWithTemplate synchronizes deployment cell with organization template
+// This places changes in a pending state
+func SyncDeploymentCellWithTemplate(ctx context.Context, token string, deploymentCellID string, organizationID string, environment string) (*model.DeploymentCellAmenitiesStatus, error) {
+	// TODO: Replace with actual API call once backend is available
+	
+	// Mock pending changes based on drift
+	pendingChanges := []model.PendingConfigurationChange{
+		{
+			Path:      "logging.level",
+			Operation: "update",
+			OldValue:  "DEBUG",
+			NewValue:  "INFO",
+		},
+		{
+			Path:      "monitoring.grafana",
+			Operation: "add",
+			NewValue:  true,
+		},
+	}
+	
+	status := &model.DeploymentCellAmenitiesStatus{
+		DeploymentCellID:      deploymentCellID,
+		HasConfigurationDrift: false, // Drift resolved by sync
+		HasPendingChanges:     len(pendingChanges) > 0,
+		PendingChanges:        pendingChanges,
+		Status:               "pending_changes",
+		LastCheck:            time.Now(),
+	}
+	
+	return status, nil
+}
+
+// ApplyPendingChangesToDeploymentCell applies pending configuration changes to deployment cell
+// This uses the existing ApplyPendingChangesToHostCluster API from the SDK
+func ApplyPendingChangesToDeploymentCell(ctx context.Context, token string, serviceID string, environmentID string, deploymentCellID string) error {
+	ctxWithToken := context.WithValue(ctx, openapiclientfleet.ContextAccessToken, token)
+	apiClient := getFleetClient()
+
+	req := apiClient.InventoryApiAPI.InventoryApiApplyPendingChangesToHostCluster(ctxWithToken, serviceID, environmentID, deploymentCellID)
+
+	var r *http.Response
+	defer func() {
+		if r != nil {
+			_ = r.Body.Close()
+		}
+	}()
+
+	r, err := req.Execute()
+	if err != nil {
+		return handleFleetError(err)
+	}
+
+	return nil
+}
+
+// GetDeploymentCellAmenitiesStatus retrieves the current amenities status for a deployment cell
+// This is a placeholder implementation - the actual API endpoint may not exist yet
+func GetDeploymentCellAmenitiesStatus(ctx context.Context, token string, deploymentCellID string) (*model.DeploymentCellAmenitiesStatus, error) {
+	// TODO: Replace with actual API call once backend is available
+	
+	// Mock current status
+	status := &model.DeploymentCellAmenitiesStatus{
+		DeploymentCellID:      deploymentCellID,
+		HasConfigurationDrift: false,
+		HasPendingChanges:     false,
+		Status:               "synchronized",
+		LastCheck:            time.Now().Add(-1 * time.Hour),
+	}
+	
+	return status, nil
 }

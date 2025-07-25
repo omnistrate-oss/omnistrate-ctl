@@ -1,4 +1,4 @@
-package organization
+package service
 
 import (
 	"context"
@@ -15,18 +15,25 @@ import (
 )
 
 var amenitiesInitCmd = &cobra.Command{
-	Use:   "init",
-	Short: "Initialize organization-level amenities configuration template",
-	Long: `Initialize organization-level amenities configuration template through an interactive process.
+	Use:   "init-amenities",
+	Short: "Initialize service provider organization amenities configuration template",
+	Long: `Initialize service provider organization-level amenities configuration template through an interactive process.
 
 This command starts an interactive process to define the default organization-level 
-amenities configuration template. This step is purely at the org level; no reference to any 
-service is needed.
+amenities configuration template. This step is purely at the service provider org level; 
+no reference to any specific service is needed.
 
 The configuration will be stored as a template that can be applied to different 
 environments (production, staging, development) and used to synchronize deployment cells.
 
-Organization ID is automatically determined from your credentials.`,
+Organization ID is automatically determined from your credentials.
+
+Examples:
+  # Initialize amenities configuration interactively
+  omnistrate-ctl service init-amenities -e production
+
+  # Initialize from YAML file
+  omnistrate-ctl service init-amenities -e production -f sample-amenities.yaml`,
 	RunE:         runAmenitiesInit,
 	SilenceUsage: true,
 }
@@ -129,7 +136,7 @@ func runAmenitiesInit(cmd *cobra.Command, args []string) error {
 	}
 
 	// Initialize the configuration (organization ID comes from token/credentials)
-	config, err := dataaccess.InitializeOrganizationAmenitiesConfiguration(ctx, token, "", environment, configTemplate)
+	config, err := dataaccess.InitializeOrganizationAmenitiesConfiguration(ctx, token, environment, configTemplate)
 	if err != nil {
 		utils.PrintError(err)
 		return err

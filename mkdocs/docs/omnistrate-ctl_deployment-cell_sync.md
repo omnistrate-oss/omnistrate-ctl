@@ -1,4 +1,4 @@
-## omnistrate-ctl deployment-cell amenities sync
+## omnistrate-ctl deployment-cell sync
 
 Sync deployment cell with organization+environment template
 
@@ -12,16 +12,16 @@ to the deployment cell.
 
 Examples:
   # Sync specific deployment cell with organization template
-  omnistrate-ctl deployment-cell amenities sync -i cell-123 -z org-123 -e production
+  omnistrate-ctl deployment-cell sync -i cell-123 -e production
 
   # Sync with confirmation prompt
-  omnistrate-ctl deployment-cell amenities sync -i cell-123 -z org-123 -e production --confirm
+  omnistrate-ctl deployment-cell sync -i cell-123 -e production --confirm
 
   # Sync all deployment cells that have drift
-  omnistrate-ctl deployment-cell amenities sync -z org-123 -e production --all --drift-only
+  omnistrate-ctl deployment-cell sync -e production --all --drift-only
 
 ```
-omnistrate-ctl deployment-cell amenities sync [flags]
+omnistrate-ctl deployment-cell sync [flags]
 ```
 
 ### Options
@@ -34,7 +34,6 @@ omnistrate-ctl deployment-cell amenities sync [flags]
       --dry-run                     Show what would be synced without making changes
   -e, --environment string          Target environment (required)
   -h, --help                        help for sync
-  -z, --organization-id string      Organization ID (required)
 ```
 
 ### Options inherited from parent commands
@@ -46,5 +45,5 @@ omnistrate-ctl deployment-cell amenities sync [flags]
 
 ### SEE ALSO
 
-* [omnistrate-ctl deployment-cell amenities](omnistrate-ctl_deployment-cell_amenities.md)	 - Manage deployment cell amenities synchronization
+* [omnistrate-ctl deployment-cell](omnistrate-ctl_deployment-cell.md)	 - Manage Deployment Cells
 

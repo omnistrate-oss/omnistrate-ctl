@@ -13,7 +13,7 @@ import (
 	"github.com/omnistrate-oss/omnistrate-ctl/internal/utils"
 )
 
-var amenitiesApplyCmd = &cobra.Command{
+var applyCmd = &cobra.Command{
 	Use:   "apply",
 	Short: "Apply pending changes to deployment cell",
 	Long: `Review and confirm the pending configuration changes for deployment cells.
@@ -24,29 +24,29 @@ ensure they are correct.
 
 Examples:
   # Apply pending changes to specific deployment cell
-  omnistrate-ctl deployment-cell amenities apply -i cell-123 -s service-id -e env-id
+  omnistrate-ctl deployment-cell apply -i cell-123 -s service-id -e env-id
 
   # Apply with confirmation prompt
-  omnistrate-ctl deployment-cell amenities apply -i cell-123 -s service-id -e env-id --confirm
+  omnistrate-ctl deployment-cell apply -i cell-123 -s service-id -e env-id --confirm
 
   # Show pending changes without applying
-  omnistrate-ctl deployment-cell amenities apply -i cell-123 -s service-id -e env-id --dry-run`,
-	RunE:         runAmenitiesApply,
+  omnistrate-ctl deployment-cell apply -i cell-123 -s service-id -e env-id --dry-run`,
+	RunE:         runApply,
 	SilenceUsage: true,
 }
 
 func init() {
-	amenitiesApplyCmd.Flags().StringP("deployment-cell-id", "i", "", "Deployment cell ID (required)")
-	amenitiesApplyCmd.Flags().StringP("service-id", "s", "", "Service ID (required)")
-	amenitiesApplyCmd.Flags().StringP("environment-id", "e", "", "Environment ID (required)")
-	amenitiesApplyCmd.Flags().Bool("confirm", false, "Prompt for confirmation before applying changes")
-	amenitiesApplyCmd.Flags().Bool("dry-run", false, "Show pending changes without applying them")
-	_ = amenitiesApplyCmd.MarkFlagRequired("deployment-cell-id")
-	_ = amenitiesApplyCmd.MarkFlagRequired("service-id")
-	_ = amenitiesApplyCmd.MarkFlagRequired("environment-id")
+	applyCmd.Flags().StringP("deployment-cell-id", "i", "", "Deployment cell ID (required)")
+	applyCmd.Flags().StringP("service-id", "s", "", "Service ID (required)")
+	applyCmd.Flags().StringP("environment-id", "e", "", "Environment ID (required)")
+	applyCmd.Flags().Bool("confirm", false, "Prompt for confirmation before applying changes")
+	applyCmd.Flags().Bool("dry-run", false, "Show pending changes without applying them")
+	_ = applyCmd.MarkFlagRequired("deployment-cell-id")
+	_ = applyCmd.MarkFlagRequired("service-id")
+	_ = applyCmd.MarkFlagRequired("environment-id")
 }
 
-func runAmenitiesApply(cmd *cobra.Command, args []string) error {
+func runApply(cmd *cobra.Command, args []string) error {
 	defer config.CleanupArgsAndFlags(cmd, &args)
 
 	deploymentCellID, err := cmd.Flags().GetString("deployment-cell-id")

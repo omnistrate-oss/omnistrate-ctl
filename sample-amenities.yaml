@@ -1,0 +1,40 @@
+# Sample Organization Amenities Configuration
+# This YAML file can be used with the organization update command to set/update org amenities
+
+# Logging configuration
+logging:
+  level: INFO              # Logging level: DEBUG, INFO, WARN, ERROR
+  rotation: daily          # Log rotation policy: daily, weekly, monthly, size-based
+  structured: true         # Enable structured logging (JSON format)
+  retention_days: 30       # Number of days to retain logs
+
+# Monitoring configuration
+monitoring:
+  enabled: true            # Enable monitoring
+  prometheus: true         # Enable Prometheus metrics collection
+  grafana: true           # Enable Grafana dashboards
+  alerting: false         # Enable alerting system
+  retention: "30d"        # Metrics retention period
+
+# Security configuration
+security:
+  encryption: AES256       # Encryption algorithm: AES128, AES256, ChaCha20-Poly1305
+  tls_version: "1.3"      # Minimum TLS version: "1.2", "1.3"
+  hsts: true              # Enable HTTP Strict Transport Security (HSTS)
+  csrf_protection: true   # Enable CSRF protection
+
+# Custom configuration sections (optional)
+# You can add additional configuration sections as needed
+networking:
+  ingress_class: nginx
+  load_balancer_type: nlb
+  enable_service_mesh: false
+
+backup:
+  enabled: true
+  schedule: "0 2 * * *"   # Daily at 2 AM UTC
+  retention: "7d"
+  storage_class: standard
+
+# Environment-specific overrides can be applied
+# This template serves as a base that can be customized per environment

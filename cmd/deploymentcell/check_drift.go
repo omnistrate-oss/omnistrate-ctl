@@ -11,7 +11,7 @@ import (
 	"github.com/omnistrate-oss/omnistrate-ctl/internal/utils"
 )
 
-var amenitiesCheckDriftCmd = &cobra.Command{
+var checkDriftCmd = &cobra.Command{
 	Use:   "check-drift",
 	Short: "Check deployment cell for configuration drift",
 	Long: `Review deployment cells to determine if their amenities configuration matches 
@@ -22,34 +22,26 @@ cell configuration and the organization's target configuration template.
 
 Examples:
   # Check drift for a specific deployment cell
-  omnistrate-ctl deployment-cell amenities check-drift -i cell-123 -z org-123 -e production
+  omnistrate-ctl deployment-cell check-drift -i cell-123 -e production
 
   # Check drift for all deployment cells (if supported)
-  omnistrate-ctl deployment-cell amenities check-drift -z org-123 -e production --all`,
-	RunE:         runAmenitiesCheckDrift,
+  omnistrate-ctl deployment-cell check-drift -e production --all`,
+	RunE:         runCheckDrift,
 	SilenceUsage: true,
 }
 
 func init() {
-	amenitiesCheckDriftCmd.Flags().StringP("deployment-cell-id", "i", "", "Deployment cell ID (required unless --all is used)")
-	amenitiesCheckDriftCmd.Flags().StringP("organization-id", "z", "", "Organization ID (required)")
-	amenitiesCheckDriftCmd.Flags().StringP("environment", "e", "", "Target environment (required)")
-	amenitiesCheckDriftCmd.Flags().Bool("all", false, "Check drift for all deployment cells in the organization")
-	amenitiesCheckDriftCmd.Flags().Bool("summary", false, "Show only summary of drift status")
-	_ = amenitiesCheckDriftCmd.MarkFlagRequired("organization-id")
-	_ = amenitiesCheckDriftCmd.MarkFlagRequired("environment")
+	checkDriftCmd.Flags().StringP("deployment-cell-id", "i", "", "Deployment cell ID (required unless --all is used)")
+	checkDriftCmd.Flags().StringP("environment", "e", "", "Target environment (required)")
+	checkDriftCmd.Flags().Bool("all", false, "Check drift for all deployment cells in the organization")
+	checkDriftCmd.Flags().Bool("summary", false, "Show only summary of drift status")
+	_ = checkDriftCmd.MarkFlagRequired("environment")
 }
 
-func runAmenitiesCheckDrift(cmd *cobra.Command, args []string) error {
+func runCheckDrift(cmd *cobra.Command, args []string) error {
 	defer config.CleanupArgsAndFlags(cmd, &args)
 
 	deploymentCellID, err := cmd.Flags().GetString("deployment-cell-id")
-	if err != nil {
-		utils.PrintError(err)
-		return err
-	}
-
-	organizationID, err := cmd.Flags().GetString("organization-id")
 	if err != nil {
 		utils.PrintError(err)
 		return err
@@ -90,6 +82,9 @@ func runAmenitiesCheckDrift(cmd *cobra.Command, args []string) error {
 		utils.PrintError(err)
 		return err
 	}
+
+	// Organization ID comes from credentials
+	organizationID := "" // Will be determined from token/credentials
 
 	if checkAll {
 		// Check drift for all deployment cells

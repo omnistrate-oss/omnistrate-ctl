@@ -1,4 +1,4 @@
-package organization
+package service
 
 import (
 	"context"
@@ -15,27 +15,27 @@ import (
 )
 
 var amenitiesUpdateCmd = &cobra.Command{
-	Use:   "update",
-	Short: "Update organization amenities configuration template for target environment",
-	Long: `Update the amenities configuration template for a selected target environment.
+	Use:   "update-amenities",
+	Short: "Update service provider organization amenities configuration template for target environment",
+	Long: `Update the service provider organization amenities configuration template for a selected target environment.
 
 You specify which environment the update applies to. Updating the environment 
 overrides the previous settings for that context.
 
 This action is not versioned—there is only one active configuration per 
-environment within the org at any time.
+environment within the service provider org at any time.
 
 Organization ID is automatically determined from your credentials.
 
 Examples:
   # Update configuration for production environment
-  omnistrate-ctl organization amenities update -e production
+  omnistrate-ctl service update-amenities -e production
 
   # Update with configuration from file
-  omnistrate-ctl organization amenities update -e staging -f config.yaml
+  omnistrate-ctl service update-amenities -e staging -f sample-amenities.yaml
 
   # Interactive update
-  omnistrate-ctl organization amenities update -e development --interactive`,
+  omnistrate-ctl service update-amenities -e development --interactive`,
 	RunE:         runAmenitiesUpdate,
 	SilenceUsage: true,
 }
@@ -120,7 +120,7 @@ func runAmenitiesUpdate(cmd *cobra.Command, args []string) error {
 
 	// Get existing configuration if merging
 	if merge {
-		existingConfig, err := dataaccess.GetOrganizationAmenitiesConfiguration(ctx, token, "", environment)
+		existingConfig, err := dataaccess.GetOrganizationAmenitiesConfiguration(ctx, token, environment)
 		if err != nil {
 			utils.PrintError(fmt.Errorf("failed to get existing configuration for merging: %w", err))
 			return err
@@ -192,7 +192,7 @@ func runAmenitiesUpdate(cmd *cobra.Command, args []string) error {
 	}
 
 	// Update the configuration (organization ID comes from token/credentials)
-	updatedConfig, err := dataaccess.UpdateOrganizationAmenitiesConfiguration(ctx, token, "", environment, configTemplate)
+	updatedConfig, err := dataaccess.UpdateOrganizationAmenitiesConfiguration(ctx, token, environment, configTemplate)
 	if err != nil {
 		utils.PrintError(err)
 		return err

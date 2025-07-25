@@ -1,4 +1,4 @@
-## omnistrate-ctl deployment-cell amenities apply
+## omnistrate-ctl deployment-cell apply
 
 Apply pending changes to deployment cell
 
@@ -12,16 +12,16 @@ ensure they are correct.
 
 Examples:
   # Apply pending changes to specific deployment cell
-  omnistrate-ctl deployment-cell amenities apply -i cell-123 -s service-id -e env-id
+  omnistrate-ctl deployment-cell apply -i cell-123 -s service-id -e env-id
 
   # Apply with confirmation prompt
-  omnistrate-ctl deployment-cell amenities apply -i cell-123 -s service-id -e env-id --confirm
+  omnistrate-ctl deployment-cell apply -i cell-123 -s service-id -e env-id --confirm
 
   # Show pending changes without applying
-  omnistrate-ctl deployment-cell amenities apply -i cell-123 -s service-id -e env-id --dry-run
+  omnistrate-ctl deployment-cell apply -i cell-123 -s service-id -e env-id --dry-run
 
 ```
-omnistrate-ctl deployment-cell amenities apply [flags]
+omnistrate-ctl deployment-cell apply [flags]
 ```
 
 ### Options
@@ -44,5 +44,5 @@ omnistrate-ctl deployment-cell amenities apply [flags]
 
 ### SEE ALSO
 
-* [omnistrate-ctl deployment-cell amenities](omnistrate-ctl_deployment-cell_amenities.md)	 - Manage deployment cell amenities synchronization
+* [omnistrate-ctl deployment-cell](omnistrate-ctl_deployment-cell.md)	 - Manage Deployment Cells
 

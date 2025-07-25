@@ -13,7 +13,7 @@ import (
 	"github.com/omnistrate-oss/omnistrate-ctl/internal/utils"
 )
 
-var amenitiesSyncCmd = &cobra.Command{
+var syncCmd = &cobra.Command{
 	Use:   "sync",
 	Short: "Sync deployment cell with organization+environment template",
 	Long: `Synchronize deployment cells to adopt the current organization+environment configuration.
@@ -24,39 +24,31 @@ to the deployment cell.
 
 Examples:
   # Sync specific deployment cell with organization template
-  omnistrate-ctl deployment-cell amenities sync -i cell-123 -z org-123 -e production
+  omnistrate-ctl deployment-cell sync -i cell-123 -e production
 
   # Sync with confirmation prompt
-  omnistrate-ctl deployment-cell amenities sync -i cell-123 -z org-123 -e production --confirm
+  omnistrate-ctl deployment-cell sync -i cell-123 -e production --confirm
 
   # Sync all deployment cells that have drift
-  omnistrate-ctl deployment-cell amenities sync -z org-123 -e production --all --drift-only`,
-	RunE:         runAmenitiesSync,
+  omnistrate-ctl deployment-cell sync -e production --all --drift-only`,
+	RunE:         runSync,
 	SilenceUsage: true,
 }
 
 func init() {
-	amenitiesSyncCmd.Flags().StringP("deployment-cell-id", "i", "", "Deployment cell ID (required unless --all is used)")
-	amenitiesSyncCmd.Flags().StringP("organization-id", "z", "", "Organization ID (required)")
-	amenitiesSyncCmd.Flags().StringP("environment", "e", "", "Target environment (required)")
-	amenitiesSyncCmd.Flags().Bool("all", false, "Sync all deployment cells in the organization")
-	amenitiesSyncCmd.Flags().Bool("drift-only", false, "Only sync cells that have configuration drift (use with --all)")
-	amenitiesSyncCmd.Flags().Bool("confirm", false, "Prompt for confirmation before syncing")
-	amenitiesSyncCmd.Flags().Bool("dry-run", false, "Show what would be synced without making changes")
-	_ = amenitiesSyncCmd.MarkFlagRequired("organization-id")
-	_ = amenitiesSyncCmd.MarkFlagRequired("environment")
+	syncCmd.Flags().StringP("deployment-cell-id", "i", "", "Deployment cell ID (required unless --all is used)")
+	syncCmd.Flags().StringP("environment", "e", "", "Target environment (required)")
+	syncCmd.Flags().Bool("all", false, "Sync all deployment cells in the organization")
+	syncCmd.Flags().Bool("drift-only", false, "Only sync cells that have configuration drift (use with --all)")
+	syncCmd.Flags().Bool("confirm", false, "Prompt for confirmation before syncing")
+	syncCmd.Flags().Bool("dry-run", false, "Show what would be synced without making changes")
+	_ = syncCmd.MarkFlagRequired("environment")
 }
 
-func runAmenitiesSync(cmd *cobra.Command, args []string) error {
+func runSync(cmd *cobra.Command, args []string) error {
 	defer config.CleanupArgsAndFlags(cmd, &args)
 
 	deploymentCellID, err := cmd.Flags().GetString("deployment-cell-id")
-	if err != nil {
-		utils.PrintError(err)
-		return err
-	}
-
-	organizationID, err := cmd.Flags().GetString("organization-id")
 	if err != nil {
 		utils.PrintError(err)
 		return err
@@ -114,6 +106,9 @@ func runAmenitiesSync(cmd *cobra.Command, args []string) error {
 		utils.PrintError(err)
 		return err
 	}
+
+	// Organization ID comes from credentials
+	organizationID := "" // Will be determined from token/credentials
 
 	if syncAll {
 		// Sync all deployment cells

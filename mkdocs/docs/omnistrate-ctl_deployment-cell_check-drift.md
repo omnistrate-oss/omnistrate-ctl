@@ -1,4 +1,4 @@
-## omnistrate-ctl deployment-cell amenities check-drift
+## omnistrate-ctl deployment-cell check-drift
 
 Check deployment cell for configuration drift
 
@@ -12,13 +12,13 @@ cell configuration and the organization's target configuration template.
 
 Examples:
   # Check drift for a specific deployment cell
-  omnistrate-ctl deployment-cell amenities check-drift -i cell-123 -z org-123 -e production
+  omnistrate-ctl deployment-cell check-drift -i cell-123 -e production
 
   # Check drift for all deployment cells (if supported)
-  omnistrate-ctl deployment-cell amenities check-drift -z org-123 -e production --all
+  omnistrate-ctl deployment-cell check-drift -e production --all
 
 ```
-omnistrate-ctl deployment-cell amenities check-drift [flags]
+omnistrate-ctl deployment-cell check-drift [flags]
 ```
 
 ### Options
@@ -28,7 +28,6 @@ omnistrate-ctl deployment-cell amenities check-drift [flags]
   -i, --deployment-cell-id string   Deployment cell ID (required unless --all is used)
   -e, --environment string          Target environment (required)
   -h, --help                        help for check-drift
-  -z, --organization-id string      Organization ID (required)
       --summary                     Show only summary of drift status
 ```
 
@@ -41,5 +40,5 @@ omnistrate-ctl deployment-cell amenities check-drift [flags]
 
 ### SEE ALSO
 
-* [omnistrate-ctl deployment-cell amenities](omnistrate-ctl_deployment-cell_amenities.md)	 - Manage deployment cell amenities synchronization
+* [omnistrate-ctl deployment-cell](omnistrate-ctl_deployment-cell.md)	 - Manage Deployment Cells
 

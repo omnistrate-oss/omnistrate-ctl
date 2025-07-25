@@ -1,31 +1,31 @@
-## omnistrate-ctl organization amenities update
+## omnistrate-ctl service update-amenities
 
-Update organization amenities configuration template for target environment
+Update service provider organization amenities configuration template for target environment
 
 ### Synopsis
 
-Update the amenities configuration template for a selected target environment.
+Update the service provider organization amenities configuration template for a selected target environment.
 
 You specify which environment the update applies to. Updating the environment 
 overrides the previous settings for that context.
 
 This action is not versioned—there is only one active configuration per 
-environment within the org at any time.
+environment within the service provider org at any time.
 
 Organization ID is automatically determined from your credentials.
 
 Examples:
   # Update configuration for production environment
-  omnistrate-ctl organization amenities update -e production
+  omnistrate-ctl service update-amenities -e production
 
   # Update with configuration from file
-  omnistrate-ctl organization amenities update -e staging -f config.yaml
+  omnistrate-ctl service update-amenities -e staging -f sample-amenities.yaml
 
   # Interactive update
-  omnistrate-ctl organization amenities update -e development --interactive
+  omnistrate-ctl service update-amenities -e development --interactive
 
 ```
-omnistrate-ctl organization amenities update [flags]
+omnistrate-ctl service update-amenities [flags]
 ```
 
 ### Options
@@ -33,7 +33,7 @@ omnistrate-ctl organization amenities update [flags]
 ```
   -f, --config-file string   Path to configuration YAML file (optional)
   -e, --environment string   Target environment (production, staging, development)
-  -h, --help                 help for update
+  -h, --help                 help for update-amenities
       --interactive          Use interactive mode to update amenities configuration
       --merge                Merge with existing configuration instead of replacing
 ```
@@ -47,5 +47,5 @@ omnistrate-ctl organization amenities update [flags]
 
 ### SEE ALSO
 
-* [omnistrate-ctl organization amenities](omnistrate-ctl_organization_amenities.md)	 - Manage organization amenities configuration templates
+* [omnistrate-ctl service](omnistrate-ctl_service.md)	 - Manage Services for your account
 
