@@ -1,4 +1,4 @@
-## omnistrate-ctl service update-amenities
+## omnistrate-ctl serviceproviderorg update-amenities
 
 Update service provider organization amenities configuration template for target environment
 
@@ -16,16 +16,16 @@ Organization ID is automatically determined from your credentials.
 
 Examples:
   # Update configuration for production environment
-  omnistrate-ctl service update-amenities -e production
+  omnistrate-ctl serviceproviderorg update-amenities -e production
 
   # Update with configuration from file
-  omnistrate-ctl service update-amenities -e staging -f sample-amenities.yaml
+  omnistrate-ctl serviceproviderorg update-amenities -e staging -f sample-amenities.yaml
 
   # Interactive update
-  omnistrate-ctl service update-amenities -e development --interactive
+  omnistrate-ctl serviceproviderorg update-amenities -e development --interactive
 
 ```
-omnistrate-ctl service update-amenities [flags]
+omnistrate-ctl serviceproviderorg update-amenities [flags]
 ```
 
 ### Options
@@ -47,5 +47,5 @@ omnistrate-ctl service update-amenities [flags]
 
 ### SEE ALSO
 
-* [omnistrate-ctl service](omnistrate-ctl_service.md)	 - Manage Services for your account
+* [omnistrate-ctl serviceproviderorg](omnistrate-ctl_serviceproviderorg.md)	 - Manage service provider organization configuration
 

@@ -29,7 +29,5 @@ omnistrate-ctl service [operation] [flags]
 * [omnistrate-ctl](omnistrate-ctl.md)	 - Manage your Omnistrate SaaS from the command line
 * [omnistrate-ctl service delete](omnistrate-ctl_service_delete.md)	 - Delete a service
 * [omnistrate-ctl service describe](omnistrate-ctl_service_describe.md)	 - Describe a service
-* [omnistrate-ctl service init-amenities](omnistrate-ctl_service_init-amenities.md)	 - Initialize service provider organization amenities configuration template
 * [omnistrate-ctl service list](omnistrate-ctl_service_list.md)	 - List services for your account
-* [omnistrate-ctl service update-amenities](omnistrate-ctl_service_update-amenities.md)	 - Update service provider organization amenities configuration template for target environment
 

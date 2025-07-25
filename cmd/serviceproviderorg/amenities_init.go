@@ -1,4 +1,4 @@
-package service
+package serviceproviderorg
 
 import (
 	"context"
@@ -30,10 +30,10 @@ Organization ID is automatically determined from your credentials.
 
 Examples:
   # Initialize amenities configuration interactively
-  omnistrate-ctl service init-amenities -e production
+  omnistrate-ctl serviceproviderorg init-amenities -e production
 
   # Initialize from YAML file
-  omnistrate-ctl service init-amenities -e production -f sample-amenities.yaml`,
+  omnistrate-ctl serviceproviderorg init-amenities -e production -f sample-amenities.yaml`,
 	RunE:         runAmenitiesInit,
 	SilenceUsage: true,
 }

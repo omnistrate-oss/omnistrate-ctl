@@ -1,4 +1,4 @@
-package service
+package serviceproviderorg
 
 import (
 	"context"
@@ -29,13 +29,13 @@ Organization ID is automatically determined from your credentials.
 
 Examples:
   # Update configuration for production environment
-  omnistrate-ctl service update-amenities -e production
+  omnistrate-ctl serviceproviderorg update-amenities -e production
 
   # Update with configuration from file
-  omnistrate-ctl service update-amenities -e staging -f sample-amenities.yaml
+  omnistrate-ctl serviceproviderorg update-amenities -e staging -f sample-amenities.yaml
 
   # Interactive update
-  omnistrate-ctl service update-amenities -e development --interactive`,
+  omnistrate-ctl serviceproviderorg update-amenities -e development --interactive`,
 	RunE:         runAmenitiesUpdate,
 	SilenceUsage: true,
 }

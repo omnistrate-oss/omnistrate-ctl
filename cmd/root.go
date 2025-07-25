@@ -18,6 +18,7 @@ import (
 	"github.com/omnistrate-oss/omnistrate-ctl/cmd/instance"
 	"github.com/omnistrate-oss/omnistrate-ctl/cmd/secret"
 	"github.com/omnistrate-oss/omnistrate-ctl/cmd/service"
+	"github.com/omnistrate-oss/omnistrate-ctl/cmd/serviceproviderorg"
 	"github.com/omnistrate-oss/omnistrate-ctl/cmd/serviceplan"
 	"github.com/omnistrate-oss/omnistrate-ctl/cmd/servicesorchestration"
 	"github.com/omnistrate-oss/omnistrate-ctl/cmd/subscription"
@@ -111,6 +112,7 @@ func init() {
 	RootCmd.AddCommand(build.BuildFromRepoCmd)
 
 	RootCmd.AddCommand(service.Cmd)
+	RootCmd.AddCommand(serviceproviderorg.Cmd)
 	RootCmd.AddCommand(account.Cmd)
 	RootCmd.AddCommand(domain.Cmd)
 	RootCmd.AddCommand(upgrade.Cmd)

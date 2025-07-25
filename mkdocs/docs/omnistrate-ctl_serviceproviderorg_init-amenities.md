@@ -1,4 +1,4 @@
-## omnistrate-ctl service init-amenities
+## omnistrate-ctl serviceproviderorg init-amenities
 
 Initialize service provider organization amenities configuration template
 
@@ -17,13 +17,13 @@ Organization ID is automatically determined from your credentials.
 
 Examples:
   # Initialize amenities configuration interactively
-  omnistrate-ctl service init-amenities -e production
+  omnistrate-ctl serviceproviderorg init-amenities -e production
 
   # Initialize from YAML file
-  omnistrate-ctl service init-amenities -e production -f sample-amenities.yaml
+  omnistrate-ctl serviceproviderorg init-amenities -e production -f sample-amenities.yaml
 
 ```
-omnistrate-ctl service init-amenities [flags]
+omnistrate-ctl serviceproviderorg init-amenities [flags]
 ```
 
 ### Options
@@ -44,5 +44,5 @@ omnistrate-ctl service init-amenities [flags]
 
 ### SEE ALSO
 
-* [omnistrate-ctl service](omnistrate-ctl_service.md)	 - Manage Services for your account
+* [omnistrate-ctl serviceproviderorg](omnistrate-ctl_serviceproviderorg.md)	 - Manage service provider organization configuration
 
