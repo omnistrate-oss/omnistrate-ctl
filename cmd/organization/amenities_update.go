@@ -1,11 +1,11 @@
-package deploymentcell
+package organization
 
 import (
 	"context"
 	"fmt"
-	"encoding/json"
 
 	"github.com/spf13/cobra"
+	"gopkg.in/yaml.v3"
 	"github.com/cqroot/prompt"
 	"github.com/cqroot/prompt/choose"
 	"github.com/omnistrate-oss/omnistrate-ctl/cmd/common"
@@ -16,45 +16,39 @@ import (
 
 var amenitiesUpdateCmd = &cobra.Command{
 	Use:   "update",
-	Short: "Update organization amenities configuration for target environment",
+	Short: "Update organization amenities configuration template for target environment",
 	Long: `Update the amenities configuration template for a selected target environment.
 
 You specify which environment the update applies to. Updating the environment 
-overwrites the previous settings for that context.
+overrides the previous settings for that context.
 
 This action is not versioned—there is only one active configuration per 
 environment within the org at any time.
 
+Organization ID is automatically determined from your credentials.
+
 Examples:
   # Update configuration for production environment
-  omnistrate-ctl deployment-cell amenities update -z org-123 -e production
+  omnistrate-ctl organization amenities update -e production
 
   # Update with configuration from file
-  omnistrate-ctl deployment-cell amenities update -z org-123 -e staging -f config.json
+  omnistrate-ctl organization amenities update -e staging -f config.yaml
 
   # Interactive update
-  omnistrate-ctl deployment-cell amenities update -z org-123 -e development --interactive`,
+  omnistrate-ctl organization amenities update -e development --interactive`,
 	RunE:         runAmenitiesUpdate,
 	SilenceUsage: true,
 }
 
 func init() {
-	amenitiesUpdateCmd.Flags().StringP("organization-id", "z", "", "Organization ID (required)")
 	amenitiesUpdateCmd.Flags().StringP("environment", "e", "", "Target environment (production, staging, development)")
-	amenitiesUpdateCmd.Flags().StringP("config-file", "f", "", "Path to configuration JSON file (optional)")
+	amenitiesUpdateCmd.Flags().StringP("config-file", "f", "", "Path to configuration YAML file (optional)")
 	amenitiesUpdateCmd.Flags().Bool("interactive", false, "Use interactive mode to update amenities configuration")
 	amenitiesUpdateCmd.Flags().Bool("merge", false, "Merge with existing configuration instead of replacing")
-	_ = amenitiesUpdateCmd.MarkFlagRequired("organization-id")
 }
 
 func runAmenitiesUpdate(cmd *cobra.Command, args []string) error {
 	defer config.CleanupArgsAndFlags(cmd, &args)
-
-	organizationID, err := cmd.Flags().GetString("organization-id")
-	if err != nil {
-		utils.PrintError(err)
-		return err
-	}
 
 	environment, err := cmd.Flags().GetString("environment")
 	if err != nil {
@@ -126,7 +120,7 @@ func runAmenitiesUpdate(cmd *cobra.Command, args []string) error {
 
 	// Get existing configuration if merging
 	if merge {
-		existingConfig, err := dataaccess.GetOrganizationAmenitiesConfiguration(ctx, token, organizationID, environment)
+		existingConfig, err := dataaccess.GetOrganizationAmenitiesConfiguration(ctx, token, "", environment)
 		if err != nil {
 			utils.PrintError(fmt.Errorf("failed to get existing configuration for merging: %w", err))
 			return err
@@ -136,7 +130,7 @@ func runAmenitiesUpdate(cmd *cobra.Command, args []string) error {
 
 	if configFile != "" {
 		// Load configuration from file
-		newConfig, err := loadConfigurationFromFile(configFile)
+		newConfig, err := loadConfigurationFromYAMLFile(configFile)
 		if err != nil {
 			utils.PrintError(fmt.Errorf("failed to load configuration from file: %w", err))
 			return err
@@ -165,8 +159,8 @@ func runAmenitiesUpdate(cmd *cobra.Command, args []string) error {
 		}
 		// If merge flag is set but no new config provided, show current config
 		fmt.Printf("Current configuration for %s environment:\n", environment)
-		currentConfigJSON, _ := json.MarshalIndent(configTemplate, "", "  ")
-		fmt.Println(string(currentConfigJSON))
+		currentConfigYAML, _ := yaml.Marshal(configTemplate)
+		fmt.Println(string(currentConfigYAML))
 		return nil
 	}
 
@@ -180,8 +174,8 @@ func runAmenitiesUpdate(cmd *cobra.Command, args []string) error {
 	// Confirm update if not from file
 	if configFile == "" {
 		fmt.Printf("\nConfiguration to be applied to %s environment:\n", environment)
-		configJSON, _ := json.MarshalIndent(configTemplate, "", "  ")
-		fmt.Println(string(configJSON))
+		configYAML, _ := yaml.Marshal(configTemplate)
+		fmt.Println(string(configYAML))
 
 		confirmChoice, err := prompt.New().Ask("Do you want to apply this configuration?").Choose([]string{"Yes", "No"}, choose.WithTheme(choose.ThemeArrow))
 		if err != nil {
@@ -197,14 +191,14 @@ func runAmenitiesUpdate(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	// Update the configuration
-	updatedConfig, err := dataaccess.UpdateOrganizationAmenitiesConfiguration(ctx, token, organizationID, environment, configTemplate)
+	// Update the configuration (organization ID comes from token/credentials)
+	updatedConfig, err := dataaccess.UpdateOrganizationAmenitiesConfiguration(ctx, token, "", environment, configTemplate)
 	if err != nil {
 		utils.PrintError(err)
 		return err
 	}
 
-	utils.PrintSuccess(fmt.Sprintf("Successfully updated amenities configuration for organization %s in %s environment", organizationID, environment))
+	utils.PrintSuccess(fmt.Sprintf("Successfully updated amenities configuration template for %s environment", environment))
 
 	// Print the updated configuration details
 	if output == "table" {

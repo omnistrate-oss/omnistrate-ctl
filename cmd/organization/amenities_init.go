@@ -1,11 +1,11 @@
-package deploymentcell
+package organization
 
 import (
 	"context"
 	"fmt"
-	"encoding/json"
 
 	"github.com/spf13/cobra"
+	"gopkg.in/yaml.v3"
 	"github.com/cqroot/prompt"
 	"github.com/cqroot/prompt/choose"
 	"github.com/omnistrate-oss/omnistrate-ctl/cmd/common"
@@ -16,35 +16,29 @@ import (
 
 var amenitiesInitCmd = &cobra.Command{
 	Use:   "init",
-	Short: "Initialize organization-level amenities configuration",
-	Long: `Initialize organization-level amenities configuration through an interactive process.
+	Short: "Initialize organization-level amenities configuration template",
+	Long: `Initialize organization-level amenities configuration template through an interactive process.
 
 This command starts an interactive process to define the default organization-level 
-amenities configuration. This step is purely at the org level; no reference to any 
+amenities configuration template. This step is purely at the org level; no reference to any 
 service is needed.
 
 The configuration will be stored as a template that can be applied to different 
-environments (production, staging, development) and used to synchronize deployment cells.`,
+environments (production, staging, development) and used to synchronize deployment cells.
+
+Organization ID is automatically determined from your credentials.`,
 	RunE:         runAmenitiesInit,
 	SilenceUsage: true,
 }
 
 func init() {
-	amenitiesInitCmd.Flags().StringP("organization-id", "z", "", "Organization ID (required)")
 	amenitiesInitCmd.Flags().StringP("environment", "e", "", "Target environment (production, staging, development)")
-	amenitiesInitCmd.Flags().StringP("config-file", "f", "", "Path to configuration JSON file (optional)")
+	amenitiesInitCmd.Flags().StringP("config-file", "f", "", "Path to configuration YAML file (optional)")
 	amenitiesInitCmd.Flags().Bool("interactive", true, "Use interactive mode to configure amenities")
-	_ = amenitiesInitCmd.MarkFlagRequired("organization-id")
 }
 
 func runAmenitiesInit(cmd *cobra.Command, args []string) error {
 	defer config.CleanupArgsAndFlags(cmd, &args)
-
-	organizationID, err := cmd.Flags().GetString("organization-id")
-	if err != nil {
-		utils.PrintError(err)
-		return err
-	}
 
 	environment, err := cmd.Flags().GetString("environment")
 	if err != nil {
@@ -110,7 +104,7 @@ func runAmenitiesInit(cmd *cobra.Command, args []string) error {
 
 	if configFile != "" {
 		// Load configuration from file
-		configTemplate, err = loadConfigurationFromFile(configFile)
+		configTemplate, err = loadConfigurationFromYAMLFile(configFile)
 		if err != nil {
 			utils.PrintError(fmt.Errorf("failed to load configuration from file: %w", err))
 			return err
@@ -134,14 +128,14 @@ func runAmenitiesInit(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	// Initialize the configuration
-	config, err := dataaccess.InitializeOrganizationAmenitiesConfiguration(ctx, token, organizationID, environment, configTemplate)
+	// Initialize the configuration (organization ID comes from token/credentials)
+	config, err := dataaccess.InitializeOrganizationAmenitiesConfiguration(ctx, token, "", environment, configTemplate)
 	if err != nil {
 		utils.PrintError(err)
 		return err
 	}
 
-	utils.PrintSuccess(fmt.Sprintf("Successfully initialized amenities configuration for organization %s in %s environment", organizationID, environment))
+	utils.PrintSuccess(fmt.Sprintf("Successfully initialized amenities configuration template for %s environment", environment))
 
 	// Print the configuration details
 	if output == "table" {
@@ -350,16 +344,16 @@ func configureCustomSection() (map[string]interface{}, error) {
 	}, nil
 }
 
-func loadConfigurationFromFile(filePath string) (map[string]interface{}, error) {
+func loadConfigurationFromYAMLFile(filePath string) (map[string]interface{}, error) {
 	data, err := utils.ReadFile(filePath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read configuration file: %w", err)
 	}
 
 	var config map[string]interface{}
-	err = json.Unmarshal(data, &config)
+	err = yaml.Unmarshal(data, &config)
 	if err != nil {
-		return nil, fmt.Errorf("failed to parse configuration JSON: %w", err)
+		return nil, fmt.Errorf("failed to parse configuration YAML: %w", err)
 	}
 
 	return config, nil

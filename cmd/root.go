@@ -16,6 +16,7 @@ import (
 	"github.com/omnistrate-oss/omnistrate-ctl/cmd/helm"
 	"github.com/omnistrate-oss/omnistrate-ctl/cmd/inspect"
 	"github.com/omnistrate-oss/omnistrate-ctl/cmd/instance"
+	"github.com/omnistrate-oss/omnistrate-ctl/cmd/organization"
 	"github.com/omnistrate-oss/omnistrate-ctl/cmd/secret"
 	"github.com/omnistrate-oss/omnistrate-ctl/cmd/service"
 	"github.com/omnistrate-oss/omnistrate-ctl/cmd/serviceplan"
@@ -116,6 +117,7 @@ func init() {
 	RootCmd.AddCommand(upgrade.Cmd)
 	RootCmd.AddCommand(helm.Cmd)
 	RootCmd.AddCommand(instance.Cmd)
+	RootCmd.AddCommand(organization.Cmd)
 	RootCmd.AddCommand(serviceplan.Cmd)
 	RootCmd.AddCommand(subscription.Cmd)
 	RootCmd.AddCommand(environment.Cmd)

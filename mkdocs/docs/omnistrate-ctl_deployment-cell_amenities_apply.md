@@ -44,5 +44,5 @@ omnistrate-ctl deployment-cell amenities apply [flags]
 
 ### SEE ALSO
 
-* [omnistrate-ctl deployment-cell amenities](omnistrate-ctl_deployment-cell_amenities.md)	 - Manage deployment cell amenities configuration
+* [omnistrate-ctl deployment-cell amenities](omnistrate-ctl_deployment-cell_amenities.md)	 - Manage deployment cell amenities synchronization
 

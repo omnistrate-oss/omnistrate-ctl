@@ -1,25 +1,24 @@
 ## omnistrate-ctl deployment-cell amenities
 
-Manage deployment cell amenities configuration
+Manage deployment cell amenities synchronization
 
 ### Synopsis
 
-Manage organization-level amenities configuration and deployment cell synchronization.
+Manage deployment cell amenities synchronization with organization templates.
 
 This command helps you:
-- Initialize organization-level amenities configuration
-- Update amenities configuration for target environments
-- Check deployment cells for configuration drift
-- Sync deployment cells with organization templates
-- Apply pending configuration changes
+- Check deployment cells for configuration drift against organization templates
+- Sync deployment cells with organization+environment templates
+- Apply pending configuration changes to deployment cells
+
+These operations work with deployment cells to align them with organization-level
+amenities templates. Use the 'organization amenities' commands to manage the
+templates themselves.
 
 Available operations:
-  init        Initialize organization-level amenities configuration
-  update      Update organization amenities configuration for target environment
   check-drift Check deployment cell for configuration drift
   sync        Sync deployment cell with organization+environment template
   apply       Apply pending changes to deployment cell
-  status      Show amenities status for deployment cell
 
 ```
 omnistrate-ctl deployment-cell amenities [operation] [flags]
@@ -43,8 +42,5 @@ omnistrate-ctl deployment-cell amenities [operation] [flags]
 * [omnistrate-ctl deployment-cell](omnistrate-ctl_deployment-cell.md)	 - Manage Deployment Cells
 * [omnistrate-ctl deployment-cell amenities apply](omnistrate-ctl_deployment-cell_amenities_apply.md)	 - Apply pending changes to deployment cell
 * [omnistrate-ctl deployment-cell amenities check-drift](omnistrate-ctl_deployment-cell_amenities_check-drift.md)	 - Check deployment cell for configuration drift
-* [omnistrate-ctl deployment-cell amenities init](omnistrate-ctl_deployment-cell_amenities_init.md)	 - Initialize organization-level amenities configuration
-* [omnistrate-ctl deployment-cell amenities status](omnistrate-ctl_deployment-cell_amenities_status.md)	 - Show amenities status for deployment cell
 * [omnistrate-ctl deployment-cell amenities sync](omnistrate-ctl_deployment-cell_amenities_sync.md)	 - Sync deployment cell with organization+environment template
-* [omnistrate-ctl deployment-cell amenities update](omnistrate-ctl_deployment-cell_amenities_update.md)	 - Update organization amenities configuration for target environment
 

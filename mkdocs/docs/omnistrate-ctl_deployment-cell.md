@@ -27,7 +27,7 @@ omnistrate-ctl deployment-cell [operation] [flags]
 
 * [omnistrate-ctl](omnistrate-ctl.md)	 - Manage your Omnistrate SaaS from the command line
 * [omnistrate-ctl deployment-cell adopt](omnistrate-ctl_deployment-cell_adopt.md)	 - Adopt a deployment cell
-* [omnistrate-ctl deployment-cell amenities](omnistrate-ctl_deployment-cell_amenities.md)	 - Manage deployment cell amenities configuration
+* [omnistrate-ctl deployment-cell amenities](omnistrate-ctl_deployment-cell_amenities.md)	 - Manage deployment cell amenities synchronization
 * [omnistrate-ctl deployment-cell delete](omnistrate-ctl_deployment-cell_delete.md)	 - Delete a deployment cell
 * [omnistrate-ctl deployment-cell list](omnistrate-ctl_deployment-cell_list.md)	 - List all deployment cells
 * [omnistrate-ctl deployment-cell status](omnistrate-ctl_deployment-cell_status.md)	 - Get status of a deployment cell

@@ -20,8 +20,6 @@ func InitializeOrganizationAmenitiesConfiguration(ctx context.Context, token str
 		OrganizationID:        organizationID,
 		Environment:          environment,
 		ConfigurationTemplate: configTemplate,
-		CreatedAt:            time.Now(),
-		UpdatedAt:            time.Now(),
 		Version:              "1.0.0",
 	}
 	
@@ -37,8 +35,6 @@ func UpdateOrganizationAmenitiesConfiguration(ctx context.Context, token string,
 		OrganizationID:        organizationID,
 		Environment:          environment,
 		ConfigurationTemplate: configTemplate,
-		CreatedAt:            time.Now().Add(-24 * time.Hour), // Mock creation time
-		UpdatedAt:            time.Now(),
 		Version:              "1.1.0",
 	}
 	
@@ -71,8 +67,6 @@ func GetOrganizationAmenitiesConfiguration(ctx context.Context, token string, or
 		OrganizationID:        organizationID,
 		Environment:          environment,
 		ConfigurationTemplate: mockConfig,
-		CreatedAt:            time.Now().Add(-48 * time.Hour),
-		UpdatedAt:            time.Now().Add(-12 * time.Hour),
 		Version:              "1.0.0",
 	}
 	
