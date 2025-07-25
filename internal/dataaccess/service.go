@@ -206,3 +206,61 @@ func ValidateAmenitiesConfiguration(configTemplate map[string]interface{}) error
 	
 	return nil
 }
+
+// ReadAmenitiesConfigFromFile reads amenities configuration from a YAML file
+func ReadAmenitiesConfigFromFile(filePath string) (map[string]interface{}, error) {
+	// TODO: Implement actual YAML file reading
+	// This is a placeholder implementation
+	
+	if filePath == "" {
+		return nil, fmt.Errorf("file path cannot be empty")
+	}
+	
+	// Mock configuration read from file
+	config := map[string]interface{}{
+		"logging": map[string]interface{}{
+			"level":          "info",
+			"retention_days": 30,
+			"format":         "json",
+		},
+		"monitoring": map[string]interface{}{
+			"enabled":       true,
+			"metrics_port":  9090,
+			"alerts_enabled": true,
+		},
+		"security": map[string]interface{}{
+			"encryption_enabled": true,
+			"tls_version":       "1.3",
+		},
+	}
+	
+	return config, nil
+}
+
+// RunInteractiveAmenitiesConfiguration runs interactive configuration for amenities
+func RunInteractiveAmenitiesConfiguration(currentConfig *map[string]interface{}) (map[string]interface{}, error) {
+	// TODO: Implement actual interactive configuration
+	// This is a placeholder implementation
+	
+	fmt.Println("📝 Interactive amenities configuration")
+	fmt.Println("Note: This is a mock implementation")
+	
+	// Mock interactive configuration
+	config := map[string]interface{}{
+		"logging": map[string]interface{}{
+			"level":          "info",
+			"retention_days": 30,
+		},
+		"monitoring": map[string]interface{}{
+			"enabled": true,
+		},
+	}
+	
+	// If current config is provided, merge some values
+	if currentConfig != nil {
+		fmt.Println("Using current configuration as base...")
+		// In a real implementation, this would merge current config with new values
+	}
+	
+	return config, nil
+}

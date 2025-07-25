@@ -13,8 +13,8 @@ import (
 	"github.com/omnistrate-oss/omnistrate-ctl/internal/utils"
 )
 
-var applyCmd = &cobra.Command{
-	Use:   "apply",
+var applyPendingChangesCmd = &cobra.Command{
+	Use:   "apply-pending-changes",
 	Short: "Apply pending changes to deployment cell",
 	Long: `Review and confirm the pending configuration changes for deployment cells.
 
@@ -24,29 +24,29 @@ ensure they are correct.
 
 Examples:
   # Apply pending changes to specific deployment cell
-  omnistrate-ctl deployment-cell apply -i cell-123 -s service-id -e env-id
+  omnistrate-ctl deployment-cell apply-pending-changes -i cell-123 -s service-id -e env-id
 
   # Apply with confirmation prompt
-  omnistrate-ctl deployment-cell apply -i cell-123 -s service-id -e env-id --confirm
+  omnistrate-ctl deployment-cell apply-pending-changes -i cell-123 -s service-id -e env-id --confirm
 
   # Show pending changes without applying
-  omnistrate-ctl deployment-cell apply -i cell-123 -s service-id -e env-id --dry-run`,
-	RunE:         runApply,
+  omnistrate-ctl deployment-cell apply-pending-changes -i cell-123 -s service-id -e env-id --dry-run`,
+	RunE:         runApplyPendingChanges,
 	SilenceUsage: true,
 }
 
 func init() {
-	applyCmd.Flags().StringP("deployment-cell-id", "i", "", "Deployment cell ID (required)")
-	applyCmd.Flags().StringP("service-id", "s", "", "Service ID (required)")
-	applyCmd.Flags().StringP("environment-id", "e", "", "Environment ID (required)")
-	applyCmd.Flags().Bool("confirm", false, "Prompt for confirmation before applying changes")
-	applyCmd.Flags().Bool("dry-run", false, "Show pending changes without applying them")
-	_ = applyCmd.MarkFlagRequired("deployment-cell-id")
-	_ = applyCmd.MarkFlagRequired("service-id")
-	_ = applyCmd.MarkFlagRequired("environment-id")
+	applyPendingChangesCmd.Flags().StringP("deployment-cell-id", "i", "", "Deployment cell ID (required)")
+	applyPendingChangesCmd.Flags().StringP("service-id", "s", "", "Service ID (required)")
+	applyPendingChangesCmd.Flags().StringP("environment-id", "e", "", "Environment ID (required)")
+	applyPendingChangesCmd.Flags().Bool("confirm", false, "Prompt for confirmation before applying changes")
+	applyPendingChangesCmd.Flags().Bool("dry-run", false, "Show pending changes without applying them")
+	_ = applyPendingChangesCmd.MarkFlagRequired("deployment-cell-id")
+	_ = applyPendingChangesCmd.MarkFlagRequired("service-id")
+	_ = applyPendingChangesCmd.MarkFlagRequired("environment-id")
 }
 
-func runApply(cmd *cobra.Command, args []string) error {
+func runApplyPendingChanges(cmd *cobra.Command, args []string) error {
 	defer config.CleanupArgsAndFlags(cmd, &args)
 
 	deploymentCellID, err := cmd.Flags().GetString("deployment-cell-id")
@@ -198,8 +198,8 @@ func runApply(cmd *cobra.Command, args []string) error {
 
 	// Provide next steps guidance
 	fmt.Println("\n📝 Next Steps:")
-	fmt.Println("  • Use 'omnistrate-ctl deployment-cell amenities status' to verify the changes")
-	fmt.Println("  • Use 'omnistrate-ctl deployment-cell amenities check-drift' to ensure synchronization")
+	fmt.Println("  • Use 'omnistrate-ctl deployment-cell status' to verify the changes")
+	fmt.Println("  • Use 'omnistrate-ctl deployment-cell sync' to ensure synchronization")
 	
 	return nil
 }

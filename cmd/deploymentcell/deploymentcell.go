@@ -19,10 +19,10 @@ func init() {
 	Cmd.AddCommand(statusCmd)
 	Cmd.AddCommand(listCmd)
 	Cmd.AddCommand(deleteCmd)
+	Cmd.AddCommand(updateCmd)
 	Cmd.AddCommand(updateKubeConfigCmd)
-	Cmd.AddCommand(checkDriftCmd)
 	Cmd.AddCommand(syncCmd)
-	Cmd.AddCommand(applyCmd)
+	Cmd.AddCommand(applyPendingChangesCmd)
 }
 
 func run(cmd *cobra.Command, args []string) {

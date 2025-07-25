@@ -2,6 +2,7 @@ package dataaccess
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"time"
 
@@ -247,4 +248,29 @@ func GetDeploymentCellAmenitiesStatus(ctx context.Context, token string, deploym
 	}
 	
 	return status, nil
+}
+
+// UpdateDeploymentCellAmenitiesConfiguration updates the amenities configuration for a deployment cell
+// This is a placeholder implementation - the actual API endpoint may not exist yet
+func UpdateDeploymentCellAmenitiesConfiguration(ctx context.Context, token string, deploymentCellID, serviceID, environmentID string, config map[string]interface{}, merge bool) error {
+	// TODO: Replace with actual API call once backend is available
+	
+	// Mock update operation
+	fmt.Printf("Mock: Updating deployment cell %s amenities configuration\n", deploymentCellID)
+	fmt.Printf("Mock: Service ID: %s, Environment ID: %s\n", serviceID, environmentID)
+	fmt.Printf("Mock: Merge mode: %t\n", merge)
+	fmt.Printf("Mock: Configuration keys: %v\n", getConfigKeys(config))
+	
+	// Simulate a short delay for the update operation
+	time.Sleep(500 * time.Millisecond)
+	
+	return nil
+}
+
+func getConfigKeys(config map[string]interface{}) []string {
+	keys := make([]string, 0, len(config))
+	for key := range config {
+		keys = append(keys, key)
+	}
+	return keys
 }

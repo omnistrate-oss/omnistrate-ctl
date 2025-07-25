@@ -2,6 +2,7 @@ package deploymentcell
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/omnistrate-oss/omnistrate-ctl/internal/model"
 	"github.com/spf13/cobra"
@@ -74,6 +75,31 @@ func runStatus(cmd *cobra.Command, args []string) error {
 
 		deploymentCell := formatDeploymentCell(&cluster)
 		deploymentCells = append(deploymentCells, deploymentCell)
+	}
+
+	// Get amenities status for the deployment cell if found
+	if len(deploymentCells) > 0 {
+		amenitiesStatus, err := dataaccess.GetDeploymentCellAmenitiesStatus(ctx, token, id)
+		if err != nil {
+			utils.PrintWarning(fmt.Sprintf("Failed to get amenities status: %v", err))
+		} else {
+			// Add amenities status to the output
+			fmt.Printf("\n📋 Amenities Status:\n")
+			fmt.Printf("  Status: %s\n", amenitiesStatus.Status)
+			fmt.Printf("  Configuration Drift: %t\n", amenitiesStatus.HasConfigurationDrift)
+			fmt.Printf("  Pending Changes: %t\n", amenitiesStatus.HasPendingChanges)
+			if amenitiesStatus.HasPendingChanges {
+				fmt.Printf("  Pending Changes Count: %d\n", len(amenitiesStatus.PendingChanges))
+			}
+			fmt.Printf("  Last Check: %s\n", amenitiesStatus.LastCheck.Format("2006-01-02 15:04:05"))
+			
+			if amenitiesStatus.HasConfigurationDrift {
+				utils.PrintWarning("Configuration drift detected - use 'deployment-cell sync' to synchronize")
+			}
+			if amenitiesStatus.HasPendingChanges {
+				utils.PrintInfo("Pending changes available - use 'deployment-cell apply-pending-changes' to activate")
+			}
+		}
 	}
 
 	// Print output in requested format

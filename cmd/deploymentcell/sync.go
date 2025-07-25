@@ -182,7 +182,7 @@ func syncSingleCell(ctx context.Context, token, deploymentCellID, organizationID
 
 	utils.PrintSuccess(fmt.Sprintf("Successfully synchronized deployment cell %s", deploymentCellID))
 	fmt.Printf("Pending changes: %d\n", len(status.PendingChanges))
-	fmt.Println("\nUse 'omnistrate-ctl deployment-cell amenities apply' to activate the pending changes.")
+	fmt.Println("\nUse 'omnistrate-ctl deployment-cell apply-pending-changes' to activate the pending changes.")
 
 	// Print status in requested format
 	if output == "table" {
@@ -287,7 +287,7 @@ func syncAllCells(ctx context.Context, token, organizationID, environment string
 
 	if successCount > 0 {
 		utils.PrintSuccess(fmt.Sprintf("Successfully synchronized %d deployment cells", successCount))
-		fmt.Println("\nUse 'omnistrate-ctl deployment-cell amenities apply' to activate the pending changes.")
+		fmt.Println("\nUse 'omnistrate-ctl deployment-cell apply-pending-changes' to activate the pending changes.")
 		
 		// Print detailed results
 		if output == "table" && len(syncResultsTable) > 0 {
