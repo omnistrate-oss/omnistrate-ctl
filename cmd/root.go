@@ -6,6 +6,7 @@ import (
 	"os"
 
 	"github.com/omnistrate-oss/omnistrate-ctl/cmd/account"
+	"github.com/omnistrate-oss/omnistrate-ctl/cmd/alarms"
 	"github.com/omnistrate-oss/omnistrate-ctl/cmd/auth/login"
 	"github.com/omnistrate-oss/omnistrate-ctl/cmd/auth/logout"
 	"github.com/omnistrate-oss/omnistrate-ctl/cmd/build"
@@ -114,6 +115,7 @@ func init() {
 	RootCmd.AddCommand(service.Cmd)
 	RootCmd.AddCommand(serviceproviderorg.Cmd)
 	RootCmd.AddCommand(account.Cmd)
+	RootCmd.AddCommand(alarms.Cmd)
 	RootCmd.AddCommand(domain.Cmd)
 	RootCmd.AddCommand(upgrade.Cmd)
 	RootCmd.AddCommand(helm.Cmd)

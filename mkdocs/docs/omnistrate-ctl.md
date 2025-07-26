@@ -36,6 +36,7 @@ omnistrate-ctl [flags]
 ### SEE ALSO
 
 * [omnistrate-ctl account](omnistrate-ctl_account.md)	 - Manage your Cloud Provider Accounts
+* [omnistrate-ctl alarms](omnistrate-ctl_alarms.md)	 - Manage alarms and notification channels
 * [omnistrate-ctl build](omnistrate-ctl_build.md)	 - Build Services from image, compose spec or service plan spec
 * [omnistrate-ctl build-from-repo](omnistrate-ctl_build-from-repo.md)	 - Build Service from Git Repository
 * [omnistrate-ctl custom-network](omnistrate-ctl_custom-network.md)	 - List and describe custom networks of your customers
