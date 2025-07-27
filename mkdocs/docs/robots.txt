@@ -1,0 +1,8 @@
+# Robots.txt for Omnistrate CTL Documentation
+# https://ctl.omnistrate.cloud/
+
+User-agent: *
+Allow: /
+
+# Sitemap location
+Sitemap: https://ctl.omnistrate.cloud/sitemap.xml
