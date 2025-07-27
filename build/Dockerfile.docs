@@ -4,6 +4,8 @@ FROM python:3.13-slim
 # Set the working directory in the container
 WORKDIR /app
 
+RUN apt-get update && rm -rf /var/lib/apt/lists/*
+
 # Copy only the requirements file first
 COPY ./mkdocs/requirements.txt .
 
