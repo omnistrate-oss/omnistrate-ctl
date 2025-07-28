@@ -4,11 +4,10 @@ Initialize deployment cell configuration template for service provider organizat
 
 ### Synopsis
 
-Initialize service provider organization-level deployment cell configuration template through an interactive process.
+Initialize service provider organization-level deployment cell configuration template.
 
-This command starts an interactive process to define the default organization-level 
-configuration template for deployment cells. This step is purely at the service provider org level; 
-no reference to any specific service is needed.
+This command initializes the default organization-level configuration template for deployment cells. 
+This step is purely at the service provider org level; no reference to any specific service is needed.
 
 The configuration will be stored as a template that can be applied to different 
 environments (production, staging, development) and used to synchronize deployment cells.
@@ -16,11 +15,11 @@ environments (production, staging, development) and used to synchronize deployme
 Organization ID is automatically determined from your credentials.
 
 Examples:
-  # Initialize deployment cell configuration template interactively
+  # Initialize deployment cell configuration template with default settings
   omnistrate-ctl serviceproviderorg init-deployment-cell-config-template
 
-  # Initialize from YAML file
-  omnistrate-ctl serviceproviderorg init-deployment-cell-config-template -f sample-amenities.yaml
+  # Save template configuration to a local file
+  omnistrate-ctl serviceproviderorg init-deployment-cell-config-template --output-file template.yaml
 
 ```
 omnistrate-ctl serviceproviderorg init-deployment-cell-config-template [flags]
@@ -29,9 +28,8 @@ omnistrate-ctl serviceproviderorg init-deployment-cell-config-template [flags]
 ### Options
 
 ```
-  -f, --config-file string   Path to configuration YAML file (optional)
   -h, --help                 help for init-deployment-cell-config-template
-      --interactive          Use interactive mode to configure amenities (default true)
+      --output-file string   Path to output the template configuration to a local YAML file (optional)
 ```
 
 ### Options inherited from parent commands

@@ -3,6 +3,7 @@ package serviceproviderorg
 import (
 	"context"
 	"fmt"
+	"log"
 	openapiclient "github.com/omnistrate-oss/omnistrate-sdk-go/v1"
 	"os"
 
@@ -81,10 +82,10 @@ func runInitDefaultTemplate(cmd *cobra.Command, args []string) error {
 func getDefaultTemplateConfiguration(ctx context.Context, token string) (model.DeploymentCellConfigurationTemplate, error) {
 	// Retrieve the default template from service provider organization's DefaultDeploymentCellConfigurations
 	res, err := dataaccess.GetServiceProviderOrganization(ctx, token)
-	log.Printf("Service provider organization retrieved successfully. Organization ID: %s", res.OrganizationID)
 	if err != nil {
 		return model.DeploymentCellConfigurationTemplate{}, fmt.Errorf("failed to get service provider organization: %w", err)
 	}
+	log.Printf("Service provider organization retrieved successfully")
 
 	// Convert the API response to model.DeploymentCellConfigurationTemplate
 	template := model.DeploymentCellConfigurationTemplate{

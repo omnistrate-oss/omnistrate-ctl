@@ -32,6 +32,5 @@ omnistrate-ctl deployment-cell [operation] [flags]
 * [omnistrate-ctl deployment-cell list](omnistrate-ctl_deployment-cell_list.md)	 - List all deployment cells
 * [omnistrate-ctl deployment-cell status](omnistrate-ctl_deployment-cell_status.md)	 - Get status of a deployment cell
 * [omnistrate-ctl deployment-cell sync](omnistrate-ctl_deployment-cell_sync.md)	 - Sync deployment cell with organization+environment template
-* [omnistrate-ctl deployment-cell update](omnistrate-ctl_deployment-cell_update.md)	 - Update deployment cell configuration
 * [omnistrate-ctl deployment-cell update-kubeconfig](omnistrate-ctl_deployment-cell_update-kubeconfig.md)	 - Update kubeconfig for a deployment cell
 
