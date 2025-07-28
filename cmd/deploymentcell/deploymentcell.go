@@ -19,9 +19,7 @@ func init() {
 	Cmd.AddCommand(statusCmd)
 	Cmd.AddCommand(listCmd)
 	Cmd.AddCommand(deleteCmd)
-	Cmd.AddCommand(updateCmd)
 	Cmd.AddCommand(updateKubeConfigCmd)
-	Cmd.AddCommand(syncCmd)
 	Cmd.AddCommand(applyPendingChangesCmd)
 }
 

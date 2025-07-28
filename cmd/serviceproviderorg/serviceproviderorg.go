@@ -20,6 +20,6 @@ This includes:
 }
 
 func init() {
-	Cmd.AddCommand(amenitiesInitCmd)
-	Cmd.AddCommand(amenitiesUpdateCmd)
+	Cmd.AddCommand(initDefaultTemplateCmd)
+	Cmd.AddCommand(updateServiceProviderOrgCmd)
 }

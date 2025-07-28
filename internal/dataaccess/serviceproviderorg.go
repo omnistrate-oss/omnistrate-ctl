@@ -2,123 +2,129 @@ package dataaccess
 
 import (
 	"context"
-	"fmt"
-	"time"
-
+	"encoding/json"
 	"github.com/omnistrate-oss/omnistrate-ctl/internal/model"
+	openapiclient "github.com/omnistrate-oss/omnistrate-sdk-go/v1"
+	"net/http"
 )
 
-// InitializeOrganizationAmenitiesConfiguration initializes the organization-level amenities configuration
-// This is a placeholder implementation that will be replaced with actual API calls
-func InitializeOrganizationAmenitiesConfiguration(ctx context.Context, token string, configTemplate map[string]interface{}) (*model.AmenitiesConfiguration, error) {
-	// TODO: Replace with actual API call to service provider org amenities initialization
-	// For now, return a mock configuration
-	config := &model.AmenitiesConfiguration{
-		OrganizationID:        "mock-org-id", // This will come from token/credentials
-		EnvironmentType:       "",            // Environment is not required for initialization
-		ConfigurationTemplate: configTemplate,
-		Version:               "1.0.0",
+func GetServiceProviderOrganization(ctx context.Context, token string) (res *openapiclient.DescribeServiceProviderOrganizationResult, err error) {
+	ctxWithToken := context.WithValue(ctx, openapiclient.ContextAccessToken, token)
+	apiClient := getV1Client()
+
+	var r *http.Response
+	defer func() {
+		if r != nil {
+			_ = r.Body.Close()
+		}
+	}()
+
+	res, r, err = apiClient.SpOrganizationApiAPI.SpOrganizationApiDescribeServiceProviderOrganization(ctxWithToken).Execute()
+
+	err = handleV1Error(err)
+	if err != nil {
+		return
 	}
-	return config, nil
+
+	return
 }
 
-// UpdateOrganizationAmenitiesConfiguration updates the amenities configuration for a target environment
-// This is a placeholder implementation that will be replaced with actual API calls
-func UpdateOrganizationAmenitiesConfiguration(ctx context.Context, token string, environmentType string, configTemplate map[string]interface{}) (*model.AmenitiesConfiguration, error) {
-	// TODO: Replace with actual API call to service provider org amenities update
-	config := &model.AmenitiesConfiguration{
-		OrganizationID:        "mock-org-id", // This will come from token/credentials
-		EnvironmentType:       environmentType,
-		ConfigurationTemplate: configTemplate,
-		Version:               "1.0.1",
-		UpdatedAt:             time.Now(),
+func UpdateServiceProviderOrganization(ctx context.Context, token string, deploymentCellConfigurations model.DeploymentCellConfigurations, envType string) (err error) {
+	ctxWithToken := context.WithValue(ctx, openapiclient.ContextAccessToken, token)
+	apiClient := getV1Client()
+
+	apiModel, err := convertTemplateToOpenAPIFormat(deploymentCellConfigurations, envType)
+
+	req := apiClient.SpOrganizationApiAPI.SpOrganizationApiModifyServiceProviderOrganization(ctxWithToken)
+	spOrg := openapiclient.ModifyServiceProviderOrganizationRequest2{
+		DeploymentCellConfigurations: apiModel,
 	}
-	return config, nil
+	req = req.ModifyServiceProviderOrganizationRequest2(spOrg)
+	var r *http.Response
+	defer func() {
+		if r != nil {
+			_ = r.Body.Close()
+		}
+	}()
+
+	r, err = req.Execute()
+	if err != nil {
+		return handleV1Error(err)
+	}
+	return
 }
 
-// GetOrganizationAmenitiesConfiguration retrieves the amenities configuration for an organization and environment
-// This is a placeholder implementation that will be replaced with actual API calls
-func GetOrganizationAmenitiesConfiguration(ctx context.Context, token string, environmentType string) (*model.AmenitiesConfiguration, error) {
-	// TODO: Replace with actual API call to service provider org amenities retrieval
-	
-	// Mock existing configuration for demonstration
-	defaultConfig := map[string]interface{}{
-		"logging": map[string]interface{}{
-			"level":            "INFO",
-			"rotation":         "daily",
-			"structured":       true,
-			"retention_days":   30,
-		},
-		"monitoring": map[string]interface{}{
-			"enabled":    true,
-			"prometheus": true,
-			"grafana":    false,
-			"alerting":   false,
-			"retention":  "30d",
-		},
+func convertTemplateToOpenAPIFormat(templateConfig model.DeploymentCellConfigurations, environment string) (*map[string]openapiclient.DeploymentCellConfigurations, error) {
+	// Create the map structure expected by the OpenAPI client
+	// This should be a map where the key is environment type and value is DeploymentCellConfigurations
+	deploymentCellConfigs := make(map[string]openapiclient.DeploymentCellConfigurations)
+
+	// Create cloud provider configurations map
+	cloudProviderConfigs := make(map[string]openapiclient.DeploymentCellConfiguration)
+
+	// Convert each cloud provider configuration
+	for cloudProvider, config := range templateConfig.DeploymentCellConfigurationPerCloudProvider {
+		// Convert amenities to OpenAPI format
+		var amenities []openapiclient.Amenity
+		for _, amenity := range config.Amenities {
+			openAPIAmenity := openapiclient.Amenity{}
+
+			// Set the name (required field)
+			openAPIAmenity.SetName(amenity.Name)
+
+			// Set optional fields if they exist
+			if amenity.Modifiable != nil {
+				openAPIAmenity.SetModifiable(*amenity.Modifiable)
+			}
+			if amenity.Description != nil {
+				openAPIAmenity.SetDescription(*amenity.Description)
+			}
+			if amenity.IsManaged != nil {
+				openAPIAmenity.SetIsManaged(*amenity.IsManaged)
+			}
+			if amenity.Type != nil {
+				openAPIAmenity.SetType(*amenity.Type)
+			}
+			if amenity.Properties != nil {
+				openAPIAmenity.SetProperties(amenity.Properties)
+			}
+
+			amenities = append(amenities, openAPIAmenity)
+		}
+
+		// Create DeploymentCellConfiguration
+		deploymentCellConfig := openapiclient.NewDeploymentCellConfiguration()
+		deploymentCellConfig.SetAmenities(amenities)
+
+		cloudProviderConfigs[cloudProvider] = *deploymentCellConfig
 	}
-	
-	config := &model.AmenitiesConfiguration{
-		OrganizationID:        "mock-org-id", // This will come from token/credentials
-		EnvironmentType:       environmentType,
-		ConfigurationTemplate: defaultConfig,
-		Version:               "1.0.0",
-		UpdatedAt:             time.Now().Add(-24 * time.Hour), // Mock updated yesterday
+
+	cloudProviderConfigsMap, err := structToMap(cloudProviderConfigs)
+	if err != nil {
+		return nil, err
 	}
-	return config, nil
+
+	// Create the DeploymentCellConfigurations structure
+	deploymentCellConfiguration := openapiclient.NewDeploymentCellConfigurations()
+	deploymentCellConfiguration.SetDeploymentCellConfigurationPerCloudProvider(cloudProviderConfigsMap)
+
+	// Use the specified environment as the key
+	deploymentCellConfigs[environment] = *deploymentCellConfiguration
+
+	return &deploymentCellConfigs, nil
 }
 
-// ListAvailableEnvironments lists available environments for amenities configuration
-func ListAvailableEnvironments(ctx context.Context, token string) ([]model.AmenitiesEnvironment, error) {
-	// TODO: Replace with actual API call to get available environments
-	// For now, return standard environments
-	environments := []model.AmenitiesEnvironment{
-		{
-			Name:        "production",
-			DisplayName: "Production",
-			Description: "Production environment configuration",
-		},
-		{
-			Name:        "staging",
-			DisplayName: "Staging",
-			Description: "Staging environment configuration",
-		},
-		{
-			Name:        "development",
-			DisplayName: "Development",
-			Description: "Development environment configuration",
-		},
+func structToMap(obj interface{}) (map[string]interface{}, error) {
+	data, err := json.Marshal(obj)
+	if err != nil {
+		return nil, err
 	}
-	return environments, nil
-}
 
-// ValidateAmenitiesConfiguration validates the provided amenities configuration
-func ValidateAmenitiesConfiguration(configTemplate map[string]interface{}) error {
-	// TODO: Add comprehensive validation logic
-	// Basic validation for now
-	if configTemplate == nil {
-		return fmt.Errorf("configuration template cannot be nil")
+	var result map[string]interface{}
+	err = json.Unmarshal(data, &result)
+	if err != nil {
+		return nil, err
 	}
-	
-	if len(configTemplate) == 0 {
-		return fmt.Errorf("configuration template cannot be empty")
-	}
-	
-	return nil
-}
 
-// ReadAmenitiesConfigFromFile reads amenities configuration from a YAML file
-// This function is defined in the command files and will be moved there if needed
-func ReadAmenitiesConfigFromFile(filePath string) (map[string]interface{}, error) {
-	// This function is already implemented in the command files
-	// and doesn't need to be duplicated here
-	return nil, fmt.Errorf("use loadConfigurationFromYAMLFile in command files")
-}
-
-// RunInteractiveAmenitiesConfiguration runs interactive configuration for amenities
-// This function is defined in the command files and will be moved there if needed
-func RunInteractiveAmenitiesConfiguration(currentConfig *map[string]interface{}) (map[string]interface{}, error) {
-	// This function is already implemented in the command files
-	// and doesn't need to be duplicated here
-	return nil, fmt.Errorf("use interactiveConfigurationSetup in command files")
+	return result, nil
 }

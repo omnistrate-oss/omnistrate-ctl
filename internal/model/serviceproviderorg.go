@@ -12,13 +12,13 @@ type ServiceProviderOrg struct {
 type AmenitiesConfiguration struct {
 	// Organization identifier (comes from credentials)
 	OrganizationID string `json:"organization_id"`
-	
+
 	// Environment this configuration applies to - using environment type instead of string
 	EnvironmentType string `json:"environment_type"`
-	
+
 	// Configuration template data
 	ConfigurationTemplate map[string]interface{} `json:"configuration_template"`
-	
+
 	// Metadata
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
@@ -51,4 +51,44 @@ func (ac AmenitiesConfiguration) ToTableView() AmenitiesConfigurationTableView {
 		UpdatedAt:       ac.UpdatedAt,
 		ConfigCount:     configCount,
 	}
+}
+
+// DeploymentCellConfigurations represents the deployment cell configurations structure
+type DeploymentCellConfigurations struct {
+	DeploymentCellConfigurationPerCloudProvider map[string]DeploymentCellConfiguration `json:"deploymentCellConfigurationPerCloudProvider" yaml:"deploymentCellConfigurationPerCloudProvider"`
+}
+
+// DeploymentCellConfiguration represents a single deployment cell configuration
+type DeploymentCellConfiguration struct {
+	Amenities []Amenity `json:"amenities" yaml:"amenities"`
+}
+
+// Amenity represents an amenity in the deployment cell
+type Amenity struct {
+	Name        string                 `json:"name" yaml:"name"`
+	Modifiable  *bool                  `json:"modifiable,omitempty" yaml:"modifiable,omitempty"`
+	Description *string                `json:"description,omitempty" yaml:"description,omitempty"`
+	IsManaged   *bool                  `json:"isManaged,omitempty" yaml:"isManaged,omitempty"`
+	Type        *string                `json:"type,omitempty" yaml:"type,omitempty"`
+	Properties  map[string]interface{} `json:"properties,omitempty" yaml:"properties,omitempty"`
+}
+
+// DefaultTemplateConfiguration represents the complete default template structure
+type DefaultTemplateConfiguration struct {
+	DeploymentCellConfigurations DeploymentCellConfigurations `json:"deploymentCellConfigurations" yaml:"deploymentCellConfigurations"`
+}
+
+// DeploymentCellConfigurationTemplate represents the template structure for deployment cell configurations
+type DeploymentCellConfigurationTemplate struct {
+	DeploymentCellConfigurations map[string]DeploymentCellConfiguration `json:"deploymentCellConfigurations" yaml:"deploymentCellConfigurations"`
+}
+
+// AmenityConfig represents an amenity configuration in a more structured format
+type AmenityConfig struct {
+	Name        string                 `json:"name" yaml:"name"`
+	Modifiable  *bool                  `json:"modifiable,omitempty" yaml:"modifiable,omitempty"`
+	Description *string                `json:"description,omitempty" yaml:"description,omitempty"`
+	IsManaged   *bool                  `json:"isManaged,omitempty" yaml:"isManaged,omitempty"`
+	Type        *string                `json:"type,omitempty" yaml:"type,omitempty"`
+	Properties  map[string]interface{} `json:"properties,omitempty" yaml:"properties,omitempty"`
 }
