@@ -70,7 +70,7 @@ func ParseCommaSeparatedList(input string) []string {
 
 // ReadFile reads the contents of a file
 func ReadFile(filePath string) ([]byte, error) {
-	data, err := ioutil.ReadFile(filePath)
+	data, err := os.ReadFile(filePath)
 	if err != nil {
 		return nil, errors.Wrapf(err, "failed to read file %s", filePath)
 	}
