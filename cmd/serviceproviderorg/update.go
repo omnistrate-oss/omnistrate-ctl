@@ -40,7 +40,7 @@ Examples:
 
 func init() {
 	updateServiceProviderOrgCmd.Flags().StringP("environment", "e", "", "Target environment (PROD, PRIVATE, CANARY, STAGING, QA, DEV)")
-	updateServiceProviderOrgCmd.Flags().StringP("config-file", "f", "", "Path to configuration YAML file (required)")
+	updateServiceProviderOrgCmd.Flags().StringP("config-file", "f", "", "Path to configuration YAML file")
 	updateServiceProviderOrgCmd.MarkFlagRequired("config-file")
 }
 
