@@ -268,7 +268,6 @@ func UpdateDeploymentCellAmenitiesConfiguration(ctx context.Context, token strin
 	// Simulate a short delay for the update operation
 	time.Sleep(500 * time.Millisecond)
 	
-	// Simulate a short delay for the update operation
 	time.Sleep(500 * time.Millisecond)
 	
 	return nil
