@@ -24,26 +24,20 @@ ensure they are correct.
 
 Examples:
   # Apply pending changes to specific deployment cell
-  omnistrate-ctl deployment-cell apply-pending-changes -i cell-123 -s service-id -e env-id
+  omnistrate-ctl deployment-cell apply-pending-changes -i hc-12345 -s service-id
 
-  # Apply with confirmation prompt
-  omnistrate-ctl deployment-cell apply-pending-changes -i cell-123 -s service-id -e env-id --confirm
-
-  # Show pending changes without applying
-  omnistrate-ctl deployment-cell apply-pending-changes -i cell-123 -s service-id -e env-id --dry-run`,
+  # Apply without confirmation prompt
+  omnistrate-ctl deployment-cell apply-pending-changes -i hc-12345 -s service-id --force`,
 	RunE:         runApplyPendingChanges,
 	SilenceUsage: true,
 }
 
 func init() {
-	applyPendingChangesCmd.Flags().StringP("deployment-cell-id", "i", "", "Deployment cell ID (required)")
+	applyPendingChangesCmd.Flags().StringP("deployment-cell-id", "i", "", "Deployment cell ID (format: hc-xxxxx)")
 	applyPendingChangesCmd.Flags().StringP("service-id", "s", "", "Service ID (required)")
-	applyPendingChangesCmd.Flags().StringP("environment-id", "e", "", "Environment ID (required)")
-	applyPendingChangesCmd.Flags().Bool("confirm", false, "Prompt for confirmation before applying changes")
-	applyPendingChangesCmd.Flags().Bool("dry-run", false, "Show pending changes without applying them")
+	applyPendingChangesCmd.Flags().Bool("force", false, "Skip confirmation prompt and apply changes immediately")
 	_ = applyPendingChangesCmd.MarkFlagRequired("deployment-cell-id")
 	_ = applyPendingChangesCmd.MarkFlagRequired("service-id")
-	_ = applyPendingChangesCmd.MarkFlagRequired("environment-id")
 }
 
 func runApplyPendingChanges(cmd *cobra.Command, args []string) error {
@@ -61,19 +55,7 @@ func runApplyPendingChanges(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	environmentID, err := cmd.Flags().GetString("environment-id")
-	if err != nil {
-		utils.PrintError(err)
-		return err
-	}
-
-	confirmFlag, err := cmd.Flags().GetBool("confirm")
-	if err != nil {
-		utils.PrintError(err)
-		return err
-	}
-
-	dryRun, err := cmd.Flags().GetBool("dry-run")
+	forceFlag, err := cmd.Flags().GetBool("force")
 	if err != nil {
 		utils.PrintError(err)
 		return err
@@ -107,7 +89,6 @@ func runApplyPendingChanges(cmd *cobra.Command, args []string) error {
 	// Display pending changes
 	fmt.Printf("📋 Pending Changes for Deployment Cell: %s\n", deploymentCellID)
 	fmt.Printf("Service ID: %s\n", serviceID)
-	fmt.Printf("Environment ID: %s\n", environmentID)
 	fmt.Printf("Total pending changes: %d\n\n", len(status.PendingChanges))
 
 	fmt.Println("Changes to be applied:")
@@ -129,22 +110,8 @@ func runApplyPendingChanges(cmd *cobra.Command, args []string) error {
 		fmt.Println()
 	}
 
-	if dryRun {
-		utils.PrintInfo("Dry run completed. No changes were applied.")
-		
-		// Still print the status for dry run
-		if output == "table" {
-			tableView := status.ToTableView()
-			err = utils.PrintTextTableJsonArrayOutput(output, []interface{}{tableView})
-		} else {
-			err = utils.PrintTextTableJsonArrayOutput(output, []interface{}{status})
-		}
-		
-		return err
-	}
-
-	// Confirm if requested or if there are significant changes
-	shouldConfirm := confirmFlag || len(status.PendingChanges) > 5
+	// Confirm if not forced or if there are significant changes
+	shouldConfirm := !forceFlag && len(status.PendingChanges) > 0
 
 	if shouldConfirm {
 		fmt.Printf("\n⚠️  You are about to apply %d configuration changes to deployment cell %s.\n", len(status.PendingChanges), deploymentCellID)
@@ -167,7 +134,7 @@ func runApplyPendingChanges(cmd *cobra.Command, args []string) error {
 	// Apply the pending changes using the existing API
 	fmt.Printf("🔄 Applying pending changes to deployment cell %s...\n", deploymentCellID)
 	
-	err = dataaccess.ApplyPendingChangesToDeploymentCell(ctx, token, serviceID, environmentID, deploymentCellID)
+	err = dataaccess.ApplyPendingChangesToDeploymentCell(ctx, token, serviceID, deploymentCellID)
 	if err != nil {
 		return fmt.Errorf("failed to apply pending changes: %w", err)
 	}

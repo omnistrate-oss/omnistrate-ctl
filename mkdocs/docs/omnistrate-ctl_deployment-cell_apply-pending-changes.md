@@ -12,13 +12,10 @@ ensure they are correct.
 
 Examples:
   # Apply pending changes to specific deployment cell
-  omnistrate-ctl deployment-cell apply-pending-changes -i cell-123 -s service-id -e env-id
+  omnistrate-ctl deployment-cell apply-pending-changes -i hc-12345 -s service-id
 
-  # Apply with confirmation prompt
-  omnistrate-ctl deployment-cell apply-pending-changes -i cell-123 -s service-id -e env-id --confirm
-
-  # Show pending changes without applying
-  omnistrate-ctl deployment-cell apply-pending-changes -i cell-123 -s service-id -e env-id --dry-run
+  # Apply without confirmation prompt
+  omnistrate-ctl deployment-cell apply-pending-changes -i hc-12345 -s service-id --force
 
 ```
 omnistrate-ctl deployment-cell apply-pending-changes [flags]
@@ -27,10 +24,8 @@ omnistrate-ctl deployment-cell apply-pending-changes [flags]
 ### Options
 
 ```
-      --confirm                     Prompt for confirmation before applying changes
-  -i, --deployment-cell-id string   Deployment cell ID (required)
-      --dry-run                     Show pending changes without applying them
-  -e, --environment-id string       Environment ID (required)
+  -i, --deployment-cell-id string   Deployment cell ID (format: hc-xxxxx)
+      --force                       Skip confirmation prompt and apply changes immediately
   -h, --help                        help for apply-pending-changes
   -s, --service-id string           Service ID (required)
 ```

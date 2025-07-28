@@ -15,12 +15,12 @@ import (
 )
 
 var amenitiesInitCmd = &cobra.Command{
-	Use:   "init-amenities",
-	Short: "Initialize service provider organization amenities configuration template",
-	Long: `Initialize service provider organization-level amenities configuration template through an interactive process.
+	Use:   "init-deployment-cell-config-template",
+	Short: "Initialize deployment cell configuration template for service provider organization",
+	Long: `Initialize service provider organization-level deployment cell configuration template through an interactive process.
 
 This command starts an interactive process to define the default organization-level 
-amenities configuration template. This step is purely at the service provider org level; 
+configuration template for deployment cells. This step is purely at the service provider org level; 
 no reference to any specific service is needed.
 
 The configuration will be stored as a template that can be applied to different 
@@ -29,29 +29,22 @@ environments (production, staging, development) and used to synchronize deployme
 Organization ID is automatically determined from your credentials.
 
 Examples:
-  # Initialize amenities configuration interactively
-  omnistrate-ctl serviceproviderorg init-amenities -e production
+  # Initialize deployment cell configuration template interactively
+  omnistrate-ctl serviceproviderorg init-deployment-cell-config-template
 
   # Initialize from YAML file
-  omnistrate-ctl serviceproviderorg init-amenities -e production -f sample-amenities.yaml`,
+  omnistrate-ctl serviceproviderorg init-deployment-cell-config-template -f sample-amenities.yaml`,
 	RunE:         runAmenitiesInit,
 	SilenceUsage: true,
 }
 
 func init() {
-	amenitiesInitCmd.Flags().StringP("environment", "e", "", "Target environment (production, staging, development)")
 	amenitiesInitCmd.Flags().StringP("config-file", "f", "", "Path to configuration YAML file (optional)")
 	amenitiesInitCmd.Flags().Bool("interactive", true, "Use interactive mode to configure amenities")
 }
 
 func runAmenitiesInit(cmd *cobra.Command, args []string) error {
 	defer config.CleanupArgsAndFlags(cmd, &args)
-
-	environment, err := cmd.Flags().GetString("environment")
-	if err != nil {
-		utils.PrintError(err)
-		return err
-	}
 
 	configFile, err := cmd.Flags().GetString("config-file")
 	if err != nil {
@@ -76,35 +69,6 @@ func runAmenitiesInit(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		utils.PrintError(err)
 		return err
-	}
-
-	// If environment not specified, prompt for it
-	if environment == "" {
-		environments, err := dataaccess.ListAvailableEnvironments(ctx, token)
-		if err != nil {
-			utils.PrintError(err)
-			return err
-		}
-
-		var envOptions []string
-		for _, env := range environments {
-			envOptions = append(envOptions, fmt.Sprintf("%s (%s)", env.DisplayName, env.Description))
-		}
-
-		result, err := prompt.New().Ask("Select target environment:").Choose(envOptions, choose.WithTheme(choose.ThemeArrow))
-		if err != nil {
-			utils.PrintError(err)
-			return err
-		}
-
-		// Extract environment name from selection
-		for _, env := range environments {
-			optionText := fmt.Sprintf("%s (%s)", env.DisplayName, env.Description)
-			if result == optionText {
-				environment = env.Name
-				break
-			}
-		}
 	}
 
 	var configTemplate map[string]interface{}
@@ -136,13 +100,13 @@ func runAmenitiesInit(cmd *cobra.Command, args []string) error {
 	}
 
 	// Initialize the configuration (organization ID comes from token/credentials)
-	config, err := dataaccess.InitializeOrganizationAmenitiesConfiguration(ctx, token, environment, configTemplate)
+	config, err := dataaccess.InitializeOrganizationAmenitiesConfiguration(ctx, token, configTemplate)
 	if err != nil {
 		utils.PrintError(err)
 		return err
 	}
 
-	utils.PrintSuccess(fmt.Sprintf("Successfully initialized amenities configuration template for %s environment", environment))
+	utils.PrintSuccess("Successfully initialized deployment cell configuration template for service provider organization")
 
 	// Print the configuration details
 	if output == "table" {
@@ -162,8 +126,8 @@ func runAmenitiesInit(cmd *cobra.Command, args []string) error {
 func interactiveConfigurationSetup() (map[string]interface{}, error) {
 	config := make(map[string]interface{})
 
-	fmt.Println("\n🚀 Interactive Amenities Configuration Setup")
-	fmt.Println("Configure the default organization-level amenities settings.")
+	fmt.Println("\n🚀 Interactive Deployment Cell Configuration Template Setup")
+	fmt.Println("Configure the default organization-level deployment cell configuration settings.")
 
 	// Logging configuration
 	loggingConfig, err := configureLogging()

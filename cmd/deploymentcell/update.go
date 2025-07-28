@@ -22,24 +22,22 @@ security settings.
 
 Examples:
   # Update deployment cell amenities configuration from YAML file
-  omnistrate-ctl deployment-cell update -i cell-123 -s service-id -e env-id -f amenities.yaml
+  omnistrate-ctl deployment-cell update -i hc-12345 -s service-id -f amenities.yaml
 
   # Update deployment cell amenities configuration interactively  
-  omnistrate-ctl deployment-cell update -i cell-123 -s service-id -e env-id --interactive`,
+  omnistrate-ctl deployment-cell update -i hc-12345 -s service-id --interactive`,
 	RunE:         runUpdate,
 	SilenceUsage: true,
 }
 
 func init() {
-	updateCmd.Flags().StringP("deployment-cell-id", "i", "", "Deployment cell ID (required)")
+	updateCmd.Flags().StringP("deployment-cell-id", "i", "", "Deployment cell ID (format: hc-xxxxx)")
 	updateCmd.Flags().StringP("service-id", "s", "", "Service ID (required)")
-	updateCmd.Flags().StringP("environment-id", "e", "", "Environment ID (required)")
 	updateCmd.Flags().StringP("config-file", "f", "", "YAML file containing configuration to update")
 	updateCmd.Flags().Bool("interactive", false, "Use interactive mode to update configuration")
 	updateCmd.Flags().Bool("merge", false, "Merge with existing configuration instead of replacing")
 	_ = updateCmd.MarkFlagRequired("deployment-cell-id")
 	_ = updateCmd.MarkFlagRequired("service-id")
-	_ = updateCmd.MarkFlagRequired("environment-id")
 }
 
 func runUpdate(cmd *cobra.Command, args []string) error {
@@ -52,12 +50,6 @@ func runUpdate(cmd *cobra.Command, args []string) error {
 	}
 
 	serviceID, err := cmd.Flags().GetString("service-id")
-	if err != nil {
-		utils.PrintError(err)
-		return err
-	}
-
-	environmentID, err := cmd.Flags().GetString("environment-id")
 	if err != nil {
 		utils.PrintError(err)
 		return err
@@ -100,9 +92,9 @@ func runUpdate(cmd *cobra.Command, args []string) error {
 	}
 
 	if interactive {
-		err = updateDeploymentCellInteractive(ctx, token, deploymentCellID, serviceID, environmentID, merge, output)
+		err = updateDeploymentCellInteractive(ctx, token, deploymentCellID, serviceID, merge, output)
 	} else {
-		err = updateDeploymentCellFromFile(ctx, token, deploymentCellID, serviceID, environmentID, configFile, merge, output)
+		err = updateDeploymentCellFromFile(ctx, token, deploymentCellID, serviceID, configFile, merge, output)
 	}
 
 	if err != nil {
@@ -113,7 +105,7 @@ func runUpdate(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
-func updateDeploymentCellFromFile(ctx context.Context, token, deploymentCellID, serviceID, environmentID, configFile string, merge bool, output string) error {
+func updateDeploymentCellFromFile(ctx context.Context, token, deploymentCellID, serviceID, configFile string, merge bool, output string) error {
 	// Read configuration from YAML file
 	config, err := dataaccess.ReadAmenitiesConfigFromFile(configFile)
 	if err != nil {
@@ -124,10 +116,9 @@ func updateDeploymentCellFromFile(ctx context.Context, token, deploymentCellID, 
 	fmt.Printf("🔄 Updating deployment cell amenities configuration from file: %s\n", configFile)
 	fmt.Printf("Deployment Cell: %s\n", deploymentCellID)
 	fmt.Printf("Service ID: %s\n", serviceID)
-	fmt.Printf("Environment ID: %s\n", environmentID)
 	fmt.Printf("Merge mode: %t\n\n", merge)
 
-	err = dataaccess.UpdateDeploymentCellAmenitiesConfiguration(ctx, token, deploymentCellID, serviceID, environmentID, config, merge)
+	err = dataaccess.UpdateDeploymentCellAmenitiesConfiguration(ctx, token, deploymentCellID, serviceID, config, merge)
 	if err != nil {
 		return fmt.Errorf("failed to update deployment cell configuration: %w", err)
 	}
@@ -151,11 +142,10 @@ func updateDeploymentCellFromFile(ctx context.Context, token, deploymentCellID, 
 	return nil
 }
 
-func updateDeploymentCellInteractive(ctx context.Context, token, deploymentCellID, serviceID, environmentID string, merge bool, output string) error {
+func updateDeploymentCellInteractive(ctx context.Context, token, deploymentCellID, serviceID string, merge bool, output string) error {
 	fmt.Printf("🎯 Interactive deployment cell amenities configuration update\n")
 	fmt.Printf("Deployment Cell: %s\n", deploymentCellID)
 	fmt.Printf("Service ID: %s\n", serviceID)
-	fmt.Printf("Environment ID: %s\n", environmentID)
 	fmt.Printf("Merge mode: %t\n\n", merge)
 
 	// Get current configuration if in merge mode
@@ -180,25 +170,21 @@ func updateDeploymentCellInteractive(ctx context.Context, token, deploymentCellI
 
 	// Update deployment cell amenities configuration
 	fmt.Printf("\n🔄 Updating deployment cell amenities configuration...\n")
-	err = dataaccess.UpdateDeploymentCellAmenitiesConfiguration(ctx, token, deploymentCellID, serviceID, environmentID, config, merge)
+	err = dataaccess.UpdateDeploymentCellAmenitiesConfiguration(ctx, token, deploymentCellID, serviceID, config, merge)
 	if err != nil {
 		return fmt.Errorf("failed to update deployment cell configuration: %w", err)
 	}
 
 	utils.PrintSuccess(fmt.Sprintf("Successfully updated deployment cell %s configuration", deploymentCellID))
 
-	// Get updated status
-	status, err := dataaccess.GetDeploymentCellAmenitiesStatus(ctx, token, deploymentCellID)
+	// Get updated deployment cell status to show amenities information
+	deploymentCell, err := dataaccess.DescribeHostCluster(ctx, token, deploymentCellID)
 	if err != nil {
-		utils.PrintWarning(fmt.Sprintf("Failed to get updated status: %v", err))
+		utils.PrintWarning(fmt.Sprintf("Failed to get updated deployment cell status: %v", err))
 	} else {
-		fmt.Printf("Status: %s\n", status.Status)
-		fmt.Printf("Has pending changes: %t\n", status.HasPendingChanges)
-		
-		if status.HasPendingChanges {
-			fmt.Printf("Pending changes: %d\n", len(status.PendingChanges))
-			utils.PrintInfo("Use 'omnistrate-ctl deployment-cell apply-pending-changes' to activate the changes")
-		}
+		fmt.Printf("Status: %s\n", deploymentCell.GetStatus())
+		fmt.Printf("Configuration updated successfully\n")
+		utils.PrintInfo("Use 'omnistrate-ctl deployment-cell apply-pending-changes' to activate any pending changes")
 	}
 
 	return nil

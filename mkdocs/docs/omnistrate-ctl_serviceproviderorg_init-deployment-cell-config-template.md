@@ -1,13 +1,13 @@
-## omnistrate-ctl serviceproviderorg init-amenities
+## omnistrate-ctl serviceproviderorg init-deployment-cell-config-template
 
-Initialize service provider organization amenities configuration template
+Initialize deployment cell configuration template for service provider organization
 
 ### Synopsis
 
-Initialize service provider organization-level amenities configuration template through an interactive process.
+Initialize service provider organization-level deployment cell configuration template through an interactive process.
 
 This command starts an interactive process to define the default organization-level 
-amenities configuration template. This step is purely at the service provider org level; 
+configuration template for deployment cells. This step is purely at the service provider org level; 
 no reference to any specific service is needed.
 
 The configuration will be stored as a template that can be applied to different 
@@ -16,22 +16,21 @@ environments (production, staging, development) and used to synchronize deployme
 Organization ID is automatically determined from your credentials.
 
 Examples:
-  # Initialize amenities configuration interactively
-  omnistrate-ctl serviceproviderorg init-amenities -e production
+  # Initialize deployment cell configuration template interactively
+  omnistrate-ctl serviceproviderorg init-deployment-cell-config-template
 
   # Initialize from YAML file
-  omnistrate-ctl serviceproviderorg init-amenities -e production -f sample-amenities.yaml
+  omnistrate-ctl serviceproviderorg init-deployment-cell-config-template -f sample-amenities.yaml
 
 ```
-omnistrate-ctl serviceproviderorg init-amenities [flags]
+omnistrate-ctl serviceproviderorg init-deployment-cell-config-template [flags]
 ```
 
 ### Options
 
 ```
   -f, --config-file string   Path to configuration YAML file (optional)
-  -e, --environment string   Target environment (production, staging, development)
-  -h, --help                 help for init-amenities
+  -h, --help                 help for init-deployment-cell-config-template
       --interactive          Use interactive mode to configure amenities (default true)
 ```
 

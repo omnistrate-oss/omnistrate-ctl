@@ -212,10 +212,14 @@ func SyncDeploymentCellWithTemplate(ctx context.Context, token string, deploymen
 
 // ApplyPendingChangesToDeploymentCell applies pending configuration changes to deployment cell
 // This uses the existing ApplyPendingChangesToHostCluster API from the SDK
-func ApplyPendingChangesToDeploymentCell(ctx context.Context, token string, serviceID string, environmentID string, deploymentCellID string) error {
+func ApplyPendingChangesToDeploymentCell(ctx context.Context, token string, serviceID string, deploymentCellID string) error {
 	ctxWithToken := context.WithValue(ctx, openapiclientfleet.ContextAccessToken, token)
 	apiClient := getFleetClient()
 
+	// TODO: The environment ID should be derived from the deployment cell or service context
+	// For now using a placeholder since the API requires it
+	environmentID := "default-env"
+	
 	req := apiClient.InventoryApiAPI.InventoryApiApplyPendingChangesToHostCluster(ctxWithToken, serviceID, environmentID, deploymentCellID)
 
 	var r *http.Response
@@ -252,14 +256,17 @@ func GetDeploymentCellAmenitiesStatus(ctx context.Context, token string, deploym
 
 // UpdateDeploymentCellAmenitiesConfiguration updates the amenities configuration for a deployment cell
 // This is a placeholder implementation - the actual API endpoint may not exist yet
-func UpdateDeploymentCellAmenitiesConfiguration(ctx context.Context, token string, deploymentCellID, serviceID, environmentID string, config map[string]interface{}, merge bool) error {
+func UpdateDeploymentCellAmenitiesConfiguration(ctx context.Context, token string, deploymentCellID, serviceID string, config map[string]interface{}, merge bool) error {
 	// TODO: Replace with actual API call once backend is available
 	
 	// Mock update operation
 	fmt.Printf("Mock: Updating deployment cell %s amenities configuration\n", deploymentCellID)
-	fmt.Printf("Mock: Service ID: %s, Environment ID: %s\n", serviceID, environmentID)
+	fmt.Printf("Mock: Service ID: %s\n", serviceID)
 	fmt.Printf("Mock: Merge mode: %t\n", merge)
 	fmt.Printf("Mock: Configuration keys: %v\n", getConfigKeys(config))
+	
+	// Simulate a short delay for the update operation
+	time.Sleep(500 * time.Millisecond)
 	
 	// Simulate a short delay for the update operation
 	time.Sleep(500 * time.Millisecond)

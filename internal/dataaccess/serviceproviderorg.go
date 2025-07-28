@@ -10,12 +10,12 @@ import (
 
 // InitializeOrganizationAmenitiesConfiguration initializes the organization-level amenities configuration
 // This is a placeholder implementation that will be replaced with actual API calls
-func InitializeOrganizationAmenitiesConfiguration(ctx context.Context, token string, environmentType string, configTemplate map[string]interface{}) (*model.AmenitiesConfiguration, error) {
+func InitializeOrganizationAmenitiesConfiguration(ctx context.Context, token string, configTemplate map[string]interface{}) (*model.AmenitiesConfiguration, error) {
 	// TODO: Replace with actual API call to service provider org amenities initialization
 	// For now, return a mock configuration
 	config := &model.AmenitiesConfiguration{
 		OrganizationID:        "mock-org-id", // This will come from token/credentials
-		EnvironmentType:       environmentType,
+		EnvironmentType:       "",            // Environment is not required for initialization
 		ConfigurationTemplate: configTemplate,
 		Version:               "1.0.0",
 	}
