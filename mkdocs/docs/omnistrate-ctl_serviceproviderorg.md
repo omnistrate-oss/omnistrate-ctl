@@ -31,5 +31,5 @@ This includes:
 
 * [omnistrate-ctl](omnistrate-ctl.md)	 - Manage your Omnistrate SaaS from the command line
 * [omnistrate-ctl serviceproviderorg init-deployment-cell-config-template](omnistrate-ctl_serviceproviderorg_init-deployment-cell-config-template.md)	 - Initialize deployment cell configuration template for service provider organization
-* [omnistrate-ctl serviceproviderorg update-amenities](omnistrate-ctl_serviceproviderorg_update-amenities.md)	 - Update service provider organization amenities configuration template for target environment
+* [omnistrate-ctl serviceproviderorg update](omnistrate-ctl_serviceproviderorg_update.md)	 - Update service provider organization configuration template for target environment
 
