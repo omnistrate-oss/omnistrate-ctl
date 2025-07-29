@@ -17,6 +17,7 @@ func init() {
 	Cmd.AddCommand(describeCmd)
 	Cmd.AddCommand(deleteCmd)
 	Cmd.AddCommand(listCmd)
+	Cmd.AddCommand(listEndpointsCmd)
 	Cmd.AddCommand(startCmd)
 	Cmd.AddCommand(stopCmd)
 	Cmd.AddCommand(restartCmd)
