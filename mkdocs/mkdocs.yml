@@ -116,7 +116,7 @@ plugins:
   - include_dir_to_nav
   - search:
       separator: '[\s\-,:!=\[\]()"`/]+|\.(?!\d)|&[lg]t;|(?!\b)(?=[A-Z][a-z])'
-      lang: 
+      lang:
         - en
   - minify:
       minify_html: true
