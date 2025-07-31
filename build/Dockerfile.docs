@@ -1,10 +1,15 @@
-# Use an official Python runtime as the base image
-FROM python:3.13-slim
+# Build stage - Build the MkDocs site
+FROM python:3.13-slim AS builder
 
 # Set the working directory in the container
 WORKDIR /app
 
-RUN apt-get update && rm -rf /var/lib/apt/lists/*
+# Install system dependencies and D2
+RUN apt-get update && apt-get install -y \
+    curl \
+    make \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
 
 # Copy only the requirements file first
 COPY ./mkdocs/requirements.txt .
@@ -15,8 +20,20 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy the MkDocs project directory to the container
 COPY ./mkdocs .
 
-# Expose the default MkDocs port
+# Build the static site
+RUN mkdocs build --strict 
+
+# Production stage - Serve the built site
+FROM nginx:alpine
+
+# Copy the built site from the builder stage
+COPY --from=builder /app/site /usr/share/nginx/html
+
+# Copy custom nginx configuration if needed
+COPY nginx.conf /etc/nginx/nginx.conf
+
+# Expose port 80
 EXPOSE 8001
 
-# Set the entry point command for running MkDocs
-ENTRYPOINT ["mkdocs", "serve", "-a", "0.0.0.0:8001"]
+# Start nginx
+CMD ["nginx", "-g", "daemon off;", "-c", "/etc/nginx/nginx.conf"]

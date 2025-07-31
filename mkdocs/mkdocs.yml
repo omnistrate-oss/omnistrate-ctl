@@ -30,13 +30,13 @@ theme:
   palette:
     - scheme: default
       toggle:
-        icon: material/toggle-switch-off-outline
+        icon: material/brightness-7
         name: Switch to dark mode
       primary: custom
       accent: indigo
     - scheme: slate
       toggle:
-        icon: material/toggle-switch
+        icon: material/brightness-4
         name: Switch to light mode
       primary: blue grey
       accent: lime
@@ -76,7 +76,7 @@ extra:
     - icon: fontawesome/brands/x-twitter
       link: https://x.com/omnistrate/
     - icon: fontawesome/brands/linkedin
-      link: https://www.linkedin.com/company/omnistrate/about/
+      link: https://www.linkedin.com/company/omnistrate/
     - icon: fontawesome/brands/github
       link: https://github.com/omnistrate-oss/omnistrate-ctl
   analytics:
