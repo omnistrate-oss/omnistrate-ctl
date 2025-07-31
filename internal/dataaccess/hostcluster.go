@@ -2,9 +2,10 @@ package dataaccess
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"github.com/omnistrate-oss/omnistrate-ctl/internal/utils"
 	"net/http"
-	"time"
 
 	"github.com/omnistrate-oss/omnistrate-ctl/internal/model"
 	openapiclientfleet "github.com/omnistrate-oss/omnistrate-sdk-go/fleet"
@@ -57,6 +58,60 @@ func ListHostClusters(ctx context.Context, token string, accountConfigID *string
 	}
 
 	return hostClusters, nil
+}
+
+func ApplyPendingChangesToHostCluster(ctx context.Context, token string, hostClusterID string) error {
+	ctxWithToken := context.WithValue(ctx, openapiclientfleet.ContextAccessToken, token)
+	apiClient := getFleetClient()
+
+	req := apiClient.HostclusterApiAPI.HostclusterApiApplyPendingChangesToHostCluster(ctxWithToken, hostClusterID)
+
+	var r *http.Response
+	defer func() {
+		if r != nil {
+			_ = r.Body.Close()
+		}
+	}()
+
+	r, err := req.Execute()
+	if err != nil {
+		return handleFleetError(err)
+	}
+
+	return nil
+}
+
+func UpdateHostCluster(ctx context.Context, token string, hostClusterID string, pendingAmenities []openapiclientfleet.Amenity, syncWithOrgTemplate *bool) error {
+	ctxWithToken := context.WithValue(ctx, openapiclientfleet.ContextAccessToken, token)
+	apiClient := getFleetClient()
+
+	if len(pendingAmenities) > 0 && utils.FromPtr(syncWithOrgTemplate) {
+		return fmt.Errorf("cannot set pending amenities when syncing with organization template is enabled")
+	}
+
+	updateRequest := openapiclientfleet.UpdateHostClusterRequest2{}
+	updateRequest.PendingAmenities = pendingAmenities
+
+	// Set sync with organization template flag if provided
+	if syncWithOrgTemplate != nil {
+		updateRequest.SyncWithOrgTemplate = syncWithOrgTemplate
+	}
+
+	req := apiClient.HostclusterApiAPI.HostclusterApiUpdateHostCluster(ctxWithToken, hostClusterID).UpdateHostClusterRequest2(updateRequest)
+
+	var r *http.Response
+	defer func() {
+		if r != nil {
+			_ = r.Body.Close()
+		}
+	}()
+
+	r, err := req.Execute()
+	if err != nil {
+		return handleFleetError(err)
+	}
+
+	return nil
 }
 
 func AdoptHostCluster(ctx context.Context, token string, hostClusterID string, cloudProvider string, region string, description string, userEmail *string) (*openapiclientfleet.AdoptHostClusterResult, error) {
@@ -145,138 +200,87 @@ func GetKubeConfigForHostCluster(
 	return kubeConfig, nil
 }
 
-// CheckDeploymentCellConfigurationDrift checks for configuration drift in deployment cells
-// This is a placeholder implementation - the actual API endpoint may not exist yet
-func CheckDeploymentCellConfigurationDrift(ctx context.Context, token string, deploymentCellID string, organizationID string, environment string) (*model.DeploymentCellAmenitiesStatus, error) {
-	// TODO: Replace with actual API call once backend is available
-	
-	// Mock drift detection results
-	driftDetails := []model.ConfigurationDrift{
-		{
-			Path:         "logging.level",
-			CurrentValue: "DEBUG",
-			TargetValue:  "INFO",
-			DriftType:    "different",
-		},
-		{
-			Path:         "monitoring.grafana",
-			CurrentValue: nil,
-			TargetValue:  true,
-			DriftType:    "missing",
-		},
-	}
-	
-	status := &model.DeploymentCellAmenitiesStatus{
-		DeploymentCellID:      deploymentCellID,
-		HasConfigurationDrift: len(driftDetails) > 0,
-		DriftDetails:          driftDetails,
-		HasPendingChanges:     false,
-		Status:               "drift_detected",
-		LastCheck:            time.Now(),
-	}
-	
-	return status, nil
-}
-
-// SyncDeploymentCellWithTemplate synchronizes deployment cell with organization template
-// This places changes in a pending state
-func SyncDeploymentCellWithTemplate(ctx context.Context, token string, deploymentCellID string, organizationID string, environment string) (*model.DeploymentCellAmenitiesStatus, error) {
-	// TODO: Replace with actual API call once backend is available
-	
-	// Mock pending changes based on drift
-	pendingChanges := []model.PendingConfigurationChange{
-		{
-			Path:      "logging.level",
-			Operation: "update",
-			OldValue:  "DEBUG",
-			NewValue:  "INFO",
-		},
-		{
-			Path:      "monitoring.grafana",
-			Operation: "add",
-			NewValue:  true,
-		},
-	}
-	
-	status := &model.DeploymentCellAmenitiesStatus{
-		DeploymentCellID:      deploymentCellID,
-		HasConfigurationDrift: false, // Drift resolved by sync
-		HasPendingChanges:     len(pendingChanges) > 0,
-		PendingChanges:        pendingChanges,
-		Status:               "pending_changes",
-		LastCheck:            time.Now(),
-	}
-	
-	return status, nil
-}
-
-// ApplyPendingChangesToDeploymentCell applies pending configuration changes to deployment cell
-// This uses the existing ApplyPendingChangesToHostCluster API from the SDK
-func ApplyPendingChangesToDeploymentCell(ctx context.Context, token string, serviceID string, deploymentCellID string) error {
-	ctxWithToken := context.WithValue(ctx, openapiclientfleet.ContextAccessToken, token)
-	apiClient := getFleetClient()
-
-	// TODO: The environment ID should be derived from the deployment cell or service context
-	// For now using a placeholder since the API requires it
-	environmentID := "default-env"
-	
-	req := apiClient.InventoryApiAPI.InventoryApiApplyPendingChangesToHostCluster(ctxWithToken, serviceID, environmentID, deploymentCellID)
-
-	var r *http.Response
-	defer func() {
-		if r != nil {
-			_ = r.Body.Close()
-		}
-	}()
-
-	r, err := req.Execute()
+// GetOrganizationDeploymentCellTemplate retrieves the organization template for a specific environment and cloud provider
+func GetOrganizationDeploymentCellTemplate(ctx context.Context, token string, environment string, cloudProvider string) (*model.DeploymentCellTemplate, error) {
+	// Get the service provider organization configuration
+	spOrg, err := GetServiceProviderOrganization(ctx, token)
 	if err != nil {
-		return handleFleetError(err)
+		return nil, fmt.Errorf("failed to get service provider organization: %w", err)
 	}
 
-	return nil
-}
-
-// GetDeploymentCellAmenitiesStatus retrieves the current amenities status for a deployment cell
-// This is a placeholder implementation - the actual API endpoint may not exist yet
-func GetDeploymentCellAmenitiesStatus(ctx context.Context, token string, deploymentCellID string) (*model.DeploymentCellAmenitiesStatus, error) {
-	// TODO: Replace with actual API call once backend is available
-	
-	// Mock current status
-	status := &model.DeploymentCellAmenitiesStatus{
-		DeploymentCellID:      deploymentCellID,
-		HasConfigurationDrift: false,
-		HasPendingChanges:     false,
-		Status:               "synchronized",
-		LastCheck:            time.Now().Add(-1 * time.Hour),
+	// Extract deployment cell configurations
+	deploymentCellConfigs, exists := spOrg.GetDeploymentCellConfigurationsPerEnv()[environment]
+	if !exists {
+		return nil, fmt.Errorf("no deployment cell configurations found for environment '%s'", environment)
 	}
-	
-	return status, nil
-}
 
-// UpdateDeploymentCellAmenitiesConfiguration updates the amenities configuration for a deployment cell
-// This is a placeholder implementation - the actual API endpoint may not exist yet
-func UpdateDeploymentCellAmenitiesConfiguration(ctx context.Context, token string, deploymentCellID, serviceID string, config map[string]interface{}, merge bool) error {
-	// TODO: Replace with actual API call once backend is available
-	
-	// Mock update operation
-	fmt.Printf("Mock: Updating deployment cell %s amenities configuration\n", deploymentCellID)
-	fmt.Printf("Mock: Service ID: %s\n", serviceID)
-	fmt.Printf("Mock: Merge mode: %t\n", merge)
-	fmt.Printf("Mock: Configuration keys: %v\n", getConfigKeys(config))
-	
-	// Simulate a short delay for the update operation
-	time.Sleep(500 * time.Millisecond)
-	
-	time.Sleep(500 * time.Millisecond)
-	
-	return nil
-}
-
-func getConfigKeys(config map[string]interface{}) []string {
-	keys := make([]string, 0, len(config))
-	for key := range config {
-		keys = append(keys, key)
+	deploymentCellConfigsMap, err := interfaceToMap(deploymentCellConfigs)
+	if err != nil {
+		return nil, fmt.Errorf("failed to convert deployment cell configurations to map: %w", err)
 	}
-	return keys
+
+	amenitiesPerCloudProvider, exists := deploymentCellConfigsMap[cloudProvider]
+	if !exists {
+		return nil, fmt.Errorf("no deployment cell configurations found for cloud provider '%s'", cloudProvider)
+	}
+
+	amenitiesInternalModel, err := ConvertToInternalAmenitiesList(amenitiesPerCloudProvider)
+	if err != nil {
+		return nil, fmt.Errorf("failed to convert amenities list: %w", err)
+	}
+
+	var managedAmenities []model.Amenity
+	var customAmenities []model.Amenity
+	for _, amenity := range amenitiesInternalModel {
+		externalModel := model.Amenity{
+			Name:        amenity.Name,
+			Description: amenity.Description,
+			Type:        amenity.Type,
+			Properties:  amenity.Properties,
+		}
+		if utils.FromPtr(amenity.IsManaged) {
+			managedAmenities = append(managedAmenities, externalModel)
+		} else {
+			customAmenities = append(customAmenities, externalModel)
+		}
+	}
+
+	return &model.DeploymentCellTemplate{
+		ManagedAmenities: managedAmenities,
+		CustomAmenities:  customAmenities,
+	}, nil
+}
+
+func ConvertToInternalAmenitiesList(data interface{}) ([]model.InternalAmenity, error) {
+	// Marshal to JSON
+	jsonBytes, err := json.Marshal(data)
+	if err != nil {
+		return nil, err
+	}
+
+	// Unmarshal to map[string]interface{}
+	var result []model.InternalAmenity
+	err = json.Unmarshal(jsonBytes, &result)
+	if err != nil {
+		return nil, err
+	}
+
+	return result, nil
+}
+
+func interfaceToMap(data interface{}) (map[string]interface{}, error) {
+	// Marshal to JSON
+	jsonBytes, err := json.Marshal(data)
+	if err != nil {
+		return nil, err
+	}
+
+	// Unmarshal to map[string]interface{}
+	var result map[string]interface{}
+	err = json.Unmarshal(jsonBytes, &result)
+	if err != nil {
+		return nil, err
+	}
+
+	return result, nil
 }
