@@ -1,0 +1,22 @@
+# Use an official Python runtime as the base image
+FROM python:3.13-slim
+
+# Set the working directory in the container
+WORKDIR /app
+
+RUN apt-get update && rm -rf /var/lib/apt/lists/*
+
+# Copy only the requirements file first
+COPY ./mkdocs/requirements.txt .
+
+# Install dependencies
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Copy the MkDocs project directory to the container
+COPY ./mkdocs .
+
+# Expose the default MkDocs port
+EXPOSE 8001
+
+# Set the entry point command for running MkDocs
+ENTRYPOINT ["mkdocs", "serve", "-a", "0.0.0.0:8001"]

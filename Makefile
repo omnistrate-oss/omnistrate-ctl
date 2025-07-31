@@ -193,10 +193,16 @@ clean:
 .PHONY: docker-build-docs
 docker-build-docs:
 	@echo "Building mkdocs-ctl-manual docker image"
-	@docker build -t mkdocs-ctl-manual -f ./build/Dockerfile.docs .
+	@docker build -t mkdocs-ctl-manual.local -f ./build/Dockerfile.docs.local .
 
 .PHONY: docker-run-docs
 docker-run-docs:
 	@make docker-build-docs
-	@echo "Starting mkdocs-ctl-manual on port 8001"
+	@echo "Starting mkdocs-ctl-manual.local on port 8001"
+	@docker run -it --rm -p 8001:8001 mkdocs-ctl-manual.local
+
+.PHONY: docker-run-rendered
+docker-run-rendered:
+	@echo "Starting mkdocs on port 8001 in rendered mode"
+	@docker build -f ./build/Dockerfile.docs -t mkdocs-ctl-manual .
 	@docker run -it --rm -p 8001:8001 mkdocs-ctl-manual
