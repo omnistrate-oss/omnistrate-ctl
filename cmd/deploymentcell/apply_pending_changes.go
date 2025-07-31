@@ -3,14 +3,15 @@ package deploymentcell
 import (
 	"context"
 	"fmt"
+	openapiclientfleet "github.com/omnistrate-oss/omnistrate-sdk-go/fleet"
 
-	"github.com/spf13/cobra"
 	"github.com/cqroot/prompt"
 	"github.com/cqroot/prompt/choose"
 	"github.com/omnistrate-oss/omnistrate-ctl/cmd/common"
 	"github.com/omnistrate-oss/omnistrate-ctl/internal/config"
 	"github.com/omnistrate-oss/omnistrate-ctl/internal/dataaccess"
 	"github.com/omnistrate-oss/omnistrate-ctl/internal/utils"
+	"github.com/spf13/cobra"
 )
 
 var applyPendingChangesCmd = &cobra.Command{
@@ -33,35 +34,21 @@ Examples:
 }
 
 func init() {
-	applyPendingChangesCmd.Flags().StringP("deployment-cell-id", "i", "", "Deployment cell ID (format: hc-xxxxx)")
-	applyPendingChangesCmd.Flags().StringP("service-id", "s", "", "Service ID (required)")
+	applyPendingChangesCmd.Flags().StringP("id", "i", "", "Deployment cell ID (format: hc-xxxxx)")
 	applyPendingChangesCmd.Flags().Bool("force", false, "Skip confirmation prompt and apply changes immediately")
-	_ = applyPendingChangesCmd.MarkFlagRequired("deployment-cell-id")
-	_ = applyPendingChangesCmd.MarkFlagRequired("service-id")
+	_ = applyPendingChangesCmd.MarkFlagRequired("id")
 }
 
 func runApplyPendingChanges(cmd *cobra.Command, args []string) error {
 	defer config.CleanupArgsAndFlags(cmd, &args)
 
-	deploymentCellID, err := cmd.Flags().GetString("deployment-cell-id")
-	if err != nil {
-		utils.PrintError(err)
-		return err
-	}
-
-	serviceID, err := cmd.Flags().GetString("service-id")
+	deploymentCellID, err := cmd.Flags().GetString("id")
 	if err != nil {
 		utils.PrintError(err)
 		return err
 	}
 
 	forceFlag, err := cmd.Flags().GetBool("force")
-	if err != nil {
-		utils.PrintError(err)
-		return err
-	}
-
-	output, err := cmd.Flags().GetString("output")
 	if err != nil {
 		utils.PrintError(err)
 		return err
@@ -74,57 +61,31 @@ func runApplyPendingChanges(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	// Get current status to check for pending changes
-	status, err := dataaccess.GetDeploymentCellAmenitiesStatus(ctx, token, deploymentCellID)
-	if err != nil {
-		utils.PrintError(fmt.Errorf("failed to get deployment cell status: %w", err))
+	var hc *openapiclientfleet.HostCluster
+	if hc, err = dataaccess.DescribeHostCluster(ctx, token, deploymentCellID); err != nil {
+		utils.PrintError(err)
 		return err
-	}
-
-	if !status.HasPendingChanges {
-		utils.PrintInfo(fmt.Sprintf("No pending changes found for deployment cell %s", deploymentCellID))
-		return nil
 	}
 
 	// Display pending changes
 	fmt.Printf("📋 Pending Changes for Deployment Cell: %s\n", deploymentCellID)
-	fmt.Printf("Service ID: %s\n", serviceID)
-	fmt.Printf("Total pending changes: %d\n\n", len(status.PendingChanges))
-
-	fmt.Println("Changes to be applied:")
-	for i, change := range status.PendingChanges {
-		fmt.Printf("  %d. Path: %s\n", i+1, change.Path)
-		
-		switch change.Operation {
-		case "add":
-			fmt.Printf("     Operation: Add\n")
-			fmt.Printf("     New Value: %v\n", change.NewValue)
-		case "update":
-			fmt.Printf("     Operation: Update\n")
-			fmt.Printf("     Current Value: %v\n", change.OldValue)
-			fmt.Printf("     New Value: %v\n", change.NewValue)
-		case "delete":
-			fmt.Printf("     Operation: Delete\n")
-			fmt.Printf("     Current Value: %v\n", change.OldValue)
-		}
-		fmt.Println()
-	}
+	fmt.Printf("Total pending changes: %v\n", hc.GetPendingAmenities())
 
 	// Confirm if not forced or if there are significant changes
-	shouldConfirm := !forceFlag && len(status.PendingChanges) > 0
+	shouldConfirm := !forceFlag
 
 	if shouldConfirm {
-		fmt.Printf("\n⚠️  You are about to apply %d configuration changes to deployment cell %s.\n", len(status.PendingChanges), deploymentCellID)
+		fmt.Printf("\n⚠️  You are about to apply the following pending changes to deployment cell %s:\n", deploymentCellID)
 		fmt.Println("This will modify the live configuration of the deployment cell.")
-		
+
 		confirmedChoice, err := prompt.New().Ask("Do you want to proceed with applying these changes?").Choose([]string{"Yes", "No"}, choose.WithTheme(choose.ThemeArrow))
 		if err != nil {
 			utils.PrintError(err)
 			return err
 		}
-		
+
 		confirmed := confirmedChoice == "Yes"
-		
+
 		if !confirmed {
 			utils.PrintInfo("Apply operation cancelled")
 			return nil
@@ -133,40 +94,13 @@ func runApplyPendingChanges(cmd *cobra.Command, args []string) error {
 
 	// Apply the pending changes using the existing API
 	fmt.Printf("🔄 Applying pending changes to deployment cell %s...\n", deploymentCellID)
-	
-	err = dataaccess.ApplyPendingChangesToDeploymentCell(ctx, token, serviceID, deploymentCellID)
+
+	err = dataaccess.ApplyPendingChangesToHostCluster(ctx, token, deploymentCellID)
 	if err != nil {
 		return fmt.Errorf("failed to apply pending changes: %w", err)
 	}
 
-	utils.PrintSuccess(fmt.Sprintf("Successfully applied %d pending changes to deployment cell %s", len(status.PendingChanges), deploymentCellID))
+	utils.PrintSuccess(fmt.Sprintf("Successfully applied pending changes to deployment cell %s", deploymentCellID))
 
-	// Get updated status
-	updatedStatus, err := dataaccess.GetDeploymentCellAmenitiesStatus(ctx, token, deploymentCellID)
-	if err != nil {
-		utils.PrintWarning(fmt.Sprintf("Failed to get updated status: %v", err))
-		// Don't return error here as the apply operation succeeded
-	} else {
-		fmt.Printf("Updated status: %s\n", updatedStatus.Status)
-		fmt.Printf("Remaining pending changes: %d\n", len(updatedStatus.PendingChanges))
-		
-		// Print the updated status
-		if output == "table" {
-			tableView := updatedStatus.ToTableView()
-			err = utils.PrintTextTableJsonArrayOutput(output, []interface{}{tableView})
-		} else {
-			err = utils.PrintTextTableJsonArrayOutput(output, []interface{}{updatedStatus})
-		}
-		
-		if err != nil {
-			utils.PrintWarning(fmt.Sprintf("Failed to print updated status: %v", err))
-		}
-	}
-
-	// Provide next steps guidance
-	fmt.Println("\n📝 Next Steps:")
-	fmt.Println("  • Use 'omnistrate-ctl deployment-cell status' to verify the changes")
-	fmt.Println("  • Use 'omnistrate-ctl deployment-cell sync' to ensure synchronization")
-	
 	return nil
 }

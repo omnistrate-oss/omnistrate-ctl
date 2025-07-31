@@ -140,8 +140,8 @@ github.com/muesli/termenv v0.16.0 h1:S5AlUN9dENB57rsbnkPyfdGuWIlkmzJjbFf0Tf5FWUc
 github.com/muesli/termenv v0.16.0/go.mod h1:ZRfOIKPFDYQoDFF4Olj7/QJbW60Ol/kL1pU3VfY/Cnk=
 github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822 h1:C3w9PqII01/Oq1c1nUAm88MOHcQC9l5mIlSMApZMrHA=
 github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822/go.mod h1:+n7T8mK8HuQTcFwEeznm/DIxMOiR9yIdICNftLE1DvQ=
-github.com/omnistrate-oss/omnistrate-sdk-go v0.0.63 h1:62s6xTZINr67Kd3p5lFQAtv8NEc+OQRULdC7lgwsWos=
-github.com/omnistrate-oss/omnistrate-sdk-go v0.0.63/go.mod h1:13Nya7BhDXIOJlImVh4QP/GWgk0hc/3PeSd6cQoRJvU=
+github.com/omnistrate-oss/omnistrate-sdk-go v0.0.65 h1:lDnscKWP4QkoJNH+0UaAKoJoX7S6xK5vM+ufR9ZywcE=
+github.com/omnistrate-oss/omnistrate-sdk-go v0.0.65/go.mod h1:13Nya7BhDXIOJlImVh4QP/GWgk0hc/3PeSd6cQoRJvU=
 github.com/onsi/ginkgo/v2 v2.21.0 h1:7rg/4f3rB88pb5obDgNZrNHrQ4e6WpjonchcpuBRnZM=
 github.com/onsi/ginkgo/v2 v2.21.0/go.mod h1:7Du3c42kxCUegi0IImZ1wUQzMBVecgIHjR1C+NkhLQo=
 github.com/onsi/gomega v1.35.1 h1:Cwbd75ZBPxFSuZ6T+rN/WCb/gOc6YgFBXLlZLhC7Ds4=
