@@ -190,7 +190,6 @@ func printTemplateAsTable(template *model.DeploymentCellTemplate) error {
 		Name        string `json:"name"`
 		Type        string `json:"type"`
 		IsManaged   string `json:"is_managed"`
-		Modifiable  string `json:"modifiable"`
 		Description string `json:"description"`
 	}
 
@@ -272,7 +271,6 @@ func printDeploymentCellTemplateAsTable(template *model.DeploymentCellTemplate) 
 		Name        string `json:"name"`
 		Type        string `json:"type"`
 		IsManaged   string `json:"is_managed"`
-		Modifiable  string `json:"modifiable"`
 		Description string `json:"description"`
 	}
 

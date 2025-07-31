@@ -25,10 +25,10 @@ ensure they are correct.
 
 Examples:
   # Apply pending changes to specific deployment cell
-  omnistrate-ctl deployment-cell apply-pending-changes -i hc-12345 -s service-id
+  omnistrate-ctl deployment-cell apply-pending-changes -i hc-12345
 
   # Apply without confirmation prompt
-  omnistrate-ctl deployment-cell apply-pending-changes -i hc-12345 -s service-id --force`,
+  omnistrate-ctl deployment-cell apply-pending-changes -i hc-12345 --force`,
 	RunE:         runApplyPendingChanges,
 	SilenceUsage: true,
 }
