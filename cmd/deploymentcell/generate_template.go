@@ -18,11 +18,11 @@ import (
 var generateTemplateCmd = &cobra.Command{
 	Use:   "generate-config-template",
 	Short: "Generate deployment cell configuration template",
-	Long: `Generate a deployment cell configuration template with available amenities for cloud providers.
+	Long: `Generate a deployment cell configuration template with available amenities for a specific cloud provider.
 
 This command creates a YAML template file containing all available amenities (Helm charts) 
 that can be configured for deployment cells. The template includes both managed amenities 
-(maintained by Omnistrate) and examples of custom amenities.
+(maintained by Omnistrate) and custom amenities based on the organization's current configuration.
 
 The generated template can be customized and used with the update-config-template command 
 to configure deployment cell amenities for your organization.
@@ -31,8 +31,8 @@ Examples:
   # Generate template for AWS cloud provider
   omnistrate-ctl deployment-cell generate-config-template --cloud aws --output template-aws.yaml
 
-  # Generate template for multiple cloud providers
-  omnistrate-ctl deployment-cell generate-config-template --cloud aws,azure,gcp --output template.yaml
+  # Generate template for Azure cloud provider
+  omnistrate-ctl deployment-cell generate-config-template --cloud azure --output template-azure.yaml
 
   # Generate template and display to stdout
   omnistrate-ctl deployment-cell generate-config-template --cloud aws`,
