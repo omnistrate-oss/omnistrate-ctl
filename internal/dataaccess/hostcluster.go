@@ -258,7 +258,15 @@ func ConvertToInternalAmenitiesList(data interface{}) ([]model.InternalAmenity, 
 		return nil, err
 	}
 
-	// Unmarshal to map[string]interface{}
+	var configWrapper struct {
+		Amenities []model.InternalAmenity `json:"Amenities"`
+	}
+	err = json.Unmarshal(jsonBytes, &configWrapper)
+	if err == nil && len(configWrapper.Amenities) > 0 {
+		return configWrapper.Amenities, nil
+	}
+
+	// If that fails, try to unmarshal directly as an array
 	var result []model.InternalAmenity
 	err = json.Unmarshal(jsonBytes, &result)
 	if err != nil {
