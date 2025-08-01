@@ -167,7 +167,7 @@ func updateOrganizationTemplate(ctx context.Context, token string, environment s
 		return err
 	}
 
-	err = dataaccess.UpdateServiceProviderOrganization(ctx, token, templatePerCloudProvider, cloudProvider, environment)
+	err = dataaccess.UpdateServiceProviderOrganization(ctx, token, templatePerCloudProvider, environment, cloudProvider)
 	if err != nil {
 		utils.PrintError(fmt.Errorf("failed to update organization template: %w", err))
 		return err

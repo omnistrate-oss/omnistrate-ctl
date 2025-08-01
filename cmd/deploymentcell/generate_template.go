@@ -94,7 +94,7 @@ func runGenerateTemplate(cmd *cobra.Command, args []string) error {
 			}
 		}
 
-		err = os.WriteFile(outputFile, yamlData, 0644)
+		err = os.WriteFile(outputFile, yamlData, 0600)
 		if err != nil {
 			utils.PrintError(fmt.Errorf("failed to write template to file %s: %w", outputFile, err))
 			return err
