@@ -3,7 +3,6 @@ package dataaccess
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"github.com/omnistrate-oss/omnistrate-ctl/internal/model"
 	"github.com/omnistrate-oss/omnistrate-ctl/internal/utils"
 	openapiclient "github.com/omnistrate-oss/omnistrate-sdk-go/v1"
