@@ -22,6 +22,12 @@ Examples:
   # Get JSON output format
   omnistrate-ctl deployment-cell describe-config-template -e PROD --cloud aws --output json
 
+  # Generate YAML template to local file
+  omnistrate-ctl deployment-cell describe-config-template -e PROD --cloud aws --output-file template.yaml
+
+  # Generate template for specific deployment cell to file
+  omnistrate-ctl deployment-cell describe-config-template hc-12345 --output-file deployment-cell-config.yaml
+
 ```
 omnistrate-ctl deployment-cell describe-config-template [flags]
 ```
@@ -34,6 +40,7 @@ omnistrate-ctl deployment-cell describe-config-template [flags]
   -h, --help                 help for describe-config-template
   -i, --id string            Deployment cell ID
   -o, --output string        Output format (yaml, json, table) (default "yaml")
+  -f, --output-file string   Output file
 ```
 
 ### Options inherited from parent commands
