@@ -108,31 +108,28 @@ func runGenerateTemplate(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
-func generateDeploymentCellTemplate(ctx context.Context, token string, cloudProviderName string) (map[string]model.DeploymentCellTemplate, error) {
+func generateDeploymentCellTemplate(ctx context.Context, token string, cloudProviderName string) (model.DeploymentCellTemplate, error) {
 	res, err := dataaccess.GetServiceProviderOrganization(ctx, token)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get service provider organization: %w", err)
+		return model.DeploymentCellTemplate{}, fmt.Errorf("failed to get service provider organization: %w", err)
 	}
 
-	// Convert the API response to model.DeploymentCellConfigurationTemplate
-	template := make(map[string]model.DeploymentCellTemplate)
-
 	if res.DefaultDeploymentCellConfigurations == nil {
-		return template, fmt.Errorf("no default deployment cell configurations found in service provider organization")
+		return model.DeploymentCellTemplate{}, fmt.Errorf("no default deployment cell configurations found in service provider organization")
 	}
 
 	for cloudProvider, cellConfig := range res.DefaultDeploymentCellConfigurations.DeploymentCellConfigurationPerCloudProvider {
 		if cloudProvider != cloudProviderName {
 			continue // Skip if the cloud provider does not match
 		}
-		var convertedConfig model.DeploymentCellTemplate
-		convertedConfig, err = convertToDeploymentCellConfiguration(cellConfig)
+		convertedConfig, err := convertToDeploymentCellConfiguration(cellConfig)
 		if err != nil {
-			return template, fmt.Errorf("failed to convert deployment cell configuration for cloud provider '%s': %w", cloudProvider, err)
+			return model.DeploymentCellTemplate{}, fmt.Errorf("failed to convert deployment cell configuration for cloud provider '%s': %w", cloudProvider, err)
 		}
-		template[cloudProvider] = convertedConfig
+		return convertedConfig, nil
 	}
-	return template, nil
+
+	return model.DeploymentCellTemplate{}, fmt.Errorf("no configuration found for cloud provider '%s'", cloudProviderName)
 }
 
 func convertToDeploymentCellConfiguration(cellConfig interface{}) (model.DeploymentCellTemplate, error) {
