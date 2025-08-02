@@ -156,7 +156,7 @@ func WriteYAMLToFile[T any](filePath string, object T) error {
 		return fmt.Errorf("failed to marshal object to YAML: %w", err)
 	}
 
-	err = os.WriteFile(filePath, data, 0644)
+	err = os.WriteFile(filePath, data, 0600)
 	if err != nil {
 		return fmt.Errorf("failed to write YAML to file %s: %w", filePath, err)
 	}
