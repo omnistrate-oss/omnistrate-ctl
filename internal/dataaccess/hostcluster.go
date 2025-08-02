@@ -208,18 +208,32 @@ func GetOrganizationDeploymentCellTemplate(ctx context.Context, token string, en
 		return nil, fmt.Errorf("failed to get service provider organization: %w", err)
 	}
 
-	// Extract deployment cell configurations
+	// Extract deployment cell configurations for the environment
 	deploymentCellConfigs, exists := spOrg.GetDeploymentCellConfigurationsPerEnv()[environment]
 	if !exists {
 		return nil, fmt.Errorf("no deployment cell configurations found for environment '%s'", environment)
 	}
 
+	// Convert to map to access the DeploymentCellConfigurationPerCloudProvider
 	deploymentCellConfigsMap, err := interfaceToMap(deploymentCellConfigs)
 	if err != nil {
 		return nil, fmt.Errorf("failed to convert deployment cell configurations to map: %w", err)
 	}
 
-	amenitiesPerCloudProvider, exists := deploymentCellConfigsMap[cloudProvider]
+	// Access the DeploymentCellConfigurationPerCloudProvider level
+	deploymentCellConfigPerCloudProvider, exists := deploymentCellConfigsMap["DeploymentCellConfigurationPerCloudProvider"]
+	if !exists {
+		return nil, fmt.Errorf("no DeploymentCellConfigurationPerCloudProvider found for environment '%s'", environment)
+	}
+
+	// Convert the cloud provider configurations to map
+	cloudProviderConfigsMap, err := interfaceToMap(deploymentCellConfigPerCloudProvider)
+	if err != nil {
+		return nil, fmt.Errorf("failed to convert cloud provider configurations to map: %w", err)
+	}
+
+	// Access the specific cloud provider configuration
+	amenitiesPerCloudProvider, exists := cloudProviderConfigsMap[cloudProvider]
 	if !exists {
 		return nil, fmt.Errorf("no deployment cell configurations found for cloud provider '%s'", cloudProvider)
 	}
