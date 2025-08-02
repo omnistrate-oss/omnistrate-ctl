@@ -32,7 +32,13 @@ Examples:
   omnistrate-ctl deployment-cell describe-config-template hc-12345
 
   # Get JSON output format
-  omnistrate-ctl deployment-cell describe-config-template -e PROD --cloud aws --output json`,
+  omnistrate-ctl deployment-cell describe-config-template -e PROD --cloud aws --output json
+
+  # Generate YAML template to local file
+  omnistrate-ctl deployment-cell describe-config-template -e PROD --cloud aws --output-file template.yaml
+
+  # Generate template for specific deployment cell to file
+  omnistrate-ctl deployment-cell describe-config-template hc-12345 --output-file deployment-cell-config.yaml`,
 	RunE:         runDescribeTemplate,
 	SilenceUsage: true,
 }
@@ -42,6 +48,7 @@ func init() {
 	describeTemplateCmd.Flags().StringP("cloud", "c", "", "Cloud provider (aws, azure, gcp)")
 	describeTemplateCmd.Flags().StringP("id", "i", "", "Deployment cell ID")
 	describeTemplateCmd.Flags().StringP("output", "o", "yaml", "Output format (yaml, json, table)")
+	describeTemplateCmd.Flags().StringP("output-file", "f", "", "Output file")
 }
 
 func runDescribeTemplate(cmd *cobra.Command, args []string) error {
@@ -94,6 +101,12 @@ func runDescribeTemplate(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
+	file, err := cmd.Flags().GetString("output-file")
+	if err != nil {
+		utils.PrintError(err)
+		return err
+	}
+
 	ctx := context.Background()
 	token, err := common.GetTokenWithLogin()
 	if err != nil {
@@ -102,7 +115,7 @@ func runDescribeTemplate(cmd *cobra.Command, args []string) error {
 	}
 
 	if id != "" {
-		return describeDeploymentCellConfiguration(ctx, token, id, output)
+		return describeDeploymentCellConfiguration(ctx, token, id, output, file)
 	} else {
 		// Validate required flags for organization template
 		if environment == "" {
@@ -117,11 +130,11 @@ func runDescribeTemplate(cmd *cobra.Command, args []string) error {
 			return err
 		}
 
-		return describeOrganizationTemplate(ctx, token, environment, cloudProvider, output)
+		return describeOrganizationTemplate(ctx, token, environment, cloudProvider, output, file)
 	}
 }
 
-func describeOrganizationTemplate(ctx context.Context, token string, environment string, cloudProvider string, output string) error {
+func describeOrganizationTemplate(ctx context.Context, token string, environment string, cloudProvider string, output string, file string) error {
 	// Get the service provider organization configuration
 	spOrg, err := dataaccess.GetServiceProviderOrganization(ctx, token)
 	if err != nil {
@@ -141,6 +154,18 @@ func describeOrganizationTemplate(ctx context.Context, token string, environment
 		return nil
 	}
 
+	// Save to file if requested
+	if file != "" {
+		// Create a wrapper with cloud provider name to match generate-template format
+		templateWrapper := map[string]*model.DeploymentCellTemplate{
+			cloudProvider: template,
+		}
+		err := utils.WriteYAMLToFile(file, templateWrapper)
+		if err != nil {
+			return err
+		}
+	}
+
 	totalAmenities := len(template.ManagedAmenities) + len(template.CustomAmenities)
 	fmt.Printf("📋 Deployment Cell Configuration Template\n")
 	fmt.Printf("Organization: %s\n", utils.FromPtr(spOrg.Id))
@@ -148,7 +173,7 @@ func describeOrganizationTemplate(ctx context.Context, token string, environment
 	fmt.Printf("Cloud Provider: %s\n", cloudProvider)
 	fmt.Printf("Total Amenities: %d (Managed: %d, Custom: %d)\n\n", totalAmenities, len(template.ManagedAmenities), len(template.CustomAmenities))
 
-	// Print output based on format
+	// Print output based on format - always show output even when saving to file
 	switch output {
 	case "table":
 		return printTemplateAsTable(template)
@@ -161,7 +186,7 @@ func describeOrganizationTemplate(ctx context.Context, token string, environment
 	}
 }
 
-func describeDeploymentCellConfiguration(ctx context.Context, token string, deploymentCellID string, output string) error {
+func describeDeploymentCellConfiguration(ctx context.Context, token string, deploymentCellID string, output string, file string) error {
 	// Get deployment cell details
 	deploymentCell, err := dataaccess.DescribeHostCluster(ctx, token, deploymentCellID)
 	if err != nil {
@@ -172,7 +197,15 @@ func describeDeploymentCellConfiguration(ctx context.Context, token string, depl
 	// Create deployment cell template structure for consistent output
 	deploymentCellTemplate := createDeploymentCellTemplate(deploymentCell)
 
-	// Print output based on format - use the deployment cell template for consistent YAML output
+	// Save to file if requested
+	if file != "" {
+		err := utils.WriteYAMLToFile(file, deploymentCellTemplate)
+		if err != nil {
+			return err
+		}
+	}
+
+	// Print output based on format - always show output even when saving to file
 	switch output {
 	case "table":
 		return printDeploymentCellTemplateAsTable(deploymentCellTemplate)

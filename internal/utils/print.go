@@ -150,6 +150,21 @@ func PrintTextTableYamlOutput[T any](object T) error {
 	return nil
 }
 
+func WriteYAMLToFile[T any](filePath string, object T) error {
+	data, err := yaml.Marshal(object)
+	if err != nil {
+		return fmt.Errorf("failed to marshal object to YAML: %w", err)
+	}
+
+	err = os.WriteFile(filePath, data, 0644)
+	if err != nil {
+		return fmt.Errorf("failed to write YAML to file %s: %w", filePath, err)
+	}
+
+	PrintSuccess(fmt.Sprintf("Template saved to %s", filePath))
+	return nil
+}
+
 func ConfirmAction(message string) (bool, error) {
 	confirmedChoice, err := prompt.New().Ask(message).Choose([]string{"Yes", "No"}, choose.WithTheme(choose.ThemeArrow))
 	if err != nil {
