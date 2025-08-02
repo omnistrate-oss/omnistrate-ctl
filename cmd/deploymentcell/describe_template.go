@@ -156,11 +156,8 @@ func describeOrganizationTemplate(ctx context.Context, token string, environment
 
 	// Save to file if requested
 	if file != "" {
-		// Create a wrapper with cloud provider name to match generate-template format
-		templateWrapper := map[string]*model.DeploymentCellTemplate{
-			cloudProvider: template,
-		}
-		err := utils.WriteYAMLToFile(file, templateWrapper)
+		// Save template directly without cloud provider wrapper
+		err := utils.WriteYAMLToFile(file, template)
 		if err != nil {
 			return err
 		}

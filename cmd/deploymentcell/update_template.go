@@ -153,21 +153,15 @@ func updateOrganizationTemplate(ctx context.Context, token string, environment s
 		return err
 	}
 
-	var templateConfig map[string]model.DeploymentCellTemplate
+	// Parse as DeploymentCellTemplate directly (no cloud provider wrapper)
+	var templateConfig model.DeploymentCellTemplate
 	err = yaml.Unmarshal(configData, &templateConfig)
 	if err != nil {
 		utils.PrintError(fmt.Errorf("failed to parse configuration file %s: %w", configFile, err))
 		return err
 	}
 
-	templatePerCloudProvider, exists := templateConfig[cloudProvider]
-	if !exists {
-		err = fmt.Errorf("no configuration found for cloud provider '%s' in the template file", cloudProvider)
-		utils.PrintError(err)
-		return err
-	}
-
-	err = dataaccess.UpdateServiceProviderOrganization(ctx, token, templatePerCloudProvider, environment, cloudProvider)
+	err = dataaccess.UpdateServiceProviderOrganization(ctx, token, templateConfig, environment, cloudProvider)
 	if err != nil {
 		utils.PrintError(fmt.Errorf("failed to update organization template: %w", err))
 		return err
@@ -211,16 +205,12 @@ func updateDeploymentCellFromFile(ctx context.Context, token string, deploymentC
 		return err
 	}
 
-	var config map[string]model.DeploymentCellTemplate
+	// Parse as DeploymentCellTemplate directly (no cloud provider wrapper)
+	var config model.DeploymentCellTemplate
 	err = yaml.Unmarshal(configData, &config)
 	if err != nil {
 		utils.PrintError(fmt.Errorf("failed to parse configuration file %s: %w", configFile, err))
 		return err
-	}
-
-	if len(config) == 0 || len(config) > 1 {
-		utils.PrintError(fmt.Errorf("configuration file must contain exactly one deployment cell configuration"))
-		return fmt.Errorf("invalid configuration file")
 	}
 
 	// Show preview of changes
@@ -232,26 +222,25 @@ func updateDeploymentCellFromFile(ctx context.Context, token string, deploymentC
 	// Update deployment cell configuration
 	fmt.Printf("🔄 Updating deployment cell configuration...\n")
 	var pendingChanges []fleet.Amenity
-	for _, amenity := range config {
-		for _, a := range amenity.ManagedAmenities {
-			pendingChanges = append(pendingChanges, fleet.Amenity{
-				Name:        utils.ToPtr(a.Name),
-				Description: a.Description,
-				Type:        a.Type,
-				Properties:  a.Properties,
-				IsManaged:   utils.ToPtr(true),
-			})
-		}
 
-		for _, a := range amenity.CustomAmenities {
-			pendingChanges = append(pendingChanges, fleet.Amenity{
-				Name:        utils.ToPtr(a.Name),
-				Description: a.Description,
-				Type:        a.Type,
-				Properties:  a.Properties,
-				IsManaged:   utils.ToPtr(false),
-			})
-		}
+	for _, a := range config.ManagedAmenities {
+		pendingChanges = append(pendingChanges, fleet.Amenity{
+			Name:        utils.ToPtr(a.Name),
+			Description: a.Description,
+			Type:        a.Type,
+			Properties:  a.Properties,
+			IsManaged:   utils.ToPtr(true),
+		})
+	}
+
+	for _, a := range config.CustomAmenities {
+		pendingChanges = append(pendingChanges, fleet.Amenity{
+			Name:        utils.ToPtr(a.Name),
+			Description: a.Description,
+			Type:        a.Type,
+			Properties:  a.Properties,
+			IsManaged:   utils.ToPtr(false),
+		})
 	}
 
 	err = dataaccess.UpdateHostCluster(ctx, token, deploymentCellID, pendingChanges, nil)
