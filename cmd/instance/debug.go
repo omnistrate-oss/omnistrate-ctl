@@ -462,7 +462,7 @@ func launchDebugTUI(data DebugData) error {
 				podName, _ := ref["podName"].(string)
 				logsUrl, _ := ref["logsUrl"].(string)
 				rightPanel.SetTitle(fmt.Sprintf("Live Log: %s", podName))
-				rightPanel.SetText(fmt.Sprintf("Connecting to ..."))
+				rightPanel.SetText(fmt.Sprintf("Connecting to logs for %s...", podName))
 				go connectAndStreamLogs(app, logsUrl, rightPanel)
 			} else {
 				handleOptionSelection(ref, rightPanel)
