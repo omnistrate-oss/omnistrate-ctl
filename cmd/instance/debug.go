@@ -107,7 +107,7 @@ func runDebug(_ *cobra.Command, args []string) error {
 		return  fmt.Errorf("failed to describe resource instance: %w", err)
 	}
 
-	// Process debug result
+	// Process debug result and identify resource types
 	data := DebugData{
 		InstanceID: instanceID,
 		Resources:  []ResourceInfo{},
@@ -118,90 +118,107 @@ func runDebug(_ *cobra.Command, args []string) error {
 	
 	if debugResult.ResourcesDebug != nil {
 		for resourceKey, resourceDebugInfo := range debugResult.ResourcesDebug {
-			resourceInfo := ResourceInfo{
-				ID:        resourceKey,
-				Name:      resourceKey,
-				Type:      "unknown",
-				DebugData: resourceDebugInfo,
+			// Skip adding omnistrateobserv as a resource
+			if resourceKey == "omnistrateobserv" {
+				continue
 			}
-
-		// Skip adding omnistrateobserv as a resource
-		if resourceKey == "omnistrateobserv" {
-			continue
-		}
-			if debugData, ok := resourceDebugInfo.(map[string]interface{}); ok {
-				if actualDebugData, ok := debugData["debugData"].(map[string]interface{}); ok {
-					// Check if it's a helm resource
-					if _, hasChart := actualDebugData["chartRepoName"]; hasChart {
-						resourceInfo.Type = "helm"
-						resourceInfo.HelmData = parseHelmData(actualDebugData)
-						if IsLogsEnabled {
-							nodeData := BuildLogStreams(instanceData, instanceID, resourceKey)
-							if nodeData != nil {
-								resourceInfo.HelmData.LiveLogs = nodeData
-							}
-						}
-					} else {
-						// Check if it's a terraform resource by looking for terraform files or logs
-						hasTerraformFiles := false
-						hasTerraformLogs := false
-						for key := range actualDebugData {
-							if strings.HasPrefix(key, "rendered/") && strings.HasSuffix(key, ".tf") {
-								hasTerraformFiles = true
-							} else if strings.HasPrefix(key, "log/") && strings.Contains(key, "terraform") {
-								hasTerraformLogs = true
-							}
-						}
-						if hasTerraformFiles || hasTerraformLogs {
-							resourceInfo.Type = "terraform"
-							resourceInfo.TerraformData = parseTerraformData(actualDebugData)
-							if IsLogsEnabled {
-								nodeData := BuildLogStreams(instanceData, instanceID, resourceKey)
-								if nodeData != nil {
-									resourceInfo.TerraformData.LiveLogs = nodeData
-								}
-							}
-						} else {
-							resourceInfo.Type = "generic"
-							resourceInfo.GenericData = &GenericData{}
-							if IsLogsEnabled {
-								nodeData := BuildLogStreams(instanceData, instanceID, resourceKey)
-								if nodeData != nil  {
-									resourceInfo.GenericData.LiveLogs = nodeData
-								}
-							}
-						}
-
-					} 
-				} else {
-					resourceInfo.Type = "generic"
-					resourceInfo.GenericData = &GenericData{}
-					if IsLogsEnabled {
-						nodeData := BuildLogStreams(instanceData, instanceID, resourceKey)
-						if nodeData != nil  {
-							resourceInfo.GenericData.LiveLogs = nodeData
-						}
-					}
-						}
-				
-			} else {
-				resourceInfo.Type = "generic"
-				resourceInfo.GenericData = &GenericData{}
-				if IsLogsEnabled {
-					nodeData := BuildLogStreams(instanceData, instanceID, resourceKey)
-					if nodeData != nil  {
-						resourceInfo.GenericData.LiveLogs = nodeData
-					}
-				}
-
-				}
-			data.Resources = append(data.Resources, resourceInfo)
+			
+			// Process each resource based on its type
+			resourceInfo := processResourceByType(resourceKey, resourceDebugInfo, instanceData, instanceID, IsLogsEnabled)
+			if resourceInfo != nil {
+				data.Resources = append(data.Resources, *resourceInfo)
+			}
 		}
 	}
 
-
 	// Launch TUI
 	return launchDebugTUI(data)
+}
+
+// processResourceByType identifies the resource type and processes it accordingly
+func processResourceByType(resourceKey string, resourceDebugInfo interface{}, instanceData *fleet.ResourceInstance, instanceID string, isLogsEnabled bool) *ResourceInfo {
+	resourceInfo := &ResourceInfo{
+		ID:        resourceKey,
+		Name:      resourceKey,
+		Type:      "unknown",
+		DebugData: resourceDebugInfo,
+	}
+
+	debugData, ok := resourceDebugInfo.(map[string]interface{})
+	if !ok {
+		return processGenericResource(resourceInfo, instanceData, instanceID, isLogsEnabled)
+	}
+
+	actualDebugData, ok := debugData["debugData"].(map[string]interface{})
+	if !ok {
+		return processGenericResource(resourceInfo, instanceData, instanceID, isLogsEnabled)
+	}
+
+	// Check if it's a helm resource
+	if _, hasChart := actualDebugData["chartRepoName"]; hasChart {
+		return processHelmResource(resourceInfo, actualDebugData, instanceData, instanceID, isLogsEnabled)
+	}
+
+	// Check if it's a terraform resource
+	if isTerraformResource(actualDebugData) {
+		return processTerraformResource(resourceInfo, actualDebugData)
+	}
+
+	// Default to generic resource
+	return processGenericResource(resourceInfo, instanceData, instanceID, isLogsEnabled)
+}
+
+// processHelmResource handles Helm resource processing
+func processHelmResource(resourceInfo *ResourceInfo, actualDebugData map[string]interface{}, instanceData *fleet.ResourceInstance, instanceID string, isLogsEnabled bool) *ResourceInfo {
+	resourceInfo.Type = "helm"
+	resourceInfo.HelmData = parseHelmData(actualDebugData)
+	
+	if isLogsEnabled {
+		nodeData := BuildLogStreams(instanceData, instanceID, resourceInfo.ID)
+		if nodeData != nil {
+			resourceInfo.HelmData.LiveLogs = nodeData
+		}
+	}
+	
+	return resourceInfo
+}
+
+// processTerraformResource handles Terraform resource processing
+func processTerraformResource(resourceInfo *ResourceInfo, actualDebugData map[string]interface{}) *ResourceInfo {
+	resourceInfo.Type = "terraform"
+	resourceInfo.TerraformData = parseTerraformData(actualDebugData)
+	return resourceInfo
+}
+
+// processGenericResource handles Generic resource processing
+func processGenericResource(resourceInfo *ResourceInfo, instanceData *fleet.ResourceInstance, instanceID string, isLogsEnabled bool) *ResourceInfo {
+	resourceInfo.Type = "generic"
+	resourceInfo.GenericData = &GenericData{}
+	
+	if isLogsEnabled {
+		nodeData := BuildLogStreams(instanceData, instanceID, resourceInfo.ID)
+		if nodeData != nil {
+			resourceInfo.GenericData.LiveLogs = nodeData
+		}
+	}
+	
+	return resourceInfo
+}
+
+// isTerraformResource checks if the resource is a Terraform resource
+func isTerraformResource(actualDebugData map[string]interface{}) bool {
+	hasTerraformFiles := false
+	hasTerraformLogs := false
+	
+	for key := range actualDebugData {
+		if strings.HasPrefix(key, "rendered/") && strings.HasSuffix(key, ".tf") {
+			hasTerraformFiles = true
+		} else if strings.HasPrefix(key, "log/") && strings.Contains(key, "terraform") {
+			hasTerraformLogs = true
+		}
+	}
+	
+	return hasTerraformFiles || hasTerraformLogs
 }
 
 func parseHelmData(debugData map[string]interface{}) *HelmData {
@@ -359,23 +376,7 @@ func launchDebugTUI(data DebugData) error {
 				resourceNode.AddChild(installLogNode)
 			}
 
-			// Add Live Logs tree
-			if len(resource.TerraformData.LiveLogs) > 0 {
-				liveLogsNode := tview.NewTreeNode("Live Log")
-				liveLogsNode.SetColor(tcell.ColorGreen)
-				for _, log := range resource.TerraformData.LiveLogs {
-					podNode := tview.NewTreeNode(log.PodName)
-					podNode.SetReference(map[string]interface{}{
-						"type":     "live-log-pod",
-						"resource": resource,
-						"podName":  log.PodName,
-						"logsUrl":  log.LogsURL,
-					})
-					podNode.SetColor(tcell.ColorLightCyan)
-					liveLogsNode.AddChild(podNode)
-				}
-				resourceNode.AddChild(liveLogsNode)
-			}
+			
 		} else if resource.Type == "generic" && resource.GenericData != nil {
 			// Add Live Logs tree
 			if len(resource.GenericData.LiveLogs) > 0 {
@@ -655,12 +656,7 @@ func handleOptionSelection(ref map[string]interface{}, rightPanel *tview.TextVie
 			rightPanel.SetTitle("Install Logs")
 			rightPanel.SetText(content)
 		}
-	case "terraform-live-logs":
-		if resource.TerraformData != nil {
-			content := formatLiveLogs(resource.TerraformData.LiveLogs)
-			rightPanel.SetTitle("Live Logs")
-			rightPanel.SetText(content)
-		}
+	
 	case "generic-live-logs":
 		if resource.GenericData != nil {
 			content := formatLiveLogs(resource.GenericData.LiveLogs)
