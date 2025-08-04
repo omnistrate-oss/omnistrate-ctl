@@ -298,106 +298,27 @@ func launchDebugTUI(data DebugData) error {
 	root.SetColor(tcell.ColorYellow)
 	leftPanel.SetRoot(root)
 
-	// Add resources (only helm and terraform, skip unknown types)
+	// Add resources based on their type
 	for _, resource := range data.Resources {
 		// Skip unknown resource types
 		if resource.Type != "helm" && resource.Type != "terraform" && resource.Type != "generic" {
 			continue
 		}
 
-		var nodeLabel string
-		if resource.Type == "generic" {
-			nodeLabel = resource.Name
-		} else {
-			nodeLabel = fmt.Sprintf("%s (%s)", resource.Name, resource.Type)
-		}
-		resourceNode := tview.NewTreeNode(nodeLabel)
-		resourceNode.SetReference(resource)
-		resourceNode.SetColor(tcell.ColorBlue)
-
-		// Add options based on resource type
-		if resource.Type == "helm" && resource.HelmData != nil {
-			// Add Chart Values option
-			chartValuesNode := tview.NewTreeNode("Chart Values")
-			chartValuesNode.SetReference(map[string]interface{}{
-				"type":     "helm-chart-values",
-				"resource": resource,
-			})
-			chartValuesNode.SetColor(tcell.ColorGreen)
-			resourceNode.AddChild(chartValuesNode)
-
-			// Add Install Log option
-			if resource.HelmData.InstallLog != "" {
-				installLogNode := tview.NewTreeNode("Install Log")
-				installLogNode.SetReference(map[string]interface{}{
-					"type":     "helm-install-log",
-					"resource": resource,
-				})
-				installLogNode.SetColor(tcell.ColorGreen)
-				resourceNode.AddChild(installLogNode)
-			}
-			// Add Live Logs tree
-			if len(resource.HelmData.LiveLogs) > 0 {
-				liveLogsNode := tview.NewTreeNode("Live Log")
-				liveLogsNode.SetColor(tcell.ColorGreen)
-				for _, log := range resource.HelmData.LiveLogs {
-					podNode := tview.NewTreeNode(log.PodName)
-					podNode.SetReference(map[string]interface{}{
-						"type":     "live-log-pod",
-						"resource": resource,
-						"podName":  log.PodName,
-						"logsUrl":  log.LogsURL,
-					})
-					podNode.SetColor(tcell.ColorLightCyan)
-					liveLogsNode.AddChild(podNode)
-				}
-				resourceNode.AddChild(liveLogsNode)
-			}
-		} else if resource.Type == "terraform" && resource.TerraformData != nil {
-			// Add Terraform Files option
-			if len(resource.TerraformData.Files) > 0 {
-				filesNode := tview.NewTreeNode("Terraform Files")
-				filesNode.SetReference(map[string]interface{}{
-					"type":     "terraform-files",
-					"resource": resource,
-				})
-				filesNode.SetColor(tcell.ColorGreen)
-				resourceNode.AddChild(filesNode)
-			}
-
-			// Add Install Log option
-			if len(resource.TerraformData.Logs) > 0 {
-				installLogNode := tview.NewTreeNode("Install Log")
-				installLogNode.SetReference(map[string]interface{}{
-					"type":     "terraform-install-logs",
-					"resource": resource,
-				})
-				installLogNode.SetColor(tcell.ColorGreen)
-				resourceNode.AddChild(installLogNode)
-			}
-
-			
-		} else if resource.Type == "generic" && resource.GenericData != nil {
-			// Add Live Logs tree
-			if len(resource.GenericData.LiveLogs) > 0 {
-				liveLogsNode := tview.NewTreeNode("Live Log")
-				liveLogsNode.SetColor(tcell.ColorGreen)
-				for _, log := range resource.GenericData.LiveLogs {
-					podNode := tview.NewTreeNode(log.PodName)
-					podNode.SetReference(map[string]interface{}{
-						"type":     "live-log-pod",
-						"resource": resource,
-						"podName":  log.PodName,
-						"logsUrl":  log.LogsURL,
-					})
-					podNode.SetColor(tcell.ColorLightCyan)
-					liveLogsNode.AddChild(podNode)
-				}
-				resourceNode.AddChild(liveLogsNode)
-			}
+		// Use separate functions for each resource type
+		var resourceNode *tview.TreeNode
+		switch resource.Type {
+		case "helm":
+			resourceNode = buildHelmResourceNode(resource)
+		case "terraform":
+			resourceNode = buildTerraformResourceNode(resource)
+		case "generic":
+			resourceNode = buildGenericResourceNode(resource)
 		}
 
-		root.AddChild(resourceNode)
+		if resourceNode != nil {
+			root.AddChild(resourceNode)
+		}
 	}
 
 	root.SetExpanded(true)
@@ -422,121 +343,12 @@ func launchDebugTUI(data DebugData) error {
 
 	// Handle tree selection
 	leftPanel.SetChangedFunc(func(node *tview.TreeNode) {
-		reference := node.GetReference()
-		if reference == nil {
-			// If the currently selected node is a Live Logs node, show pod list
-			if node.GetText() == "Live Log" {
-				rightPanel.SetTitle("Live Log")
-				// Find pod children and list their names
-				podNames := []string{}
-				for _, child := range node.GetChildren() {
-					podNames = append(podNames, child.GetText())
-				}
-				if len(podNames) > 0 {
-					rightPanel.SetText("[yellow]Live Log[white]\n\n Nodes:\n  " + strings.Join(podNames, "\n  ") + "\n\nSelect a node option to view details")
-				} else {
-					rightPanel.SetText("[yellow]Live Log[white]\n No pods available")
-				}
-
-			} else {
-				rightPanel.SetTitle("Content")
-				rightPanel.SetText("Select a resource option to view details")
-			}
-			// Clear terraform selection state when no valid selection
-			currentSelectionIsTerraformFiles = false
-			currentSelectionIsTerraformLogs = false
-			return
-		}
-
-		switch ref := reference.(type) {
-		case ResourceInfo:
-			// Show resource information
-			content := formatResourceInfo(ref)
-			rightPanel.SetTitle(fmt.Sprintf("Resource: %s", ref.Name))
-			rightPanel.SetText(content)
-			// Clear terraform selection state when selecting resource node
-			currentSelectionIsTerraformFiles = false
-			currentSelectionIsTerraformLogs = false
-		case map[string]interface{}:
-			if t, ok := ref["type"].(string); ok && t == "live-log-pod" {
-				// Open pod log view (websocket connect)
-				podName, _ := ref["podName"].(string)
-				logsUrl, _ := ref["logsUrl"].(string)
-				rightPanel.SetTitle(fmt.Sprintf("Live Log: %s", podName))
-				rightPanel.SetText(fmt.Sprintf("Connecting to logs for %s...", podName))
-				go connectAndStreamLogs(app, logsUrl, rightPanel)
-			} else {
-				handleOptionSelection(ref, rightPanel)
-				// Update current terraform data and selection state for file browser
-				if optionType, ok := ref["type"].(string); ok {
-					switch optionType {
-					case "terraform-files":
-						if resource, ok := ref["resource"].(ResourceInfo); ok {
-							currentTerraformData = resource.TerraformData
-							currentSelectionIsTerraformFiles = true
-							currentSelectionIsTerraformLogs = false
-						}
-					case "terraform-install-logs":
-						if resource, ok := ref["resource"].(ResourceInfo); ok {
-							currentTerraformData = resource.TerraformData
-							currentSelectionIsTerraformFiles = false
-							currentSelectionIsTerraformLogs = true
-						}
-					default:
-						currentSelectionIsTerraformFiles = false
-						currentSelectionIsTerraformLogs = false
-					}
-				} else {
-					currentSelectionIsTerraformFiles = false
-					currentSelectionIsTerraformLogs = false
-				}
-			}
-		}
+		handleTreeNodeSelection(node, rightPanel, app, &currentTerraformData, &currentSelectionIsTerraformFiles, &currentSelectionIsTerraformLogs)
 	})
 
 	// Also handle direct selection (Enter key)
 	leftPanel.SetSelectedFunc(func(node *tview.TreeNode) {
-		reference := node.GetReference()
-		if reference != nil {
-			// If it's an option, show its content
-			switch ref := reference.(type) {
-			case ResourceInfo:
-				content := formatResourceInfo(ref)
-				rightPanel.SetTitle(fmt.Sprintf("Resource: %s", ref.Name))
-				rightPanel.SetText(content)
-				// Clear terraform selection state when selecting resource node
-				currentSelectionIsTerraformFiles = false
-				currentSelectionIsTerraformLogs = false
-			case map[string]interface{}:
-				handleOptionSelection(ref, rightPanel)
-				// Update current terraform data and selection state for file browser
-				if optionType, ok := ref["type"].(string); ok {
-					switch optionType {
-					case "terraform-files":
-						if resource, ok := ref["resource"].(ResourceInfo); ok {
-							currentTerraformData = resource.TerraformData
-							currentSelectionIsTerraformFiles = true
-							currentSelectionIsTerraformLogs = false
-						}
-					case "terraform-install-logs":
-						if resource, ok := ref["resource"].(ResourceInfo); ok {
-							currentTerraformData = resource.TerraformData
-							currentSelectionIsTerraformFiles = false
-							currentSelectionIsTerraformLogs = true
-						}
-					default:
-						currentSelectionIsTerraformFiles = false
-						currentSelectionIsTerraformLogs = false
-					}
-				} else {
-					currentSelectionIsTerraformFiles = false
-					currentSelectionIsTerraformLogs = false
-				}
-				return // Don't toggle expansion for options
-			}
-		}
-		// Toggle expansion for resource nodes
-		node.SetExpanded(!node.IsExpanded())
+		handleTreeNodeEnterSelection(node, rightPanel, &currentTerraformData, &currentSelectionIsTerraformFiles, &currentSelectionIsTerraformLogs)
 	})
 
 	// Set up layout
@@ -611,6 +423,242 @@ func launchDebugTUI(data DebugData) error {
 	}
 
 	return nil
+}
+
+// buildHelmResourceNode creates a tree node for Helm resources with their specific options
+func buildHelmResourceNode(resource ResourceInfo) *tview.TreeNode {
+	nodeLabel := fmt.Sprintf("%s (%s)", resource.Name, resource.Type)
+	resourceNode := tview.NewTreeNode(nodeLabel)
+	resourceNode.SetReference(resource)
+	resourceNode.SetColor(tcell.ColorBlue)
+
+	if resource.HelmData != nil {
+		// Add Chart Values option
+		chartValuesNode := tview.NewTreeNode("Chart Values")
+		chartValuesNode.SetReference(map[string]interface{}{
+			"type":     "helm-chart-values",
+			"resource": resource,
+		})
+		chartValuesNode.SetColor(tcell.ColorGreen)
+		resourceNode.AddChild(chartValuesNode)
+
+		// Add Install Log option
+		if resource.HelmData.InstallLog != "" {
+			installLogNode := tview.NewTreeNode("Install Log")
+			installLogNode.SetReference(map[string]interface{}{
+				"type":     "helm-install-log",
+				"resource": resource,
+			})
+			installLogNode.SetColor(tcell.ColorGreen)
+			resourceNode.AddChild(installLogNode)
+		}
+
+		// Add Live Logs tree
+		if len(resource.HelmData.LiveLogs) > 0 {
+			liveLogsNode := tview.NewTreeNode("Live Log")
+			liveLogsNode.SetColor(tcell.ColorGreen)
+			for _, log := range resource.HelmData.LiveLogs {
+				podNode := tview.NewTreeNode(log.PodName)
+				podNode.SetReference(map[string]interface{}{
+					"type":     "live-log-pod",
+					"resource": resource,
+					"podName":  log.PodName,
+					"logsUrl":  log.LogsURL,
+				})
+				podNode.SetColor(tcell.ColorLightCyan)
+				liveLogsNode.AddChild(podNode)
+			}
+			resourceNode.AddChild(liveLogsNode)
+		}
+	}
+
+	return resourceNode
+}
+
+// buildTerraformResourceNode creates a tree node for Terraform resources with their specific options
+func buildTerraformResourceNode(resource ResourceInfo) *tview.TreeNode {
+	nodeLabel := fmt.Sprintf("%s (%s)", resource.Name, resource.Type)
+	resourceNode := tview.NewTreeNode(nodeLabel)
+	resourceNode.SetReference(resource)
+	resourceNode.SetColor(tcell.ColorBlue)
+
+	if resource.TerraformData != nil {
+		// Add Terraform Files option
+		if len(resource.TerraformData.Files) > 0 {
+			filesNode := tview.NewTreeNode("Terraform Files")
+			filesNode.SetReference(map[string]interface{}{
+				"type":     "terraform-files",
+				"resource": resource,
+			})
+			filesNode.SetColor(tcell.ColorGreen)
+			resourceNode.AddChild(filesNode)
+		}
+
+		// Add Install Log option
+		if len(resource.TerraformData.Logs) > 0 {
+			installLogNode := tview.NewTreeNode("Install Log")
+			installLogNode.SetReference(map[string]interface{}{
+				"type":     "terraform-install-logs",
+				"resource": resource,
+			})
+			installLogNode.SetColor(tcell.ColorGreen)
+			resourceNode.AddChild(installLogNode)
+		}
+	}
+
+	return resourceNode
+}
+
+// buildGenericResourceNode creates a tree node for Generic resources with their specific options
+func buildGenericResourceNode(resource ResourceInfo) *tview.TreeNode {
+	// Generic resources show only their name (no type suffix)
+	nodeLabel := resource.Name
+	resourceNode := tview.NewTreeNode(nodeLabel)
+	resourceNode.SetReference(resource)
+	resourceNode.SetColor(tcell.ColorBlue)
+
+	if resource.GenericData != nil {
+		// Add Live Logs tree
+		if len(resource.GenericData.LiveLogs) > 0 {
+			liveLogsNode := tview.NewTreeNode("Live Log")
+			liveLogsNode.SetColor(tcell.ColorGreen)
+			for _, log := range resource.GenericData.LiveLogs {
+				podNode := tview.NewTreeNode(log.PodName)
+				podNode.SetReference(map[string]interface{}{
+					"type":     "live-log-pod",
+					"resource": resource,
+					"podName":  log.PodName,
+					"logsUrl":  log.LogsURL,
+				})
+				podNode.SetColor(tcell.ColorLightCyan)
+				liveLogsNode.AddChild(podNode)
+			}
+			resourceNode.AddChild(liveLogsNode)
+		}
+	}
+
+	return resourceNode
+}
+
+// handleTreeNodeSelection processes tree node selection (when node changes/is highlighted)
+func handleTreeNodeSelection(node *tview.TreeNode, rightPanel *tview.TextView, app *tview.Application, currentTerraformData **TerraformData, currentSelectionIsTerraformFiles *bool, currentSelectionIsTerraformLogs *bool) {
+	reference := node.GetReference()
+	if reference == nil {
+		handleNonReferencedNodeSelection(node, rightPanel, currentSelectionIsTerraformFiles, currentSelectionIsTerraformLogs)
+		return
+	}
+
+	switch ref := reference.(type) {
+	case ResourceInfo:
+		handleResourceInfoSelection(ref, rightPanel, currentSelectionIsTerraformFiles, currentSelectionIsTerraformLogs)
+	case map[string]interface{}:
+		handleOptionMapSelection(ref, rightPanel, app, currentTerraformData, currentSelectionIsTerraformFiles, currentSelectionIsTerraformLogs)
+	}
+}
+
+// handleTreeNodeEnterSelection processes tree node selection (when Enter key is pressed)
+func handleTreeNodeEnterSelection(node *tview.TreeNode, rightPanel *tview.TextView, currentTerraformData **TerraformData, currentSelectionIsTerraformFiles *bool, currentSelectionIsTerraformLogs *bool) {
+	reference := node.GetReference()
+	if reference != nil {
+		// If it's an option, show its content
+		switch ref := reference.(type) {
+		case ResourceInfo:
+			handleResourceInfoSelection(ref, rightPanel, currentSelectionIsTerraformFiles, currentSelectionIsTerraformLogs)
+		case map[string]interface{}:
+			handleOptionMapSelectionForEnter(ref, rightPanel, currentTerraformData, currentSelectionIsTerraformFiles, currentSelectionIsTerraformLogs)
+			return // Don't toggle expansion for options
+		}
+	}
+	// Toggle expansion for resource nodes
+	node.SetExpanded(!node.IsExpanded())
+}
+
+// handleNonReferencedNodeSelection handles selection of nodes without references (like "Live Log" header nodes)
+func handleNonReferencedNodeSelection(node *tview.TreeNode, rightPanel *tview.TextView, currentSelectionIsTerraformFiles *bool, currentSelectionIsTerraformLogs *bool) {
+	// If the currently selected node is a Live Logs node, show pod list
+	if node.GetText() == "Live Log" {
+		rightPanel.SetTitle("Live Log")
+		// Find pod children and list their names
+		podNames := []string{}
+		for _, child := range node.GetChildren() {
+			podNames = append(podNames, child.GetText())
+		}
+		if len(podNames) > 0 {
+			rightPanel.SetText("[yellow]Live Log[white]\n\n Nodes:\n  " + strings.Join(podNames, "\n  ") + "\n\nSelect a node option to view details")
+		} else {
+			rightPanel.SetText("[yellow]Live Log[white]\n No pods available")
+		}
+	} else {
+		rightPanel.SetTitle("Content")
+		rightPanel.SetText("Select a resource option to view details")
+	}
+	// Clear terraform selection state when no valid selection
+	*currentSelectionIsTerraformFiles = false
+	*currentSelectionIsTerraformLogs = false
+}
+
+// handleResourceInfoSelection handles selection of ResourceInfo nodes
+func handleResourceInfoSelection(resource ResourceInfo, rightPanel *tview.TextView, currentSelectionIsTerraformFiles *bool, currentSelectionIsTerraformLogs *bool) {
+	// Show resource information
+	content := formatResourceInfo(resource)
+	rightPanel.SetTitle(fmt.Sprintf("Resource: %s", resource.Name))
+	rightPanel.SetText(content)
+	// Clear terraform selection state when selecting resource node
+	*currentSelectionIsTerraformFiles = false
+	*currentSelectionIsTerraformLogs = false
+}
+
+// handleOptionMapSelection handles selection of option map nodes (for tree selection changes)
+func handleOptionMapSelection(ref map[string]interface{}, rightPanel *tview.TextView, app *tview.Application, currentTerraformData **TerraformData, currentSelectionIsTerraformFiles *bool, currentSelectionIsTerraformLogs *bool) {
+	if t, ok := ref["type"].(string); ok && t == "live-log-pod" {
+		handleLiveLogPodSelection(ref, rightPanel, app)
+	} else {
+		handleOptionSelection(ref, rightPanel)
+		updateTerraformSelectionState(ref, currentTerraformData, currentSelectionIsTerraformFiles, currentSelectionIsTerraformLogs)
+	}
+}
+
+// handleOptionMapSelectionForEnter handles selection of option map nodes (for Enter key presses)
+func handleOptionMapSelectionForEnter(ref map[string]interface{}, rightPanel *tview.TextView, currentTerraformData **TerraformData, currentSelectionIsTerraformFiles *bool, currentSelectionIsTerraformLogs *bool) {
+	handleOptionSelection(ref, rightPanel)
+	updateTerraformSelectionState(ref, currentTerraformData, currentSelectionIsTerraformFiles, currentSelectionIsTerraformLogs)
+}
+
+// handleLiveLogPodSelection handles selection of live log pod nodes
+func handleLiveLogPodSelection(ref map[string]interface{}, rightPanel *tview.TextView, app *tview.Application) {
+	// Open pod log view (websocket connect)
+	podName, _ := ref["podName"].(string)
+	logsUrl, _ := ref["logsUrl"].(string)
+	rightPanel.SetTitle(fmt.Sprintf("Live Log: %s", podName))
+	rightPanel.SetText(fmt.Sprintf("Connecting to logs for %s...", podName))
+	go connectAndStreamLogs(app, logsUrl, rightPanel)
+}
+
+// updateTerraformSelectionState updates terraform selection state based on option type
+func updateTerraformSelectionState(ref map[string]interface{}, currentTerraformData **TerraformData, currentSelectionIsTerraformFiles *bool, currentSelectionIsTerraformLogs *bool) {
+	// Update current terraform data and selection state for file browser
+	if optionType, ok := ref["type"].(string); ok {
+		switch optionType {
+		case "terraform-files":
+			if resource, ok := ref["resource"].(ResourceInfo); ok {
+				*currentTerraformData = resource.TerraformData
+				*currentSelectionIsTerraformFiles = true
+				*currentSelectionIsTerraformLogs = false
+			}
+		case "terraform-install-logs":
+			if resource, ok := ref["resource"].(ResourceInfo); ok {
+				*currentTerraformData = resource.TerraformData
+				*currentSelectionIsTerraformFiles = false
+				*currentSelectionIsTerraformLogs = true
+			}
+		default:
+			*currentSelectionIsTerraformFiles = false
+			*currentSelectionIsTerraformLogs = false
+		}
+	} else {
+		*currentSelectionIsTerraformFiles = false
+		*currentSelectionIsTerraformLogs = false
+	}
 }
 
 func createHelpText() *tview.TextView {
