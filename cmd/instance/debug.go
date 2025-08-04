@@ -1869,19 +1869,71 @@ func connectAndStreamLogs(app *tview.Application, logsUrl string, rightPanel *tv
 			app.QueueUpdateDraw(func() {
 				rightPanel.SetText("")
 			})
+			
+			// Batching mechanism for performance optimization
+			var logBatch []string
+			batchTicker := time.NewTicker(100 * time.Millisecond) // Process batch every 100ms
+			defer batchTicker.Stop()
+			
+			// Channel to signal when to stop batching
+			done := make(chan bool)
+			
+			// Goroutine to process batched logs
+			go func() {
+				for {
+					select {
+					case <-batchTicker.C:
+						if len(logBatch) > 0 {
+							// Process and display the batch
+							var formattedBatch strings.Builder
+							for _, line := range logBatch {
+								cleanedLogLine := cleanLiveLogLine(line)
+								formatted := addLogSyntaxHighlighting(cleanedLogLine)
+								formattedBatch.WriteString(formatted + "\n")
+							}
+							
+							app.QueueUpdateDraw(func() {
+								_, _ = rightPanel.Write([]byte(formattedBatch.String()))
+							})
+							
+							// Clear the batch
+							logBatch = logBatch[:0]
+						}
+					case <-done:
+						return
+					}
+				}
+			}()
+			
 			for {
 				_, message, err := c.ReadMessage()
 				if err != nil {
+					done <- true // Stop the batching goroutine
 					app.QueueUpdateDraw(func() {
 						rightPanel.SetText(fmt.Sprintf("[yellow]Connection closed: %v[-]", err))
 					})
 					break
 				}
-				cleanedLogLine := cleanLiveLogLine(string(message))
-				formatted := addLogSyntaxHighlighting(cleanedLogLine)
-				app.QueueUpdateDraw(func() {
-					_, _ = rightPanel.Write([]byte(formatted + "\n"))
-				})
+				
+				// Add to batch instead of processing immediately
+				logBatch = append(logBatch, string(message))
+				
+				// If batch gets too large, process immediately to avoid memory issues
+				if len(logBatch) >= 50 {
+					var formattedBatch strings.Builder
+					for _, line := range logBatch {
+						cleanedLogLine := cleanLiveLogLine(line)
+						formatted := addLogSyntaxHighlighting(cleanedLogLine)
+						formattedBatch.WriteString(formatted + "\n")
+					}
+					
+					app.QueueUpdateDraw(func() {
+						_, _ = rightPanel.Write([]byte(formattedBatch.String()))
+					})
+					
+					// Clear the batch
+					logBatch = logBatch[:0]
+				}
 			}
 			c.Close()
 			time.Sleep(5 * time.Second)
