@@ -1880,7 +1880,7 @@ func connectAndStreamLogs(app *tview.Application, logsUrl string, rightPanel *tv
 				cleanedLogLine := cleanLiveLogLine(string(message))
 				formatted := addLogSyntaxHighlighting(cleanedLogLine)
 				app.QueueUpdateDraw(func() {
-					rightPanel.Write([]byte(formatted + "\n"))
+					_, _ = rightPanel.Write([]byte(formatted + "\n"))
 				})
 			}
 			c.Close()
