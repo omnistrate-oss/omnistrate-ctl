@@ -124,11 +124,11 @@ func runUpdateTemplate(cmd *cobra.Command, args []string) error {
 
 	// Check if deployment cell ID is provided
 	if id != "" {
-		fmt.Printf("📋 Deployment Cell Configuration Update\n")
+		fmt.Printf("Deployment Cell Configuration Update\n")
 		fmt.Printf("Deployment Cell ID: %s\n", id)
 		fmt.Printf("Configuration File: %s\n\n", configFile)
 
-		fmt.Printf("🔄 Updating deployment cell configuration...\n")
+		utils.PrintInfo("Updating deployment cell configuration...")
 		return updateDeploymentCellConfiguration(ctx, token, id, configFile, syncWithTemplate)
 	}
 
