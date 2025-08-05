@@ -48,7 +48,7 @@ func init() {
 	describeTemplateCmd.Flags().StringP("cloud", "c", "", "Cloud provider (aws, azure, gcp)")
 	describeTemplateCmd.Flags().StringP("id", "i", "", "Deployment cell ID")
 	describeTemplateCmd.Flags().StringP("output", "o", "yaml", "Output format (yaml, json, table)")
-	describeTemplateCmd.Flags().StringP("output-file", "f", "", "Output file")
+	describeTemplateCmd.Flags().StringP("output-file", "", "", "Output template to file (YAML format)")
 }
 
 func runDescribeTemplate(cmd *cobra.Command, args []string) error {
