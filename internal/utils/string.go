@@ -1,6 +1,8 @@
 package utils
 
 import (
+	"encoding/json"
+	"os"
 	"strings"
 	"unicode/utf8"
 
@@ -45,4 +47,41 @@ func CutString(str string, length int) string {
 	}
 
 	return string([]rune(str)[:length])
+}
+
+// ParseCommaSeparatedList parses a comma-separated string into a slice of strings
+func ParseCommaSeparatedList(input string) []string {
+	if strings.TrimSpace(input) == "" {
+		return []string{}
+	}
+	
+	parts := strings.Split(input, ",")
+	result := make([]string, 0, len(parts))
+	
+	for _, part := range parts {
+		trimmed := strings.TrimSpace(part)
+		if trimmed != "" {
+			result = append(result, trimmed)
+		}
+	}
+	
+	return result
+}
+
+// ReadFile reads the contents of a file
+func ReadFile(filePath string) ([]byte, error) {
+	data, err := os.ReadFile(filePath)
+	if err != nil {
+		return nil, errors.Wrapf(err, "failed to read file %s", filePath)
+	}
+	return data, nil
+}
+
+// FormatJSON formats an interface{} as pretty-printed JSON
+func FormatJSON(data interface{}) (string, error) {
+	jsonBytes, err := json.MarshalIndent(data, "", "  ")
+	if err != nil {
+		return "", errors.Wrap(err, "failed to format JSON")
+	}
+	return string(jsonBytes), nil
 }

@@ -3,9 +3,12 @@ package utils
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/cqroot/prompt"
+	"github.com/cqroot/prompt/choose"
+	"github.com/fatih/color"
+	"gopkg.in/yaml.v3"
 	"os"
 
-	"github.com/fatih/color"
 	"github.com/omnistrate-oss/omnistrate-ctl/internal/config"
 )
 
@@ -133,4 +136,40 @@ func PrintTextTableJsonOutput[T any](output string, object T) error {
 		return fmt.Errorf("unsupported output format: %s", output)
 	}
 	return nil
+}
+
+func PrintTextTableYamlOutput[T any](object T) error {
+	data, err := yaml.Marshal(object)
+	if err != nil {
+		return err
+	}
+
+	formatted := string(data)
+	fmt.Print(formatted)
+	LastPrintedString = formatted
+	return nil
+}
+
+func WriteYAMLToFile[T any](filePath string, object T) error {
+	data, err := yaml.Marshal(object)
+	if err != nil {
+		return fmt.Errorf("failed to marshal object to YAML: %w", err)
+	}
+
+	err = os.WriteFile(filePath, data, 0600)
+	if err != nil {
+		return fmt.Errorf("failed to write YAML to file %s: %w", filePath, err)
+	}
+
+	PrintSuccess(fmt.Sprintf("Template saved to %s", filePath))
+	return nil
+}
+
+func ConfirmAction(message string) (bool, error) {
+	confirmedChoice, err := prompt.New().Ask(message).Choose([]string{"Yes", "No"}, choose.WithTheme(choose.ThemeArrow))
+	if err != nil {
+		return false, err
+	}
+
+	return confirmedChoice == "Yes", nil
 }
