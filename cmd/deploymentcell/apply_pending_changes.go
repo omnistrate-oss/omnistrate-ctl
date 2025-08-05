@@ -16,12 +16,17 @@ import (
 
 var applyPendingChangesCmd = &cobra.Command{
 	Use:   "apply-pending-changes",
-	Short: "Apply pending changes to deployment cell",
-	Long: `Review and confirm the pending configuration changes for deployment cells.
+	Short: "Apply pending configuration changes to a deployment cell",
+	Long: `Apply pending configuration changes to a deployment cell.
 
-Pending changes are activated and become the live configuration for those cells.
-This command allows you to review the pending changes before applying them to 
-ensure they are correct.
+When you update a deployment cell's configuration template, the changes are initially 
+stored as "pending changes" and do not take effect immediately. This command reviews 
+and applies those pending changes to make them active in the deployment cell.
+
+This is useful for:
+- Activating configuration changes made through update-config-template
+- Reviewing pending changes before they take effect
+- Confirming configuration updates in a controlled manner
 
 Examples:
   # Apply pending changes to specific deployment cell

@@ -70,11 +70,16 @@ func runUpdateTemplate(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	// ID
+	// ID from flag
 	id, err := cmd.Flags().GetString("id")
 	if err != nil {
 		utils.PrintError(err)
 		return err
+	}
+
+	// Check for ID as positional argument if not provided via flag
+	if id == "" && len(args) > 0 {
+		id = args[0]
 	}
 
 	syncWithTemplate, err := cmd.Flags().GetBool("sync-with-template")
@@ -117,8 +122,13 @@ func runUpdateTemplate(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	// Check if deployment cell ID is provided as argument
+	// Check if deployment cell ID is provided
 	if id != "" {
+		fmt.Printf("📋 Deployment Cell Configuration Update\n")
+		fmt.Printf("Deployment Cell ID: %s\n", id)
+		fmt.Printf("Configuration File: %s\n\n", configFile)
+
+		fmt.Printf("🔄 Updating deployment cell configuration...\n")
 		return updateDeploymentCellConfiguration(ctx, token, id, configFile, syncWithTemplate)
 	}
 
@@ -205,22 +215,25 @@ func updateDeploymentCellFromFile(ctx context.Context, token string, deploymentC
 		return err
 	}
 
-	// Parse as DeploymentCellTemplate directly (no cloud provider wrapper)
+	// Handle empty file case - should remove all amenities
 	var config model.DeploymentCellTemplate
-	err = yaml.Unmarshal(configData, &config)
-	if err != nil {
-		utils.PrintError(fmt.Errorf("failed to parse configuration file %s: %w", configFile, err))
-		return err
+	if len(configData) == 0 || string(configData) == "" {
+		// Empty file means remove all amenities
+		fmt.Printf("ℹ️  Configuration file is empty - removing all amenities from deployment cell\n")
+		config = model.DeploymentCellTemplate{
+			ManagedAmenities: []model.Amenity{},
+			CustomAmenities:  []model.Amenity{},
+		}
+	} else {
+		// Parse as DeploymentCellTemplate directly (no cloud provider wrapper)
+		err = yaml.Unmarshal(configData, &config)
+		if err != nil {
+			utils.PrintError(fmt.Errorf("failed to parse configuration file %s: %w", configFile, err))
+			return err
+		}
 	}
 
-	// Show preview of changes
-	fmt.Printf("📋 Deployment Cell Configuration Update\n")
-	fmt.Printf("Deployment Cell ID: %s\n", deploymentCellID)
-	fmt.Printf("Configuration File: %s\n", configFile)
-	fmt.Println()
-
 	// Update deployment cell configuration
-	fmt.Printf("🔄 Updating deployment cell configuration...\n")
 	var pendingChanges []fleet.Amenity
 
 	for _, a := range config.ManagedAmenities {
@@ -243,6 +256,14 @@ func updateDeploymentCellFromFile(ctx context.Context, token string, deploymentC
 		})
 	}
 
+	// Show what we're doing
+	if len(pendingChanges) == 0 {
+		fmt.Printf("🗑️  Removing all amenities from deployment cell\n")
+	} else {
+		fmt.Printf("📦 Updating with %d amenities (%d managed, %d custom)\n",
+			len(pendingChanges), len(config.ManagedAmenities), len(config.CustomAmenities))
+	}
+
 	err = dataaccess.UpdateHostCluster(ctx, token, deploymentCellID, pendingChanges, nil)
 	if err != nil {
 		utils.PrintError(fmt.Errorf("failed to update deployment cell configuration: %w", err))
@@ -251,6 +272,7 @@ func updateDeploymentCellFromFile(ctx context.Context, token string, deploymentC
 
 	utils.PrintSuccess(fmt.Sprintf("Successfully updated configuration for deployment cell %s", deploymentCellID))
 
+	// Get updated deployment cell details
 	var hc *fleet.HostCluster
 	hc, err = dataaccess.DescribeHostCluster(ctx, token, deploymentCellID)
 	if err != nil {
@@ -258,11 +280,9 @@ func updateDeploymentCellFromFile(ctx context.Context, token string, deploymentC
 		return err
 	}
 
-	fmt.Printf("Updated Deployment Cell Details:\n")
+	// Print updated details in a readable format
+	fmt.Printf("\n📊 Updated Deployment Cell Details:\n")
 	fmt.Printf("ID: %s\n", hc.GetId())
-	fmt.Printf("InSyncWithTemplate: %t\n", hc.GetIsInSyncWithOrgTemplate())
-	fmt.Printf("Pending Changes: %v\n", hc.GetPendingAmenities())
-	fmt.Printf("Current Amenities: %v\n", hc.GetAmenities())
 
 	return nil
 }
