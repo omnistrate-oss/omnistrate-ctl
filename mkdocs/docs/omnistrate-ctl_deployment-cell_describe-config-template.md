@@ -40,7 +40,7 @@ omnistrate-ctl deployment-cell describe-config-template [flags]
   -h, --help                 help for describe-config-template
   -i, --id string            Deployment cell ID
   -o, --output string        Output format (yaml, json, table) (default "yaml")
-  -f, --output-file string   Output file
+      --output-file string   Output template to file (YAML format)
 ```
 
 ### Options inherited from parent commands
