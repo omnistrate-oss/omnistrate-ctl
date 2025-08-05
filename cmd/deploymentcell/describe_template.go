@@ -164,7 +164,7 @@ func describeOrganizationTemplate(ctx context.Context, token string, environment
 	}
 
 	totalAmenities := len(template.ManagedAmenities) + len(template.CustomAmenities)
-	fmt.Printf("📋 Deployment Cell Configuration Template\n")
+	fmt.Printf("Deployment Cell Configuration Template\n")
 	fmt.Printf("Organization: %s\n", utils.FromPtr(spOrg.Id))
 	fmt.Printf("Environment: %s\n", environment)
 	fmt.Printf("Cloud Provider: %s\n", cloudProvider)

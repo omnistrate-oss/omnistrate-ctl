@@ -73,11 +73,11 @@ func runApplyPendingChanges(cmd *cobra.Command, args []string) error {
 	}
 
 	// Display pending changes
-	fmt.Printf("📋 Pending Changes for Deployment Cell: %s\n", deploymentCellID)
+	fmt.Printf("Pending Changes for Deployment Cell: %s\n", deploymentCellID)
 
 	pendingChanges := hc.GetPendingAmenities()
 	if len(pendingChanges) == 0 {
-		fmt.Printf("✅ No pending changes found.\n")
+		utils.PrintSuccess("No pending changes found.")
 		utils.PrintInfo("Deployment cell is already up to date")
 		return nil
 	}
@@ -85,7 +85,7 @@ func runApplyPendingChanges(cmd *cobra.Command, args []string) error {
 	fmt.Printf("Total pending changes: %d amenities\n\n", len(pendingChanges))
 
 	// Display pending changes in a readable format
-	fmt.Printf("🔄 Pending Amenities:\n")
+	fmt.Printf("Pending Amenities:\n")
 	for i, amenity := range pendingChanges {
 		fmt.Printf("  %d. Name: %s\n", i+1, amenity.GetName())
 		if amenity.GetDescription() != "" {
@@ -102,7 +102,7 @@ func runApplyPendingChanges(cmd *cobra.Command, args []string) error {
 	shouldConfirm := !forceFlag
 
 	if shouldConfirm {
-		fmt.Printf("\n⚠️  You are about to apply the above pending changes to deployment cell %s:\n", deploymentCellID)
+		utils.PrintWarning(fmt.Sprintf("You are about to apply the above pending changes to deployment cell %s", deploymentCellID))
 		fmt.Println("This will modify the live configuration of the deployment cell.")
 
 		confirmedChoice, err := prompt.New().Ask("Do you want to proceed with applying these changes?").Choose([]string{"Yes", "No"}, choose.WithTheme(choose.ThemeArrow))
@@ -120,7 +120,7 @@ func runApplyPendingChanges(cmd *cobra.Command, args []string) error {
 	}
 
 	// Apply the pending changes using the existing API
-	fmt.Printf("🔄 Applying pending changes to deployment cell %s...\n", deploymentCellID)
+	utils.PrintInfo(fmt.Sprintf("Applying pending changes to deployment cell %s...", deploymentCellID))
 
 	err = dataaccess.ApplyPendingChangesToHostCluster(ctx, token, deploymentCellID)
 	if err != nil {
