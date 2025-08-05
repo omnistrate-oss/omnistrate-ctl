@@ -197,12 +197,75 @@ func updateDeploymentCellConfiguration(ctx context.Context, token string, deploy
 }
 
 func syncDeploymentCellWithTemplate(ctx context.Context, token string, deploymentCellID string) error {
-	// Check current status
-	err := dataaccess.UpdateHostCluster(ctx, token, deploymentCellID, nil, utils.ToPtr(true))
+	// Get current deployment cell state before sync
+	fmt.Printf("Checking current deployment cell configuration...\n")
+	currentHc, err := dataaccess.DescribeHostCluster(ctx, token, deploymentCellID)
+	if err != nil {
+		utils.PrintError(fmt.Errorf("failed to get current deployment cell details: %w", err))
+		return err
+	}
+
+	// Count current amenities
+	currentManagedCount := 0
+	currentCustomCount := 0
+	if currentHc.Amenities != nil {
+		for _, amenity := range currentHc.Amenities {
+			if amenity.IsManaged != nil && *amenity.IsManaged {
+				currentManagedCount++
+			} else {
+				currentCustomCount++
+			}
+		}
+	}
+
+	fmt.Printf("Current configuration: %d amenities (%d managed, %d custom)\n",
+		currentManagedCount+currentCustomCount, currentManagedCount, currentCustomCount)
+
+	// Perform sync with organization template
+	fmt.Printf("Syncing with organization template...\n")
+	err = dataaccess.UpdateHostCluster(ctx, token, deploymentCellID, nil, utils.ToPtr(true))
 	if err != nil {
 		utils.PrintError(fmt.Errorf("failed to sync deployment cell with organization template: %w", err))
 		return err
 	}
+
+	// Get updated deployment cell state after sync
+	fmt.Printf("Checking updated deployment cell configuration...\n")
+	updatedHc, err := dataaccess.DescribeHostCluster(ctx, token, deploymentCellID)
+	if err != nil {
+		utils.PrintError(fmt.Errorf("failed to get updated deployment cell details: %w", err))
+		return err
+	}
+
+	// Count updated amenities
+	updatedManagedCount := 0
+	updatedCustomCount := 0
+	if updatedHc.Amenities != nil {
+		for _, amenity := range updatedHc.Amenities {
+			if amenity.IsManaged != nil && *amenity.IsManaged {
+				updatedManagedCount++
+			} else {
+				updatedCustomCount++
+			}
+		}
+	}
+
+	// Show the results
+	totalBefore := currentManagedCount + currentCustomCount
+	totalAfter := updatedManagedCount + updatedCustomCount
+
+	if totalBefore == totalAfter && currentManagedCount == updatedManagedCount && currentCustomCount == updatedCustomCount {
+		fmt.Printf("Deployment cell is already synchronized with organization template\n")
+		fmt.Printf("Configuration remains: %d amenities (%d managed, %d custom)\n",
+			totalAfter, updatedManagedCount, updatedCustomCount)
+	} else {
+		fmt.Printf("Successfully synchronized deployment cell with organization template\n")
+		fmt.Printf("Configuration updated: %d → %d amenities\n", totalBefore, totalAfter)
+		fmt.Printf("   Managed amenities: %d → %d\n", currentManagedCount, updatedManagedCount)
+		fmt.Printf("   Custom amenities: %d → %d\n", currentCustomCount, updatedCustomCount)
+	}
+
+	utils.PrintSuccess(fmt.Sprintf("Deployment cell %s successfully synchronized with organization template", deploymentCellID))
 
 	return nil
 }
@@ -219,7 +282,7 @@ func updateDeploymentCellFromFile(ctx context.Context, token string, deploymentC
 	var templateConfig model.DeploymentCellTemplate
 	if len(configData) == 0 || string(configData) == "" {
 		// Empty file means remove all amenities
-		fmt.Printf("ℹ️  Configuration file is empty - removing all amenities from deployment cell\n")
+		fmt.Printf("Configuration file is empty - removing all amenities from deployment cell\n")
 		templateConfig = model.DeploymentCellTemplate{
 			ManagedAmenities: []model.Amenity{},
 			CustomAmenities:  []model.Amenity{},
@@ -258,9 +321,9 @@ func updateDeploymentCellFromFile(ctx context.Context, token string, deploymentC
 
 	// Show what we're doing
 	if len(pendingChanges) == 0 {
-		fmt.Printf("🗑️  Removing all amenities from deployment cell\n")
+		fmt.Printf("Removing all amenities from deployment cell\n")
 	} else {
-		fmt.Printf("📦 Updating with %d amenities (%d managed, %d custom)\n",
+		fmt.Printf("Updating with %d amenities (%d managed, %d custom)\n",
 			len(pendingChanges), len(templateConfig.ManagedAmenities), len(templateConfig.CustomAmenities))
 	}
 
@@ -281,7 +344,7 @@ func updateDeploymentCellFromFile(ctx context.Context, token string, deploymentC
 	}
 
 	// Print updated details in a readable format
-	fmt.Printf("\n📊 Updated Deployment Cell Details:\n")
+	fmt.Printf("\nUpdated Deployment Cell Details:\n")
 	fmt.Printf("ID: %s\n", hc.GetId())
 
 	return nil

@@ -90,13 +90,13 @@ func UpdateHostCluster(ctx context.Context, token string, hostClusterID string, 
 	}
 
 	updateRequest := openapiclientfleet.UpdateHostClusterRequest2{}
-	updateRequest.PendingAmenities = pendingAmenities
-
 	// Set sync with organization template flag if provided
 	if syncWithOrgTemplate != nil {
 		updateRequest.SyncWithOrgTemplate = syncWithOrgTemplate
+	} else {
+		// If sync with organization template is not provided, we do not set it
+		updateRequest.PendingAmenities = pendingAmenities
 	}
-
 	req := apiClient.HostclusterApiAPI.HostclusterApiUpdateHostCluster(ctxWithToken, hostClusterID).UpdateHostClusterRequest2(updateRequest)
 
 	var r *http.Response
