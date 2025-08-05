@@ -46,20 +46,8 @@ type ResourceInfo struct {
 }
 
 type GenericData struct {
-	LiveLogs    []LogsStream    `json:"liveLogs"`
+	LiveLogs    []dataaccess.LogsStream    `json:"liveLogs"`
 }
-
-
-
-
-type LogsStream struct {
-	PodName string `json:"podName"`
-	LogsURL string `json:"logsUrl"`
-}
-
-
-
-
 
 type HelmData struct {
 	ChartRepoName string                 `json:"chartRepoName"`
@@ -67,7 +55,7 @@ type HelmData struct {
 	ChartVersion  string                 `json:"chartVersion"`
 	ChartValues   map[string]interface{} `json:"chartValues"`
 	InstallLog    string                 `json:"installLog"`
-	LiveLogs    []LogsStream    `json:"liveLogs"`
+	LiveLogs    []dataaccess.LogsStream    `json:"liveLogs"`
 
 	Namespace     string                 `json:"namespace"`
 	ReleaseName   string                 `json:"releaseName"`
@@ -76,8 +64,7 @@ type HelmData struct {
 type TerraformData struct {
 	Files   map[string]string `json:"files"`
 	Logs    map[string]string `json:"logs"`
-LiveLogs    []LogsStream    `json:"liveLogs"`
-
+	LiveLogs    []dataaccess.LogsStream    `json:"liveLogs"`
 }
 
 func runDebug(_ *cobra.Command, args []string) error {
@@ -114,7 +101,8 @@ func runDebug(_ *cobra.Command, args []string) error {
 	}
 
 	// Use instanceData directly as a struct for BuildLogStreams and IsLogsEnabledStruct
-	IsLogsEnabled := IsLogsEnabledStruct(instanceData)
+	logsService := dataaccess.NewLogsService(ctx)
+	IsLogsEnabled := logsService.IsLogsEnabled(instanceData)
 	
 	if debugResult.ResourcesDebug != nil {
 		for resourceKey, resourceDebugInfo := range debugResult.ResourcesDebug {
@@ -124,7 +112,7 @@ func runDebug(_ *cobra.Command, args []string) error {
 			}
 			
 			// Process each resource based on its type
-			resourceInfo := processResourceByType(resourceKey, resourceDebugInfo, instanceData, instanceID, IsLogsEnabled)
+			resourceInfo := processResourceByType(resourceKey, resourceDebugInfo, instanceData, instanceID, IsLogsEnabled, logsService)
 			if resourceInfo != nil {
 				data.Resources = append(data.Resources, *resourceInfo)
 			}
@@ -136,7 +124,7 @@ func runDebug(_ *cobra.Command, args []string) error {
 }
 
 // processResourceByType identifies the resource type and processes it accordingly
-func processResourceByType(resourceKey string, resourceDebugInfo interface{}, instanceData *fleet.ResourceInstance, instanceID string, isLogsEnabled bool) *ResourceInfo {
+func processResourceByType(resourceKey string, resourceDebugInfo interface{}, instanceData *fleet.ResourceInstance, instanceID string, isLogsEnabled bool, logsService *dataaccess.LogsService) *ResourceInfo {
 	resourceInfo := &ResourceInfo{
 		ID:        resourceKey,
 		Name:      resourceKey,
@@ -146,17 +134,17 @@ func processResourceByType(resourceKey string, resourceDebugInfo interface{}, in
 
 	debugData, ok := resourceDebugInfo.(map[string]interface{})
 	if !ok {
-		return processGenericResource(resourceInfo, instanceData, instanceID, isLogsEnabled)
+		return processGenericResource(resourceInfo, instanceData, instanceID, isLogsEnabled, logsService)
 	}
 
 	actualDebugData, ok := debugData["debugData"].(map[string]interface{})
 	if !ok {
-		return processGenericResource(resourceInfo, instanceData, instanceID, isLogsEnabled)
+		return processGenericResource(resourceInfo, instanceData, instanceID, isLogsEnabled, logsService)
 	}
 
 	// Check if it's a helm resource
 	if _, hasChart := actualDebugData["chartRepoName"]; hasChart {
-		return processHelmResource(resourceInfo, actualDebugData, instanceData, instanceID, isLogsEnabled)
+		return processHelmResource(resourceInfo, actualDebugData, instanceData, instanceID, isLogsEnabled, logsService)
 	}
 
 	// Check if it's a terraform resource
@@ -165,17 +153,17 @@ func processResourceByType(resourceKey string, resourceDebugInfo interface{}, in
 	}
 
 	// Default to generic resource
-	return processGenericResource(resourceInfo, instanceData, instanceID, isLogsEnabled)
+	return processGenericResource(resourceInfo, instanceData, instanceID, isLogsEnabled, logsService)
 }
 
 // processHelmResource handles Helm resource processing
-func processHelmResource(resourceInfo *ResourceInfo, actualDebugData map[string]interface{}, instanceData *fleet.ResourceInstance, instanceID string, isLogsEnabled bool) *ResourceInfo {
+func processHelmResource(resourceInfo *ResourceInfo, actualDebugData map[string]interface{}, instanceData *fleet.ResourceInstance, instanceID string, isLogsEnabled bool, logsService *dataaccess.LogsService) *ResourceInfo {
 	resourceInfo.Type = "helm"
 	resourceInfo.HelmData = parseHelmData(actualDebugData)
 	
 	if isLogsEnabled {
-		nodeData := BuildLogStreams(instanceData, instanceID, resourceInfo.ID)
-		if nodeData != nil {
+		nodeData, err := logsService.BuildLogStreams(instanceData, instanceID, resourceInfo.ID)
+		if err == nil && nodeData != nil {
 			resourceInfo.HelmData.LiveLogs = nodeData
 		}
 	}
@@ -191,13 +179,13 @@ func processTerraformResource(resourceInfo *ResourceInfo, actualDebugData map[st
 }
 
 // processGenericResource handles Generic resource processing
-func processGenericResource(resourceInfo *ResourceInfo, instanceData *fleet.ResourceInstance, instanceID string, isLogsEnabled bool) *ResourceInfo {
+func processGenericResource(resourceInfo *ResourceInfo, instanceData *fleet.ResourceInstance, instanceID string, isLogsEnabled bool, logsService *dataaccess.LogsService) *ResourceInfo {
 	resourceInfo.Type = "generic"
 	resourceInfo.GenericData = &GenericData{}
 	
 	if isLogsEnabled {
-		nodeData := BuildLogStreams(instanceData, instanceID, resourceInfo.ID)
-		if nodeData != nil {
+		nodeData, err := logsService.BuildLogStreams(instanceData, instanceID, resourceInfo.ID)
+		if err == nil && nodeData != nil {
 			resourceInfo.GenericData.LiveLogs = nodeData
 		}
 	}
@@ -1074,8 +1062,8 @@ func formatTerraformLogsHierarchical(logs map[string]string) string {
 	return content
 }
 
-// formatLiveLogs formats the Helm live logs for display in the TUI.
-func formatLiveLogs(liveLogs []LogsStream) string {
+// formatLiveLogs formats the live logs for display in the TUI.
+func formatLiveLogs(liveLogs []dataaccess.LogsStream) string {
 	if len(liveLogs) == 0 {
 		return "[yellow]Live Logs[white]\n\nNo live logs available"
 	}
@@ -1791,95 +1779,6 @@ func init() {
 }
 
 
-
-
-
-// New function to check logs enabled directly on struct
-func IsLogsEnabledStruct(instance *fleet.ResourceInstance) bool {
-	// Check if logs are enabled via LOGS#INTERNAL feature
-	isLogsEnabled := false
-	features := instance.ConsumptionResourceInstanceResult.ProductTierFeatures
-	if features != nil {
-		if featRaw, ok := features["LOGS#INTERNAL"]; ok {
-			// featRaw is interface{}, so cast to ProductTierFeature
-			// Try concrete type first
-			if feat, ok := featRaw.(map[string]interface{}); ok {
-				if enabled, ok := feat["enabled"].(bool); ok && enabled {
-					isLogsEnabled = true
-				}
-			} 
-		}
-	}
-	return isLogsEnabled
-}
-func BuildLogStreams(instance *fleet.ResourceInstance, instanceID string, resourceKey string) []LogsStream {
-	if instance == nil {
-		return nil
-	}
-	topology := instance.ConsumptionResourceInstanceResult.DetailedNetworkTopology
-	if topology == nil {
-		return nil
-	}
-	var logStreams []LogsStream
-
-	// Find omnistrateobserv resource for log endpoint
-	var baseURL, username, password string
-	for _, entry := range topology {
-		if entry == nil {
-			continue
-		}
-		entryMap, ok := entry.(map[string]interface{})
-		if !ok {
-			continue
-		}
-		if rk, ok := entryMap["resourceKey"].(string); ok && rk == "omnistrateobserv" {
-			if ce, ok := entryMap["clusterEndpoint"].(string); ok && ce != "" {
-				parts := strings.SplitN(ce, "@", 2)
-				if len(parts) == 2 {
-					userPass := parts[0]
-					baseURL = parts[1]
-					creds := strings.SplitN(userPass, ":", 2)
-					if len(creds) == 2 {
-						username = creds[0]
-						password = creds[1]
-					}
-				}
-			}
-		}
-	}
-
-	// Find the topology entry matching the resourceKey and build log URLs for its nodes
-	for _, entry := range topology {
-		if entry == nil {
-			continue
-		}
-		entryMap, ok := entry.(map[string]interface{})
-		if !ok {
-			continue
-		}
-		rk, ok := entryMap["resourceKey"].(string)
-		if !ok || rk != resourceKey {
-			continue
-		}
-		nodes, ok := entryMap["nodes"].([]interface{})
-		if !ok {
-			continue
-		}
-		for _, n := range nodes {
-			node, ok := n.(map[string]interface{})
-			if !ok {
-				continue
-			}
-			podName, ok := node["id"].(string)
-			if !ok || podName == "" || baseURL == "" || username == "" || password == "" {
-				continue
-			}
-			logsURL := fmt.Sprintf("wss://%s/logs?username=%s&password=%s&podName=%s&instanceId=%s", baseURL, username, password, podName, instanceID)
-			logStreams = append(logStreams, LogsStream{PodName: podName, LogsURL: logsURL})
-		}
-	}
-	return logStreams
-}
 
 
 
