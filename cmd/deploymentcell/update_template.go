@@ -216,17 +216,17 @@ func updateDeploymentCellFromFile(ctx context.Context, token string, deploymentC
 	}
 
 	// Handle empty file case - should remove all amenities
-	var config model.DeploymentCellTemplate
+	var templateConfig model.DeploymentCellTemplate
 	if len(configData) == 0 || string(configData) == "" {
 		// Empty file means remove all amenities
 		fmt.Printf("ℹ️  Configuration file is empty - removing all amenities from deployment cell\n")
-		config = model.DeploymentCellTemplate{
+		templateConfig = model.DeploymentCellTemplate{
 			ManagedAmenities: []model.Amenity{},
 			CustomAmenities:  []model.Amenity{},
 		}
 	} else {
 		// Parse as DeploymentCellTemplate directly (no cloud provider wrapper)
-		err = yaml.Unmarshal(configData, &config)
+		err = yaml.Unmarshal(configData, &templateConfig)
 		if err != nil {
 			utils.PrintError(fmt.Errorf("failed to parse configuration file %s: %w", configFile, err))
 			return err
@@ -236,7 +236,7 @@ func updateDeploymentCellFromFile(ctx context.Context, token string, deploymentC
 	// Update deployment cell configuration
 	var pendingChanges []fleet.Amenity
 
-	for _, a := range config.ManagedAmenities {
+	for _, a := range templateConfig.ManagedAmenities {
 		pendingChanges = append(pendingChanges, fleet.Amenity{
 			Name:        utils.ToPtr(a.Name),
 			Description: a.Description,
@@ -246,7 +246,7 @@ func updateDeploymentCellFromFile(ctx context.Context, token string, deploymentC
 		})
 	}
 
-	for _, a := range config.CustomAmenities {
+	for _, a := range templateConfig.CustomAmenities {
 		pendingChanges = append(pendingChanges, fleet.Amenity{
 			Name:        utils.ToPtr(a.Name),
 			Description: a.Description,
@@ -261,7 +261,7 @@ func updateDeploymentCellFromFile(ctx context.Context, token string, deploymentC
 		fmt.Printf("🗑️  Removing all amenities from deployment cell\n")
 	} else {
 		fmt.Printf("📦 Updating with %d amenities (%d managed, %d custom)\n",
-			len(pendingChanges), len(config.ManagedAmenities), len(config.CustomAmenities))
+			len(pendingChanges), len(templateConfig.ManagedAmenities), len(templateConfig.CustomAmenities))
 	}
 
 	err = dataaccess.UpdateHostCluster(ctx, token, deploymentCellID, pendingChanges, nil)
