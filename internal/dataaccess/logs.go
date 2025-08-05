@@ -1,7 +1,6 @@
 package dataaccess
 
 import (
-	"context"
 	"fmt"
 	"strings"
 	"time"
@@ -25,14 +24,11 @@ type LogsConfig struct {
 
 // LogsService provides methods for log-related operations
 type LogsService struct {
-	ctx context.Context
 }
 
 // NewLogsService creates a new LogsService instance
-func NewLogsService(ctx context.Context) *LogsService {
-	return &LogsService{
-		ctx: ctx,
-	}
+func NewLogsService() *LogsService {
+	return &LogsService{}
 }
 
 // IsLogsEnabled checks if logs are enabled for the given resource instance
@@ -166,10 +162,8 @@ func (ls *LogsService) BuildLogStreams(instance *openapiclientfleet.ResourceInst
 
 // LogStreamConnection represents an active log stream connection
 type LogStreamConnection struct {
-	conn       *websocket.Conn
-	podName    string
-	instanceID string
-	done       chan struct{}
+	conn *websocket.Conn
+	done chan struct{}
 }
 
 // ConnectToLogStream establishes a websocket connection to stream logs
@@ -185,13 +179,19 @@ func (ls *LogsService) ConnectToLogStream(logsURL string) (*LogStreamConnection,
 		WriteBufferSize:  4096,
 	}
 
-	conn, _, err := dialer.Dial(logsURL, nil)
+	conn, resp, err := dialer.Dial(logsURL, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to connect to log stream: %w", err)
 	}
+	if resp != nil {
+		resp.Body.Close()
+	}
 
 	// Set read deadline for the connection
-	conn.SetReadDeadline(time.Now().Add(5 * time.Minute))
+	if err := conn.SetReadDeadline(time.Now().Add(5 * time.Minute)); err != nil {
+		conn.Close()
+		return nil, fmt.Errorf("failed to set read deadline: %w", err)
+	}
 
 	return &LogStreamConnection{
 		conn: conn,

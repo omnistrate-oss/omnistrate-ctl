@@ -101,7 +101,7 @@ func runDebug(_ *cobra.Command, args []string) error {
 	}
 
 	// Use instanceData directly as a struct for BuildLogStreams and IsLogsEnabledStruct
-	logsService := dataaccess.NewLogsService(ctx)
+	logsService := dataaccess.NewLogsService()
 	IsLogsEnabled := logsService.IsLogsEnabled(instanceData)
 	
 	if debugResult.ResourcesDebug != nil {
