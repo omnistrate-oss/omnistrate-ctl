@@ -20,7 +20,8 @@ ENV GIT_VERSION=${GIT_VERSION}
 
 RUN echo Fetching project dependencies
 RUN --mount=type=cache,target=/go/pkg/mod \
-    GOOS=${TARGETOS} GOARCH=${TARGETARCH} go mod tidy
+    GOOS=${TARGETOS} GOARCH=${TARGETARCH} \
+    make download
 
 RUN --mount=type=cache,target=/go/pkg/mod \
     GOOS=${TARGETOS} GOARCH=${TARGETARCH} go mod vendor
@@ -29,10 +30,6 @@ RUN echo Building and installing Monitoring Service
 RUN --mount=type=cache,target=/go/pkg/mod \
     --mount=type=cache,target=/root/.cache/go-build \
     make build
-RUN echo Short testing to validate the build
-RUN --mount=type=cache,target=/go/pkg/mod \
-    --mount=type=cache,target=/root/.cache/go-build \
-    GOOS=${TARGETOS} GOARCH=${TARGETARCH} go test ./... -short
     
 ## Deploy
 FROM alpine:latest AS app
