@@ -11,6 +11,7 @@ require (
 	github.com/fatih/color v1.18.0
 	github.com/gdamore/tcell/v2 v2.8.1
 	github.com/google/uuid v1.6.0
+	github.com/gorilla/websocket v1.5.4-0.20250319132907-e064f32e3674
 	github.com/hashicorp/go-retryablehttp v0.7.8
 	github.com/jedib0t/go-pretty/v6 v6.6.7
 	github.com/mitchellh/go-homedir v1.1.0

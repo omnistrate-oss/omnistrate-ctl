@@ -5,15 +5,19 @@ import (
 	"encoding/json"
 	"fmt"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/gdamore/tcell/v2"
+	"github.com/gorilla/websocket"
 	"github.com/rivo/tview"
 	"github.com/spf13/cobra"
 
 	"github.com/omnistrate-oss/omnistrate-ctl/cmd/common"
 	"github.com/omnistrate-oss/omnistrate-ctl/internal/dataaccess"
+	"github.com/omnistrate-oss/omnistrate-sdk-go/fleet"
 )
 
 var debugCmd = &cobra.Command{
@@ -24,6 +28,7 @@ var debugCmd = &cobra.Command{
 	RunE:    runDebug,
 	Example: `  omnistrate-ctl instance debug <instance-id>`,
 }
+
 
 type DebugData struct {
 	InstanceID string         `json:"instanceId"`
@@ -37,6 +42,11 @@ type ResourceInfo struct {
 	DebugData     interface{}    `json:"debugData"`
 	HelmData      *HelmData      `json:"helmData,omitempty"`
 	TerraformData *TerraformData `json:"terraformData,omitempty"`
+	GenericData   *GenericData   `json:"genericData,omitempty"` // For generic resources
+}
+
+type GenericData struct {
+	LiveLogs    []dataaccess.LogsStream    `json:"liveLogs"`
 }
 
 type HelmData struct {
@@ -45,13 +55,16 @@ type HelmData struct {
 	ChartVersion  string                 `json:"chartVersion"`
 	ChartValues   map[string]interface{} `json:"chartValues"`
 	InstallLog    string                 `json:"installLog"`
+	LiveLogs    []dataaccess.LogsStream    `json:"liveLogs"`
+
 	Namespace     string                 `json:"namespace"`
 	ReleaseName   string                 `json:"releaseName"`
 }
 
 type TerraformData struct {
-	Files map[string]string `json:"files"`
-	Logs  map[string]string `json:"logs"`
+	Files   map[string]string `json:"files"`
+	Logs    map[string]string `json:"logs"`
+	LiveLogs    []dataaccess.LogsStream    `json:"liveLogs"`
 }
 
 func runDebug(_ *cobra.Command, args []string) error {
@@ -76,54 +89,124 @@ func runDebug(_ *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to get debug information: %w", err)
 	}
 
-	// Process debug result
+	instanceData, err := dataaccess.DescribeResourceInstance(ctx, token, serviceID, environmentID, instanceID)
+	if err != nil {
+		return  fmt.Errorf("failed to describe resource instance: %w", err)
+	}
+
+	// Process debug result and identify resource types
 	data := DebugData{
 		InstanceID: instanceID,
 		Resources:  []ResourceInfo{},
 	}
 
+	// Use instanceData directly as a struct for BuildLogStreams and IsLogsEnabledStruct
+	logsService := dataaccess.NewLogsService()
+	IsLogsEnabled := logsService.IsLogsEnabled(instanceData)
+	
 	if debugResult.ResourcesDebug != nil {
 		for resourceKey, resourceDebugInfo := range debugResult.ResourcesDebug {
-			resourceInfo := ResourceInfo{
-				ID:        resourceKey,
-				Name:      resourceKey,
-				Type:      "unknown",
-				DebugData: resourceDebugInfo,
+			// Skip adding omnistrateobserv as a resource
+			if resourceKey == "omnistrateobserv" {
+				continue
 			}
-
-			if debugData, ok := resourceDebugInfo.(map[string]interface{}); ok {
-				if actualDebugData, ok := debugData["debugData"].(map[string]interface{}); ok {
-					// Check if it's a helm resource
-					if _, hasChart := actualDebugData["chartRepoName"]; hasChart {
-						resourceInfo.Type = "helm"
-						resourceInfo.HelmData = parseHelmData(actualDebugData)
-					} else {
-						// Check if it's a terraform resource by looking for terraform files or logs
-						hasTerraformFiles := false
-						hasTerraformLogs := false
-
-						for key := range actualDebugData {
-							if strings.HasPrefix(key, "rendered/") && strings.HasSuffix(key, ".tf") {
-								hasTerraformFiles = true
-							} else if strings.HasPrefix(key, "log/") && strings.Contains(key, "terraform") {
-								hasTerraformLogs = true
-							}
-						}
-
-						if hasTerraformFiles || hasTerraformLogs {
-							resourceInfo.Type = "terraform"
-							resourceInfo.TerraformData = parseTerraformData(actualDebugData)
-						}
-					}
-				}
+			
+			// Process each resource based on its type
+			resourceInfo := processResourceByType(resourceKey, resourceDebugInfo, instanceData, instanceID, IsLogsEnabled, logsService)
+			if resourceInfo != nil {
+				data.Resources = append(data.Resources, *resourceInfo)
 			}
-
-			data.Resources = append(data.Resources, resourceInfo)
 		}
 	}
 
 	// Launch TUI
 	return launchDebugTUI(data)
+}
+
+// processResourceByType identifies the resource type and processes it accordingly
+func processResourceByType(resourceKey string, resourceDebugInfo interface{}, instanceData *fleet.ResourceInstance, instanceID string, isLogsEnabled bool, logsService *dataaccess.LogsService) *ResourceInfo {
+	resourceInfo := &ResourceInfo{
+		ID:        resourceKey,
+		Name:      resourceKey,
+		Type:      "unknown",
+		DebugData: resourceDebugInfo,
+	}
+
+	debugData, ok := resourceDebugInfo.(map[string]interface{})
+	if !ok {
+		return processGenericResource(resourceInfo, instanceData, instanceID, isLogsEnabled, logsService)
+	}
+
+	actualDebugData, ok := debugData["debugData"].(map[string]interface{})
+	if !ok {
+		return processGenericResource(resourceInfo, instanceData, instanceID, isLogsEnabled, logsService)
+	}
+
+	// Check if it's a helm resource
+	if _, hasChart := actualDebugData["chartRepoName"]; hasChart {
+		return processHelmResource(resourceInfo, actualDebugData, instanceData, instanceID, isLogsEnabled, logsService)
+	}
+
+	// Check if it's a terraform resource
+	if isTerraformResource(actualDebugData) {
+		return processTerraformResource(resourceInfo, actualDebugData)
+	}
+
+	// Default to generic resource
+	return processGenericResource(resourceInfo, instanceData, instanceID, isLogsEnabled, logsService)
+}
+
+// processHelmResource handles Helm resource processing
+func processHelmResource(resourceInfo *ResourceInfo, actualDebugData map[string]interface{}, instanceData *fleet.ResourceInstance, instanceID string, isLogsEnabled bool, logsService *dataaccess.LogsService) *ResourceInfo {
+	resourceInfo.Type = "helm"
+	resourceInfo.HelmData = parseHelmData(actualDebugData)
+	
+	if isLogsEnabled {
+		nodeData, err := logsService.BuildLogStreams(instanceData, instanceID, resourceInfo.ID)
+		if err == nil && nodeData != nil {
+			resourceInfo.HelmData.LiveLogs = nodeData
+		}
+	}
+	
+	return resourceInfo
+}
+
+// processTerraformResource handles Terraform resource processing
+func processTerraformResource(resourceInfo *ResourceInfo, actualDebugData map[string]interface{}) *ResourceInfo {
+	resourceInfo.Type = "terraform"
+	resourceInfo.TerraformData = parseTerraformData(actualDebugData)
+	return resourceInfo
+}
+
+// processGenericResource handles Generic resource processing
+func processGenericResource(resourceInfo *ResourceInfo, instanceData *fleet.ResourceInstance, instanceID string, isLogsEnabled bool, logsService *dataaccess.LogsService) *ResourceInfo {
+	resourceInfo.Type = "generic"
+	resourceInfo.GenericData = &GenericData{}
+	
+	if isLogsEnabled {
+		nodeData, err := logsService.BuildLogStreams(instanceData, instanceID, resourceInfo.ID)
+		if err == nil && nodeData != nil {
+			resourceInfo.GenericData.LiveLogs = nodeData
+		}
+	}
+	
+	return resourceInfo
+}
+
+// isTerraformResource checks if the resource is a Terraform resource
+func isTerraformResource(actualDebugData map[string]interface{}) bool {
+	hasTerraformFiles := false
+	hasTerraformLogs := false
+	
+	for key := range actualDebugData {
+		if strings.HasPrefix(key, "rendered/") && strings.HasSuffix(key, ".tf") {
+			hasTerraformFiles = true
+		} else if strings.HasPrefix(key, "log/") && strings.Contains(key, "terraform") {
+			hasTerraformLogs = true
+		}
+	}
+	
+	return hasTerraformFiles || hasTerraformLogs
 }
 
 func parseHelmData(debugData map[string]interface{}) *HelmData {
@@ -203,63 +286,27 @@ func launchDebugTUI(data DebugData) error {
 	root.SetColor(tcell.ColorYellow)
 	leftPanel.SetRoot(root)
 
-	// Add resources (only helm and terraform, skip unknown types)
+	// Add resources based on their type
 	for _, resource := range data.Resources {
 		// Skip unknown resource types
-		if resource.Type != "helm" && resource.Type != "terraform" {
+		if resource.Type != "helm" && resource.Type != "terraform" && resource.Type != "generic" {
 			continue
 		}
 
-		resourceNode := tview.NewTreeNode(fmt.Sprintf("%s (%s)", resource.Name, resource.Type))
-		resourceNode.SetReference(resource)
-		resourceNode.SetColor(tcell.ColorBlue)
-
-		// Add options based on resource type
-		if resource.Type == "helm" && resource.HelmData != nil {
-			// Add Chart Values option
-			chartValuesNode := tview.NewTreeNode("Chart Values")
-			chartValuesNode.SetReference(map[string]interface{}{
-				"type":     "helm-chart-values",
-				"resource": resource,
-			})
-			chartValuesNode.SetColor(tcell.ColorGreen)
-			resourceNode.AddChild(chartValuesNode)
-
-			// Add Install Log option
-			if resource.HelmData.InstallLog != "" {
-				installLogNode := tview.NewTreeNode("Install Log")
-				installLogNode.SetReference(map[string]interface{}{
-					"type":     "helm-install-log",
-					"resource": resource,
-				})
-				installLogNode.SetColor(tcell.ColorGreen)
-				resourceNode.AddChild(installLogNode)
-			}
-		} else if resource.Type == "terraform" && resource.TerraformData != nil {
-			// Add Terraform Files option
-			if len(resource.TerraformData.Files) > 0 {
-				filesNode := tview.NewTreeNode("Terraform Files")
-				filesNode.SetReference(map[string]interface{}{
-					"type":     "terraform-files",
-					"resource": resource,
-				})
-				filesNode.SetColor(tcell.ColorGreen)
-				resourceNode.AddChild(filesNode)
-			}
-
-			// Add Install Log option
-			if len(resource.TerraformData.Logs) > 0 {
-				installLogNode := tview.NewTreeNode("Install Logs")
-				installLogNode.SetReference(map[string]interface{}{
-					"type":     "terraform-install-logs",
-					"resource": resource,
-				})
-				installLogNode.SetColor(tcell.ColorGreen)
-				resourceNode.AddChild(installLogNode)
-			}
+		// Use separate functions for each resource type
+		var resourceNode *tview.TreeNode
+		switch resource.Type {
+		case "helm":
+			resourceNode = buildHelmResourceNode(resource)
+		case "terraform":
+			resourceNode = buildTerraformResourceNode(resource)
+		case "generic":
+			resourceNode = buildGenericResourceNode(resource)
 		}
 
-		root.AddChild(resourceNode)
+		if resourceNode != nil {
+			root.AddChild(resourceNode)
+		}
 	}
 
 	root.SetExpanded(true)
@@ -284,96 +331,12 @@ func launchDebugTUI(data DebugData) error {
 
 	// Handle tree selection
 	leftPanel.SetChangedFunc(func(node *tview.TreeNode) {
-		reference := node.GetReference()
-		if reference == nil {
-			rightPanel.SetTitle("Content")
-			rightPanel.SetText("Select a resource option to view details")
-			// Clear terraform selection state when no valid selection
-			currentSelectionIsTerraformFiles = false
-			currentSelectionIsTerraformLogs = false
-			return
-		}
-
-		switch ref := reference.(type) {
-		case ResourceInfo:
-			// Show resource information
-			content := formatResourceInfo(ref)
-			rightPanel.SetTitle(fmt.Sprintf("Resource: %s", ref.Name))
-			rightPanel.SetText(content)
-			// Clear terraform selection state when selecting resource node
-			currentSelectionIsTerraformFiles = false
-			currentSelectionIsTerraformLogs = false
-		case map[string]interface{}:
-			handleOptionSelection(ref, rightPanel)
-			// Update current terraform data and selection state for file browser
-			if optionType, ok := ref["type"].(string); ok {
-				switch optionType {
-				case "terraform-files":
-					if resource, ok := ref["resource"].(ResourceInfo); ok {
-						currentTerraformData = resource.TerraformData
-						currentSelectionIsTerraformFiles = true
-						currentSelectionIsTerraformLogs = false
-					}
-				case "terraform-install-logs":
-					if resource, ok := ref["resource"].(ResourceInfo); ok {
-						currentTerraformData = resource.TerraformData
-						currentSelectionIsTerraformFiles = false
-						currentSelectionIsTerraformLogs = true
-					}
-				default:
-					currentSelectionIsTerraformFiles = false
-					currentSelectionIsTerraformLogs = false
-				}
-			} else {
-				currentSelectionIsTerraformFiles = false
-				currentSelectionIsTerraformLogs = false
-			}
-		}
+		handleTreeNodeSelection(node, rightPanel, app, &currentTerraformData, &currentSelectionIsTerraformFiles, &currentSelectionIsTerraformLogs)
 	})
 
 	// Also handle direct selection (Enter key)
 	leftPanel.SetSelectedFunc(func(node *tview.TreeNode) {
-		reference := node.GetReference()
-		if reference != nil {
-			// If it's an option, show its content
-			switch ref := reference.(type) {
-			case ResourceInfo:
-				content := formatResourceInfo(ref)
-				rightPanel.SetTitle(fmt.Sprintf("Resource: %s", ref.Name))
-				rightPanel.SetText(content)
-				// Clear terraform selection state when selecting resource node
-				currentSelectionIsTerraformFiles = false
-				currentSelectionIsTerraformLogs = false
-			case map[string]interface{}:
-				handleOptionSelection(ref, rightPanel)
-				// Update current terraform data and selection state for file browser
-				if optionType, ok := ref["type"].(string); ok {
-					switch optionType {
-					case "terraform-files":
-						if resource, ok := ref["resource"].(ResourceInfo); ok {
-							currentTerraformData = resource.TerraformData
-							currentSelectionIsTerraformFiles = true
-							currentSelectionIsTerraformLogs = false
-						}
-					case "terraform-install-logs":
-						if resource, ok := ref["resource"].(ResourceInfo); ok {
-							currentTerraformData = resource.TerraformData
-							currentSelectionIsTerraformFiles = false
-							currentSelectionIsTerraformLogs = true
-						}
-					default:
-						currentSelectionIsTerraformFiles = false
-						currentSelectionIsTerraformLogs = false
-					}
-				} else {
-					currentSelectionIsTerraformFiles = false
-					currentSelectionIsTerraformLogs = false
-				}
-				return // Don't toggle expansion for options
-			}
-		}
-		// Toggle expansion for resource nodes
-		node.SetExpanded(!node.IsExpanded())
+		handleTreeNodeEnterSelection(node, rightPanel, &currentTerraformData, &currentSelectionIsTerraformFiles, &currentSelectionIsTerraformLogs)
 	})
 
 	// Set up layout
@@ -450,6 +413,242 @@ func launchDebugTUI(data DebugData) error {
 	return nil
 }
 
+// buildHelmResourceNode creates a tree node for Helm resources with their specific options
+func buildHelmResourceNode(resource ResourceInfo) *tview.TreeNode {
+	nodeLabel := fmt.Sprintf("%s (%s)", resource.Name, resource.Type)
+	resourceNode := tview.NewTreeNode(nodeLabel)
+	resourceNode.SetReference(resource)
+	resourceNode.SetColor(tcell.ColorBlue)
+
+	if resource.HelmData != nil {
+		// Add Chart Values option
+		chartValuesNode := tview.NewTreeNode("Chart Values")
+		chartValuesNode.SetReference(map[string]interface{}{
+			"type":     "helm-chart-values",
+			"resource": resource,
+		})
+		chartValuesNode.SetColor(tcell.ColorGreen)
+		resourceNode.AddChild(chartValuesNode)
+
+		// Add Install Log option
+		if resource.HelmData.InstallLog != "" {
+			installLogNode := tview.NewTreeNode("Install Log")
+			installLogNode.SetReference(map[string]interface{}{
+				"type":     "helm-install-log",
+				"resource": resource,
+			})
+			installLogNode.SetColor(tcell.ColorGreen)
+			resourceNode.AddChild(installLogNode)
+		}
+
+		// Add Live Logs tree
+		if len(resource.HelmData.LiveLogs) > 0 {
+			liveLogsNode := tview.NewTreeNode("Live Log")
+			liveLogsNode.SetColor(tcell.ColorGreen)
+			for _, log := range resource.HelmData.LiveLogs {
+				podNode := tview.NewTreeNode(log.PodName)
+				podNode.SetReference(map[string]interface{}{
+					"type":     "live-log-pod",
+					"resource": resource,
+					"podName":  log.PodName,
+					"logsUrl":  log.LogsURL,
+				})
+				podNode.SetColor(tcell.ColorLightCyan)
+				liveLogsNode.AddChild(podNode)
+			}
+			resourceNode.AddChild(liveLogsNode)
+		}
+	}
+
+	return resourceNode
+}
+
+// buildTerraformResourceNode creates a tree node for Terraform resources with their specific options
+func buildTerraformResourceNode(resource ResourceInfo) *tview.TreeNode {
+	nodeLabel := fmt.Sprintf("%s (%s)", resource.Name, resource.Type)
+	resourceNode := tview.NewTreeNode(nodeLabel)
+	resourceNode.SetReference(resource)
+	resourceNode.SetColor(tcell.ColorBlue)
+
+	if resource.TerraformData != nil {
+		// Add Terraform Files option
+		if len(resource.TerraformData.Files) > 0 {
+			filesNode := tview.NewTreeNode("Terraform Files")
+			filesNode.SetReference(map[string]interface{}{
+				"type":     "terraform-files",
+				"resource": resource,
+			})
+			filesNode.SetColor(tcell.ColorGreen)
+			resourceNode.AddChild(filesNode)
+		}
+
+		// Add Install Log option
+		if len(resource.TerraformData.Logs) > 0 {
+			installLogNode := tview.NewTreeNode("Install Log")
+			installLogNode.SetReference(map[string]interface{}{
+				"type":     "terraform-install-logs",
+				"resource": resource,
+			})
+			installLogNode.SetColor(tcell.ColorGreen)
+			resourceNode.AddChild(installLogNode)
+		}
+	}
+
+	return resourceNode
+}
+
+// buildGenericResourceNode creates a tree node for Generic resources with their specific options
+func buildGenericResourceNode(resource ResourceInfo) *tview.TreeNode {
+	// Generic resources show only their name (no type suffix)
+	nodeLabel := resource.Name
+	resourceNode := tview.NewTreeNode(nodeLabel)
+	resourceNode.SetReference(resource)
+	resourceNode.SetColor(tcell.ColorBlue)
+
+	if resource.GenericData != nil {
+		// Add Live Logs tree
+		if len(resource.GenericData.LiveLogs) > 0 {
+			liveLogsNode := tview.NewTreeNode("Live Log")
+			liveLogsNode.SetColor(tcell.ColorGreen)
+			for _, log := range resource.GenericData.LiveLogs {
+				podNode := tview.NewTreeNode(log.PodName)
+				podNode.SetReference(map[string]interface{}{
+					"type":     "live-log-pod",
+					"resource": resource,
+					"podName":  log.PodName,
+					"logsUrl":  log.LogsURL,
+				})
+				podNode.SetColor(tcell.ColorLightCyan)
+				liveLogsNode.AddChild(podNode)
+			}
+			resourceNode.AddChild(liveLogsNode)
+		}
+	}
+
+	return resourceNode
+}
+
+// handleTreeNodeSelection processes tree node selection (when node changes/is highlighted)
+func handleTreeNodeSelection(node *tview.TreeNode, rightPanel *tview.TextView, app *tview.Application, currentTerraformData **TerraformData, currentSelectionIsTerraformFiles *bool, currentSelectionIsTerraformLogs *bool) {
+	reference := node.GetReference()
+	if reference == nil {
+		handleNonReferencedNodeSelection(node, rightPanel, currentSelectionIsTerraformFiles, currentSelectionIsTerraformLogs)
+		return
+	}
+
+	switch ref := reference.(type) {
+	case ResourceInfo:
+		handleResourceInfoSelection(ref, rightPanel, currentSelectionIsTerraformFiles, currentSelectionIsTerraformLogs)
+	case map[string]interface{}:
+		handleOptionMapSelection(ref, rightPanel, app, currentTerraformData, currentSelectionIsTerraformFiles, currentSelectionIsTerraformLogs)
+	}
+}
+
+// handleTreeNodeEnterSelection processes tree node selection (when Enter key is pressed)
+func handleTreeNodeEnterSelection(node *tview.TreeNode, rightPanel *tview.TextView, currentTerraformData **TerraformData, currentSelectionIsTerraformFiles *bool, currentSelectionIsTerraformLogs *bool) {
+	reference := node.GetReference()
+	if reference != nil {
+		// If it's an option, show its content
+		switch ref := reference.(type) {
+		case ResourceInfo:
+			handleResourceInfoSelection(ref, rightPanel, currentSelectionIsTerraformFiles, currentSelectionIsTerraformLogs)
+		case map[string]interface{}:
+			handleOptionMapSelectionForEnter(ref, rightPanel, currentTerraformData, currentSelectionIsTerraformFiles, currentSelectionIsTerraformLogs)
+			return // Don't toggle expansion for options
+		}
+	}
+	// Toggle expansion for resource nodes
+	node.SetExpanded(!node.IsExpanded())
+}
+
+// handleNonReferencedNodeSelection handles selection of nodes without references (like "Live Log" header nodes)
+func handleNonReferencedNodeSelection(node *tview.TreeNode, rightPanel *tview.TextView, currentSelectionIsTerraformFiles *bool, currentSelectionIsTerraformLogs *bool) {
+	// If the currently selected node is a Live Logs node, show pod list
+	if node.GetText() == "Live Log" {
+		rightPanel.SetTitle("Live Log")
+		// Find pod children and list their names
+		podNames := []string{}
+		for _, child := range node.GetChildren() {
+			podNames = append(podNames, child.GetText())
+		}
+		if len(podNames) > 0 {
+			rightPanel.SetText("[yellow]Live Log[white]\n\n Nodes:\n  " + strings.Join(podNames, "\n  ") + "\n\nSelect a node option to view details")
+		} else {
+			rightPanel.SetText("[yellow]Live Log[white]\n No pods available")
+		}
+	} else {
+		rightPanel.SetTitle("Content")
+		rightPanel.SetText("Select a resource option to view details")
+	}
+	// Clear terraform selection state when no valid selection
+	*currentSelectionIsTerraformFiles = false
+	*currentSelectionIsTerraformLogs = false
+}
+
+// handleResourceInfoSelection handles selection of ResourceInfo nodes
+func handleResourceInfoSelection(resource ResourceInfo, rightPanel *tview.TextView, currentSelectionIsTerraformFiles *bool, currentSelectionIsTerraformLogs *bool) {
+	// Show resource information
+	content := formatResourceInfo(resource)
+	rightPanel.SetTitle(fmt.Sprintf("Resource: %s", resource.Name))
+	rightPanel.SetText(content)
+	// Clear terraform selection state when selecting resource node
+	*currentSelectionIsTerraformFiles = false
+	*currentSelectionIsTerraformLogs = false
+}
+
+// handleOptionMapSelection handles selection of option map nodes (for tree selection changes)
+func handleOptionMapSelection(ref map[string]interface{}, rightPanel *tview.TextView, app *tview.Application, currentTerraformData **TerraformData, currentSelectionIsTerraformFiles *bool, currentSelectionIsTerraformLogs *bool) {
+	if t, ok := ref["type"].(string); ok && t == "live-log-pod" {
+		handleLiveLogPodSelection(ref, rightPanel, app)
+	} else {
+		handleOptionSelection(ref, rightPanel)
+		updateTerraformSelectionState(ref, currentTerraformData, currentSelectionIsTerraformFiles, currentSelectionIsTerraformLogs)
+	}
+}
+
+// handleOptionMapSelectionForEnter handles selection of option map nodes (for Enter key presses)
+func handleOptionMapSelectionForEnter(ref map[string]interface{}, rightPanel *tview.TextView, currentTerraformData **TerraformData, currentSelectionIsTerraformFiles *bool, currentSelectionIsTerraformLogs *bool) {
+	handleOptionSelection(ref, rightPanel)
+	updateTerraformSelectionState(ref, currentTerraformData, currentSelectionIsTerraformFiles, currentSelectionIsTerraformLogs)
+}
+
+// handleLiveLogPodSelection handles selection of live log pod nodes
+func handleLiveLogPodSelection(ref map[string]interface{}, rightPanel *tview.TextView, app *tview.Application) {
+	// Open pod log view (websocket connect)
+	podName, _ := ref["podName"].(string)
+	logsUrl, _ := ref["logsUrl"].(string)
+	rightPanel.SetTitle(fmt.Sprintf("Live Log: %s", podName))
+	rightPanel.SetText(fmt.Sprintf("Connecting to logs for %s...", podName))
+	go connectAndStreamLogs(app, logsUrl, rightPanel)
+}
+
+// updateTerraformSelectionState updates terraform selection state based on option type
+func updateTerraformSelectionState(ref map[string]interface{}, currentTerraformData **TerraformData, currentSelectionIsTerraformFiles *bool, currentSelectionIsTerraformLogs *bool) {
+	// Update current terraform data and selection state for file browser
+	if optionType, ok := ref["type"].(string); ok {
+		switch optionType {
+		case "terraform-files":
+			if resource, ok := ref["resource"].(ResourceInfo); ok {
+				*currentTerraformData = resource.TerraformData
+				*currentSelectionIsTerraformFiles = true
+				*currentSelectionIsTerraformLogs = false
+			}
+		case "terraform-install-logs":
+			if resource, ok := ref["resource"].(ResourceInfo); ok {
+				*currentTerraformData = resource.TerraformData
+				*currentSelectionIsTerraformFiles = false
+				*currentSelectionIsTerraformLogs = true
+			}
+		default:
+			*currentSelectionIsTerraformFiles = false
+			*currentSelectionIsTerraformLogs = false
+		}
+	} else {
+		*currentSelectionIsTerraformFiles = false
+		*currentSelectionIsTerraformLogs = false
+	}
+}
+
 func createHelpText() *tview.TextView {
 	helpText := tview.NewTextView()
 	helpText.SetText("Navigate: ↑/↓ to move | Enter: view content/expand | Esc: go back | f: file browser | l: logs browser | q: quit")
@@ -475,6 +674,12 @@ func handleOptionSelection(ref map[string]interface{}, rightPanel *tview.TextVie
 			rightPanel.SetTitle("Install Log")
 			rightPanel.SetText(content)
 		}
+	case "helm-live-log":
+		if resource.HelmData != nil {
+			content := formatLiveLogs(resource.HelmData.LiveLogs)
+			rightPanel.SetTitle("Live Log")
+			rightPanel.SetText(content)
+		}
 	case "terraform-files":
 		if resource.TerraformData != nil {
 			content := formatTerraformFileList(resource.TerraformData.Files)
@@ -485,6 +690,13 @@ func handleOptionSelection(ref map[string]interface{}, rightPanel *tview.TextVie
 		if resource.TerraformData != nil {
 			content := formatTerraformLogsHierarchical(resource.TerraformData.Logs)
 			rightPanel.SetTitle("Install Logs")
+			rightPanel.SetText(content)
+		}
+	
+	case "generic-live-logs":
+		if resource.GenericData != nil {
+			content := formatLiveLogs(resource.GenericData.LiveLogs)
+			rightPanel.SetTitle("Live Logs")
 			rightPanel.SetText(content)
 		}
 	}
@@ -848,6 +1060,19 @@ func formatTerraformLogsHierarchical(logs map[string]string) string {
 	content += "\n[green]Press 'l' to open logs browser and view individual log contents[-]"
 
 	return content
+}
+
+// formatLiveLogs formats the live logs for display in the TUI.
+func formatLiveLogs(liveLogs []dataaccess.LogsStream) string {
+	if len(liveLogs) == 0 {
+		return "[yellow]Live Logs[white]\n\nNo live logs available"
+	}
+	var sb strings.Builder
+	sb.WriteString("[yellow]Live Logs[white]\n\n")
+	for _, log := range liveLogs {
+		sb.WriteString(fmt.Sprintf("Pod: [cyan]%s[white]\nURL: [blue]%s[white]\n\n", log.PodName, log.LogsURL))
+	}
+	return sb.String()
 }
 
 // addYAMLSyntaxHighlighting adds basic syntax highlighting for YAML content
@@ -1551,4 +1776,110 @@ func showLogsBrowser(app *tview.Application, terraformData *TerraformData, mainF
 
 func init() {
 	// Command will be added by the parent instance command
+}
+
+
+
+
+
+var ansiEscape = regexp.MustCompile(`\x1b\[[0-9;]*[a-zA-Z]`)
+
+// Clean log line for live logs (no color, no escape codes)
+func cleanLiveLogLine(line string) string {
+	return ansiEscape.ReplaceAllString(line, "")
+}
+
+
+// Connect to websocket and stream logs to the rightPanel (reusable, modeled after logs.go)
+func connectAndStreamLogs(app *tview.Application, logsUrl string, rightPanel *tview.TextView) {
+	if logsUrl == "" {
+		app.QueueUpdateDraw(func() {
+			rightPanel.SetText("[red]No log URL provided[-]")
+		})
+		return
+	}
+	go func() {
+		for {
+			c, _, err := websocket.DefaultDialer.Dial(logsUrl, nil)
+			if err != nil {
+				app.QueueUpdateDraw(func() {
+					rightPanel.SetText(fmt.Sprintf("[red]Failed to connect: %v[-]", err))
+				})
+				time.Sleep(5 * time.Second)
+				continue
+			}
+			defer c.Close()
+			app.QueueUpdateDraw(func() {
+				rightPanel.SetText("")
+			})
+			
+			// Batching mechanism for performance optimization
+			var logBatch []string
+			batchTicker := time.NewTicker(100 * time.Millisecond) // Process batch every 100ms
+			defer batchTicker.Stop()
+			
+			// Channel to signal when to stop batching
+			done := make(chan bool)
+			
+			// Goroutine to process batched logs
+			go func() {
+				for {
+					select {
+					case <-batchTicker.C:
+						if len(logBatch) > 0 {
+							// Process and display the batch
+							var formattedBatch strings.Builder
+							for _, line := range logBatch {
+								cleanedLogLine := cleanLiveLogLine(line)
+								formatted := addLogSyntaxHighlighting(cleanedLogLine)
+								formattedBatch.WriteString(formatted + "\n")
+							}
+							
+							app.QueueUpdateDraw(func() {
+								_, _ = rightPanel.Write([]byte(formattedBatch.String()))
+							})
+							
+							// Clear the batch
+							logBatch = logBatch[:0]
+						}
+					case <-done:
+						return
+					}
+				}
+			}()
+			
+			for {
+				_, message, err := c.ReadMessage()
+				if err != nil {
+					done <- true // Stop the batching goroutine
+					app.QueueUpdateDraw(func() {
+						rightPanel.SetText(fmt.Sprintf("[yellow]Connection closed: %v[-]", err))
+					})
+					break
+				}
+				
+				// Add to batch instead of processing immediately
+				logBatch = append(logBatch, string(message))
+				
+				// If batch gets too large, process immediately to avoid memory issues
+				if len(logBatch) >= 50 {
+					var formattedBatch strings.Builder
+					for _, line := range logBatch {
+						cleanedLogLine := cleanLiveLogLine(line)
+						formatted := addLogSyntaxHighlighting(cleanedLogLine)
+						formattedBatch.WriteString(formatted + "\n")
+					}
+					
+					app.QueueUpdateDraw(func() {
+						_, _ = rightPanel.Write([]byte(formattedBatch.String()))
+					})
+					
+					// Clear the batch
+					logBatch = logBatch[:0]
+				}
+			}
+			c.Close()
+			time.Sleep(5 * time.Second)
+		}
+	}()
 }
