@@ -240,8 +240,8 @@ func syncDeploymentCellWithTemplate(ctx context.Context, token string, deploymen
 	// Count updated amenities
 	updatedManagedCount := 0
 	updatedCustomCount := 0
-	if updatedHc.Amenities != nil {
-		for _, amenity := range updatedHc.Amenities {
+	if updatedHc.PendingAmenities != nil {
+		for _, amenity := range updatedHc.PendingAmenities {
 			if amenity.IsManaged != nil && *amenity.IsManaged {
 				updatedManagedCount++
 			} else {
