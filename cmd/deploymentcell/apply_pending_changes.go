@@ -75,27 +75,63 @@ func runApplyPendingChanges(cmd *cobra.Command, args []string) error {
 	// Display pending changes
 	fmt.Printf("Pending Changes for Deployment Cell: %s\n", deploymentCellID)
 
-	pendingChanges := hc.GetPendingAmenities()
-	if len(pendingChanges) == 0 {
+	if !utils.FromPtr(hc.HasPendingChanges) {
 		utils.PrintSuccess("No pending changes found.")
 		utils.PrintInfo("Deployment cell is already up to date")
 		return nil
 	}
 
+	pendingChanges := hc.GetPendingAmenities()
 	fmt.Printf("Total pending changes: %d amenities\n\n", len(pendingChanges))
 
 	// Display pending changes in a readable format
-	fmt.Printf("Pending Amenities:\n")
-	for i, amenity := range pendingChanges {
-		fmt.Printf("  %d. Name: %s\n", i+1, amenity.GetName())
-		if amenity.GetDescription() != "" {
-			fmt.Printf("     Description: %s\n", amenity.GetDescription())
+	// Separate amenities into managed and custom categories
+	var managedAmenities []openapiclientfleet.Amenity
+	var customAmenities []openapiclientfleet.Amenity
+
+	for _, amenity := range pendingChanges {
+		if amenity.GetIsManaged() {
+			managedAmenities = append(managedAmenities, amenity)
+		} else {
+			customAmenities = append(customAmenities, amenity)
 		}
-		if amenity.GetType() != "" {
-			fmt.Printf("     Type: %s\n", amenity.GetType())
+	}
+
+	// Display managed amenities section
+	if len(managedAmenities) > 0 {
+		fmt.Printf("Managed Amenities (%d):\n", len(managedAmenities))
+		for i, amenity := range managedAmenities {
+			fmt.Printf("  %d. Name: %s\n", i+1, amenity.GetName())
+			if amenity.GetDescription() != "" {
+				fmt.Printf("     Description: %s\n", amenity.GetDescription())
+			}
+			if amenity.GetType() != "" {
+				fmt.Printf("     Type: %s\n", amenity.GetType())
+			}
 		}
-		fmt.Printf("     Managed: %t\n", amenity.GetIsManaged())
-		fmt.Println()
+	}
+
+	// Display custom amenities section
+	if len(customAmenities) > 0 {
+		fmt.Printf("Custom Amenities (%d):\n", len(customAmenities))
+		for i, amenity := range customAmenities {
+			fmt.Printf("  %d. Name: %s\n", i+1, amenity.GetName())
+			if amenity.GetDescription() != "" {
+				fmt.Printf("     Description: %s\n", amenity.GetDescription())
+			}
+			if amenity.GetType() != "" {
+				fmt.Printf("     Type: %s\n", amenity.GetType())
+			}
+
+			// Display properties if available
+			if amenity.Properties != nil {
+				fmt.Printf("     Properties:\n")
+				for key, value := range amenity.Properties {
+					fmt.Printf("       %s: %v\n", key, value)
+				}
+			}
+			fmt.Println()
+		}
 	}
 
 	// Confirm if not forced or if there are significant changes
