@@ -75,13 +75,13 @@ func runApplyPendingChanges(cmd *cobra.Command, args []string) error {
 	// Display pending changes
 	fmt.Printf("Pending Changes for Deployment Cell: %s\n", deploymentCellID)
 
-	pendingChanges := hc.GetPendingAmenities()
-	if len(pendingChanges) == 0 {
+	if !utils.FromPtr(hc.HasPendingChanges) {
 		utils.PrintSuccess("No pending changes found.")
 		utils.PrintInfo("Deployment cell is already up to date")
 		return nil
 	}
 
+	pendingChanges := hc.GetPendingAmenities()
 	fmt.Printf("Total pending changes: %d amenities\n\n", len(pendingChanges))
 
 	// Display pending changes in a readable format
