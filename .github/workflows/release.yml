@@ -408,7 +408,7 @@ jobs:
             GOSUMDB=sum.golang.org
 
       # Sign the resulting Docker image digest except on PRs.
-      # https://github.com/sigstore/cosign-installer
+      # https://github.com/sigstore/cosign
       - name: Sign the images with GitHub OIDC Token
         env:
           DIGEST: ${{ steps.build-and-push.outputs.digest }}
