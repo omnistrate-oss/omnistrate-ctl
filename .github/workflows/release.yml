@@ -421,7 +421,7 @@ jobs:
           cosign sign --yes ${images}
 
   update-docs:
-    name: Upldate CTL documents
+    name: Update CTL documents
     needs:
       - release-package-multi-arch
       - update-brew-formula
