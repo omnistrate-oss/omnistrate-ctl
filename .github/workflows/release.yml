@@ -352,7 +352,10 @@ jobs:
 
       # https://github.com/sigstore/cosign-installer
       - name: Install cosign
-        uses: sigstore/cosign-installer@main
+        uses: sigstore/cosign-installer@v3.9.2
+
+      - name: Check install!
+        run: cosign version
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
@@ -406,13 +409,19 @@ jobs:
 
       # Sign the resulting Docker image digest except on PRs.
       # https://github.com/sigstore/cosign
-      - name: Sign the images with GitHub OIDC Token **not production ready**
-        run: cosign sign --yes ${TAGS}
+      - name: Sign the images with GitHub OIDC Token
         env:
+          DIGEST: ${{ steps.build-and-push.outputs.digest }}
           TAGS: ${{ steps.meta.outputs.tags }}
+        run: |
+          images=""
+          for tag in ${TAGS}; do
+            images+="${tag}@${DIGEST} "
+          done
+          cosign sign --yes ${images}
 
   update-docs:
-    name: Upldate CTL documents
+    name: Update CTL documents
     needs:
       - release-package-multi-arch
       - update-brew-formula
