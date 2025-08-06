@@ -124,7 +124,7 @@ func runApplyPendingChanges(cmd *cobra.Command, args []string) error {
 			}
 
 			// Display properties if available
-			if amenity.Properties != nil && len(amenity.Properties) > 0 {
+			if amenity.Properties != nil {
 				fmt.Printf("     Properties:\n")
 				for key, value := range amenity.Properties {
 					fmt.Printf("       %s: %v\n", key, value)
