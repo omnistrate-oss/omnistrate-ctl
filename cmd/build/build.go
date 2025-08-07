@@ -831,7 +831,7 @@ func convertVolumesToConfigs(project *types.Project) (converted *types.Project, 
 
 					// Create a config for each file
 					for _, fileInDir := range files {
-						sourceFileNameSHA := utils.HashPasswordSha256(fileInDir)
+						sourceFileNameSHA := utils.HashSha256(fileInDir)
 						config := types.ConfigObjConfig{
 							Name: sourceFileNameSHA,
 							File: fileInDir,
@@ -857,7 +857,7 @@ func convertVolumesToConfigs(project *types.Project) (converted *types.Project, 
 						})
 					}
 				} else {
-					sourceFileNameSHA := utils.HashPasswordSha256(source)
+					sourceFileNameSHA := utils.HashSha256(source)
 					config := types.ConfigObjConfig{
 						Name: sourceFileNameSHA,
 						File: source,
