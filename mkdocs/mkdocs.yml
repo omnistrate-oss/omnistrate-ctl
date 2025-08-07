@@ -52,6 +52,7 @@ nav:
       - login: "omnistrate-ctl_login.md"
       - logout: "omnistrate-ctl_logout.md"
       - account: "omnistrate-ctl_account.md"
+      - deployment-cell: "omnistrate-ctl_deployment-cell.md"
       - build: "omnistrate-ctl_build.md"
       - build-from-repo: "omnistrate-ctl_build-from-repo.md"
       - custom-network: "omnistrate-ctl_custom-network.md"
