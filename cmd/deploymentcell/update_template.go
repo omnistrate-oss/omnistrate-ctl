@@ -261,7 +261,7 @@ func syncDeploymentCellWithTemplate(ctx context.Context, token string, deploymen
 	totalBefore := currentManagedCount + currentCustomCount
 	totalAfter := updatedManagedCount + updatedCustomCount
 
-	if totalAfter == 0 && updatedManagedCount == 0 && updatedCustomCount == 0 {
+	if totalAfter == 0 {
 		fmt.Printf("Deployment cell is already synchronized with organization template\n")
 		fmt.Printf("Configuration remains: %d amenities (%d managed, %d custom)\n",
 			totalBefore, currentManagedCount, currentCustomCount)
