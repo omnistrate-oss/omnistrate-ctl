@@ -221,8 +221,15 @@ func syncDeploymentCellWithTemplate(ctx context.Context, token string, deploymen
 	fmt.Printf("Current configuration: %d amenities (%d managed, %d custom)\n",
 		currentManagedCount+currentCustomCount, currentManagedCount, currentCustomCount)
 
+	envType := currentHc.GetEnvironmentType()
+	if envType == "" {
+		utils.PrintError(fmt.Errorf("deployment cell %s does not have an environment type set",
+			deploymentCellID))
+		return fmt.Errorf("missing environment type for deployment cell %s", deploymentCellID)
+	}
+
 	// Perform sync with organization template
-	fmt.Printf("Syncing with organization template...\n")
+	fmt.Printf("Syncing deployment cell with organization template for environment '%s'...\n", envType)
 	err = dataaccess.UpdateHostCluster(ctx, token, deploymentCellID, nil, utils.ToPtr(true))
 	if err != nil {
 		utils.PrintError(fmt.Errorf("failed to sync deployment cell with organization template: %w", err))
@@ -254,10 +261,10 @@ func syncDeploymentCellWithTemplate(ctx context.Context, token string, deploymen
 	totalBefore := currentManagedCount + currentCustomCount
 	totalAfter := updatedManagedCount + updatedCustomCount
 
-	if totalBefore == totalAfter && currentManagedCount == updatedManagedCount && currentCustomCount == updatedCustomCount {
+	if totalAfter == 0 && updatedManagedCount == 0 && updatedCustomCount == 0 {
 		fmt.Printf("Deployment cell is already synchronized with organization template\n")
 		fmt.Printf("Configuration remains: %d amenities (%d managed, %d custom)\n",
-			totalAfter, updatedManagedCount, updatedCustomCount)
+			totalBefore, currentManagedCount, currentCustomCount)
 	} else {
 		fmt.Printf("Successfully synchronized deployment cell with organization template\n")
 		fmt.Printf("Configuration updated: %d → %d amenities\n", totalBefore, totalAfter)
