@@ -435,10 +435,17 @@ func runBuild(cmd *cobra.Command, args []string) error {
 	}
 	utils.HandleSpinnerSuccess(spinner1, sm1, header)
 
+	// Get product tier name
+	productTier, err := dataaccess.DescribeProductTier(cmd.Context(), token, ServiceID, ProductTierID)
+	if err != nil {
+		utils.PrintError(err)
+		return err
+	}
+
 	// Print the service plan details
 	servicePlanDetails := model.ServicePlanVersion{
 		PlanID:      ProductTierID,
-		PlanName:    name,
+		PlanName:    productTier.Name,
 		ServiceID:   ServiceID,
 		ServiceName: name,
 		Environment: environment,
