@@ -792,6 +792,7 @@ func runBuildFromRepo(cmd *cobra.Command, args []string) error {
 
 			// Replace the image tag with build tag
 			fileData = []byte(strings.ReplaceAll(string(fileData), fmt.Sprintf("image: %s", versionTaggedImageUrls[defaultServiceName]), "build:\n      context: .\n      dockerfile: Dockerfile"))
+			composeSpecHasBuildContext = true
 
 			// Append the deployment section to the compose spec
 			switch deploymentType {
