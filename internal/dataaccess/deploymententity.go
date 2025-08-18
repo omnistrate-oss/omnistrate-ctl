@@ -37,13 +37,14 @@ func GetInstanceDeploymentEntity(ctx context.Context, token string, instanceID s
 		return "", err
 	}
 
-	if response.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("failed to get instance deployment entity: %s", response.Status)
-	}
-
 	body, err := io.ReadAll(response.Body)
 	if err != nil {
 		return "", err
+	}
+
+	if response.StatusCode != http.StatusOK {
+		// Include the response body in error message to provide detailed error information
+		return "", fmt.Errorf("failed to get instance deployment entity: %s - %s", response.Status, string(body))
 	}
 
 	return string(body), nil
