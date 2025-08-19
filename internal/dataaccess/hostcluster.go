@@ -11,6 +11,27 @@ import (
 	openapiclientfleet "github.com/omnistrate-oss/omnistrate-sdk-go/fleet"
 )
 
+func DebugHostCluster(ctx context.Context, token string, hostClusterID string) (*openapiclientfleet.DebugHostClusterResult, error) {
+	ctxWithToken := context.WithValue(ctx, openapiclientfleet.ContextAccessToken, token)
+	apiClient := getFleetClient()
+
+	req := apiClient.HostclusterApiAPI.HostclusterApiDebugHostCluster(ctxWithToken, hostClusterID)
+
+	var r *http.Response
+	defer func() {
+		if r != nil {
+			_ = r.Body.Close()
+		}
+	}()
+
+	debugRes, r, err := req.Execute()
+	if err != nil {
+		return nil, handleFleetError(err)
+	}
+
+	return debugRes, nil
+}
+
 func DescribeHostCluster(ctx context.Context, token string, hostClusterID string) (*openapiclientfleet.HostCluster, error) {
 	ctxWithToken := context.WithValue(ctx, openapiclientfleet.ContextAccessToken, token)
 	apiClient := getFleetClient()

@@ -27,6 +27,7 @@ func init() {
 	Cmd.AddCommand(generateTemplateCmd)
 	Cmd.AddCommand(describeTemplateCmd)
 	Cmd.AddCommand(updateTemplateCmd)
+	Cmd.AddCommand(debugCmd)
 }
 
 func isValidCloudProvider(provider string) bool {
