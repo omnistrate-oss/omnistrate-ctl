@@ -28,6 +28,7 @@ omnistrate-ctl deployment-cell [operation] [flags]
 * [omnistrate-ctl](omnistrate-ctl.md)	 - Manage your Omnistrate SaaS from the command line
 * [omnistrate-ctl deployment-cell adopt](omnistrate-ctl_deployment-cell_adopt.md)	 - Adopt a deployment cell
 * [omnistrate-ctl deployment-cell apply-pending-changes](omnistrate-ctl_deployment-cell_apply-pending-changes.md)	 - Apply pending configuration changes to a deployment cell
+* [omnistrate-ctl deployment-cell debug](omnistrate-ctl_deployment-cell_debug.md)	 - Debug deployment cell resources and retrieve custom helm execution logs
 * [omnistrate-ctl deployment-cell delete](omnistrate-ctl_deployment-cell_delete.md)	 - Delete a deployment cell
 * [omnistrate-ctl deployment-cell describe-config-template](omnistrate-ctl_deployment-cell_describe-config-template.md)	 - Describe deployment cell configuration template
 * [omnistrate-ctl deployment-cell generate-config-template](omnistrate-ctl_deployment-cell_generate-config-template.md)	 - Generate deployment cell configuration template
