@@ -863,29 +863,56 @@ func handleDebugEventsCategorySelection(ref map[string]interface{}, rightPanel *
 				var messageData map[string]interface{}
 				if err := json.Unmarshal([]byte(event.Message), &messageData); err == nil {
 					content.WriteString("  [lightcyan]Details:[white]\n")
-					for key, value := range messageData {
-						// Apply color coding based on actionStatus
-						if key == "actionStatus" {
-							actionStatus := fmt.Sprintf("%v", value)
-							color := getMessageTypeColor(actionStatus, event.EventType)
-							content.WriteString(fmt.Sprintf("    [lightcyan]%s:[white] [%s]%v[white]\n", key, color, value))
-						} else if key == "message" {
-							// Color code messages based on content
-							messageText := fmt.Sprintf("%v", value)
-							var color string
-							if strings.Contains(strings.ToLower(messageText), "completed") || 
-							   strings.Contains(strings.ToLower(messageText), "success") {
-								color = "green"
-							} else if strings.Contains(strings.ToLower(messageText), "failed") || 
-							         strings.Contains(strings.ToLower(messageText), "error") {
-								color = "red"
+					
+					// Display fields in a specific order: action, actionStatus, message, then others
+					orderedKeys := []string{"action", "actionStatus", "message"}
+					
+					// First, display the ordered keys
+					for _, key := range orderedKeys {
+						if value, exists := messageData[key]; exists {
+							if key == "actionStatus" {
+								actionStatus := fmt.Sprintf("%v", value)
+								color := getMessageTypeColor(actionStatus, event.EventType)
+								content.WriteString(fmt.Sprintf("    [lightcyan]%s:[white] [%s]%v[white]\n", key, color, value))
+							} else if key == "message" {
+								// Color code messages based on content
+								messageText := fmt.Sprintf("%v", value)
+								var color string
+								if strings.Contains(strings.ToLower(messageText), "completed") || 
+								   strings.Contains(strings.ToLower(messageText), "success") {
+									color = "green"
+								} else if strings.Contains(strings.ToLower(messageText), "failed") || 
+								         strings.Contains(strings.ToLower(messageText), "error") {
+									color = "red"
+								} else {
+									color = "white"
+								}
+								content.WriteString(fmt.Sprintf("    [lightcyan]%s:[white] [%s]%v[white]\n", key, color, value))
 							} else {
-								color = "white"
+								content.WriteString(fmt.Sprintf("    [lightcyan]%s:[white] %v\n", key, value))
 							}
-							content.WriteString(fmt.Sprintf("    [lightcyan]%s:[white] [%s]%v[white]\n", key, color, value))
-						} else {
-							content.WriteString(fmt.Sprintf("    [lightcyan]%s:[white] %v\n", key, value))
 						}
+					}
+					
+					// Then display any remaining keys in sorted order
+					var remainingKeys []string
+					for key := range messageData {
+						isOrdered := false
+						for _, orderedKey := range orderedKeys {
+							if key == orderedKey {
+								isOrdered = true
+								break
+							}
+						}
+						if !isOrdered {
+							remainingKeys = append(remainingKeys, key)
+						}
+					}
+					sort.Strings(remainingKeys)
+					
+					for _, key := range remainingKeys {
+						value := messageData[key]
+						content.WriteString(fmt.Sprintf("    [lightcyan]%s:[white] %v\n", key, value))
 					}
 				} else {
 					content.WriteString(fmt.Sprintf("  [lightcyan]Message:[white] %s\n", event.Message))
