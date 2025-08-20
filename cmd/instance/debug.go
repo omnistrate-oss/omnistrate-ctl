@@ -36,13 +36,14 @@ type DebugData struct {
 }
 
 type ResourceInfo struct {
-	ID            string         `json:"id"`
-	Name          string         `json:"name"`
-	Type          string         `json:"type"` // "helm" or "terraform"
-	DebugData     interface{}    `json:"debugData"`
-	HelmData      *HelmData      `json:"helmData,omitempty"`
-	TerraformData *TerraformData `json:"terraformData,omitempty"`
-	GenericData   *GenericData   `json:"genericData,omitempty"` // For generic resources
+	ID            string                             `json:"id"`
+	Name          string                             `json:"name"`
+	Type          string                             `json:"type"` // "helm" or "terraform"
+	DebugData     interface{}                        `json:"debugData"`
+	HelmData      *HelmData                          `json:"helmData,omitempty"`
+	TerraformData *TerraformData                     `json:"terraformData,omitempty"`
+	GenericData   *GenericData                       `json:"genericData,omitempty"` // For generic resources
+	WorkflowEvents *dataaccess.WorkflowEventsByCategory `json:"workflowEvents,omitempty"` // Debug events
 }
 
 type GenericData struct {
@@ -112,7 +113,7 @@ func runDebug(_ *cobra.Command, args []string) error {
 			}
 			
 			// Process each resource based on its type
-			resourceInfo := processResourceByType(resourceKey, resourceDebugInfo, instanceData, instanceID, IsLogsEnabled, logsService)
+			resourceInfo := processResourceByType(resourceKey, resourceDebugInfo, instanceData, instanceID, IsLogsEnabled, logsService, ctx, token, serviceID, environmentID)
 			if resourceInfo != nil {
 				data.Resources = append(data.Resources, *resourceInfo)
 			}
@@ -124,7 +125,7 @@ func runDebug(_ *cobra.Command, args []string) error {
 }
 
 // processResourceByType identifies the resource type and processes it accordingly
-func processResourceByType(resourceKey string, resourceDebugInfo interface{}, instanceData *fleet.ResourceInstance, instanceID string, isLogsEnabled bool, logsService *dataaccess.LogsService) *ResourceInfo {
+func processResourceByType(resourceKey string, resourceDebugInfo interface{}, instanceData *fleet.ResourceInstance, instanceID string, isLogsEnabled bool, logsService *dataaccess.LogsService, ctx context.Context, token, serviceID, environmentID string) *ResourceInfo {
 	resourceInfo := &ResourceInfo{
 		ID:        resourceKey,
 		Name:      resourceKey,
@@ -134,30 +135,30 @@ func processResourceByType(resourceKey string, resourceDebugInfo interface{}, in
 
 	debugData, ok := resourceDebugInfo.(map[string]interface{})
 	if !ok {
-		return processGenericResource(resourceInfo, instanceData, instanceID, isLogsEnabled, logsService)
+		return processGenericResource(resourceInfo, instanceData, instanceID, isLogsEnabled, logsService, ctx, token, serviceID, environmentID)
 	}
 
 	actualDebugData, ok := debugData["debugData"].(map[string]interface{})
 	if !ok {
-		return processGenericResource(resourceInfo, instanceData, instanceID, isLogsEnabled, logsService)
+		return processGenericResource(resourceInfo, instanceData, instanceID, isLogsEnabled, logsService, ctx, token, serviceID, environmentID)
 	}
 
 	// Check if it's a helm resource
 	if _, hasChart := actualDebugData["chartRepoName"]; hasChart {
-		return processHelmResource(resourceInfo, actualDebugData, instanceData, instanceID, isLogsEnabled, logsService)
+		return processHelmResource(resourceInfo, actualDebugData, instanceData, instanceID, isLogsEnabled, logsService, ctx, token, serviceID, environmentID)
 	}
 
 	// Check if it's a terraform resource
 	if isTerraformResource(actualDebugData) {
-		return processTerraformResource(resourceInfo, actualDebugData)
+		return processTerraformResource(resourceInfo, actualDebugData, ctx, token, serviceID, environmentID, instanceID)
 	}
 
 	// Default to generic resource
-	return processGenericResource(resourceInfo, instanceData, instanceID, isLogsEnabled, logsService)
+	return processGenericResource(resourceInfo, instanceData, instanceID, isLogsEnabled, logsService, ctx, token, serviceID, environmentID)
 }
 
 // processHelmResource handles Helm resource processing
-func processHelmResource(resourceInfo *ResourceInfo, actualDebugData map[string]interface{}, instanceData *fleet.ResourceInstance, instanceID string, isLogsEnabled bool, logsService *dataaccess.LogsService) *ResourceInfo {
+func processHelmResource(resourceInfo *ResourceInfo, actualDebugData map[string]interface{}, instanceData *fleet.ResourceInstance, instanceID string, isLogsEnabled bool, logsService *dataaccess.LogsService, ctx context.Context, token, serviceID, environmentID string) *ResourceInfo {
 	resourceInfo.Type = "helm"
 	resourceInfo.HelmData = parseHelmData(actualDebugData)
 	
@@ -168,18 +169,31 @@ func processHelmResource(resourceInfo *ResourceInfo, actualDebugData map[string]
 		}
 	}
 	
+	// Fetch workflow events for this resource
+	workflowEvents, err := dataaccess.GetDebugEventsForResource(ctx, token, serviceID, environmentID, instanceID, resourceInfo.ID)
+	if err == nil && workflowEvents != nil {
+		resourceInfo.WorkflowEvents = workflowEvents
+	}
+	
 	return resourceInfo
 }
 
 // processTerraformResource handles Terraform resource processing
-func processTerraformResource(resourceInfo *ResourceInfo, actualDebugData map[string]interface{}) *ResourceInfo {
+func processTerraformResource(resourceInfo *ResourceInfo, actualDebugData map[string]interface{}, ctx context.Context, token, serviceID, environmentID, instanceID string) *ResourceInfo {
 	resourceInfo.Type = "terraform"
 	resourceInfo.TerraformData = parseTerraformData(actualDebugData)
+	
+	// Fetch workflow events for this resource
+	workflowEvents, err := dataaccess.GetDebugEventsForResource(ctx, token, serviceID, environmentID, instanceID, resourceInfo.ID)
+	if err == nil && workflowEvents != nil {
+		resourceInfo.WorkflowEvents = workflowEvents
+	}
+	
 	return resourceInfo
 }
 
 // processGenericResource handles Generic resource processing
-func processGenericResource(resourceInfo *ResourceInfo, instanceData *fleet.ResourceInstance, instanceID string, isLogsEnabled bool, logsService *dataaccess.LogsService) *ResourceInfo {
+func processGenericResource(resourceInfo *ResourceInfo, instanceData *fleet.ResourceInstance, instanceID string, isLogsEnabled bool, logsService *dataaccess.LogsService, ctx context.Context, token, serviceID, environmentID string) *ResourceInfo {
 	resourceInfo.Type = "generic"
 	resourceInfo.GenericData = &GenericData{}
 	
@@ -188,6 +202,12 @@ func processGenericResource(resourceInfo *ResourceInfo, instanceData *fleet.Reso
 		if err == nil && nodeData != nil {
 			resourceInfo.GenericData.LiveLogs = nodeData
 		}
+	}
+	
+	// Fetch workflow events for this resource
+	workflowEvents, err := dataaccess.GetDebugEventsForResource(ctx, token, serviceID, environmentID, instanceID, resourceInfo.ID)
+	if err == nil && workflowEvents != nil {
+		resourceInfo.WorkflowEvents = workflowEvents
 	}
 	
 	return resourceInfo
@@ -460,6 +480,11 @@ func buildHelmResourceNode(resource ResourceInfo) *tview.TreeNode {
 		}
 	}
 
+	// Add Debug Events node
+	if debugEventsNode := buildDebugEventsNode(resource); debugEventsNode != nil {
+		resourceNode.AddChild(debugEventsNode)
+	}
+
 	return resourceNode
 }
 
@@ -494,6 +519,11 @@ func buildTerraformResourceNode(resource ResourceInfo) *tview.TreeNode {
 		}
 	}
 
+	// Add Debug Events node
+	if debugEventsNode := buildDebugEventsNode(resource); debugEventsNode != nil {
+		resourceNode.AddChild(debugEventsNode)
+	}
+
 	return resourceNode
 }
 
@@ -525,7 +555,127 @@ func buildGenericResourceNode(resource ResourceInfo) *tview.TreeNode {
 		}
 	}
 
+	// Add Debug Events node
+	if debugEventsNode := buildDebugEventsNode(resource); debugEventsNode != nil {
+		resourceNode.AddChild(debugEventsNode)
+	}
+
 	return resourceNode
+}
+
+// buildDebugEventsNode creates a tree node for workflow events with categories
+func buildDebugEventsNode(resource ResourceInfo) *tview.TreeNode {
+	if resource.WorkflowEvents == nil {
+		return nil
+	}
+
+	debugEventsNode := tview.NewTreeNode("Debug Events")
+	debugEventsNode.SetColor(tcell.ColorYellow)
+	
+	hasEvents := false
+	
+	// Add category nodes
+	if len(resource.WorkflowEvents.Bootstrap) > 0 {
+		bootstrapNode := tview.NewTreeNode(fmt.Sprintf("Bootstrap (%d)", len(resource.WorkflowEvents.Bootstrap)))
+		bootstrapNode.SetReference(map[string]interface{}{
+			"type":     "debug-events-category",
+			"resource": resource,
+			"category": "Bootstrap",
+			"events":   resource.WorkflowEvents.Bootstrap,
+		})
+		bootstrapNode.SetColor(tcell.ColorWhite)
+		debugEventsNode.AddChild(bootstrapNode)
+		hasEvents = true
+	}
+	
+	if len(resource.WorkflowEvents.Storage) > 0 {
+		storageNode := tview.NewTreeNode(fmt.Sprintf("Storage (%d)", len(resource.WorkflowEvents.Storage)))
+		storageNode.SetReference(map[string]interface{}{
+			"type":     "debug-events-category",
+			"resource": resource,
+			"category": "Storage",
+			"events":   resource.WorkflowEvents.Storage,
+		})
+		storageNode.SetColor(tcell.ColorWhite)
+		debugEventsNode.AddChild(storageNode)
+		hasEvents = true
+	}
+	
+	if len(resource.WorkflowEvents.Network) > 0 {
+		networkNode := tview.NewTreeNode(fmt.Sprintf("Network (%d)", len(resource.WorkflowEvents.Network)))
+		networkNode.SetReference(map[string]interface{}{
+			"type":     "debug-events-category",
+			"resource": resource,
+			"category": "Network",
+			"events":   resource.WorkflowEvents.Network,
+		})
+		networkNode.SetColor(tcell.ColorWhite)
+		debugEventsNode.AddChild(networkNode)
+		hasEvents = true
+	}
+
+	if len(resource.WorkflowEvents.Compute) > 0 {
+		computeNode := tview.NewTreeNode(fmt.Sprintf("Compute (%d)", len(resource.WorkflowEvents.Compute)))
+		computeNode.SetReference(map[string]interface{}{
+			"type":     "debug-events-category",
+			"resource": resource,
+			"category": "Compute",
+			"events":   resource.WorkflowEvents.Compute,
+		})
+		computeNode.SetColor(tcell.ColorWhite)
+		debugEventsNode.AddChild(computeNode)
+		hasEvents = true
+	}
+
+	
+	if len(resource.WorkflowEvents.Deployment) > 0 {
+		deploymentNode := tview.NewTreeNode(fmt.Sprintf("Deployment (%d)", len(resource.WorkflowEvents.Deployment)))
+		deploymentNode.SetReference(map[string]interface{}{
+			"type":     "debug-events-category",
+			"resource": resource,
+			"category": "Deployment",
+			"events":   resource.WorkflowEvents.Deployment,
+		})
+		deploymentNode.SetColor(tcell.ColorWhite)
+		debugEventsNode.AddChild(deploymentNode)
+		hasEvents = true
+	}
+
+		if len(resource.WorkflowEvents.Monitoring) > 0 {
+		monitoringNode := tview.NewTreeNode(fmt.Sprintf("Monitoring (%d)", len(resource.WorkflowEvents.Monitoring)))
+		monitoringNode.SetReference(map[string]interface{}{
+			"type":     "debug-events-category",
+			"resource": resource,
+			"category": "Monitoring",
+			"events":   resource.WorkflowEvents.Monitoring,
+		})
+		monitoringNode.SetColor(tcell.ColorWhite)
+		debugEventsNode.AddChild(monitoringNode)
+		hasEvents = true
+	}
+	
+	
+	if len(resource.WorkflowEvents.Other) > 0 {
+		otherNode := tview.NewTreeNode(fmt.Sprintf("Other (%d)", len(resource.WorkflowEvents.Other)))
+		otherNode.SetReference(map[string]interface{}{
+			"type":     "debug-events-category",
+			"resource": resource,
+			"category": "Other",
+			"events":   resource.WorkflowEvents.Other,
+		})
+		otherNode.SetColor(tcell.ColorWhite)
+		debugEventsNode.AddChild(otherNode)
+		hasEvents = true
+	}
+	
+	// If no events to display, show an informational node
+	if !hasEvents {
+		noEventsNode := tview.NewTreeNode("No events available")
+		noEventsNode.SetColor(tcell.ColorGray)
+		debugEventsNode.AddChild(noEventsNode)
+	}
+	
+	return debugEventsNode
 }
 
 // handleTreeNodeSelection processes tree node selection (when node changes/is highlighted)
@@ -600,6 +750,8 @@ func handleResourceInfoSelection(resource ResourceInfo, rightPanel *tview.TextVi
 func handleOptionMapSelection(ref map[string]interface{}, rightPanel *tview.TextView, app *tview.Application, currentTerraformData **TerraformData, currentSelectionIsTerraformFiles *bool, currentSelectionIsTerraformLogs *bool) {
 	if t, ok := ref["type"].(string); ok && t == "live-log-pod" {
 		handleLiveLogPodSelection(ref, rightPanel, app)
+	} else if t, ok := ref["type"].(string); ok && t == "debug-events-category" {
+		handleDebugEventsCategorySelection(ref, rightPanel)
 	} else {
 		handleOptionSelection(ref, rightPanel)
 		updateTerraformSelectionState(ref, currentTerraformData, currentSelectionIsTerraformFiles, currentSelectionIsTerraformLogs)
@@ -608,8 +760,12 @@ func handleOptionMapSelection(ref map[string]interface{}, rightPanel *tview.Text
 
 // handleOptionMapSelectionForEnter handles selection of option map nodes (for Enter key presses)
 func handleOptionMapSelectionForEnter(ref map[string]interface{}, rightPanel *tview.TextView, currentTerraformData **TerraformData, currentSelectionIsTerraformFiles *bool, currentSelectionIsTerraformLogs *bool) {
-	handleOptionSelection(ref, rightPanel)
-	updateTerraformSelectionState(ref, currentTerraformData, currentSelectionIsTerraformFiles, currentSelectionIsTerraformLogs)
+	if t, ok := ref["type"].(string); ok && t == "debug-events-category" {
+		handleDebugEventsCategorySelection(ref, rightPanel)
+	} else {
+		handleOptionSelection(ref, rightPanel)
+		updateTerraformSelectionState(ref, currentTerraformData, currentSelectionIsTerraformFiles, currentSelectionIsTerraformLogs)
+	}
 }
 
 // handleLiveLogPodSelection handles selection of live log pod nodes
@@ -620,6 +776,107 @@ func handleLiveLogPodSelection(ref map[string]interface{}, rightPanel *tview.Tex
 	rightPanel.SetTitle(fmt.Sprintf("Live Log: %s", podName))
 	rightPanel.SetText(fmt.Sprintf("Connecting to logs for %s...", podName))
 	go connectAndStreamLogs(app, logsUrl, rightPanel)
+}
+
+// getMessageTypeColor returns the appropriate color based on messageType and eventType
+func getMessageTypeColor(messageType, eventType string) string {
+	if messageType == "" {
+		// Check if it's a failed event type
+		failedEventTypes := []string{"WorkflowStepFailed", "WorkflowFailed", "Error"}
+		for _, failedType := range failedEventTypes {
+			if eventType == failedType {
+				return "red"
+			}
+		}
+		return "green"
+	}
+
+	switch messageType {
+	case "Completed":
+		return "green"
+	case "Failed", "Cancelled", "TimedOut", "Terminated":
+		return "red"
+	default:
+		return "yellow"
+	}
+}
+
+// handleDebugEventsCategorySelection handles selection of debug events category nodes
+func handleDebugEventsCategorySelection(ref map[string]interface{}, rightPanel *tview.TextView) {
+	category, _ := ref["category"].(string)
+	events, _ := ref["events"].([]dataaccess.CustomWorkflowEvent)
+	resource, _ := ref["resource"].(ResourceInfo)
+	
+	rightPanel.SetTitle(fmt.Sprintf("Debug Events: %s - %s", resource.Name, category))
+	
+	var content strings.Builder
+	content.WriteString(fmt.Sprintf("[yellow]=== %s Events for %s ===[white]\n\n", category, resource.Name))
+	
+	if len(events) == 0 {
+		content.WriteString("[gray]No events found in this category.[white]\n")
+	} else {
+		for i, event := range events {
+			// Determine event type color
+			var eventTypeColor string
+			switch event.EventType {
+			case "WorkflowStepStarted":
+				eventTypeColor = "blue"
+			case "WorkflowStepCompleted":
+				eventTypeColor = "green"
+			case "WorkflowStepFailed", "WorkflowFailed":
+				eventTypeColor = "red"
+			case "WorkflowStepDebug":
+				eventTypeColor = "yellow"
+			default:
+				eventTypeColor = "white"
+			}
+			
+			content.WriteString(fmt.Sprintf("[orange]Event %d:[white]\n", i+1))
+			content.WriteString(fmt.Sprintf("  [lightcyan]Time:[white] %s\n", event.EventTime))
+			content.WriteString(fmt.Sprintf("  [lightcyan]Type:[white] [%s]%s[white]\n", eventTypeColor, event.EventType))
+			
+			// Try to parse and format the message
+			if strings.HasPrefix(event.Message, "{") && strings.HasSuffix(event.Message, "}") {
+				// It's JSON, try to format it nicely
+				var messageData map[string]interface{}
+				if err := json.Unmarshal([]byte(event.Message), &messageData); err == nil {
+					content.WriteString("  [lightcyan]Details:[white]\n")
+					for key, value := range messageData {
+						// Apply color coding based on actionStatus
+						if key == "actionStatus" {
+							actionStatus := fmt.Sprintf("%v", value)
+							color := getMessageTypeColor(actionStatus, event.EventType)
+							content.WriteString(fmt.Sprintf("    [lightcyan]%s:[white] [%s]%v[white]\n", key, color, value))
+						} else if key == "message" {
+							// Color code messages based on content
+							messageText := fmt.Sprintf("%v", value)
+							var color string
+							if strings.Contains(strings.ToLower(messageText), "completed") || 
+							   strings.Contains(strings.ToLower(messageText), "success") {
+								color = "green"
+							} else if strings.Contains(strings.ToLower(messageText), "failed") || 
+							         strings.Contains(strings.ToLower(messageText), "error") {
+								color = "red"
+							} else {
+								color = "white"
+							}
+							content.WriteString(fmt.Sprintf("    [lightcyan]%s:[white] [%s]%v[white]\n", key, color, value))
+						} else {
+							content.WriteString(fmt.Sprintf("    [lightcyan]%s:[white] %v\n", key, value))
+						}
+					}
+				} else {
+					content.WriteString(fmt.Sprintf("  [lightcyan]Message:[white] %s\n", event.Message))
+				}
+			} else {
+				content.WriteString(fmt.Sprintf("  [lightcyan]Message:[white] %s\n", event.Message))
+			}
+			
+			content.WriteString("\n")
+		}
+	}
+	
+	rightPanel.SetText(content.String())
 }
 
 // updateTerraformSelectionState updates terraform selection state based on option type
