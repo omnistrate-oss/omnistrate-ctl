@@ -25,14 +25,11 @@ func DebugHostCluster(ctx context.Context, token string, hostClusterID string) (
 		}
 	}()
 
-	// Try to execute the request - this will fail with the JSON unmarshaling error
 	debugRes, r, err := req.Execute()
-	// If it's a different error, return it
 	if err != nil {
 		return nil, handleFleetError(err)
 	}
 
-	// If somehow the request succeeded (shouldn't happen with current API), return empty result
 	return debugRes, nil
 }
 
