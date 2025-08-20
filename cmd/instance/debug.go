@@ -571,6 +571,10 @@ func buildDebugEventsNode(resource ResourceInfo) *tview.TreeNode {
 
 	debugEventsNode := tview.NewTreeNode("Debug Events")
 	debugEventsNode.SetColor(tcell.ColorYellow)
+	debugEventsNode.SetReference(map[string]interface{}{
+		"type":     "debug-events-overview",
+		"resource": resource,
+	})
 	
 	hasEvents := false
 	
@@ -752,6 +756,8 @@ func handleOptionMapSelection(ref map[string]interface{}, rightPanel *tview.Text
 		handleLiveLogPodSelection(ref, rightPanel, app)
 	} else if t, ok := ref["type"].(string); ok && t == "debug-events-category" {
 		handleDebugEventsCategorySelection(ref, rightPanel)
+	} else if t, ok := ref["type"].(string); ok && t == "debug-events-overview" {
+		handleDebugEventsOverviewSelection(ref, rightPanel)
 	} else {
 		handleOptionSelection(ref, rightPanel)
 		updateTerraformSelectionState(ref, currentTerraformData, currentSelectionIsTerraformFiles, currentSelectionIsTerraformLogs)
@@ -762,6 +768,8 @@ func handleOptionMapSelection(ref map[string]interface{}, rightPanel *tview.Text
 func handleOptionMapSelectionForEnter(ref map[string]interface{}, rightPanel *tview.TextView, currentTerraformData **TerraformData, currentSelectionIsTerraformFiles *bool, currentSelectionIsTerraformLogs *bool) {
 	if t, ok := ref["type"].(string); ok && t == "debug-events-category" {
 		handleDebugEventsCategorySelection(ref, rightPanel)
+	} else if t, ok := ref["type"].(string); ok && t == "debug-events-overview" {
+		handleDebugEventsOverviewSelection(ref, rightPanel)
 	} else {
 		handleOptionSelection(ref, rightPanel)
 		updateTerraformSelectionState(ref, currentTerraformData, currentSelectionIsTerraformFiles, currentSelectionIsTerraformLogs)
@@ -875,6 +883,74 @@ func handleDebugEventsCategorySelection(ref map[string]interface{}, rightPanel *
 			content.WriteString("\n")
 		}
 	}
+	
+	rightPanel.SetText(content.String())
+}
+
+// handleDebugEventsOverviewSelection handles selection of the main debug events node
+func handleDebugEventsOverviewSelection(ref map[string]interface{}, rightPanel *tview.TextView) {
+	resource, _ := ref["resource"].(ResourceInfo)
+	
+	rightPanel.SetTitle(fmt.Sprintf("Debug Events Overview - %s", resource.Name))
+	
+	var content strings.Builder
+	content.WriteString(fmt.Sprintf("[yellow]=== Debug Events Overview for %s ===[white]\n\n", resource.Name))
+	
+	if resource.WorkflowEvents == nil {
+		content.WriteString("[gray]No workflow events available.[white]\n")
+		rightPanel.SetText(content.String())
+		return
+	}
+	
+	// Show all categories with counts and summary
+	categories := []struct {
+		name   string
+		events []dataaccess.CustomWorkflowEvent
+	}{
+		{"Bootstrap", resource.WorkflowEvents.Bootstrap},
+		{"Storage", resource.WorkflowEvents.Storage},
+		{"Network", resource.WorkflowEvents.Network},
+		{"Compute", resource.WorkflowEvents.Compute},
+		{"Deployment", resource.WorkflowEvents.Deployment},
+		{"Monitoring", resource.WorkflowEvents.Monitoring},
+		{"Other", resource.WorkflowEvents.Other},
+	}
+	
+	totalEvents := 0
+	for _, category := range categories {
+		totalEvents += len(category.events)
+	}
+	
+	content.WriteString(fmt.Sprintf("[lightcyan]Total Events:[white] %d\n\n", totalEvents))
+	
+	for _, category := range categories {
+		if len(category.events) > 0 {
+			content.WriteString(fmt.Sprintf("[%s]● %s[white] (%d events)\n", "orange", category.name, len(category.events)))
+			
+			// Show last event summary
+			if len(category.events) > 0 {
+				lastEvent := category.events[len(category.events)-1]
+				// Get event type color
+				var eventTypeColor string
+				switch lastEvent.EventType {
+				case "WorkflowStepCompleted":
+					eventTypeColor = "green"
+				case "WorkflowStepFailed":
+					eventTypeColor = "red"
+				case "WorkflowStepStarted":
+					eventTypeColor = "blue"
+				default:
+					eventTypeColor = "white"
+				}
+				content.WriteString(fmt.Sprintf("  Last: [%s]%s[white] at %s\n", eventTypeColor, lastEvent.EventType, lastEvent.EventTime))
+			}
+			content.WriteString("\n")
+		} else {
+			content.WriteString(fmt.Sprintf("[gray]○ %s[white] (0 events)\n\n", category.name))
+		}
+	}
+	
+	content.WriteString("[lightcyan]Click on a category in the tree to view detailed events.[white]\n")
 	
 	rightPanel.SetText(content.String())
 }
