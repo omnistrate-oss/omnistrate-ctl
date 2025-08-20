@@ -15,7 +15,9 @@ func DebugHostCluster(ctx context.Context, token string, hostClusterID string) (
 	ctxWithToken := context.WithValue(ctx, openapiclientfleet.ContextAccessToken, token)
 	apiClient := getFleetClient()
 
-	req := apiClient.HostclusterApiAPI.HostclusterApiDebugHostCluster(ctxWithToken, hostClusterID)
+	fmt.Printf("Debugging host cluster with ID: %s\n", hostClusterID)
+	req := apiClient.HostclusterApiAPI.HostclusterApiDebugHostCluster(ctxWithToken, hostClusterID).
+		IncludeAmenitiesInstallationLogs(true)
 
 	var r *http.Response
 	defer func() {
@@ -28,6 +30,8 @@ func DebugHostCluster(ctx context.Context, token string, hostClusterID string) (
 	if err != nil {
 		return nil, handleFleetError(err)
 	}
+
+	println(fmt.Sprintf("DebugHostCluster response: %v", debugRes))
 
 	return debugRes, nil
 }
