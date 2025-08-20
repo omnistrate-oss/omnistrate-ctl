@@ -786,6 +786,20 @@ func handleLiveLogPodSelection(ref map[string]interface{}, rightPanel *tview.Tex
 	go connectAndStreamLogs(app, logsUrl, rightPanel)
 }
 
+// formatEventTime converts UTC timestamp to a more readable format
+func formatEventTime(utcTimeStr string) string {
+	// Parse the UTC timestamp
+	utcTime, err := time.Parse(time.RFC3339, utcTimeStr)
+	if err != nil {
+		// If parsing fails, return the original string
+		return utcTimeStr
+	}
+	
+	// Convert to local time and format it nicely
+	return fmt.Sprintf("%s ", 
+		utcTime.Format("2006-01-02 15:04:05 UTC"))
+}
+
 // getMessageTypeColor returns the appropriate color based on messageType and eventType
 func getMessageTypeColor(messageType, eventType string) string {
 	if messageType == "" {
@@ -840,7 +854,7 @@ func handleDebugEventsCategorySelection(ref map[string]interface{}, rightPanel *
 			}
 			
 			content.WriteString(fmt.Sprintf("[orange]Event %d:[white]\n", i+1))
-			content.WriteString(fmt.Sprintf("  [lightcyan]Time:[white] %s\n", event.EventTime))
+			content.WriteString(fmt.Sprintf("  [lightcyan]Time:[white] %s\n", formatEventTime(event.EventTime)))
 			content.WriteString(fmt.Sprintf("  [lightcyan]Type:[white] [%s]%s[white]\n", eventTypeColor, event.EventType))
 			
 			// Try to parse and format the message
@@ -942,7 +956,7 @@ func handleDebugEventsOverviewSelection(ref map[string]interface{}, rightPanel *
 				default:
 					eventTypeColor = "white"
 				}
-				content.WriteString(fmt.Sprintf("  Last: [%s]%s[white] at %s\n", eventTypeColor, lastEvent.EventType, lastEvent.EventTime))
+				content.WriteString(fmt.Sprintf("  Last: [%s]%s[white] at %s\n", eventTypeColor, lastEvent.EventType, formatEventTime(lastEvent.EventTime)))
 			}
 			content.WriteString("\n")
 		} else {
