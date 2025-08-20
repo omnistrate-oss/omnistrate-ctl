@@ -57,13 +57,13 @@ func runDebugDeploymentCell(cmd *cobra.Command, args []string) error {
 	}
 
 	// Create output directory if it doesn't exist
-	if err := os.MkdirAll(outputDir, 0755); err != nil {
+	if err = os.MkdirAll(outputDir, 0755); err != nil {
 		return fmt.Errorf("failed to create output directory: %w", err)
 	}
 
 	// Save CustomHelmExecutionLogs to files
-	if len(debugResult.CustomHelmExecutionLogs) > 0 {
-		for serviceName, logContent := range debugResult.CustomHelmExecutionLogs {
+	if debugResult.CustomHelmExecutionLogsBase64 != nil {
+		for serviceName, logContent := range *debugResult.CustomHelmExecutionLogsBase64 {
 			// Create a safe filename from service name
 			safeServiceName := strings.ReplaceAll(serviceName, "/", "_")
 			safeServiceName = strings.ReplaceAll(safeServiceName, ":", "_")
@@ -77,15 +77,16 @@ func runDebugDeploymentCell(cmd *cobra.Command, args []string) error {
 			if decoded, decodeErr := base64.StdEncoding.DecodeString(logContent); decodeErr == nil {
 				logContentBytes = decoded
 			} else {
-				// If not base64, use content as-is
-				logContentBytes = []byte(logContent)
+				err = fmt.Errorf("failed to decode base64 content for service %s: %w", serviceName, decodeErr)
+				return err
 			}
 
 			// Try to parse as JSON for pretty formatting
 			var parsedContent interface{}
-			if err := json.Unmarshal(logContentBytes, &parsedContent); err == nil {
+			if err = json.Unmarshal(logContentBytes, &parsedContent); err == nil {
 				// Successfully parsed as JSON, format it nicely
-				if formattedJSON, err := json.MarshalIndent(parsedContent, "", "  "); err == nil {
+				var formattedJSON []byte
+				if formattedJSON, err = json.MarshalIndent(parsedContent, "", "  "); err == nil {
 					logContentBytes = formattedJSON
 					// Change extension to .json for formatted JSON content
 					filename = fmt.Sprintf("helm-logs-%s-%s.json", safeServiceName, time.Now().Format("20060102-150405"))
@@ -93,7 +94,7 @@ func runDebugDeploymentCell(cmd *cobra.Command, args []string) error {
 				}
 			}
 
-			if err := os.WriteFile(filePath, logContentBytes, 0600); err != nil {
+			if err = os.WriteFile(filePath, logContentBytes, 0600); err != nil {
 				fmt.Printf("Warning: Failed to write logs for service %s: %v\n", serviceName, err)
 				continue
 			}

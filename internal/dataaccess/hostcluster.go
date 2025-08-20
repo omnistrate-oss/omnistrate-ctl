@@ -3,17 +3,14 @@ package dataaccess
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
-	"github.com/omnistrate-oss/omnistrate-ctl/internal/utils"
-	"net/http"
-	"strings"
-
 	"github.com/omnistrate-oss/omnistrate-ctl/internal/model"
+	"github.com/omnistrate-oss/omnistrate-ctl/internal/utils"
 	openapiclientfleet "github.com/omnistrate-oss/omnistrate-sdk-go/fleet"
+	"net/http"
 )
 
-func DebugHostCluster(ctx context.Context, token string, hostClusterID string) (*model.DebugHostClusterResult, error) {
+func DebugHostCluster(ctx context.Context, token string, hostClusterID string) (*openapiclientfleet.DebugHostClusterResult, error) {
 	ctxWithToken := context.WithValue(ctx, openapiclientfleet.ContextAccessToken, token)
 	apiClient := getFleetClient()
 
@@ -29,90 +26,14 @@ func DebugHostCluster(ctx context.Context, token string, hostClusterID string) (
 	}()
 
 	// Try to execute the request - this will fail with the JSON unmarshaling error
-	_, r, err := req.Execute()
-
-	// Super hacky solution to handle os.File serialization error https://github.com/omnistrate-oss/omnistrate-sdk-go/blob/6f12a05781fb478479c0cf774edad39bd2a1a9ac/fleet/docs/DebugHostClusterResult.md?plain=1#L7
-	// Check if this is the specific JSON unmarshaling error we expect
-	if err != nil && strings.Contains(err.Error(), "cannot unmarshal string into Go struct field") {
-		// This is the expected error - the actual JSON data might be in the error details
-		// Let's check if this is a GenericOpenAPIError that contains the response body
-		var serviceErr *openapiclientfleet.GenericOpenAPIError
-		if errors.As(err, &serviceErr) {
-			// Try to get the response body from the error
-			responseBody := serviceErr.Body()
-			if len(responseBody) > 0 {
-				// Parse the JSON to extract customHelmExecutionLogs
-				var rawResponse map[string]interface{}
-				if parseErr := json.Unmarshal(responseBody, &rawResponse); parseErr != nil {
-					return nil, fmt.Errorf("failed to parse response JSON: %w", parseErr)
-				}
-
-				// Create our custom result struct
-				debugRes := &model.DebugHostClusterResult{}
-
-				// Handle customHelmExecutionLogs specially
-				if customLogs, exists := rawResponse["customHelmExecutionLogs"]; exists && customLogs != nil {
-					if logsMap, ok := customLogs.(map[string]interface{}); ok {
-						// Convert to map[string]string for easier handling
-						stringLogsMap := make(map[string]string)
-						for serviceName, logContent := range logsMap {
-							if logStr, ok := logContent.(string); ok {
-								stringLogsMap[serviceName] = logStr
-							}
-						}
-						debugRes.CustomHelmExecutionLogs = stringLogsMap
-					}
-				}
-
-				return debugRes, nil
-			}
-		}
-
-		// If we can't extract from GenericOpenAPIError, try parsing the error message directly
-		errorStr := err.Error()
-
-		// Look for JSON pattern in the error message - it might start with {
-		jsonStartIndex := strings.Index(errorStr, `{"customHelmExecutionLogs":`)
-		if jsonStartIndex != -1 {
-			// Extract the JSON part from the error message
-			jsonStr := errorStr[jsonStartIndex:]
-
-			// Parse the JSON to extract customHelmExecutionLogs
-			var rawResponse map[string]interface{}
-			if parseErr := json.Unmarshal([]byte(jsonStr), &rawResponse); parseErr != nil {
-				return nil, fmt.Errorf("failed to parse error message JSON: %w", parseErr)
-			}
-
-			// Create our custom result struct
-			debugRes := &model.DebugHostClusterResult{}
-
-			// Handle customHelmExecutionLogs specially
-			if customLogs, exists := rawResponse["customHelmExecutionLogs"]; exists && customLogs != nil {
-				if logsMap, ok := customLogs.(map[string]interface{}); ok {
-					// Convert to map[string]string for easier handling
-					stringLogsMap := make(map[string]string)
-					for serviceName, logContent := range logsMap {
-						if logStr, ok := logContent.(string); ok {
-							stringLogsMap[serviceName] = logStr
-						}
-					}
-					debugRes.CustomHelmExecutionLogs = stringLogsMap
-				}
-			}
-
-			return debugRes, nil
-		}
-
-		return nil, fmt.Errorf("unexpected error format: %w", err)
-	}
-
+	debugRes, r, err := req.Execute()
 	// If it's a different error, return it
 	if err != nil {
 		return nil, handleFleetError(err)
 	}
 
 	// If somehow the request succeeded (shouldn't happen with current API), return empty result
-	return &model.DebugHostClusterResult{}, nil
+	return debugRes, nil
 }
 
 func DescribeHostCluster(ctx context.Context, token string, hostClusterID string) (*openapiclientfleet.HostCluster, error) {

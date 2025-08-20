@@ -221,9 +221,3 @@ func (dcas DeploymentCellAmenitiesStatus) ToTableView() DeploymentCellAmenitiesT
 		LastCheck:             dcas.LastCheck,
 	}
 }
-
-// DebugHostClusterResult represents the result of debugging a host cluster with custom helm execution logs as strings
-type DebugHostClusterResult struct {
-	// Standard debug fields from the OpenAPI client (you can add more as needed)
-	CustomHelmExecutionLogs map[string]string `json:"customHelmExecutionLogs,omitempty"`
-}
