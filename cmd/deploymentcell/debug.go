@@ -53,7 +53,6 @@ func runDebugDeploymentCell(cmd *cobra.Command, args []string) error {
 	// Retrieve debug data from API
 	debugResult, err := dataaccess.DebugHostCluster(ctx, token, deploymentCellID)
 	if err != nil {
-		fmt.Printf("Warning: Failed to retrieve debug data from API: %v\n", err)
 		return fmt.Errorf("failed to retrieve debug data: %w", err)
 	}
 
