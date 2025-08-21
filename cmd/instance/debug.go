@@ -570,7 +570,7 @@ func buildDebugEventsNode(resource ResourceInfo) *tview.TreeNode {
 	}
 
 	debugEventsNode := tview.NewTreeNode("Debug Events")
-	debugEventsNode.SetColor(tcell.ColorYellow)
+	debugEventsNode.SetColor(tcell.ColorGreen)
 	debugEventsNode.SetReference(map[string]interface{}{
 		"type":     "debug-events-overview",
 		"resource": resource,
