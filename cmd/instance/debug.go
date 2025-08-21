@@ -800,6 +800,22 @@ func formatEventTime(utcTimeStr string) string {
 		utcTime.Format("2006-01-02 15:04:05 UTC"))
 }
 
+// getEventTypeColor returns the appropriate color for an event type
+func getEventTypeColor(eventType string) string {
+	switch eventType {
+	case "WorkflowStepStarted":
+		return "blue"
+	case "WorkflowStepCompleted":
+		return "green"
+	case "WorkflowStepFailed", "WorkflowFailed":
+		return "red"
+	case "WorkflowStepDebug":
+		return "yellow"
+	default:
+		return "white"
+	}
+}
+
 // getMessageTypeColor returns the appropriate color based on messageType and eventType
 func getMessageTypeColor(messageType, eventType string) string {
 	if messageType == "" {
@@ -839,19 +855,7 @@ func handleDebugEventsCategorySelection(ref map[string]interface{}, rightPanel *
 	} else {
 		for i, event := range events {
 			// Determine event type color
-			var eventTypeColor string
-			switch event.EventType {
-			case "WorkflowStepStarted":
-				eventTypeColor = "blue"
-			case "WorkflowStepCompleted":
-				eventTypeColor = "green"
-			case "WorkflowStepFailed", "WorkflowFailed":
-				eventTypeColor = "red"
-			case "WorkflowStepDebug":
-				eventTypeColor = "yellow"
-			default:
-				eventTypeColor = "white"
-			}
+			eventTypeColor := getEventTypeColor(event.EventType)
 			
 			content.WriteString(fmt.Sprintf("[orange]Event %d:[white]\n", i+1))
 			content.WriteString(fmt.Sprintf("  [lightcyan]Time:[white] %s\n", formatEventTime(event.EventTime)))
@@ -972,17 +976,7 @@ func handleDebugEventsOverviewSelection(ref map[string]interface{}, rightPanel *
 			if len(category.events) > 0 {
 				lastEvent := category.events[len(category.events)-1]
 				// Get event type color
-				var eventTypeColor string
-				switch lastEvent.EventType {
-				case "WorkflowStepCompleted":
-					eventTypeColor = "green"
-				case "WorkflowStepFailed":
-					eventTypeColor = "red"
-				case "WorkflowStepStarted":
-					eventTypeColor = "blue"
-				default:
-					eventTypeColor = "white"
-				}
+				eventTypeColor := getEventTypeColor(lastEvent.EventType)
 				content.WriteString(fmt.Sprintf("  Last: [%s]%s[white] at %s\n", eventTypeColor, lastEvent.EventType, formatEventTime(lastEvent.EventTime)))
 			}
 			content.WriteString("\n")
