@@ -73,6 +73,14 @@ type CustomWorkflowEvent struct {
 	Message   string `json:"message"`
 }
 
+// WorkflowInfo represents workflow metadata information
+type WorkflowInfo struct {
+	WorkflowID     string `json:"workflowId,omitempty"`
+	WorkflowStatus string `json:"workflowStatus,omitempty"`
+	StartTime      string `json:"startTime,omitempty"`
+	EndTime        string `json:"endTime,omitempty"`
+}
+
 // WorkflowEventsByCategory represents workflow events organized by category
 type WorkflowEventsByCategory struct {
 	Bootstrap  []CustomWorkflowEvent `json:"bootstrap"`
@@ -85,15 +93,15 @@ type WorkflowEventsByCategory struct {
 }
 
 // GetDebugEventsForResource gets workflow events for a specific resource organized by categories
-func GetDebugEventsForResource(ctx context.Context, token string, serviceID, environmentID, instanceID, resourceKey string) (*WorkflowEventsByCategory, error) {
+func GetDebugEventsForResource(ctx context.Context, token string, serviceID, environmentID, instanceID, resourceKey string) (*WorkflowEventsByCategory, *WorkflowInfo, error) {
 	// First, list all workflows for the instance
 	workflows, err := ListWorkflows(ctx, token, serviceID, environmentID, instanceID)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	if workflows == nil || workflows.Workflows == nil {
-		return &WorkflowEventsByCategory{}, nil
+		return &WorkflowEventsByCategory{}, &WorkflowInfo{}, nil
 	}
 
 	eventsByCategory := &WorkflowEventsByCategory{
@@ -105,8 +113,7 @@ func GetDebugEventsForResource(ctx context.Context, token string, serviceID, env
 		Monitoring: []CustomWorkflowEvent{},
 		Other:      []CustomWorkflowEvent{},
 	}
-
-	// For each workflow, get its events and filter/categorize them
+	workflowInfo := &WorkflowInfo{}
 	// Find the latest workflow (assuming they are ordered by creation time or use the last one)
 	var latestWorkflowID string
 	for _, workflow := range workflows.Workflows {
@@ -114,20 +121,36 @@ func GetDebugEventsForResource(ctx context.Context, token string, serviceID, env
 			continue
 		}
 		latestWorkflowID = workflow.Id
+
+		// Populate workflow metadata
+		workflowInfo.WorkflowID = workflow.Id
+		
+		// Extract status, start time, and end time if available
+		workflowInfo.WorkflowStatus = workflow.Status
+		
+		if workflow.StartTime != "" {
+			workflowInfo.StartTime = workflow.StartTime
+		}
+		if workflow.EndTime != nil {
+			workflowInfo.EndTime = *workflow.EndTime
+		}
+		
+		// Use the last workflow found (assuming they are ordered)
+		break
 	}
 
 	// Process only the latest workflow
 	if latestWorkflowID != "" {
 		workflowEvents, err := GetWorkflowEvents(ctx, token, serviceID, environmentID, latestWorkflowID)
 		if err != nil {
-			return eventsByCategory, err
+			return eventsByCategory, workflowInfo, err
 		}
 
 		if workflowEvents != nil {
 			// Convert the result to JSON and parse it with our known structure
 			workflowEventsJSON, err := json.Marshal(workflowEvents)
 			if err != nil {
-				return eventsByCategory, fmt.Errorf("failed to marshal workflow events: %w", err)
+				return eventsByCategory, workflowInfo, fmt.Errorf("failed to marshal workflow events: %w", err)
 			}
 
 			// Parse the JSON into our expected structure
@@ -149,7 +172,7 @@ func GetDebugEventsForResource(ctx context.Context, token string, serviceID, env
 
 			err = json.Unmarshal(workflowEventsJSON, &parsedResponse)
 			if err != nil {
-				return eventsByCategory, fmt.Errorf("failed to unmarshal workflow events: %w", err)
+				return eventsByCategory, workflowInfo, fmt.Errorf("failed to unmarshal workflow events: %w", err)
 			}
 
 			// Process each resource's workflow steps
@@ -194,7 +217,7 @@ func GetDebugEventsForResource(ctx context.Context, token string, serviceID, env
 		}
 	}
 
-	return eventsByCategory, nil
+	return eventsByCategory, workflowInfo, nil
 }
 
 

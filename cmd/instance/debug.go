@@ -44,6 +44,7 @@ type ResourceInfo struct {
 	TerraformData *TerraformData                     `json:"terraformData,omitempty"`
 	GenericData   *GenericData                       `json:"genericData,omitempty"` // For generic resources
 	WorkflowEvents *dataaccess.WorkflowEventsByCategory `json:"workflowEvents,omitempty"` // Debug events
+	WorkflowInfo   *dataaccess.WorkflowInfo           `json:"workflowInfo,omitempty"`   // Workflow metadata
 }
 
 type GenericData struct {
@@ -170,9 +171,12 @@ func processHelmResource(resourceInfo *ResourceInfo, actualDebugData map[string]
 	}
 	
 	// Fetch workflow events for this resource
-	workflowEvents, err := dataaccess.GetDebugEventsForResource(ctx, token, serviceID, environmentID, instanceID, resourceInfo.ID)
+	workflowEvents, workflowInfo, err := dataaccess.GetDebugEventsForResource(ctx, token, serviceID, environmentID, instanceID, resourceInfo.ID)
 	if err == nil && workflowEvents != nil {
 		resourceInfo.WorkflowEvents = workflowEvents
+	}
+	if err == nil && workflowInfo != nil {
+		resourceInfo.WorkflowInfo = workflowInfo
 	}
 	
 	return resourceInfo
@@ -184,9 +188,12 @@ func processTerraformResource(resourceInfo *ResourceInfo, actualDebugData map[st
 	resourceInfo.TerraformData = parseTerraformData(actualDebugData)
 	
 	// Fetch workflow events for this resource
-	workflowEvents, err := dataaccess.GetDebugEventsForResource(ctx, token, serviceID, environmentID, instanceID, resourceInfo.ID)
+	workflowEvents, workflowInfo, err := dataaccess.GetDebugEventsForResource(ctx, token, serviceID, environmentID, instanceID, resourceInfo.ID)
 	if err == nil && workflowEvents != nil {
 		resourceInfo.WorkflowEvents = workflowEvents
+	}
+	if err == nil && workflowInfo != nil {
+		resourceInfo.WorkflowInfo = workflowInfo
 	}
 	
 	return resourceInfo
@@ -205,9 +212,12 @@ func processGenericResource(resourceInfo *ResourceInfo, instanceData *fleet.Reso
 	}
 	
 	// Fetch workflow events for this resource
-	workflowEvents, err := dataaccess.GetDebugEventsForResource(ctx, token, serviceID, environmentID, instanceID, resourceInfo.ID)
+	workflowEvents, workflowInfo, err := dataaccess.GetDebugEventsForResource(ctx, token, serviceID, environmentID, instanceID, resourceInfo.ID)
 	if err == nil && workflowEvents != nil {
 		resourceInfo.WorkflowEvents = workflowEvents
+	}
+	if err == nil && workflowInfo != nil {
+		resourceInfo.WorkflowInfo = workflowInfo
 	}
 	
 	return resourceInfo
@@ -940,6 +950,36 @@ func handleDebugEventsOverviewSelection(ref map[string]interface{}, rightPanel *
 	
 	var content strings.Builder
 	content.WriteString(fmt.Sprintf("[yellow]=== Debug Events Overview for %s ===[white]\n\n", resource.Name))
+	
+	// Add workflow information section
+	if resource.WorkflowInfo != nil {
+		content.WriteString("[yellow]=== Workflow Information ===[white]\n")
+		if resource.WorkflowInfo.WorkflowID != "" {
+			content.WriteString(fmt.Sprintf("[lightcyan]Workflow ID:[white] %s\n", resource.WorkflowInfo.WorkflowID))
+		}
+		if resource.WorkflowInfo.WorkflowStatus != "" {
+			// Color code the status
+			var statusColor string
+			switch strings.ToLower(resource.WorkflowInfo.WorkflowStatus) {
+			case "completed", "success", "succeeded":
+				statusColor = "green"
+			case "failed", "error", "cancelled":
+				statusColor = "red"
+			case "running", "in_progress", "pending":
+				statusColor = "yellow"
+			default:
+				statusColor = "white"
+			}
+			content.WriteString(fmt.Sprintf("[lightcyan]Status:[white] [%s]%s[white]\n", statusColor, resource.WorkflowInfo.WorkflowStatus))
+		}
+		if resource.WorkflowInfo.StartTime != "" {
+			content.WriteString(fmt.Sprintf("[lightcyan]Start Time:[white] %s\n", formatEventTime(resource.WorkflowInfo.StartTime)))
+		}
+		if resource.WorkflowInfo.EndTime != "" {
+			content.WriteString(fmt.Sprintf("[lightcyan]End Time:[white] %s\n", formatEventTime(resource.WorkflowInfo.EndTime)))
+		}
+		content.WriteString("\n")
+	}
 	
 	if resource.WorkflowEvents == nil {
 		content.WriteString("[gray]No workflow events available.[white]\n")
