@@ -225,21 +225,29 @@ func GetDebugEventsForResource(ctx context.Context, token string, serviceID, env
 // categorizeStepName determines the category for a workflow step name
 func categorizeStepName(stepName string) string {
 	stepLower := strings.ToLower(stepName)
-	switch stepLower {
-	case "bootstrap":
+	
+	// Debug: print the step name being categorized
+	
+	// More comprehensive categorization based on step name patterns
+	if strings.Contains(stepLower, "bootstrap") || strings.Contains(stepLower, "init") {
 		return "bootstrap"
-	case "storage":
-		return "storage"
-	case "network":
-		return "network"
-	case "deployment":
-		return "deployment"
-	case "compute":
-		return "compute"
-	case "monitoring":
-		return "monitoring"
-	default:
-		return "other"
 	}
+	if strings.Contains(stepLower, "storage") || strings.Contains(stepLower, "disk") || strings.Contains(stepLower, "volume") {
+		return "storage"
+	}
+	if strings.Contains(stepLower, "network") || strings.Contains(stepLower, "vpc") || strings.Contains(stepLower, "subnet") {
+		return "network"
+	}
+	if strings.Contains(stepLower, "compute") || strings.Contains(stepLower, "instance") || strings.Contains(stepLower, "vm") || strings.Contains(stepLower, "server") {
+		return "compute"
+	}
+	if strings.Contains(stepLower, "deployment") || strings.Contains(stepLower, "deploy") || strings.Contains(stepLower, "install") {
+		return "deployment"
+	}
+	if strings.Contains(stepLower, "monitoring") || strings.Contains(stepLower, "observability") || strings.Contains(stepLower, "metrics") {
+		return "monitoring"
+	}
+	
+	return "other"
 }
 

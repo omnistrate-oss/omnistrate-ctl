@@ -796,6 +796,143 @@ func handleLiveLogPodSelection(ref map[string]interface{}, rightPanel *tview.Tex
 	go connectAndStreamLogs(app, logsUrl, rightPanel)
 }
 
+// filterLogLines removes log-like lines from messages to show only event data
+func filterLogLines(message string) string {
+	lines := strings.Split(message, "\n")
+	var cleanLines []string
+	
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		
+		// Skip lines that look like log entries (have timestamps, log levels, etc.)
+		if isLogLine(line) {
+			continue
+		}
+		
+		// Keep lines that look like event data
+		cleanLines = append(cleanLines, line)
+	}
+	
+	if len(cleanLines) == 0 {
+		return "No event details available"
+	}
+	
+	return strings.Join(cleanLines, "\n")
+}
+
+// isLogLine checks if a line looks like a log entry
+func isLogLine(line string) bool {
+	line = strings.ToLower(line)
+	
+	// Skip lines with log level indicators
+	logLevels := []string{"info:", "debug:", "error:", "warn:", "warning:", "trace:", "fatal:"}
+	for _, level := range logLevels {
+		if strings.Contains(line, level) {
+			return true
+		}
+	}
+	
+	// Skip lines that start with timestamps (various formats)
+	if strings.Contains(line, "t") && (strings.Contains(line, ":") || strings.Contains(line, "z")) {
+		// Looks like it might contain timestamp
+		if len(line) > 10 && (strings.Contains(line[:20], "2023") || strings.Contains(line[:20], "2024") || strings.Contains(line[:20], "2025")) {
+			return true
+		}
+	}
+	
+	// Skip lines that look like stack traces or code paths
+	if strings.Contains(line, ".go:") || strings.Contains(line, "line ") || strings.Contains(line, "panic:") {
+		return true
+	}
+	
+	// Skip very long lines that are likely logs
+	if len(line) > 200 {
+		return true
+	}
+	
+	return false
+}
+
+// displayRelevantEventFields shows only event-related fields, filtering out log data
+func displayRelevantEventFields(messageData map[string]interface{}, content *strings.Builder) {
+	// Display fields in a specific order: action, actionStatus, message, then others
+	orderedKeys := []string{"action", "actionStatus", "message"}
+	
+	// First, display the ordered keys
+	for _, key := range orderedKeys {
+		if value, exists := messageData[key]; exists {
+			valueStr := fmt.Sprintf("%v", value)
+			
+			// Filter out log data from message values
+			if key == "message" {
+				valueStr = filterLogLines(valueStr)
+			}
+			
+			if key == "actionStatus" {
+				actionStatus := fmt.Sprintf("%v", value)
+				color := getMessageTypeColor(actionStatus, "")
+				content.WriteString(fmt.Sprintf("    [lightcyan]%s:[white] [%s]%v[white]\n", key, color, valueStr))
+			} else if key == "message" {
+				// Color code messages based on content
+				var color string
+				if strings.Contains(strings.ToLower(valueStr), "completed") || 
+				   strings.Contains(strings.ToLower(valueStr), "success") {
+					color = "green"
+				} else if strings.Contains(strings.ToLower(valueStr), "failed") || 
+				         strings.Contains(strings.ToLower(valueStr), "error") {
+					color = "red"
+				} else {
+					color = "white"
+				}
+				content.WriteString(fmt.Sprintf("    [lightcyan]%s:[white] [%s]%v[white]\n", key, color, valueStr))
+			} else {
+				content.WriteString(fmt.Sprintf("    [lightcyan]%s:[white] %v\n", key, valueStr))
+			}
+		}
+	}
+	
+	// Then display any remaining keys in sorted order (but filter them too)
+	var remainingKeys []string
+	for key := range messageData {
+		isOrdered := false
+		for _, orderedKey := range orderedKeys {
+			if key == orderedKey {
+				isOrdered = true
+				break
+			}
+		}
+		if !isOrdered {
+			// Only include keys that don't look like log-related fields
+			if !isLogRelatedKey(key) {
+				remainingKeys = append(remainingKeys, key)
+			}
+		}
+	}
+	sort.Strings(remainingKeys)
+	
+	for _, key := range remainingKeys {
+		value := messageData[key]
+		content.WriteString(fmt.Sprintf("    [lightcyan]%s:[white] %v\n", key, value))
+	}
+}
+
+// isLogRelatedKey checks if a key is related to log data
+func isLogRelatedKey(key string) bool {
+	logKeys := []string{"log", "logs", "stdout", "stderr", "output", "trace", "stack"}
+	keyLower := strings.ToLower(key)
+	
+	for _, logKey := range logKeys {
+		if strings.Contains(keyLower, logKey) {
+			return true
+		}
+	}
+	
+	return false
+}
+
 // formatEventTime converts UTC timestamp to a more readable format
 func formatEventTime(utcTimeStr string) string {
 	// Parse the UTC timestamp
@@ -878,61 +1015,17 @@ func handleDebugEventsCategorySelection(ref map[string]interface{}, rightPanel *
 				if err := json.Unmarshal([]byte(event.Message), &messageData); err == nil {
 					content.WriteString("  [lightcyan]Details:[white]\n")
 					
-					// Display fields in a specific order: action, actionStatus, message, then others
-					orderedKeys := []string{"action", "actionStatus", "message"}
-					
-					// First, display the ordered keys
-					for _, key := range orderedKeys {
-						if value, exists := messageData[key]; exists {
-							if key == "actionStatus" {
-								actionStatus := fmt.Sprintf("%v", value)
-								color := getMessageTypeColor(actionStatus, event.EventType)
-								content.WriteString(fmt.Sprintf("    [lightcyan]%s:[white] [%s]%v[white]\n", key, color, value))
-							} else if key == "message" {
-								// Color code messages based on content
-								messageText := fmt.Sprintf("%v", value)
-								var color string
-								if strings.Contains(strings.ToLower(messageText), "completed") || 
-								   strings.Contains(strings.ToLower(messageText), "success") {
-									color = "green"
-								} else if strings.Contains(strings.ToLower(messageText), "failed") || 
-								         strings.Contains(strings.ToLower(messageText), "error") {
-									color = "red"
-								} else {
-									color = "white"
-								}
-								content.WriteString(fmt.Sprintf("    [lightcyan]%s:[white] [%s]%v[white]\n", key, color, value))
-							} else {
-								content.WriteString(fmt.Sprintf("    [lightcyan]%s:[white] %v\n", key, value))
-							}
-						}
-					}
-					
-					// Then display any remaining keys in sorted order
-					var remainingKeys []string
-					for key := range messageData {
-						isOrdered := false
-						for _, orderedKey := range orderedKeys {
-							if key == orderedKey {
-								isOrdered = true
-								break
-							}
-						}
-						if !isOrdered {
-							remainingKeys = append(remainingKeys, key)
-						}
-					}
-					sort.Strings(remainingKeys)
-					
-					for _, key := range remainingKeys {
-						value := messageData[key]
-						content.WriteString(fmt.Sprintf("    [lightcyan]%s:[white] %v\n", key, value))
-					}
+					// Display only relevant event fields, filtering out log data
+					displayRelevantEventFields(messageData, &content)
 				} else {
-					content.WriteString(fmt.Sprintf("  [lightcyan]Message:[white] %s\n", event.Message))
+					// Not JSON, display as plain message but filter out log lines
+					cleanMessage := filterLogLines(event.Message)
+					content.WriteString(fmt.Sprintf("  [lightcyan]Message:[white] %s\n", cleanMessage))
 				}
 			} else {
-				content.WriteString(fmt.Sprintf("  [lightcyan]Message:[white] %s\n", event.Message))
+				// Plain text message, filter out log lines
+				cleanMessage := filterLogLines(event.Message)
+				content.WriteString(fmt.Sprintf("  [lightcyan]Message:[white] %s\n", cleanMessage))
 			}
 			
 			content.WriteString("\n")
