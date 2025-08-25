@@ -364,10 +364,6 @@ func launchTUI(data Data) error {
 		handleTreeNodeSelection(node, rightPanel, app, &currentTerraformData, &currentSelectionIsTerraformFiles, &currentSelectionIsTerraformLogs)
 	})
 
-	// Also handle direct selection (Enter key)
-	leftPanel.SetSelectedFunc(func(node *tview.TreeNode) {
-		handleTreeNodeEnterSelection(node, rightPanel, &currentTerraformData, &currentSelectionIsTerraformFiles, &currentSelectionIsTerraformLogs)
-	})
 
 	// Set up layout
 	flex.AddItem(leftPanel, 0, 1, true)
@@ -708,22 +704,6 @@ func handleTreeNodeSelection(node *tview.TreeNode, rightPanel *tview.TextView, a
 	}
 }
 
-// handleTreeNodeEnterSelection processes tree node selection (when Enter key is pressed)
-func handleTreeNodeEnterSelection(node *tview.TreeNode, rightPanel *tview.TextView, currentTerraformData **TerraformData, currentSelectionIsTerraformFiles *bool, currentSelectionIsTerraformLogs *bool) {
-	reference := node.GetReference()
-	if reference != nil {
-		// If it's an option, show its content
-		switch ref := reference.(type) {
-		case ResourceInfo:
-			handleResourceInfoSelection(ref, rightPanel, currentSelectionIsTerraformFiles, currentSelectionIsTerraformLogs)
-		case map[string]interface{}:
-			handleOptionMapSelectionForEnter(ref, rightPanel, currentTerraformData, currentSelectionIsTerraformFiles, currentSelectionIsTerraformLogs)
-			return // Don't toggle expansion for options
-		}
-	}
-	// Toggle expansion for resource nodes
-	node.SetExpanded(!node.IsExpanded())
-}
 
 // handleNonReferencedNodeSelection handles selection of nodes without references (like "Live Log" header nodes)
 func handleNonReferencedNodeSelection(node *tview.TreeNode, rightPanel *tview.TextView, currentSelectionIsTerraformFiles *bool, currentSelectionIsTerraformLogs *bool) {
@@ -774,17 +754,7 @@ func handleOptionMapSelection(ref map[string]interface{}, rightPanel *tview.Text
 	}
 }
 
-// handleOptionMapSelectionForEnter handles selection of option map nodes (for Enter key presses)
-func handleOptionMapSelectionForEnter(ref map[string]interface{}, rightPanel *tview.TextView, currentTerraformData **TerraformData, currentSelectionIsTerraformFiles *bool, currentSelectionIsTerraformLogs *bool) {
-	if t, ok := ref["type"].(string); ok && t == "debug-events-category" {
-		handleDebugEventsCategorySelection(ref, rightPanel)
-	} else if t, ok := ref["type"].(string); ok && t == "debug-events-overview" {
-		handleDebugEventsOverviewSelection(ref, rightPanel)
-	} else {
-		handleOptionSelection(ref, rightPanel)
-		updateTerraformSelectionState(ref, currentTerraformData, currentSelectionIsTerraformFiles, currentSelectionIsTerraformLogs)
-	}
-}
+
 
 // handleLiveLogPodSelection handles selection of live log pod nodes
 func handleLiveLogPodSelection(ref map[string]interface{}, rightPanel *tview.TextView, app *tview.Application) {
