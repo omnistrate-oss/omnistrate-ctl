@@ -117,7 +117,7 @@ func GetDebugEventsForResource(ctx context.Context, token string, serviceID, env
 	// Find the latest workflow (assuming they are ordered by creation time or use the last one)
 	var latestWorkflowID string
 	for _, workflow := range workflows.Workflows {
-		if workflow.Id == "" {
+		if workflow.Id == "" || workflow.Status == "pending" {
 			continue
 		}
 		latestWorkflowID = workflow.Id
