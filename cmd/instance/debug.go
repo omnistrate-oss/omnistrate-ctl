@@ -34,8 +34,11 @@ var debugCmd = &cobra.Command{
 
 
 type Data struct {
-	InstanceID string         `json:"instanceId"`
-	Resources  []ResourceInfo `json:"resources"`
+	InstanceID      string         `json:"instanceId"`
+	Resources       []ResourceInfo `json:"resources"`
+	Token           string         `json:"-"` // Don't include in JSON output
+	ServiceID       string         `json:"-"` // Don't include in JSON output
+	EnvironmentID   string         `json:"-"` // Don't include in JSON output
 }
 
 type ResourceInfo struct {
@@ -101,8 +104,11 @@ func runDebug(_ *cobra.Command, args []string) error {
 
 	// Process debug result and identify resource types
 	data := Data{
-		InstanceID: instanceID,
-		Resources:  []ResourceInfo{},
+		InstanceID:    instanceID,
+		Resources:     []ResourceInfo{},
+		Token:         token,
+		ServiceID:     serviceID,
+		EnvironmentID: environmentID,
 	}
 
 	// Use instanceData directly as a struct for BuildLogStreams and IsLogsEnabledStruct
@@ -364,7 +370,7 @@ func launchTUI(data Data) error {
 
 	// Handle tree selection
 	leftPanel.SetChangedFunc(func(node *tview.TreeNode) {
-		handleTreeNodeSelection(node, rightPanel, app, &currentTerraformData, &currentSelectionIsTerraformFiles, &currentSelectionIsTerraformLogs)
+		handleTreeNodeSelection(node, rightPanel, app, &currentTerraformData, &currentSelectionIsTerraformFiles, &currentSelectionIsTerraformLogs, data)
 	})
 
 
@@ -692,7 +698,7 @@ func buildDebugEventsNode(resource ResourceInfo) *tview.TreeNode {
 }
 
 // handleTreeNodeSelection processes tree node selection (when node changes/is highlighted)
-func handleTreeNodeSelection(node *tview.TreeNode, rightPanel *tview.TextView, app *tview.Application, currentTerraformData **TerraformData, currentSelectionIsTerraformFiles *bool, currentSelectionIsTerraformLogs *bool) {
+func handleTreeNodeSelection(node *tview.TreeNode, rightPanel *tview.TextView, app *tview.Application, currentTerraformData **TerraformData, currentSelectionIsTerraformFiles *bool, currentSelectionIsTerraformLogs *bool, data Data) {
 	reference := node.GetReference()
 	if reference == nil {
 		handleNonReferencedNodeSelection(node, rightPanel, currentSelectionIsTerraformFiles, currentSelectionIsTerraformLogs)
@@ -703,7 +709,7 @@ func handleTreeNodeSelection(node *tview.TreeNode, rightPanel *tview.TextView, a
 	case ResourceInfo:
 		handleResourceInfoSelection(ref, rightPanel, currentSelectionIsTerraformFiles, currentSelectionIsTerraformLogs)
 	case map[string]interface{}:
-		handleOptionMapSelection(ref, rightPanel, app, currentTerraformData, currentSelectionIsTerraformFiles, currentSelectionIsTerraformLogs)
+		handleOptionMapSelection(ref, rightPanel, app, currentTerraformData, currentSelectionIsTerraformFiles, currentSelectionIsTerraformLogs, data)
 	}
 }
 
@@ -744,7 +750,7 @@ func handleResourceInfoSelection(resource ResourceInfo, rightPanel *tview.TextVi
 }
 
 // handleOptionMapSelection handles selection of option map nodes (for tree selection changes)
-func handleOptionMapSelection(ref map[string]interface{}, rightPanel *tview.TextView, app *tview.Application, currentTerraformData **TerraformData, currentSelectionIsTerraformFiles *bool, currentSelectionIsTerraformLogs *bool) {
+func handleOptionMapSelection(ref map[string]interface{}, rightPanel *tview.TextView, app *tview.Application, currentTerraformData **TerraformData, currentSelectionIsTerraformFiles *bool, currentSelectionIsTerraformLogs *bool, data Data) {
 	currentRightPanelType = ref["type"].(string)
 	if t, ok := ref["type"].(string); ok && t == "live-log-pod" {
 		handleLiveLogPodSelection(ref, rightPanel, app)
@@ -752,6 +758,10 @@ func handleOptionMapSelection(ref map[string]interface{}, rightPanel *tview.Text
 		handleDebugEventsCategorySelection(ref, rightPanel)
 	} else if t, ok := ref["type"].(string); ok && t == "debug-events-overview" {
 		handleDebugEventsOverviewSelection(ref, rightPanel)
+		// Start polling for debug events when overview is selected
+		if resource, ok := ref["resource"].(ResourceInfo); ok {
+			pollDebugEventsAndWorkflowStatus(app, rightPanel, resource, data.Token, data.ServiceID, data.EnvironmentID, data.InstanceID)
+		}
 	} else {
 		handleOptionSelection(ref, rightPanel)
 		updateTerraformSelectionState(ref, currentTerraformData, currentSelectionIsTerraformFiles, currentSelectionIsTerraformLogs)
@@ -2342,6 +2352,100 @@ func connectAndStreamLogs(app *tview.Application, logsUrl string, rightPanel *tv
 			// If we reach here, the connection was successful but then closed
 			// Break from retry loop instead of retrying
 			break
+		}
+	}()
+}
+
+// pollDebugEventsAndWorkflowStatus polls debug events and workflow status every 30 seconds and stops when workflow is complete
+func pollDebugEventsAndWorkflowStatus(app *tview.Application, rightPanel *tview.TextView, resource ResourceInfo, token, serviceID, environmentID, instanceID string) {
+	go func() {
+		ticker := time.NewTicker(30 * time.Second)
+		defer ticker.Stop()
+		
+		for {
+			select {
+			case <-ticker.C:
+				// Check if we should still be updating debug events
+				if !strings.HasPrefix(currentRightPanelType, "debug-events") {
+					// User has switched away from debug events, stop polling
+					return
+				}
+				
+				// Fetch updated debug events and workflow status
+				ctx := context.Background()
+				workflowEvents, workflowInfo, err := dataaccess.GetDebugEventsForResource(
+					ctx, token, serviceID, environmentID, instanceID, resource.ID)
+				
+				if err != nil {
+					// Log error but continue polling
+					continue
+				}
+				
+				// Update the resource with new data
+				resource.WorkflowEvents = workflowEvents
+				resource.WorkflowInfo = workflowInfo
+				
+				// Check if workflow is complete - stop polling immediately if so
+				if workflowInfo != nil {
+					status := strings.ToLower(workflowInfo.WorkflowStatus)
+					isWorkflowComplete := status == "success" || status == "failed" || status == "cancelled"
+					
+					if isWorkflowComplete {
+						// Update the UI one final time before stopping
+						app.QueueUpdateDraw(func() {
+							if strings.HasPrefix(currentRightPanelType, "debug-events") {
+								// Determine which type of debug events view to update
+								switch currentRightPanelType {
+								case "debug-events-overview":
+									// Update overview
+									ref := map[string]interface{}{
+										"type":     "debug-events-overview",
+										"resource": resource,
+									}
+									handleDebugEventsOverviewSelection(ref, rightPanel)
+									
+								case "debug-events-category":
+									// We would need to track which category is currently selected
+									// For now, just refresh overview since we don't have category state
+									ref := map[string]interface{}{
+										"type":     "debug-events-overview", 
+										"resource": resource,
+									}
+									handleDebugEventsOverviewSelection(ref, rightPanel)
+								}
+							}
+						})
+						
+						// Workflow is complete, stop polling
+						return
+					}
+				}
+				
+				// Update the UI if we're still showing debug events (workflow still in progress)
+				app.QueueUpdateDraw(func() {
+					if strings.HasPrefix(currentRightPanelType, "debug-events") {
+						// Determine which type of debug events view to update
+						switch currentRightPanelType {
+						case "debug-events-overview":
+							// Update overview
+							ref := map[string]interface{}{
+								"type":     "debug-events-overview",
+								"resource": resource,
+							}
+							handleDebugEventsOverviewSelection(ref, rightPanel)
+							
+						case "debug-events-category":
+							// We would need to track which category is currently selected
+							// For now, just refresh overview since we don't have category state
+							ref := map[string]interface{}{
+								"type":     "debug-events-overview", 
+								"resource": resource,
+							}
+							handleDebugEventsOverviewSelection(ref, rightPanel)
+						}
+					}
+				})
+			}
 		}
 	}()
 }
