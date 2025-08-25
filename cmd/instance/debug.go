@@ -20,6 +20,9 @@ import (
 	"github.com/omnistrate-oss/omnistrate-sdk-go/fleet"
 )
 
+// Global variables for managing right panel type
+var currentRightPanelType string 
+
 var debugCmd = &cobra.Command{
 	Use:     "debug [instance-id]",
 	Short:   "Debug instance resources",
@@ -742,6 +745,7 @@ func handleResourceInfoSelection(resource ResourceInfo, rightPanel *tview.TextVi
 
 // handleOptionMapSelection handles selection of option map nodes (for tree selection changes)
 func handleOptionMapSelection(ref map[string]interface{}, rightPanel *tview.TextView, app *tview.Application, currentTerraformData **TerraformData, currentSelectionIsTerraformFiles *bool, currentSelectionIsTerraformLogs *bool) {
+	currentRightPanelType = ref["type"].(string)
 	if t, ok := ref["type"].(string); ok && t == "live-log-pod" {
 		handleLiveLogPodSelection(ref, rightPanel, app)
 	} else if t, ok := ref["type"].(string); ok && t == "debug-events-category" {
@@ -2193,14 +2197,28 @@ func connectAndStreamLogs(app *tview.Application, logsUrl string, rightPanel *tv
 		maxRetries := 3
 		
 		for retryCount < maxRetries {
+			// Check if we should still be trying to connect to live logs
+			if currentRightPanelType != "live-log-pod"  {
+				// User has switched away from live logs, stop retrying
+				return
+			}
+			
 			c, _, err := websocket.DefaultDialer.Dial(logsUrl, nil)
 			if err != nil {
 				retryCount++
+				
+				// Check again before updating UI
+				if currentRightPanelType != "live-log-pod" {
+					return
+				}
+				
 				app.QueueUpdateDraw(func() {
-					if retryCount < maxRetries {
-						rightPanel.SetText(fmt.Sprintf("[yellow]Connection failed (attempt %d/%d): %v[white]\nRetrying in 5 seconds...", retryCount, maxRetries, err))
-					} else {
-						rightPanel.SetText(fmt.Sprintf("[red]Live logs unavailable after %d attempts[white]\n\nConnection Error: %v\n\n[yellow]Tip:[white] Try selecting 'Debug Events' to view workflow events instead.", maxRetries, err))
+					if currentRightPanelType == "live-log-pod"  {
+						if retryCount < maxRetries {
+							rightPanel.SetText(fmt.Sprintf("[yellow]Connection failed (attempt %d/%d): %v[white]\nRetrying in 5 seconds...", retryCount, maxRetries, err))
+						} else {
+							rightPanel.SetText(fmt.Sprintf("[red]Live logs unavailable after %d attempts[white]\n\nConnection Error: %v\n\n[yellow]Tip:[white] Try selecting 'Debug Events' to view workflow events instead.", maxRetries, err))
+						}
 					}
 				})
 				
@@ -2215,8 +2233,16 @@ func connectAndStreamLogs(app *tview.Application, logsUrl string, rightPanel *tv
 			
 			// Connection successful, reset retry count and break from retry loop
 			defer c.Close()
+			
+			// Check if we should still be showing live logs
+			if currentRightPanelType != "live-log-pod"  {
+				return
+			}
+			
 			app.QueueUpdateDraw(func() {
-				rightPanel.SetText("[green]Connected to live logs[white]\n")
+				if currentRightPanelType == "live-log-pod"  {
+					rightPanel.SetText("[green]Connected to live logs[white]\n")
+				}
 			})
 			
 			// Batching mechanism for performance optimization
@@ -2233,6 +2259,11 @@ func connectAndStreamLogs(app *tview.Application, logsUrl string, rightPanel *tv
 					select {
 					case <-batchTicker.C:
 						if len(logBatch) > 0 {
+							// Check if we should still be showing live logs
+							if currentRightPanelType != "live-log-pod"  {
+								return
+							}
+							
 							// Process and display the batch
 							var formattedBatch strings.Builder
 							for _, line := range logBatch {
@@ -2242,7 +2273,9 @@ func connectAndStreamLogs(app *tview.Application, logsUrl string, rightPanel *tv
 							}
 							
 							app.QueueUpdateDraw(func() {
-								_, _ = rightPanel.Write([]byte(formattedBatch.String()))
+								if currentRightPanelType == "live-log-pod"  {
+									_, _ = rightPanel.Write([]byte(formattedBatch.String()))
+								}
 							})
 							
 							// Clear the batch
@@ -2255,12 +2288,24 @@ func connectAndStreamLogs(app *tview.Application, logsUrl string, rightPanel *tv
 			}()
 			
 			for {
+				// Check if we should still be showing live logs
+				if currentRightPanelType != "live-log-pod"  {
+					done <- true // Stop the batching goroutine
+					return
+				}
+				
 				_, message, err := c.ReadMessage()
 				if err != nil {
 					done <- true // Stop the batching goroutine
-					app.QueueUpdateDraw(func() {
-						rightPanel.SetText(fmt.Sprintf("[yellow]Connection closed: %v[-]", err))
-					})
+					
+					// Only update UI if we're still showing live logs
+					if currentRightPanelType == "live-log-pod"  {
+						app.QueueUpdateDraw(func() {
+							if currentRightPanelType == "live-log-pod"  {
+								rightPanel.SetText(fmt.Sprintf("[yellow]Connection closed: %v[-]", err))
+							}
+						})
+					}
 					break
 				}
 				
@@ -2269,6 +2314,12 @@ func connectAndStreamLogs(app *tview.Application, logsUrl string, rightPanel *tv
 				
 				// If batch gets too large, process immediately to avoid memory issues
 				if len(logBatch) >= 50 {
+					// Check if we should still be showing live logs
+					if currentRightPanelType != "live-log-pod"  {
+						done <- true // Stop the batching goroutine
+						return
+					}
+					
 					var formattedBatch strings.Builder
 					for _, line := range logBatch {
 						cleanedLogLine := cleanLiveLogLine(line)
@@ -2277,7 +2328,9 @@ func connectAndStreamLogs(app *tview.Application, logsUrl string, rightPanel *tv
 					}
 					
 					app.QueueUpdateDraw(func() {
-						_, _ = rightPanel.Write([]byte(formattedBatch.String()))
+						if currentRightPanelType == "live-log-pod"  {
+							_, _ = rightPanel.Write([]byte(formattedBatch.String()))
+						}
 					})
 					
 					// Clear the batch
