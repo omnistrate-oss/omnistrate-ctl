@@ -2361,91 +2361,88 @@ func pollDebugEventsAndWorkflowStatus(app *tview.Application, rightPanel *tview.
 	go func() {
 		ticker := time.NewTicker(30 * time.Second)
 		defer ticker.Stop()
-		
-		for {
-			select {
-			case <-ticker.C:
-				// Check if we should still be updating debug events
-				if !strings.HasPrefix(currentRightPanelType, "debug-events") {
-					// User has switched away from debug events, stop polling
+
+		for range ticker.C {
+			// Check if we should still be updating debug events
+			if !strings.HasPrefix(currentRightPanelType, "debug-events") {
+				// User has switched away from debug events, stop polling
+				return
+			}
+
+			// Fetch updated debug events and workflow status
+			ctx := context.Background()
+			workflowEvents, workflowInfo, err := dataaccess.GetDebugEventsForResource(
+				ctx, token, serviceID, environmentID, instanceID, resource.ID)
+
+			if err != nil {
+				// Log error but continue polling
+				continue
+			}
+
+			// Update the resource with new data
+			resource.WorkflowEvents = workflowEvents
+			resource.WorkflowInfo = workflowInfo
+
+			// Check if workflow is complete - stop polling immediately if so
+			if workflowInfo != nil {
+				status := strings.ToLower(workflowInfo.WorkflowStatus)
+				isWorkflowComplete := status == "success" || status == "failed" || status == "cancelled"
+
+				if isWorkflowComplete {
+					// Update the UI one final time before stopping
+					app.QueueUpdateDraw(func() {
+						if strings.HasPrefix(currentRightPanelType, "debug-events") {
+							// Determine which type of debug events view to update
+							switch currentRightPanelType {
+							case "debug-events-overview":
+								// Update overview
+								ref := map[string]interface{}{
+									"type":     "debug-events-overview",
+									"resource": resource,
+								}
+								handleDebugEventsOverviewSelection(ref, rightPanel)
+
+							case "debug-events-category":
+								// We would need to track which category is currently selected
+								// For now, just refresh overview since we don't have category state
+								ref := map[string]interface{}{
+									"type":     "debug-events-overview",
+									"resource": resource,
+								}
+								handleDebugEventsOverviewSelection(ref, rightPanel)
+							}
+						}
+					})
+
+					// Workflow is complete, stop polling
 					return
 				}
-				
-				// Fetch updated debug events and workflow status
-				ctx := context.Background()
-				workflowEvents, workflowInfo, err := dataaccess.GetDebugEventsForResource(
-					ctx, token, serviceID, environmentID, instanceID, resource.ID)
-				
-				if err != nil {
-					// Log error but continue polling
-					continue
-				}
-				
-				// Update the resource with new data
-				resource.WorkflowEvents = workflowEvents
-				resource.WorkflowInfo = workflowInfo
-				
-				// Check if workflow is complete - stop polling immediately if so
-				if workflowInfo != nil {
-					status := strings.ToLower(workflowInfo.WorkflowStatus)
-					isWorkflowComplete := status == "success" || status == "failed" || status == "cancelled"
-					
-					if isWorkflowComplete {
-						// Update the UI one final time before stopping
-						app.QueueUpdateDraw(func() {
-							if strings.HasPrefix(currentRightPanelType, "debug-events") {
-								// Determine which type of debug events view to update
-								switch currentRightPanelType {
-								case "debug-events-overview":
-									// Update overview
-									ref := map[string]interface{}{
-										"type":     "debug-events-overview",
-										"resource": resource,
-									}
-									handleDebugEventsOverviewSelection(ref, rightPanel)
-									
-								case "debug-events-category":
-									// We would need to track which category is currently selected
-									// For now, just refresh overview since we don't have category state
-									ref := map[string]interface{}{
-										"type":     "debug-events-overview", 
-										"resource": resource,
-									}
-									handleDebugEventsOverviewSelection(ref, rightPanel)
-								}
-							}
-						})
-						
-						// Workflow is complete, stop polling
-						return
-					}
-				}
-				
-				// Update the UI if we're still showing debug events (workflow still in progress)
-				app.QueueUpdateDraw(func() {
-					if strings.HasPrefix(currentRightPanelType, "debug-events") {
-						// Determine which type of debug events view to update
-						switch currentRightPanelType {
-						case "debug-events-overview":
-							// Update overview
-							ref := map[string]interface{}{
-								"type":     "debug-events-overview",
-								"resource": resource,
-							}
-							handleDebugEventsOverviewSelection(ref, rightPanel)
-							
-						case "debug-events-category":
-							// We would need to track which category is currently selected
-							// For now, just refresh overview since we don't have category state
-							ref := map[string]interface{}{
-								"type":     "debug-events-overview", 
-								"resource": resource,
-							}
-							handleDebugEventsOverviewSelection(ref, rightPanel)
-						}
-					}
-				})
 			}
+
+			// Update the UI if we're still showing debug events (workflow still in progress)
+			app.QueueUpdateDraw(func() {
+				if strings.HasPrefix(currentRightPanelType, "debug-events") {
+					// Determine which type of debug events view to update
+					switch currentRightPanelType {
+					case "debug-events-overview":
+						// Update overview
+						ref := map[string]interface{}{
+							"type":     "debug-events-overview",
+							"resource": resource,
+						}
+						handleDebugEventsOverviewSelection(ref, rightPanel)
+
+					case "debug-events-category":
+						// We would need to track which category is currently selected
+						// For now, just refresh overview since we don't have category state
+						ref := map[string]interface{}{
+							"type":     "debug-events-overview",
+							"resource": resource,
+						}
+						handleDebugEventsOverviewSelection(ref, rightPanel)
+					}
+				}
+			})
 		}
 	}()
 }
