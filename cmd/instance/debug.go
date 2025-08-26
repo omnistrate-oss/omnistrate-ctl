@@ -33,7 +33,7 @@ var debugCmd = &cobra.Command{
 }
 
 
-type Data struct {
+type DebugData struct {
 	InstanceID      string         `json:"instanceId"`
 	Resources       []ResourceInfo `json:"resources"`
 	Token           string         `json:"-"` // Don't include in JSON output
@@ -103,7 +103,7 @@ func runDebug(_ *cobra.Command, args []string) error {
 	}
 
 	// Process debug result and identify resource types
-	data := Data{
+	data := DebugData{
 		InstanceID:    instanceID,
 		Resources:     []ResourceInfo{},
 		Token:         token,
@@ -131,7 +131,7 @@ func runDebug(_ *cobra.Command, args []string) error {
 	}
 
 	// Launch TUI
-	return launchTUI(data)
+	return launchDebugTUI(data)
 }
 
 // processResourceByType identifies the resource type and processes it accordingly
@@ -305,7 +305,7 @@ func parseTerraformData(debugData map[string]interface{}) *TerraformData {
 	return terraformData
 }
 
-func launchTUI(data Data) error {
+func launchDebugTUI(data DebugData) error {
 	app := tview.NewApplication()
 
 	// Global state to track current selection and terraform data for file browser
@@ -698,7 +698,7 @@ func buildDebugEventsNode(resource ResourceInfo) *tview.TreeNode {
 }
 
 // handleTreeNodeSelection processes tree node selection (when node changes/is highlighted)
-func handleTreeNodeSelection(node *tview.TreeNode, rightPanel *tview.TextView, app *tview.Application, currentTerraformData **TerraformData, currentSelectionIsTerraformFiles *bool, currentSelectionIsTerraformLogs *bool, data Data) {
+func handleTreeNodeSelection(node *tview.TreeNode, rightPanel *tview.TextView, app *tview.Application, currentTerraformData **TerraformData, currentSelectionIsTerraformFiles *bool, currentSelectionIsTerraformLogs *bool, data DebugData) {
 	reference := node.GetReference()
 	if reference == nil {
 		handleNonReferencedNodeSelection(node, rightPanel, currentSelectionIsTerraformFiles, currentSelectionIsTerraformLogs)
@@ -750,7 +750,7 @@ func handleResourceInfoSelection(resource ResourceInfo, rightPanel *tview.TextVi
 }
 
 // handleOptionMapSelection handles selection of option map nodes (for tree selection changes)
-func handleOptionMapSelection(ref map[string]interface{}, rightPanel *tview.TextView, app *tview.Application, currentTerraformData **TerraformData, currentSelectionIsTerraformFiles *bool, currentSelectionIsTerraformLogs *bool, data Data) {
+func handleOptionMapSelection(ref map[string]interface{}, rightPanel *tview.TextView, app *tview.Application, currentTerraformData **TerraformData, currentSelectionIsTerraformFiles *bool, currentSelectionIsTerraformLogs *bool, data DebugData) {
 	currentRightPanelType = ref["type"].(string)
 	if t, ok := ref["type"].(string); ok && t == "live-log-pod" {
 		handleLiveLogPodSelection(ref, rightPanel, app)
@@ -920,7 +920,7 @@ func handleDebugEventsOverviewSelection(ref map[string]interface{}, rightPanel *
 				statusColor = "red"
 			case "running", "in_progress":
 				statusColor = "blue"
-			case  "pending":
+			case "pending":
 				statusColor = "yellow"
 			default:
 				statusColor = "white"
@@ -2327,7 +2327,7 @@ func pollDebugEventsAndWorkflowStatus(app *tview.Application, rightPanel *tview.
 
 		for range ticker.C {
 
-			// Poll for debug events and workflow status polling stops
+			// Poll for debug events and workflow status until polling stops
 
 			status := strings.ToLower(resource.WorkflowInfo.WorkflowStatus)
 			isWorkflowComplete := status == "success" || status == "failed" || status == "cancelled"
