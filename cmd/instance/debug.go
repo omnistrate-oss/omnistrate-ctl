@@ -863,72 +863,29 @@ func handleDebugEventsCategorySelection(ref map[string]interface{}, rightPanel *
 			
 			// Try to parse and format the message
 			if strings.HasPrefix(event.Message, "{") && strings.HasSuffix(event.Message, "}") {
-				// It's JSON, try to format it nicely
+				// It's JSON, format it pretty
 				var messageData map[string]interface{}
 				if err := json.Unmarshal([]byte(event.Message), &messageData); err == nil {
-					content.WriteString("  [lightcyan]Details:[white]\n")
-					
-					// Display fields in a specific order: action, actionStatus, message, then others
-					orderedKeys := []string{"action", "actionStatus", "message"}
-					
-					// First, display the ordered keys
-					for _, key := range orderedKeys {
-						if value, exists := messageData[key]; exists {
-							if key == "actionStatus" {
-								actionStatus := fmt.Sprintf("%v", value)
-								color := getMessageTypeColor(actionStatus, event.EventType)
-								content.WriteString(fmt.Sprintf("    [lightcyan]%s:[white] [%s]%v[white]\n", key, color, value))
-							} else if key == "message" {
-								// Color code messages based on content
-								messageText := fmt.Sprintf("%v", value)
-								var color string
-								if strings.Contains(strings.ToLower(messageText), "completed") || 
-								   strings.Contains(strings.ToLower(messageText), "success") {
-									color = "green"
-								} else if strings.Contains(strings.ToLower(messageText), "failed") || 
-								         strings.Contains(strings.ToLower(messageText), "error") {
-									color = "red"
-								}  else if strings.Contains(strings.ToLower(messageText), "started") || 
-								         strings.Contains(strings.ToLower(messageText), "in_progress") {
-									color = "blue"
-								} else if strings.Contains(strings.ToLower(messageText), "pending") || 
-								         strings.Contains(strings.ToLower(messageText), "debug") {
-									color = "yellow"
-								} else {
-									color = "white"
-								}
-								content.WriteString(fmt.Sprintf("    [lightcyan]%s:[white] [%s]%v[white]\n", key, color, value))
-							} else {
-								content.WriteString(fmt.Sprintf("    [lightcyan]%s:[white] %v\n", key, value))
+					// Format as pretty JSON
+					prettyJSON, err := json.MarshalIndent(messageData, "    ", "  ")
+					if err == nil {
+						content.WriteString("  [lightcyan]Details:[white]\n")
+						// Add indentation to each line to align with the label
+						lines := strings.Split(string(prettyJSON), "\n")
+						for _, line := range lines {
+							if strings.TrimSpace(line) != "" {
+								content.WriteString(fmt.Sprintf("    [white]%s[white]\n", line))
 							}
 						}
-					}
-					
-					// Then display any remaining keys in sorted order
-					var remainingKeys []string
-					for key := range messageData {
-						isOrdered := false
-						for _, orderedKey := range orderedKeys {
-							if key == orderedKey {
-								isOrdered = true
-								break
-							}
-						}
-						if !isOrdered {
-							remainingKeys = append(remainingKeys, key)
-						}
-					}
-					sort.Strings(remainingKeys)
-					
-					for _, key := range remainingKeys {
-						value := messageData[key]
-						content.WriteString(fmt.Sprintf("    [lightcyan]%s:[white] %v\n", key, value))
+					} else {
+						// Fallback to raw message if pretty printing fails
+						content.WriteString(fmt.Sprintf("  [lightcyan]Details:[white] %s\n", event.Message))
 					}
 				} else {
-					content.WriteString(fmt.Sprintf("  [lightcyan]Message:[white] %s\n", event.Message))
+					content.WriteString(fmt.Sprintf("  [lightcyan]Details:[white] %s\n", event.Message))
 				}
 			} else {
-				content.WriteString(fmt.Sprintf("  [lightcyan]Message:[white] %s\n", event.Message))
+				content.WriteString(fmt.Sprintf("  [lightcyan]Details:[white] %s\n", event.Message))
 			}
 			
 			content.WriteString("\n")
