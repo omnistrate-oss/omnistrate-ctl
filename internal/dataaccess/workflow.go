@@ -226,8 +226,6 @@ func GetDebugEventsForResource(ctx context.Context, token string, serviceID, env
 func categorizeStepName(stepName string) string {
 	stepLower := strings.ToLower(stepName)
 	
-	// Debug: print the step name being categorized
-	
 	// More comprehensive categorization based on step name patterns
 	if strings.Contains(stepLower, "bootstrap") || strings.Contains(stepLower, "init") {
 		return "bootstrap"
