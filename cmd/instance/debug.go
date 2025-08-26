@@ -2260,7 +2260,7 @@ func connectAndStreamLogs(app *tview.Application, logsUrl string, rightPanel *tv
 				logBatch = append(logBatch, string(message))
 				
 				// If batch gets too large, process immediately to avoid memory issues
-				if len(logBatch) >= 50 {
+				if len(logBatch) >= 500 {
 					// Check if we should still be showing live logs
 					if currentRightPanelType != "live-log-pod"  {
 						done <- true // Stop the batching goroutine
