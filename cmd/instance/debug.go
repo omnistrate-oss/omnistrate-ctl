@@ -816,29 +816,6 @@ func getEventTypeColor(eventType string) string {
 	}
 }
 
-// getMessageTypeColor returns the appropriate color based on messageType and eventType
-func getMessageTypeColor(messageType, eventType string) string {
-	if messageType == "" {
-		// Check if it's a failed event type
-		failedEventTypes := []string{"WorkflowStepFailed", "WorkflowFailed", "Error"}
-		for _, failedType := range failedEventTypes {
-			if eventType == failedType {
-				return "red"
-			}
-		}
-		return "green"
-	}
-
-	switch messageType {
-	case "Completed":
-		return "green"
-	case "Failed", "Cancelled", "TimedOut", "Terminated":
-		return "red"
-	default:
-		return "yellow"
-	}
-}
-
 // handleDebugEventsCategorySelection handles selection of debug events category nodes
 func handleDebugEventsCategorySelection(ref map[string]interface{}, rightPanel *tview.TextView) {
 	category, _ := ref["category"].(string)
