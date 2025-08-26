@@ -756,6 +756,9 @@ func handleOptionMapSelection(ref map[string]interface{}, rightPanel *tview.Text
 		handleLiveLogPodSelection(ref, rightPanel, app)
 	} else if t, ok := ref["type"].(string); ok && t == "debug-events-category" {
 		handleDebugEventsCategorySelection(ref, rightPanel)
+		if resource, ok := ref["resource"].(ResourceInfo); ok {
+			pollDebugEventsAndWorkflowStatus(app, rightPanel, resource, data.Token, data.ServiceID, data.EnvironmentID, data.InstanceID)
+		}
 	} else if t, ok := ref["type"].(string); ok && t == "debug-events-overview" {
 		handleDebugEventsOverviewSelection(ref, rightPanel)
 		// Start polling for debug events when overview is selected
@@ -2362,7 +2365,20 @@ func pollDebugEventsAndWorkflowStatus(app *tview.Application, rightPanel *tview.
 		ticker := time.NewTicker(30 * time.Second)
 		defer ticker.Stop()
 
+		
+			
+
 		for range ticker.C {
+
+			// Poll for debug events and workflow status polling stops
+
+			status := strings.ToLower(resource.WorkflowInfo.WorkflowStatus)
+			isWorkflowComplete := status == "success" || status == "failed" || status == "cancelled"
+			if isWorkflowComplete {
+				ticker.Stop()
+				return
+			}
+
 			// Check if we should still be updating debug events
 			if !strings.HasPrefix(currentRightPanelType, "debug-events") {
 				// User has switched away from debug events, stop polling
