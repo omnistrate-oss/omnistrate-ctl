@@ -783,23 +783,23 @@ func handleDebugEventsCategorySelection(ref map[string]interface{}, rightPanel *
 			
 			// Try to parse and format the message
 			if strings.HasPrefix(event.Message, "{") && strings.HasSuffix(event.Message, "}") {
-				// It's JSON, format it pretty
+				// It's JSON, format it pretty (similar to chart values parsing)
 				var messageData map[string]interface{}
 				if err := json.Unmarshal([]byte(event.Message), &messageData); err == nil {
-					// Format as pretty JSON with consistent indentation
-					prettyJSON, err := json.MarshalIndent(messageData, "  ", "  ")
+					content.WriteString("  [lightcyan]Details:[white]\n")
+					// Format as pretty JSON with proper indentation
+					prettyJSON, err := json.MarshalIndent(messageData, "", "    ")
 					if err == nil {
-						content.WriteString("  [lightcyan]Details:[white]\n")
-						// Add consistent indentation to each line
+						// Add consistent base indentation to each line (4 spaces to align with Details label)
 						lines := strings.Split(string(prettyJSON), "\n")
 						for _, line := range lines {
 							if strings.TrimSpace(line) != "" {
-								content.WriteString(fmt.Sprintf("  [white]%s[white]\n", line))
+								content.WriteString(fmt.Sprintf("    [white]%s[white]\n", line))
 							}
 						}
 					} else {
 						// Fallback to raw message if pretty printing fails
-						content.WriteString(fmt.Sprintf("  [lightcyan]Details:[white] %s\n", event.Message))
+						content.WriteString(fmt.Sprintf("    [white]%s[white]\n", event.Message))
 					}
 				} else {
 					content.WriteString(fmt.Sprintf("  [lightcyan]Details:[white] %s\n", event.Message))
