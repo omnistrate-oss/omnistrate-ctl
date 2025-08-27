@@ -18,7 +18,7 @@ import (
 
 const (
 	evaluateExample = `# Evaluate an expression for an instance
-omctl instance evaluate instance-abcd1234 my-resource-key --expression "param1 + param2"
+omctl instance evaluate instance-abcd1234 my-resource-key --expression "$var.username + {{ $sys.id }}"
 
 # Evaluate expressions from a JSON file
 omctl instance evaluate instance-abcd1234 my-resource-key --expression-file expressions.json`
@@ -161,5 +161,3 @@ func loadExpressionsFromFile(filePath string) (map[string]interface{}, error) {
 
 	return expressionMap, nil
 }
-
-
