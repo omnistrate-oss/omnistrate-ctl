@@ -593,98 +593,37 @@ func buildDebugEventsNode(resource ResourceInfo) *tview.TreeNode {
 	
 	hasEvents := false
 	
-	// Add category nodes
-	if len(resource.WorkflowEvents.Bootstrap) > 0 {
-		bootstrapNode := tview.NewTreeNode(fmt.Sprintf("Bootstrap (%d)", len(resource.WorkflowEvents.Bootstrap)))
-		bootstrapNode.SetReference(map[string]interface{}{
-			"type":     "debug-events-category",
-			"resource": resource,
-			"category": "Bootstrap",
-			"events":   resource.WorkflowEvents.Bootstrap,
-		})
-		bootstrapNode.SetColor(tcell.ColorWhite)
-		debugEventsNode.AddChild(bootstrapNode)
-		hasEvents = true
+	// Define categories with their events in a structured way
+	categories := []struct {
+		name   string
+		events []dataaccess.CustomWorkflowEvent
+	}{
+		{"Bootstrap", resource.WorkflowEvents.Bootstrap},
+		{"Storage", resource.WorkflowEvents.Storage},
+		{"Network", resource.WorkflowEvents.Network},
+		{"Compute", resource.WorkflowEvents.Compute},
+		{"Deployment", resource.WorkflowEvents.Deployment},
+		{"Monitoring", resource.WorkflowEvents.Monitoring},
+		{"Other", resource.WorkflowEvents.Other},
 	}
 	
-	if len(resource.WorkflowEvents.Storage) > 0 {
-		storageNode := tview.NewTreeNode(fmt.Sprintf("Storage (%d)", len(resource.WorkflowEvents.Storage)))
-		storageNode.SetReference(map[string]interface{}{
-			"type":     "debug-events-category",
-			"resource": resource,
-			"category": "Storage",
-			"events":   resource.WorkflowEvents.Storage,
-		})
-		storageNode.SetColor(tcell.ColorWhite)
-		debugEventsNode.AddChild(storageNode)
-		hasEvents = true
-	}
-	
-	if len(resource.WorkflowEvents.Network) > 0 {
-		networkNode := tview.NewTreeNode(fmt.Sprintf("Network (%d)", len(resource.WorkflowEvents.Network)))
-		networkNode.SetReference(map[string]interface{}{
-			"type":     "debug-events-category",
-			"resource": resource,
-			"category": "Network",
-			"events":   resource.WorkflowEvents.Network,
-		})
-		networkNode.SetColor(tcell.ColorWhite)
-		debugEventsNode.AddChild(networkNode)
-		hasEvents = true
-	}
+	// Add category nodes using a loop
+	for _, category := range categories {
+		if len(category.events) > 0 {
+			// Show last event summary and get icon/color
+			lastEvent := category.events[len(category.events)-1]
+			categoryIcon, categoryColor := getEventTypeOrStatusColorAndIcon(lastEvent.EventType)
 
-	if len(resource.WorkflowEvents.Compute) > 0 {
-		computeNode := tview.NewTreeNode(fmt.Sprintf("Compute (%d)", len(resource.WorkflowEvents.Compute)))
-		computeNode.SetReference(map[string]interface{}{
-			"type":     "debug-events-category",
-			"resource": resource,
-			"category": "Compute",
-			"events":   resource.WorkflowEvents.Compute,
-		})
-		computeNode.SetColor(tcell.ColorWhite)
-		debugEventsNode.AddChild(computeNode)
-		hasEvents = true
-	}
-
-	
-	if len(resource.WorkflowEvents.Deployment) > 0 {
-		deploymentNode := tview.NewTreeNode(fmt.Sprintf("Deployment (%d)", len(resource.WorkflowEvents.Deployment)))
-		deploymentNode.SetReference(map[string]interface{}{
-			"type":     "debug-events-category",
-			"resource": resource,
-			"category": "Deployment",
-			"events":   resource.WorkflowEvents.Deployment,
-		})
-		deploymentNode.SetColor(tcell.ColorWhite)
-		debugEventsNode.AddChild(deploymentNode)
-		hasEvents = true
-	}
-
-		if len(resource.WorkflowEvents.Monitoring) > 0 {
-		monitoringNode := tview.NewTreeNode(fmt.Sprintf("Monitoring (%d)", len(resource.WorkflowEvents.Monitoring)))
-		monitoringNode.SetReference(map[string]interface{}{
-			"type":     "debug-events-category",
-			"resource": resource,
-			"category": "Monitoring",
-			"events":   resource.WorkflowEvents.Monitoring,
-		})
-		monitoringNode.SetColor(tcell.ColorWhite)
-		debugEventsNode.AddChild(monitoringNode)
-		hasEvents = true
-	}
-	
-	
-	if len(resource.WorkflowEvents.Other) > 0 {
-		otherNode := tview.NewTreeNode(fmt.Sprintf("Other (%d)", len(resource.WorkflowEvents.Other)))
-		otherNode.SetReference(map[string]interface{}{
-			"type":     "debug-events-category",
-			"resource": resource,
-			"category": "Other",
-			"events":   resource.WorkflowEvents.Other,
-		})
-		otherNode.SetColor(tcell.ColorWhite)
-		debugEventsNode.AddChild(otherNode)
-		hasEvents = true
+			categoryNode := tview.NewTreeNode(fmt.Sprintf("[%s]%s [white]%s (%d)", categoryColor, categoryIcon, category.name, len(category.events)))
+			categoryNode.SetReference(map[string]interface{}{
+				"type":     "debug-events-category",
+				"resource": resource,
+				"category": category.name,
+				"events":   category.events,
+			})
+			debugEventsNode.AddChild(categoryNode)
+			hasEvents = true
+		}
 	}
 	
 	// If no events to display, show an informational node
@@ -712,6 +651,8 @@ func handleTreeNodeSelection(node *tview.TreeNode, rightPanel *tview.TextView, a
 		handleOptionMapSelection(ref, rightPanel, app, currentTerraformData, currentSelectionIsTerraformFiles, currentSelectionIsTerraformLogs, data)
 	}
 }
+
+
 
 
 // handleNonReferencedNodeSelection handles selection of nodes without references (like "Live Log" header nodes)
