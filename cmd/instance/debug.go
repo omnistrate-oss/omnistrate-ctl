@@ -800,21 +800,23 @@ func formatEventTime(utcTimeStr string) string {
 		utcTime.Format("2006-01-02 15:04:05 UTC"))
 }
 
-// getEventTypeColor returns the appropriate color for an event type
-func getEventTypeColor(eventType string) string {
-	switch eventType {
-	case "WorkflowStepStarted":
-		return "blue"
-	case "WorkflowStepCompleted":
-		return "green"
-	case "WorkflowStepFailed", "WorkflowFailed":
-		return "red"
-	case "WorkflowStepDebug":
-		return "yellow"
+// getEventTypeOrStatusColorAndIcon returns the appropriate color for an event type
+func getEventTypeOrStatusColorAndIcon(eventTypeOrStatus string) (string, string) {
+	switch eventTypeOrStatus {
+	case "WorkflowStepStarted","running", "in_progress":
+		return "●", "blue"
+	case "WorkflowStepCompleted","completed", "success", "succeeded":
+		return "✓", "green"
+	case "WorkflowStepFailed", "WorkflowFailed","failed", "error", "cancelled":
+		return "✗", "red"
+	case "WorkflowStepDebug","pending":
+		return "●", "yellow"
 	default:
-		return "white"
+		return  "●","white"
 	}
 }
+
+
 
 // handleDebugEventsCategorySelection handles selection of debug events category nodes
 func handleDebugEventsCategorySelection(ref map[string]interface{}, rightPanel *tview.TextView) {
@@ -832,8 +834,8 @@ func handleDebugEventsCategorySelection(ref map[string]interface{}, rightPanel *
 	} else {
 		for i, event := range events {
 			// Determine event type color
-			eventTypeColor := getEventTypeColor(event.EventType)
-			
+			_, eventTypeColor := getEventTypeOrStatusColorAndIcon(event.EventType)
+
 			content.WriteString(fmt.Sprintf("[orange]Event %d:[white]\n", i+1))
 			content.WriteString(fmt.Sprintf("  [lightcyan]Time:[white] %s\n", formatEventTime(event.EventTime)))
 			content.WriteString(fmt.Sprintf("  [lightcyan]Type:[white] [%s]%s[white]\n", eventTypeColor, event.EventType))
@@ -889,19 +891,8 @@ func handleDebugEventsOverviewSelection(ref map[string]interface{}, rightPanel *
 		}
 		if resource.WorkflowInfo.WorkflowStatus != "" {
 			// Color code the status
-			var statusColor string
-			switch strings.ToLower(resource.WorkflowInfo.WorkflowStatus) {
-			case "completed", "success", "succeeded":
-				statusColor = "green"
-			case "failed", "error", "cancelled":
-				statusColor = "red"
-			case "running", "in_progress":
-				statusColor = "blue"
-			case "pending":
-				statusColor = "yellow"
-			default:
-				statusColor = "white"
-			}
+			_, statusColor := getEventTypeOrStatusColorAndIcon(strings.ToLower(resource.WorkflowInfo.WorkflowStatus))
+
 			content.WriteString(fmt.Sprintf("[lightcyan]Status:[white] [%s]%s[white]\n", statusColor, resource.WorkflowInfo.WorkflowStatus))
 		}
 		if resource.WorkflowInfo.StartTime != "" {
@@ -942,13 +933,19 @@ func handleDebugEventsOverviewSelection(ref map[string]interface{}, rightPanel *
 	
 	for _, category := range categories {
 		if len(category.events) > 0 {
-			content.WriteString(fmt.Sprintf("[%s]● %s[white] (%d events)\n", "orange", category.name, len(category.events)))
+			// Determine icon and color based on the most recent event type in this category
+			var categoryIcon, categoryColor string
+			lastEvent := category.events[len(category.events)-1]
+			categoryIcon, categoryColor = getEventTypeOrStatusColorAndIcon(lastEvent.EventType)
+			
+			
+			content.WriteString(fmt.Sprintf("[%s]%s [%s]%s[white] (%d events)\n", categoryColor, categoryIcon,"orange", category.name, len(category.events)))
 			
 			// Show last event summary
 			if len(category.events) > 0 {
 				lastEvent := category.events[len(category.events)-1]
 				// Get event type color
-				eventTypeColor := getEventTypeColor(lastEvent.EventType)
+				_, eventTypeColor := getEventTypeOrStatusColorAndIcon(lastEvent.EventType)
 				content.WriteString(fmt.Sprintf("  Last: [%s]%s[white] at %s\n", eventTypeColor, lastEvent.EventType, formatEventTime(lastEvent.EventTime)))
 			}
 			content.WriteString("\n")
