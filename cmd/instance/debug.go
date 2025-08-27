@@ -786,15 +786,15 @@ func handleDebugEventsCategorySelection(ref map[string]interface{}, rightPanel *
 				// It's JSON, format it pretty
 				var messageData map[string]interface{}
 				if err := json.Unmarshal([]byte(event.Message), &messageData); err == nil {
-					// Format as pretty JSON
-					prettyJSON, err := json.MarshalIndent(messageData, "    ", "  ")
+					// Format as pretty JSON with consistent indentation
+					prettyJSON, err := json.MarshalIndent(messageData, "  ", "  ")
 					if err == nil {
 						content.WriteString("  [lightcyan]Details:[white]\n")
-						// Add indentation to each line to align with the label
+						// Add consistent indentation to each line
 						lines := strings.Split(string(prettyJSON), "\n")
 						for _, line := range lines {
 							if strings.TrimSpace(line) != "" {
-								content.WriteString(fmt.Sprintf("    [white]%s[white]\n", line))
+								content.WriteString(fmt.Sprintf("  [white]%s[white]\n", line))
 							}
 						}
 					} else {
