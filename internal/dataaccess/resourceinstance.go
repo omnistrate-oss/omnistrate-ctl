@@ -2,11 +2,13 @@ package dataaccess
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 
 	"github.com/omnistrate-oss/omnistrate-ctl/internal/utils"
 
 	openapiclientfleet "github.com/omnistrate-oss/omnistrate-sdk-go/fleet"
+	openapiclientv1 "github.com/omnistrate-oss/omnistrate-sdk-go/v1"
 )
 
 func CreateResourceInstance(ctx context.Context, token string,
@@ -442,4 +444,57 @@ func OneOffPatchResourceInstance(ctx context.Context, token string, serviceID, e
 		return handleFleetError(err)
 	}
 	return
+}
+
+func EvaluateExpression(ctx context.Context, token, serviceID, productTierID, instanceID, resourceKey, expression string, expressionMap map[string]interface{}) (result interface{}, err error) {
+	// Validate that either expression or expressionMap is provided
+	if expression == "" && expressionMap == nil {
+		return nil, fmt.Errorf("either expression or expressionMap is required")
+	}
+
+	ctxWithToken := context.WithValue(ctx, openapiclientv1.ContextAccessToken, token)
+	apiClient := getV1Client()
+
+	// Create the request
+	request := openapiclientv1.ExpressionEvaluatorRequest2{
+		ServiceID:   serviceID,
+		ResourceKey: resourceKey,
+	}
+
+	// Set optional fields
+	if productTierID != "" {
+		request.ProductTierID = &productTierID
+	}
+
+	if instanceID != "" {
+		request.InstanceID = &instanceID
+	}
+
+	// Set either expression or expressionMap
+	if expressionMap != nil {
+		request.ExpressionMap = expressionMap
+	} else if expression != "" {
+		request.Expression = &expression
+	}
+
+	req := apiClient.ExpressionEvaluatorApiAPI.ExpressionEvaluatorApiExpressionEvaluator(ctxWithToken).ExpressionEvaluatorRequest2(request)
+
+	var r *http.Response
+	defer func() {
+		if r != nil {
+			_ = r.Body.Close()
+		}
+	}()
+
+	res, r, err := req.Execute()
+	if err != nil {
+		return nil, handleV1Error(err)
+	}
+
+	// Handle the response
+	if res.Error != nil && *res.Error != "" {
+		return nil, fmt.Errorf("expression evaluation failed: %s", *res.Error)
+	}
+
+	return res.Result, nil
 }
