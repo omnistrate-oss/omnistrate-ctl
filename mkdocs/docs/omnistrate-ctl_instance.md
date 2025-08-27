@@ -34,6 +34,7 @@ omnistrate-ctl instance [operation] [flags]
 * [omnistrate-ctl instance describe](omnistrate-ctl_instance_describe.md)	 - Describe an instance deployment for your service
 * [omnistrate-ctl instance disable-debug-mode](omnistrate-ctl_instance_disable-debug-mode.md)	 - Disable debug mode for an instance deployment
 * [omnistrate-ctl instance enable-debug-mode](omnistrate-ctl_instance_enable-debug-mode.md)	 - Enable debug mode for an instance deployment
+* [omnistrate-ctl instance evaluate](omnistrate-ctl_instance_evaluate.md)	 - Evaluate an expression in the context of an instance
 * [omnistrate-ctl instance get-deployment](omnistrate-ctl_instance_get-deployment.md)	 - Get the deployment entity metadata of the instance
 * [omnistrate-ctl instance list](omnistrate-ctl_instance_list.md)	 - List instance deployments for your service
 * [omnistrate-ctl instance list-endpoints](omnistrate-ctl_instance_list-endpoints.md)	 - List endpoints for a specific instance
