@@ -20,6 +20,9 @@ import (
 	"github.com/omnistrate-oss/omnistrate-sdk-go/fleet"
 )
 
+// Global variables for managing right panel type
+var currentRightPanelType string 
+
 var debugCmd = &cobra.Command{
 	Use:     "debug [instance-id]",
 	Short:   "Debug instance resources",
@@ -31,18 +34,23 @@ var debugCmd = &cobra.Command{
 
 
 type DebugData struct {
-	InstanceID string         `json:"instanceId"`
-	Resources  []ResourceInfo `json:"resources"`
+	InstanceID      string         `json:"instanceId"`
+	Resources       []ResourceInfo `json:"resources"`
+	Token           string         `json:"-"` // Don't include in JSON output
+	ServiceID       string         `json:"-"` // Don't include in JSON output
+	EnvironmentID   string         `json:"-"` // Don't include in JSON output
 }
 
 type ResourceInfo struct {
-	ID            string         `json:"id"`
-	Name          string         `json:"name"`
-	Type          string         `json:"type"` // "helm" or "terraform"
-	DebugData     interface{}    `json:"debugData"`
-	HelmData      *HelmData      `json:"helmData,omitempty"`
-	TerraformData *TerraformData `json:"terraformData,omitempty"`
-	GenericData   *GenericData   `json:"genericData,omitempty"` // For generic resources
+	ID            string                             `json:"id"`
+	Name          string                             `json:"name"`
+	Type          string                             `json:"type"` // "helm" or "terraform"
+	DebugData     interface{}                        `json:"debugData"`
+	HelmData      *HelmData                          `json:"helmData,omitempty"`
+	TerraformData *TerraformData                     `json:"terraformData,omitempty"`
+	GenericData   *GenericData                       `json:"genericData,omitempty"` // For generic resources
+	WorkflowEvents *dataaccess.WorkflowEventsByCategory `json:"workflowEvents,omitempty"` // Debug events
+	WorkflowInfo   *dataaccess.WorkflowInfo           `json:"workflowInfo,omitempty"`   // Workflow metadata
 }
 
 type GenericData struct {
@@ -96,8 +104,11 @@ func runDebug(_ *cobra.Command, args []string) error {
 
 	// Process debug result and identify resource types
 	data := DebugData{
-		InstanceID: instanceID,
-		Resources:  []ResourceInfo{},
+		InstanceID:    instanceID,
+		Resources:     []ResourceInfo{},
+		Token:         token,
+		ServiceID:     serviceID,
+		EnvironmentID: environmentID,
 	}
 
 	// Use instanceData directly as a struct for BuildLogStreams and IsLogsEnabledStruct
@@ -112,7 +123,7 @@ func runDebug(_ *cobra.Command, args []string) error {
 			}
 			
 			// Process each resource based on its type
-			resourceInfo := processResourceByType(resourceKey, resourceDebugInfo, instanceData, instanceID, IsLogsEnabled, logsService)
+			resourceInfo := processResourceByType(resourceKey, resourceDebugInfo, instanceData, instanceID, IsLogsEnabled, logsService, ctx, token, serviceID, environmentID)
 			if resourceInfo != nil {
 				data.Resources = append(data.Resources, *resourceInfo)
 			}
@@ -124,7 +135,7 @@ func runDebug(_ *cobra.Command, args []string) error {
 }
 
 // processResourceByType identifies the resource type and processes it accordingly
-func processResourceByType(resourceKey string, resourceDebugInfo interface{}, instanceData *fleet.ResourceInstance, instanceID string, isLogsEnabled bool, logsService *dataaccess.LogsService) *ResourceInfo {
+func processResourceByType(resourceKey string, resourceDebugInfo interface{}, instanceData *fleet.ResourceInstance, instanceID string, isLogsEnabled bool, logsService *dataaccess.LogsService, ctx context.Context, token, serviceID, environmentID string) *ResourceInfo {
 	resourceInfo := &ResourceInfo{
 		ID:        resourceKey,
 		Name:      resourceKey,
@@ -134,30 +145,30 @@ func processResourceByType(resourceKey string, resourceDebugInfo interface{}, in
 
 	debugData, ok := resourceDebugInfo.(map[string]interface{})
 	if !ok {
-		return processGenericResource(resourceInfo, instanceData, instanceID, isLogsEnabled, logsService)
+		return processGenericResource(resourceInfo, instanceData, instanceID, isLogsEnabled, logsService, ctx, token, serviceID, environmentID)
 	}
 
 	actualDebugData, ok := debugData["debugData"].(map[string]interface{})
 	if !ok {
-		return processGenericResource(resourceInfo, instanceData, instanceID, isLogsEnabled, logsService)
+		return processGenericResource(resourceInfo, instanceData, instanceID, isLogsEnabled, logsService, ctx, token, serviceID, environmentID)
 	}
 
 	// Check if it's a helm resource
 	if _, hasChart := actualDebugData["chartRepoName"]; hasChart {
-		return processHelmResource(resourceInfo, actualDebugData, instanceData, instanceID, isLogsEnabled, logsService)
+		return processHelmResource(resourceInfo, actualDebugData, instanceData, instanceID, isLogsEnabled, logsService, ctx, token, serviceID, environmentID)
 	}
 
 	// Check if it's a terraform resource
 	if isTerraformResource(actualDebugData) {
-		return processTerraformResource(resourceInfo, actualDebugData)
+		return processTerraformResource(resourceInfo, actualDebugData, ctx, token, serviceID, environmentID, instanceID)
 	}
 
 	// Default to generic resource
-	return processGenericResource(resourceInfo, instanceData, instanceID, isLogsEnabled, logsService)
+	return processGenericResource(resourceInfo, instanceData, instanceID, isLogsEnabled, logsService, ctx, token, serviceID, environmentID)
 }
 
 // processHelmResource handles Helm resource processing
-func processHelmResource(resourceInfo *ResourceInfo, actualDebugData map[string]interface{}, instanceData *fleet.ResourceInstance, instanceID string, isLogsEnabled bool, logsService *dataaccess.LogsService) *ResourceInfo {
+func processHelmResource(resourceInfo *ResourceInfo, actualDebugData map[string]interface{}, instanceData *fleet.ResourceInstance, instanceID string, isLogsEnabled bool, logsService *dataaccess.LogsService, ctx context.Context, token, serviceID, environmentID string) *ResourceInfo {
 	resourceInfo.Type = "helm"
 	resourceInfo.HelmData = parseHelmData(actualDebugData)
 	
@@ -168,18 +179,57 @@ func processHelmResource(resourceInfo *ResourceInfo, actualDebugData map[string]
 		}
 	}
 	
+	// Fetch workflow events for all resources in this instance
+	resourcesData, workflowInfo, err := dataaccess.GetDebugEventsForAllResources(ctx, token, serviceID, environmentID, instanceID)
+	if err == nil && len(resourcesData) > 0 {
+		// Find the matching resource and assign its events
+		for _, resData := range resourcesData {
+			if resData.ResourceKey == resourceInfo.ID || resData.ResourceName == resourceInfo.Name {
+				resourceInfo.WorkflowEvents = resData.EventsByCategory
+				break
+			}
+		}
+		// If no specific resource found, use the first resource's events
+		if resourceInfo.WorkflowEvents == nil && len(resourcesData) > 0 {
+			resourceInfo.WorkflowEvents = resourcesData[0].EventsByCategory
+		}
+	}
+	if err == nil && workflowInfo != nil {
+		resourceInfo.WorkflowInfo = workflowInfo
+	}
+	
 	return resourceInfo
 }
 
 // processTerraformResource handles Terraform resource processing
-func processTerraformResource(resourceInfo *ResourceInfo, actualDebugData map[string]interface{}) *ResourceInfo {
+func processTerraformResource(resourceInfo *ResourceInfo, actualDebugData map[string]interface{}, ctx context.Context, token, serviceID, environmentID, instanceID string) *ResourceInfo {
 	resourceInfo.Type = "terraform"
 	resourceInfo.TerraformData = parseTerraformData(actualDebugData)
+	
+	// Fetch workflow events for all resources in this instance
+	resourcesData, workflowInfo, err := dataaccess.GetDebugEventsForAllResources(ctx, token, serviceID, environmentID, instanceID)
+	if err == nil && len(resourcesData) > 0 {
+		// Find the matching resource and assign its events
+		for _, resData := range resourcesData {
+			if resData.ResourceKey == resourceInfo.ID || resData.ResourceName == resourceInfo.Name {
+				resourceInfo.WorkflowEvents = resData.EventsByCategory
+				break
+			}
+		}
+		// If no specific resource found, use the first resource's events
+		if resourceInfo.WorkflowEvents == nil && len(resourcesData) > 0 {
+			resourceInfo.WorkflowEvents = resourcesData[0].EventsByCategory
+		}
+	}
+	if err == nil && workflowInfo != nil {
+		resourceInfo.WorkflowInfo = workflowInfo
+	}
+	
 	return resourceInfo
 }
 
 // processGenericResource handles Generic resource processing
-func processGenericResource(resourceInfo *ResourceInfo, instanceData *fleet.ResourceInstance, instanceID string, isLogsEnabled bool, logsService *dataaccess.LogsService) *ResourceInfo {
+func processGenericResource(resourceInfo *ResourceInfo, instanceData *fleet.ResourceInstance, instanceID string, isLogsEnabled bool, logsService *dataaccess.LogsService, ctx context.Context, token, serviceID, environmentID string) *ResourceInfo {
 	resourceInfo.Type = "generic"
 	resourceInfo.GenericData = &GenericData{}
 	
@@ -188,6 +238,25 @@ func processGenericResource(resourceInfo *ResourceInfo, instanceData *fleet.Reso
 		if err == nil && nodeData != nil {
 			resourceInfo.GenericData.LiveLogs = nodeData
 		}
+	}
+	
+	// Fetch workflow events for all resources in this instance
+	resourcesData, workflowInfo, err := dataaccess.GetDebugEventsForAllResources(ctx, token, serviceID, environmentID, instanceID)
+	if err == nil && len(resourcesData) > 0 {
+		// Find the matching resource and assign its events
+		for _, resData := range resourcesData {
+			if resData.ResourceKey == resourceInfo.ID || resData.ResourceName == resourceInfo.Name {
+				resourceInfo.WorkflowEvents = resData.EventsByCategory
+				break
+			}
+		}
+		// If no specific resource found, use the first resource's events
+		if resourceInfo.WorkflowEvents == nil && len(resourcesData) > 0 {
+			resourceInfo.WorkflowEvents = resourcesData[0].EventsByCategory
+		}
+	}
+	if err == nil && workflowInfo != nil {
+		resourceInfo.WorkflowInfo = workflowInfo
 	}
 	
 	return resourceInfo
@@ -331,13 +400,9 @@ func launchDebugTUI(data DebugData) error {
 
 	// Handle tree selection
 	leftPanel.SetChangedFunc(func(node *tview.TreeNode) {
-		handleTreeNodeSelection(node, rightPanel, app, &currentTerraformData, &currentSelectionIsTerraformFiles, &currentSelectionIsTerraformLogs)
+		handleTreeNodeSelection(node, rightPanel, app, &currentTerraformData, &currentSelectionIsTerraformFiles, &currentSelectionIsTerraformLogs, data)
 	})
 
-	// Also handle direct selection (Enter key)
-	leftPanel.SetSelectedFunc(func(node *tview.TreeNode) {
-		handleTreeNodeEnterSelection(node, rightPanel, &currentTerraformData, &currentSelectionIsTerraformFiles, &currentSelectionIsTerraformLogs)
-	})
 
 	// Set up layout
 	flex.AddItem(leftPanel, 0, 1, true)
@@ -460,6 +525,11 @@ func buildHelmResourceNode(resource ResourceInfo) *tview.TreeNode {
 		}
 	}
 
+	// Add Debug Events node
+	if debugEventsNode := buildDebugEventsNode(resource); debugEventsNode != nil {
+		resourceNode.AddChild(debugEventsNode)
+	}
+
 	return resourceNode
 }
 
@@ -494,6 +564,11 @@ func buildTerraformResourceNode(resource ResourceInfo) *tview.TreeNode {
 		}
 	}
 
+	// Add Debug Events node
+	if debugEventsNode := buildDebugEventsNode(resource); debugEventsNode != nil {
+		resourceNode.AddChild(debugEventsNode)
+	}
+
 	return resourceNode
 }
 
@@ -525,11 +600,75 @@ func buildGenericResourceNode(resource ResourceInfo) *tview.TreeNode {
 		}
 	}
 
+	// Add Debug Events node
+	if debugEventsNode := buildDebugEventsNode(resource); debugEventsNode != nil {
+		resourceNode.AddChild(debugEventsNode)
+	}
+
 	return resourceNode
 }
 
+// buildDebugEventsNode creates a tree node for workflow events with categories
+func buildDebugEventsNode(resource ResourceInfo) *tview.TreeNode {
+	if resource.WorkflowEvents == nil {
+		return nil
+	}
+
+	debugEventsNode := tview.NewTreeNode("Debug Events")
+	debugEventsNode.SetColor(tcell.ColorGreen)
+	debugEventsNode.SetReference(map[string]interface{}{
+		"type":     "debug-events-overview",
+		"resource": resource,
+	})
+	
+	hasEvents := false
+	
+	// Define categories with their events in a structured way
+	categories := []struct {
+		name   string
+		events []dataaccess.CustomWorkflowEvent
+	}{
+		{"Bootstrap", resource.WorkflowEvents.Bootstrap},
+		{"Storage", resource.WorkflowEvents.Storage},
+		{"Network", resource.WorkflowEvents.Network},
+		{"Compute", resource.WorkflowEvents.Compute},
+		{"Deployment", resource.WorkflowEvents.Deployment},
+		{"Monitoring", resource.WorkflowEvents.Monitoring},
+		{"Other", resource.WorkflowEvents.Other},
+	}
+	
+	// Add category nodes using a loop
+	for _, category := range categories {
+		if len(category.events) > 0 {
+			
+			// Show last event summary and get icon/color
+			eventType := getHighestPriorityEventType(category.events)
+			categoryIcon, categoryColor := getEventTypeOrStatusColorAndIcon(eventType)
+
+			categoryNode := tview.NewTreeNode(fmt.Sprintf("[%s]%s [white]%s (%d)", categoryColor, categoryIcon, category.name, len(category.events)))
+			categoryNode.SetReference(map[string]interface{}{
+				"type":     "debug-events-category",
+				"resource": resource,
+				"category": category.name,
+				"events":   category.events,
+			})
+			debugEventsNode.AddChild(categoryNode)
+			hasEvents = true
+		}
+	}
+	
+	// If no events to display, show an informational node
+	if !hasEvents {
+		noEventsNode := tview.NewTreeNode("No events available")
+		noEventsNode.SetColor(tcell.ColorGray)
+		debugEventsNode.AddChild(noEventsNode)
+	}
+	
+	return debugEventsNode
+}
+
 // handleTreeNodeSelection processes tree node selection (when node changes/is highlighted)
-func handleTreeNodeSelection(node *tview.TreeNode, rightPanel *tview.TextView, app *tview.Application, currentTerraformData **TerraformData, currentSelectionIsTerraformFiles *bool, currentSelectionIsTerraformLogs *bool) {
+func handleTreeNodeSelection(node *tview.TreeNode, rightPanel *tview.TextView, app *tview.Application, currentTerraformData **TerraformData, currentSelectionIsTerraformFiles *bool, currentSelectionIsTerraformLogs *bool, data DebugData) {
 	reference := node.GetReference()
 	if reference == nil {
 		handleNonReferencedNodeSelection(node, rightPanel, currentSelectionIsTerraformFiles, currentSelectionIsTerraformLogs)
@@ -540,26 +679,12 @@ func handleTreeNodeSelection(node *tview.TreeNode, rightPanel *tview.TextView, a
 	case ResourceInfo:
 		handleResourceInfoSelection(ref, rightPanel, currentSelectionIsTerraformFiles, currentSelectionIsTerraformLogs)
 	case map[string]interface{}:
-		handleOptionMapSelection(ref, rightPanel, app, currentTerraformData, currentSelectionIsTerraformFiles, currentSelectionIsTerraformLogs)
+		handleOptionMapSelection(ref, rightPanel, app, currentTerraformData, currentSelectionIsTerraformFiles, currentSelectionIsTerraformLogs, data)
 	}
 }
 
-// handleTreeNodeEnterSelection processes tree node selection (when Enter key is pressed)
-func handleTreeNodeEnterSelection(node *tview.TreeNode, rightPanel *tview.TextView, currentTerraformData **TerraformData, currentSelectionIsTerraformFiles *bool, currentSelectionIsTerraformLogs *bool) {
-	reference := node.GetReference()
-	if reference != nil {
-		// If it's an option, show its content
-		switch ref := reference.(type) {
-		case ResourceInfo:
-			handleResourceInfoSelection(ref, rightPanel, currentSelectionIsTerraformFiles, currentSelectionIsTerraformLogs)
-		case map[string]interface{}:
-			handleOptionMapSelectionForEnter(ref, rightPanel, currentTerraformData, currentSelectionIsTerraformFiles, currentSelectionIsTerraformLogs)
-			return // Don't toggle expansion for options
-		}
-	}
-	// Toggle expansion for resource nodes
-	node.SetExpanded(!node.IsExpanded())
-}
+
+
 
 // handleNonReferencedNodeSelection handles selection of nodes without references (like "Live Log" header nodes)
 func handleNonReferencedNodeSelection(node *tview.TreeNode, rightPanel *tview.TextView, currentSelectionIsTerraformFiles *bool, currentSelectionIsTerraformLogs *bool) {
@@ -597,20 +722,28 @@ func handleResourceInfoSelection(resource ResourceInfo, rightPanel *tview.TextVi
 }
 
 // handleOptionMapSelection handles selection of option map nodes (for tree selection changes)
-func handleOptionMapSelection(ref map[string]interface{}, rightPanel *tview.TextView, app *tview.Application, currentTerraformData **TerraformData, currentSelectionIsTerraformFiles *bool, currentSelectionIsTerraformLogs *bool) {
+func handleOptionMapSelection(ref map[string]interface{}, rightPanel *tview.TextView, app *tview.Application, currentTerraformData **TerraformData, currentSelectionIsTerraformFiles *bool, currentSelectionIsTerraformLogs *bool, data DebugData) {
+	currentRightPanelType = ref["type"].(string)
 	if t, ok := ref["type"].(string); ok && t == "live-log-pod" {
 		handleLiveLogPodSelection(ref, rightPanel, app)
+	} else if t, ok := ref["type"].(string); ok && t == "debug-events-category" {
+		handleDebugEventsCategorySelection(ref, rightPanel)
+		if resource, ok := ref["resource"].(ResourceInfo); ok {
+			pollDebugEventsAndWorkflowStatus(app, rightPanel, resource, data.Token, data.ServiceID, data.EnvironmentID, data.InstanceID)
+		}
+	} else if t, ok := ref["type"].(string); ok && t == "debug-events-overview" {
+		handleDebugEventsOverviewSelection(ref, rightPanel)
+		// Start polling for debug events when overview is selected
+		if resource, ok := ref["resource"].(ResourceInfo); ok {
+			pollDebugEventsAndWorkflowStatus(app, rightPanel, resource, data.Token, data.ServiceID, data.EnvironmentID, data.InstanceID)
+		}
 	} else {
 		handleOptionSelection(ref, rightPanel)
 		updateTerraformSelectionState(ref, currentTerraformData, currentSelectionIsTerraformFiles, currentSelectionIsTerraformLogs)
 	}
 }
 
-// handleOptionMapSelectionForEnter handles selection of option map nodes (for Enter key presses)
-func handleOptionMapSelectionForEnter(ref map[string]interface{}, rightPanel *tview.TextView, currentTerraformData **TerraformData, currentSelectionIsTerraformFiles *bool, currentSelectionIsTerraformLogs *bool) {
-	handleOptionSelection(ref, rightPanel)
-	updateTerraformSelectionState(ref, currentTerraformData, currentSelectionIsTerraformFiles, currentSelectionIsTerraformLogs)
-}
+
 
 // handleLiveLogPodSelection handles selection of live log pod nodes
 func handleLiveLogPodSelection(ref map[string]interface{}, rightPanel *tview.TextView, app *tview.Application) {
@@ -620,6 +753,187 @@ func handleLiveLogPodSelection(ref map[string]interface{}, rightPanel *tview.Tex
 	rightPanel.SetTitle(fmt.Sprintf("Live Log: %s", podName))
 	rightPanel.SetText(fmt.Sprintf("Connecting to logs for %s...", podName))
 	go connectAndStreamLogs(app, logsUrl, rightPanel)
+}
+
+
+
+
+// formatEventTime converts UTC timestamp to a more readable format
+func formatEventTime(utcTimeStr string) string {
+	// Parse the UTC timestamp
+	utcTime, err := time.Parse(time.RFC3339, utcTimeStr)
+	if err != nil {
+		// If parsing fails, return the original string
+		return utcTimeStr
+	}
+	
+	// Convert to local time and format it nicely
+	return fmt.Sprintf("%s ", 
+		utcTime.Format("2006-01-02 15:04:05 UTC"))
+}
+
+// getEventTypeOrStatusColorAndIcon returns the appropriate color for an event type
+func getEventTypeOrStatusColorAndIcon(eventTypeOrStatus string) (string, string) {
+	switch eventTypeOrStatus {
+	case "WorkflowStepStarted","running", "in_progress":
+		return "●", "blue"
+	case "WorkflowStepCompleted","completed", "success", "succeeded":
+		return "✓", "green"
+	case "WorkflowStepFailed", "WorkflowFailed","failed", "error", "cancelled":
+		return "✗", "red"
+	case "WorkflowStepDebug","pending":
+		return "●", "yellow"
+	default:
+		return  "●","white"
+	}
+}
+
+
+
+// handleDebugEventsCategorySelection handles selection of debug events category nodes
+func handleDebugEventsCategorySelection(ref map[string]interface{}, rightPanel *tview.TextView) {
+	category, _ := ref["category"].(string)
+	events, _ := ref["events"].([]dataaccess.CustomWorkflowEvent)
+	resource, _ := ref["resource"].(ResourceInfo)
+	
+	rightPanel.SetTitle(fmt.Sprintf("Debug Events: %s - %s", resource.Name, category))
+	
+	var content strings.Builder
+	content.WriteString(fmt.Sprintf("[yellow]=== %s Events for %s ===[white]\n\n", category, resource.Name))
+	
+	if len(events) == 0 {
+		content.WriteString("[gray]No events found in this category.[white]\n")
+	} else {
+		for i, event := range events {
+			// Determine event type color
+			_, eventTypeColor := getEventTypeOrStatusColorAndIcon(event.EventType)
+
+			content.WriteString(fmt.Sprintf("[orange]Event %d:[white]\n", i+1))
+			content.WriteString(fmt.Sprintf("  [lightcyan]Time:[white] %s\n", formatEventTime(event.EventTime)))
+			content.WriteString(fmt.Sprintf("  [lightcyan]Type:[white] [%s]%s[white]\n", eventTypeColor, event.EventType))
+			
+			// Try to parse and format the message
+			if strings.HasPrefix(event.Message, "{") && strings.HasSuffix(event.Message, "}") {
+				// It's JSON, format it pretty (similar to chart values parsing)
+				var messageData map[string]interface{}
+				if err := json.Unmarshal([]byte(event.Message), &messageData); err == nil {
+					content.WriteString("  [lightcyan]Details:[white]\n")
+					// Format as pretty JSON with proper indentation
+					prettyJSON, err := json.MarshalIndent(messageData, "", "    ")
+					if err == nil {
+						// Add consistent base indentation to each line (4 spaces to align with Details label)
+						lines := strings.Split(string(prettyJSON), "\n")
+						for _, line := range lines {
+							if strings.TrimSpace(line) != "" {
+								content.WriteString(fmt.Sprintf("    [white]%s[white]\n", line))
+							}
+						}
+					} else {
+						// Fallback to raw message if pretty printing fails
+						content.WriteString(fmt.Sprintf("    [white]%s[white]\n", event.Message))
+					}
+				} else {
+					content.WriteString(fmt.Sprintf("  [lightcyan]Details:[white] %s\n", event.Message))
+				}
+			} else {
+				content.WriteString(fmt.Sprintf("  [lightcyan]Details:[white] %s\n", event.Message))
+			}
+			
+			content.WriteString("\n")
+		}
+	}
+	
+	rightPanel.SetText(content.String())
+}
+
+// handleDebugEventsOverviewSelection handles selection of the main debug events node
+func handleDebugEventsOverviewSelection(ref map[string]interface{}, rightPanel *tview.TextView) {
+	resource, _ := ref["resource"].(ResourceInfo)
+	
+	rightPanel.SetTitle(fmt.Sprintf("Debug Events Overview - %s", resource.Name))
+	
+	var content strings.Builder
+	content.WriteString(fmt.Sprintf("[yellow]=== Debug Events Overview for %s ===[white]\n\n", resource.Name))
+	
+	// Add workflow information section
+	if resource.WorkflowInfo != nil {
+		content.WriteString("[yellow]=== Workflow Information ===[white]\n")
+		if resource.WorkflowInfo.WorkflowID != "" {
+			content.WriteString(fmt.Sprintf("[lightcyan]Workflow ID:[white] %s\n", resource.WorkflowInfo.WorkflowID))
+		}
+		if resource.WorkflowInfo.WorkflowStatus != "" {
+			// Color code the status
+			_, statusColor := getEventTypeOrStatusColorAndIcon(strings.ToLower(resource.WorkflowInfo.WorkflowStatus))
+
+			content.WriteString(fmt.Sprintf("[lightcyan]Status:[white] [%s]%s[white]\n", statusColor, resource.WorkflowInfo.WorkflowStatus))
+		}
+		if resource.WorkflowInfo.StartTime != "" {
+			content.WriteString(fmt.Sprintf("[lightcyan]Start Time:[white] %s\n", formatEventTime(resource.WorkflowInfo.StartTime)))
+		}
+		if resource.WorkflowInfo.EndTime != "" {
+			content.WriteString(fmt.Sprintf("[lightcyan]End Time:[white] %s\n", formatEventTime(resource.WorkflowInfo.EndTime)))
+		}
+		content.WriteString("\n")
+	}
+	
+	if resource.WorkflowEvents == nil {
+		content.WriteString("[gray]No workflow events available.[white]\n")
+		rightPanel.SetText(content.String())
+		return
+	}
+	
+	// Show all categories with counts and summary
+	categories := []struct {
+		name   string
+		events []dataaccess.CustomWorkflowEvent
+	}{
+		{"Bootstrap", resource.WorkflowEvents.Bootstrap},
+		{"Storage", resource.WorkflowEvents.Storage},
+		{"Network", resource.WorkflowEvents.Network},
+		{"Compute", resource.WorkflowEvents.Compute},
+		{"Deployment", resource.WorkflowEvents.Deployment},
+		{"Monitoring", resource.WorkflowEvents.Monitoring},
+		{"Other", resource.WorkflowEvents.Other},
+	}
+	
+	totalEvents := 0
+	for _, category := range categories {
+		totalEvents += len(category.events)
+	}
+	
+	content.WriteString(fmt.Sprintf("[lightcyan]Total Events:[white] %d\n\n", totalEvents))
+	
+	for _, category := range categories {
+		if len(category.events) > 0 {
+			// Determine icon and color based on the most recent event type in this category
+			eventType := getHighestPriorityEventType(category.events)
+			categoryIcon, categoryColor := getEventTypeOrStatusColorAndIcon(eventType)
+			content.WriteString(fmt.Sprintf("[%s]%s [%s]%s[white] (%d events)\n", categoryColor, categoryIcon,"orange", category.name, len(category.events)))
+			
+			// Show last event summary
+			if len(category.events) > 0 {
+				// Get event type color
+				eventType := getHighestPriorityEventType(category.events)
+				_, eventTypeColor := getEventTypeOrStatusColorAndIcon(eventType)
+				// Find the event with the matching eventType to get its EventTime
+				eventTime := ""
+				for _, evt := range category.events {
+					if evt.EventType == eventType {
+						eventTime = evt.EventTime
+						break
+					}
+				}
+				content.WriteString(fmt.Sprintf("  Last: [%s]%s[white] at %s\n", eventTypeColor, eventType, formatEventTime(eventTime)))
+			}
+			content.WriteString("\n")
+		} else {
+			content.WriteString(fmt.Sprintf("[gray]○ %s[white] (0 events)\n\n", category.name))
+		}
+	}
+	
+	content.WriteString("[lightcyan]Click on a category in the tree to view detailed events.[white]\n")
+	
+	rightPanel.SetText(content.String())
 }
 
 // updateTerraformSelectionState updates terraform selection state based on option type
@@ -1798,19 +2112,58 @@ func connectAndStreamLogs(app *tview.Application, logsUrl string, rightPanel *tv
 		})
 		return
 	}
+	
 	go func() {
-		for {
+		retryCount := 0
+		maxRetries := 3
+		
+		for retryCount < maxRetries {
+			// Check if we should still be trying to connect to live logs
+			if currentRightPanelType != "live-log-pod"  {
+				// User has switched away from live logs, stop retrying
+				return
+			}
+			
 			c, _, err := websocket.DefaultDialer.Dial(logsUrl, nil)
 			if err != nil {
+				retryCount++
+				
+				// Check again before updating UI
+				if currentRightPanelType != "live-log-pod" {
+					return
+				}
+				
 				app.QueueUpdateDraw(func() {
-					rightPanel.SetText(fmt.Sprintf("[red]Failed to connect: %v[-]", err))
+					if currentRightPanelType == "live-log-pod"  {
+						if retryCount < maxRetries {
+							rightPanel.SetText(fmt.Sprintf("[yellow]Connection failed (attempt %d/%d): %v[white]\nRetrying in 5 seconds...", retryCount, maxRetries, err))
+						} else {
+							rightPanel.SetText(fmt.Sprintf("[red]Live logs unavailable after %d attempts[white]\n\nConnection Error: %v\n\n[yellow]Tip:[white] Try selecting 'Debug Events' to view workflow events instead.", maxRetries, err))
+						}
+					}
 				})
-				time.Sleep(5 * time.Second)
-				continue
+				
+				if retryCount < maxRetries {
+					time.Sleep(5 * time.Second)
+					continue
+				} else {
+					// Max retries reached, stop trying
+					return
+				}
 			}
+			
+			// Connection successful, reset retry count and break from retry loop
 			defer c.Close()
+			
+			// Check if we should still be showing live logs
+			if currentRightPanelType != "live-log-pod"  {
+				return
+			}
+			
 			app.QueueUpdateDraw(func() {
-				rightPanel.SetText("")
+				if currentRightPanelType == "live-log-pod"  {
+					rightPanel.SetText("[green]Connected to live logs[white]\n")
+				}
 			})
 			
 			// Batching mechanism for performance optimization
@@ -1827,6 +2180,11 @@ func connectAndStreamLogs(app *tview.Application, logsUrl string, rightPanel *tv
 					select {
 					case <-batchTicker.C:
 						if len(logBatch) > 0 {
+							// Check if we should still be showing live logs
+							if currentRightPanelType != "live-log-pod"  {
+								return
+							}
+							
 							// Process and display the batch
 							var formattedBatch strings.Builder
 							for _, line := range logBatch {
@@ -1836,7 +2194,9 @@ func connectAndStreamLogs(app *tview.Application, logsUrl string, rightPanel *tv
 							}
 							
 							app.QueueUpdateDraw(func() {
-								_, _ = rightPanel.Write([]byte(formattedBatch.String()))
+								if currentRightPanelType == "live-log-pod"  {
+									_, _ = rightPanel.Write([]byte(formattedBatch.String()))
+								}
 							})
 							
 							// Clear the batch
@@ -1849,12 +2209,24 @@ func connectAndStreamLogs(app *tview.Application, logsUrl string, rightPanel *tv
 			}()
 			
 			for {
+				// Check if we should still be showing live logs
+				if currentRightPanelType != "live-log-pod"  {
+					done <- true // Stop the batching goroutine
+					return
+				}
+				
 				_, message, err := c.ReadMessage()
 				if err != nil {
 					done <- true // Stop the batching goroutine
-					app.QueueUpdateDraw(func() {
-						rightPanel.SetText(fmt.Sprintf("[yellow]Connection closed: %v[-]", err))
-					})
+					
+					// Only update UI if we're still showing live logs
+					if currentRightPanelType == "live-log-pod"  {
+						app.QueueUpdateDraw(func() {
+							if currentRightPanelType == "live-log-pod"  {
+								rightPanel.SetText(fmt.Sprintf("[yellow]Connection closed: %v[-]", err))
+							}
+						})
+					}
 					break
 				}
 				
@@ -1862,7 +2234,13 @@ func connectAndStreamLogs(app *tview.Application, logsUrl string, rightPanel *tv
 				logBatch = append(logBatch, string(message))
 				
 				// If batch gets too large, process immediately to avoid memory issues
-				if len(logBatch) >= 50 {
+				if len(logBatch) >= 500 {
+					// Check if we should still be showing live logs
+					if currentRightPanelType != "live-log-pod"  {
+						done <- true // Stop the batching goroutine
+						return
+					}
+					
 					var formattedBatch strings.Builder
 					for _, line := range logBatch {
 						cleanedLogLine := cleanLiveLogLine(line)
@@ -1871,7 +2249,9 @@ func connectAndStreamLogs(app *tview.Application, logsUrl string, rightPanel *tv
 					}
 					
 					app.QueueUpdateDraw(func() {
-						_, _ = rightPanel.Write([]byte(formattedBatch.String()))
+						if currentRightPanelType == "live-log-pod"  {
+							_, _ = rightPanel.Write([]byte(formattedBatch.String()))
+						}
 					})
 					
 					// Clear the batch
@@ -1879,7 +2259,166 @@ func connectAndStreamLogs(app *tview.Application, logsUrl string, rightPanel *tv
 				}
 			}
 			c.Close()
-			time.Sleep(5 * time.Second)
+			
+			// If we reach here, the connection was successful but then closed
+			// Break from retry loop instead of retrying
+			break
 		}
 	}()
 }
+
+// pollDebugEventsAndWorkflowStatus polls debug events and workflow status every 30 seconds and stops when workflow is complete
+func pollDebugEventsAndWorkflowStatus(app *tview.Application, rightPanel *tview.TextView, resource ResourceInfo, token, serviceID, environmentID, instanceID string) {
+	go func() {
+		ticker := time.NewTicker(30 * time.Second)
+		defer ticker.Stop()
+
+		
+			
+
+		for range ticker.C {
+
+			// Poll for debug events and workflow status until polling stops
+
+			status := strings.ToLower(resource.WorkflowInfo.WorkflowStatus)
+			isWorkflowComplete := status == "success" || status == "failed" || status == "cancelled"
+			if isWorkflowComplete {
+				ticker.Stop()
+				return
+			}
+
+			// Check if we should still be updating debug events
+			if !strings.HasPrefix(currentRightPanelType, "debug-events") {
+				// User has switched away from debug events, stop polling
+				return
+			}
+
+			// Fetch updated debug events and workflow status for all resources
+			ctx := context.Background()
+			resourcesData, workflowInfo, err := dataaccess.GetDebugEventsForAllResources(
+				ctx, token, serviceID, environmentID, instanceID)
+
+			if err != nil {
+				// Log error but continue polling
+				continue
+			}
+
+			// Update the resource with new data - find matching resource
+			if len(resourcesData) > 0 {
+				for _, resData := range resourcesData {
+					if resData.ResourceKey == resource.ID || resData.ResourceName == resource.Name {
+						resource.WorkflowEvents = resData.EventsByCategory
+						break
+					}
+				}
+				// If no specific resource found, use the first resource's events
+				if resource.WorkflowEvents == nil {
+					resource.WorkflowEvents = resourcesData[0].EventsByCategory
+				}
+			}
+			resource.WorkflowInfo = workflowInfo
+
+			// Check if workflow is complete - stop polling immediately if so
+			if workflowInfo != nil {
+				status := strings.ToLower(workflowInfo.WorkflowStatus)
+				isWorkflowComplete := status == "success" || status == "failed" || status == "cancelled"
+
+				if isWorkflowComplete {
+					// Update the UI one final time before stopping
+					app.QueueUpdateDraw(func() {
+						if strings.HasPrefix(currentRightPanelType, "debug-events") {
+							// Determine which type of debug events view to update
+							switch currentRightPanelType {
+							case "debug-events-overview":
+								// Update overview
+								ref := map[string]interface{}{
+									"type":     "debug-events-overview",
+									"resource": resource,
+								}
+								handleDebugEventsOverviewSelection(ref, rightPanel)
+
+							case "debug-events-category":
+								// We would need to track which category is currently selected
+								// For now, just refresh overview since we don't have category state
+								ref := map[string]interface{}{
+									"type":     "debug-events-overview",
+									"resource": resource,
+								}
+								handleDebugEventsOverviewSelection(ref, rightPanel)
+							}
+						}
+					})
+
+					// Workflow is complete, stop polling
+					return
+				}
+			}
+
+			// Update the UI if we're still showing debug events (workflow still in progress)
+			app.QueueUpdateDraw(func() {
+				if strings.HasPrefix(currentRightPanelType, "debug-events") {
+					// Determine which type of debug events view to update
+					switch currentRightPanelType {
+					case "debug-events-overview":
+						// Update overview
+						ref := map[string]interface{}{
+							"type":     "debug-events-overview",
+							"resource": resource,
+						}
+						handleDebugEventsOverviewSelection(ref, rightPanel)
+
+					case "debug-events-category":
+						// We would need to track which category is currently selected
+						// For now, just refresh overview since we don't have category state
+						ref := map[string]interface{}{
+							"type":     "debug-events-overview",
+							"resource": resource,
+						}
+						handleDebugEventsOverviewSelection(ref, rightPanel)
+					}
+				}
+			})
+		}
+	}()
+}
+
+
+// getHighestPriorityEventType checks all events in a category and returns the highest priority event type
+func getHighestPriorityEventType(events []dataaccess.CustomWorkflowEvent) string {
+	if len(events) == 0 {
+		return ""
+	}
+
+	// Check in priority order
+	// 1. First check for failed events (highest priority)
+	for _, event := range events {
+		if event.EventType == "WorkflowStepFailed" || event.EventType == "WorkflowFailed" {
+			return event.EventType
+		}
+	}
+
+	// 2. Then check for completed events
+	for _, event := range events {
+		if event.EventType == "WorkflowStepCompleted" {
+			return event.EventType
+		}
+	}
+
+	// 3. Then check for debug or started events
+	for _, event := range events {
+		if event.EventType == "WorkflowStepDebug" || event.EventType == "WorkflowStepStarted" {
+			return event.EventType
+		}
+	}
+
+	// 4. If none of the above, return the last event type
+	if len(events) > 0 {
+		return events[len(events)-1].EventType
+	}
+
+	return ""
+}
+
+
+
+
