@@ -2,8 +2,6 @@ package dataaccess
 
 import (
 	"context"
-	"encoding/json"
-	"fmt"
 	"net/http"
 	"strings"
 
@@ -138,37 +136,9 @@ func GetDebugEventsForAllResources(ctx context.Context, token string, serviceID,
 			return resourcesData, workflowInfo, err
 		}
 
-		if workflowEvents != nil {
-			// Convert the result to JSON and parse it with our known structure
-			workflowEventsJSON, err := json.Marshal(workflowEvents)
-			if err != nil {
-				return resourcesData, workflowInfo, fmt.Errorf("failed to marshal workflow events: %w", err)
-			}
-
-			// Parse the JSON into our expected structure
-			var parsedResponse struct {
-				Resources []struct {
-					ResourceID    string `json:"resourceId"`
-					ResourceKey   string `json:"resourceKey"`
-					ResourceName  string `json:"resourceName"`
-					WorkflowSteps []struct {
-						StepName string `json:"stepName"`
-						Events   []struct {
-							EventTime string `json:"eventTime"`
-							EventType string `json:"eventType"`
-							Message   string `json:"message"`
-						} `json:"events"`
-					} `json:"workflowSteps"`
-				} `json:"resources"`
-			}
-
-			err = json.Unmarshal(workflowEventsJSON, &parsedResponse)
-			if err != nil {
-				return resourcesData, workflowInfo, fmt.Errorf("failed to unmarshal workflow events: %w", err)
-			}
-
-			// Process each resource separately
-			for _, resource := range parsedResponse.Resources {
+		if workflowEvents != nil && workflowEvents.Resources != nil {
+			// Work directly with the struct - no need for marshaling/unmarshaling
+			for _, resource := range workflowEvents.Resources {
 				eventsByCategory := &WorkflowEventsByCategory{
 					Bootstrap:  []CustomWorkflowEvent{},
 					Storage:    []CustomWorkflowEvent{},
@@ -180,43 +150,47 @@ func GetDebugEventsForAllResources(ctx context.Context, token string, serviceID,
 				}
 
 				// Categorize events by workflow step for this resource
-				for _, step := range resource.WorkflowSteps {
-					stepCategory := categorizeStepName(step.StepName)
-					
-					for _, event := range step.Events {
-						// Create a CustomWorkflowEvent with proper data
-						workflowEvent := CustomWorkflowEvent{
-							EventTime: event.EventTime,
-							EventType: event.EventType,
-							Message:   event.Message,
-						}
+				if resource.WorkflowSteps != nil {
+					for _, step := range resource.WorkflowSteps {
+						stepCategory := categorizeStepName(step.StepName)
+						
+						if step.Events != nil {
+							for _, event := range step.Events {
+								// Create a CustomWorkflowEvent with proper data
+								workflowEvent := CustomWorkflowEvent{
+									EventTime: event.EventTime,
+									EventType: event.EventType,
+									Message:   event.Message,
+								}
 
-						// Add to appropriate category
-						switch stepCategory {
-						case "bootstrap":
-							eventsByCategory.Bootstrap = append(eventsByCategory.Bootstrap, workflowEvent)
-						case "storage":
-							eventsByCategory.Storage = append(eventsByCategory.Storage, workflowEvent)
-						case "network":
-							eventsByCategory.Network = append(eventsByCategory.Network, workflowEvent)
-						case "compute":
-							eventsByCategory.Compute = append(eventsByCategory.Compute, workflowEvent)
-						case "deployment":
-							eventsByCategory.Deployment = append(eventsByCategory.Deployment, workflowEvent)
-						case "monitoring":
-							eventsByCategory.Monitoring = append(eventsByCategory.Monitoring, workflowEvent)
-						default:
-							eventsByCategory.Other = append(eventsByCategory.Other, workflowEvent)
+								// Add to appropriate category
+								switch stepCategory {
+								case "bootstrap":
+									eventsByCategory.Bootstrap = append(eventsByCategory.Bootstrap, workflowEvent)
+								case "storage":
+									eventsByCategory.Storage = append(eventsByCategory.Storage, workflowEvent)
+								case "network":
+									eventsByCategory.Network = append(eventsByCategory.Network, workflowEvent)
+								case "compute":
+									eventsByCategory.Compute = append(eventsByCategory.Compute, workflowEvent)
+								case "deployment":
+									eventsByCategory.Deployment = append(eventsByCategory.Deployment, workflowEvent)
+								case "monitoring":
+									eventsByCategory.Monitoring = append(eventsByCategory.Monitoring, workflowEvent)
+								default:
+									eventsByCategory.Other = append(eventsByCategory.Other, workflowEvent)
+								}
+							}
 						}
 					}
 				}
 
 				// Add this resource's data to the result
 				resourcesData = append(resourcesData, ResourceWorkflowData{
-					ResourceID:          resource.ResourceID,
-					ResourceKey:         resource.ResourceKey,
-					ResourceName:        resource.ResourceName,
-					EventsByCategory:    eventsByCategory,
+					ResourceID:       resource.ResourceId,
+					ResourceKey:      resource.ResourceKey,
+					ResourceName:     resource.ResourceName,
+					EventsByCategory: eventsByCategory,
 				})
 			}
 		}
