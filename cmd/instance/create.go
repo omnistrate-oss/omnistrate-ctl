@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/chelnak/ysmrr"
 	"github.com/omnistrate-oss/omnistrate-ctl/cmd/common"
@@ -267,6 +268,22 @@ func runCreate(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
+	// Display workflow resource-wise data if output is not JSON
+	if output != "json" {
+		// Initialize spinner for deployment progress
+		var deploymentSM ysmrr.SpinnerManager
+		var deploymentSpinner *ysmrr.Spinner
+		deploymentSM = ysmrr.NewSpinnerManager()
+		deploymentSpinner = deploymentSM.AddSpinner("Deployment progress...")
+		deploymentSM.Start()
+
+		err = displayWorkflowResourceData(cmd.Context(), token, formattedInstance.InstanceID, deploymentSpinner, deploymentSM)
+		if err != nil {
+			// Handle spinner error if deployment monitoring fails
+			utils.HandleSpinnerError(deploymentSpinner, deploymentSM, err)
+		}
+	}
+
 	return nil
 }
 
@@ -337,4 +354,175 @@ func formatInstance(instance *openapiclientfleet.ResourceInstanceSearchRecord, t
 	}
 
 	return formattedInstance
+}
+
+// displayWorkflowResourceData fetches and displays workflow data organized by resource categories
+// with live updates every 10 seconds until workflow is complete
+func displayWorkflowResourceData(ctx context.Context, token, instanceID string, deploymentSpinner *ysmrr.Spinner, deploymentSM ysmrr.SpinnerManager) error {
+	// Search for the instance to get service details
+	searchRes, err := dataaccess.SearchInventory(ctx, token, fmt.Sprintf("resourceinstance:%s", instanceID))
+	if err != nil {
+		return err
+	}
+
+	if len(searchRes.ResourceInstanceResults) == 0 {
+		return fmt.Errorf("instance not found")
+	}
+
+	instance := searchRes.ResourceInstanceResults[0]
+	
+	// Function to fetch and display current workflow status for all resources
+	displayCurrentStatus := func() (bool, error) {
+		// Get workflow events for all resources in the instance
+		resourcesData, workflowInfo, err := dataaccess.GetDebugEventsForAllResources(
+			ctx, token,
+			instance.ServiceId,
+			instance.ServiceEnvironmentId,
+			instanceID,
+		)
+		if err != nil {
+			return false, err
+		}
+
+		if workflowInfo == nil {
+			fmt.Println("No data available for this instance.")
+			return true, nil // Stop polling if no workflow data
+		}
+
+		// Check if workflow is complete
+		isWorkflowComplete := strings.ToLower(workflowInfo.WorkflowStatus) == "success" ||
+					 strings.ToLower(workflowInfo.WorkflowStatus) == "failed" ||
+					 strings.ToLower(workflowInfo.WorkflowStatus) == "cancelled"
+
+	
+		if len(resourcesData) == 0 {
+			utils.HandleSpinnerError(deploymentSpinner, deploymentSM, fmt.Errorf("No resources found for this instance."))
+			return isWorkflowComplete, nil
+		}
+
+		// Display each resource and its categories in one line
+		for i, resourceData := range resourcesData {
+			// Get status icons for each category using priority-based logic
+			bootstrapEventType := getHighestPriorityEventType(resourceData.EventsByCategory.Bootstrap)
+			bootstrapIcon := getEventStatusIconFromType(bootstrapEventType)
+			
+			storageEventType := getHighestPriorityEventType(resourceData.EventsByCategory.Storage)
+			storageIcon := getEventStatusIconFromType(storageEventType)
+			
+			networkEventType := getHighestPriorityEventType(resourceData.EventsByCategory.Network)
+			networkIcon := getEventStatusIconFromType(networkEventType)
+			
+			computeEventType := getHighestPriorityEventType(resourceData.EventsByCategory.Compute)
+			computeIcon := getEventStatusIconFromType(computeEventType)
+
+			deploymentEventType := getHighestPriorityEventType(resourceData.EventsByCategory.Deployment)
+			deploymentIcon := getEventStatusIconFromType(deploymentEventType)
+
+			monitoringEventType := getHighestPriorityEventType(resourceData.EventsByCategory.Monitoring)
+			monitoringIcon := getEventStatusIconFromType(monitoringEventType)
+
+			// Display all categories in one line
+			fmt.Printf("Resource %d: %s | Bootstrap: %s | Storage: %s | Network: %s | Compute: %s | Deployment: %s | Monitoring: %s\n",
+				i+1,
+				resourceData.ResourceName,
+				bootstrapIcon,
+				storageIcon,
+				networkIcon,
+				computeIcon,
+				deploymentIcon,
+				monitoringIcon)
+		}
+
+		// Display status message similar to HandleSpinnerSuccess pattern
+		if isWorkflowComplete {
+			if strings.ToLower(workflowInfo.WorkflowStatus) == "success" {
+				// Use HandleSpinnerSuccess pattern for successful deployment
+				utils.HandleSpinnerSuccess(deploymentSpinner, deploymentSM, "Deployment completed successfully")
+			} else {
+				utils.HandleSpinnerError(deploymentSpinner, deploymentSM, fmt.Errorf("Deployment completed with status: %s", workflowInfo.WorkflowStatus))
+			}
+		} 
+		return isWorkflowComplete, nil
+	}
+
+	// Initial display
+	isComplete, err := displayCurrentStatus()
+	if err != nil {
+		return err
+	}
+
+	// If workflow is already complete, don't start polling
+	if isComplete {
+		return nil
+	}
+
+	// Start polling every 5 seconds
+	ticker := time.NewTicker(5 * time.Second)
+	defer ticker.Stop()
+
+	for range ticker.C {
+		isComplete, err := displayCurrentStatus()
+		if err != nil {
+			fmt.Printf("Error fetching data: %v\n", err)
+			continue
+		}
+
+		// Stop polling when workflow is complete
+		if isComplete {
+			break
+		}
+	}
+
+	return nil
+}
+
+
+// getHighestPriorityEventType checks all events in a category and returns the highest priority event type
+func getHighestPriorityEventType(events []dataaccess.CustomWorkflowEvent) string {
+	if len(events) == 0 {
+		return ""
+	}
+
+	// Check in priority order
+	// 1. First check for failed events (highest priority)
+	for _, event := range events {
+		if event.EventType == "WorkflowStepFailed" || event.EventType == "WorkflowFailed" {
+			return event.EventType
+		}
+	}
+
+	// 2. Then check for completed events
+	for _, event := range events {
+		if event.EventType == "WorkflowStepCompleted" {
+			return event.EventType
+		}
+	}
+
+	// 3. Then check for debug or started events
+	for _, event := range events {
+		if event.EventType == "WorkflowStepDebug" || event.EventType == "WorkflowStepStarted" {
+			return event.EventType
+		}
+	}
+
+	// 4. If none of the above, return the last event type
+	if len(events) > 0 {
+		return events[len(events)-1].EventType
+	}
+
+	return ""
+}
+
+// getEventStatusIconFromType returns an appropriate icon based on event type string
+func getEventStatusIconFromType(eventType string) string {
+	switch eventType {
+	case "WorkflowStepFailed", "WorkflowFailed":
+		return "❌"
+	case "WorkflowStepCompleted":
+		return "✅"
+	case "WorkflowStepDebug", "WorkflowStepStarted":
+		return "🔄"
+	default:
+		return "🟡"
+	}
 }
