@@ -270,18 +270,14 @@ func runCreate(cmd *cobra.Command, args []string) error {
 
 	// Display workflow resource-wise data if output is not JSON
 	if output != "json" {
-		// Initialize spinner for deployment progress
-		var deploymentSM ysmrr.SpinnerManager
-		var deploymentSpinner *ysmrr.Spinner
-		deploymentSM = ysmrr.NewSpinnerManager()
-		deploymentSpinner = deploymentSM.AddSpinner("Deployment progress...")
-		deploymentSM.Start()
 
-		err = displayWorkflowResourceDataWithSpinners(cmd.Context(), token, formattedInstance.InstanceID, deploymentSpinner, deploymentSM)
+		fmt.Println("Deployment progress...")
+		err = displayWorkflowResourceDataWithSpinners(cmd.Context(), token, formattedInstance.InstanceID)
 		if err != nil {
 			// Handle spinner error if deployment monitoring fails
-			utils.HandleSpinnerError(deploymentSpinner, deploymentSM, err)
+			fmt.Printf("Failed to display resource data -- %s",err)
 		}
+		fmt.Println("Deployment successful")
 	}
 
 	return nil
@@ -363,7 +359,7 @@ type ResourceSpinner struct {
 }
 
 // displayWorkflowResourceDataWithSpinners creates individual spinners for each resource and updates them dynamically
-func displayWorkflowResourceDataWithSpinners(ctx context.Context, token, instanceID string, deploymentSpinner *ysmrr.Spinner, deploymentSM ysmrr.SpinnerManager) error {
+func displayWorkflowResourceDataWithSpinners(ctx context.Context, token, instanceID string) error {
 	// Search for the instance to get service details
 	searchRes, err := dataaccess.SearchInventory(ctx, token, fmt.Sprintf("resourceinstance:%s", instanceID))
 	if err != nil {
@@ -483,12 +479,6 @@ func displayWorkflowResourceDataWithSpinners(ctx context.Context, token, instanc
 		// If workflow is complete, complete all spinners and stop
 		if isWorkflowComplete {
 			completeSpinners(resourcesData, workflowInfo)
-			if strings.ToLower(workflowInfo.WorkflowStatus) == "success" {
-				// Use HandleSpinnerSuccess pattern for successful deployment
-				utils.HandleSpinnerSuccess(deploymentSpinner, deploymentSM, "Deployment completed successfully")
-			} else {
-				utils.HandleSpinnerError(deploymentSpinner, deploymentSM, fmt.Errorf("Deployment completed with status: %s", workflowInfo.WorkflowStatus))
-			}
 			return true, nil
 		}
 
