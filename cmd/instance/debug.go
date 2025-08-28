@@ -179,10 +179,20 @@ func processHelmResource(resourceInfo *ResourceInfo, actualDebugData map[string]
 		}
 	}
 	
-	// Fetch workflow events for this resource
-	workflowEvents, workflowInfo, err := dataaccess.GetDebugEventsForResource(ctx, token, serviceID, environmentID, instanceID, resourceInfo.ID)
-	if err == nil && workflowEvents != nil {
-		resourceInfo.WorkflowEvents = workflowEvents
+	// Fetch workflow events for all resources in this instance
+	resourcesData, workflowInfo, err := dataaccess.GetDebugEventsForAllResources(ctx, token, serviceID, environmentID, instanceID)
+	if err == nil && len(resourcesData) > 0 {
+		// Find the matching resource and assign its events
+		for _, resData := range resourcesData {
+			if resData.ResourceKey == resourceInfo.ID || resData.ResourceName == resourceInfo.Name {
+				resourceInfo.WorkflowEvents = resData.EventsByCategory
+				break
+			}
+		}
+		// If no specific resource found, use the first resource's events
+		if resourceInfo.WorkflowEvents == nil && len(resourcesData) > 0 {
+			resourceInfo.WorkflowEvents = resourcesData[0].EventsByCategory
+		}
 	}
 	if err == nil && workflowInfo != nil {
 		resourceInfo.WorkflowInfo = workflowInfo
@@ -196,10 +206,20 @@ func processTerraformResource(resourceInfo *ResourceInfo, actualDebugData map[st
 	resourceInfo.Type = "terraform"
 	resourceInfo.TerraformData = parseTerraformData(actualDebugData)
 	
-	// Fetch workflow events for this resource
-	workflowEvents, workflowInfo, err := dataaccess.GetDebugEventsForResource(ctx, token, serviceID, environmentID, instanceID, resourceInfo.ID)
-	if err == nil && workflowEvents != nil {
-		resourceInfo.WorkflowEvents = workflowEvents
+	// Fetch workflow events for all resources in this instance
+	resourcesData, workflowInfo, err := dataaccess.GetDebugEventsForAllResources(ctx, token, serviceID, environmentID, instanceID)
+	if err == nil && len(resourcesData) > 0 {
+		// Find the matching resource and assign its events
+		for _, resData := range resourcesData {
+			if resData.ResourceKey == resourceInfo.ID || resData.ResourceName == resourceInfo.Name {
+				resourceInfo.WorkflowEvents = resData.EventsByCategory
+				break
+			}
+		}
+		// If no specific resource found, use the first resource's events
+		if resourceInfo.WorkflowEvents == nil && len(resourcesData) > 0 {
+			resourceInfo.WorkflowEvents = resourcesData[0].EventsByCategory
+		}
 	}
 	if err == nil && workflowInfo != nil {
 		resourceInfo.WorkflowInfo = workflowInfo
@@ -220,10 +240,20 @@ func processGenericResource(resourceInfo *ResourceInfo, instanceData *fleet.Reso
 		}
 	}
 	
-	// Fetch workflow events for this resource
-	workflowEvents, workflowInfo, err := dataaccess.GetDebugEventsForResource(ctx, token, serviceID, environmentID, instanceID, resourceInfo.ID)
-	if err == nil && workflowEvents != nil {
-		resourceInfo.WorkflowEvents = workflowEvents
+	// Fetch workflow events for all resources in this instance
+	resourcesData, workflowInfo, err := dataaccess.GetDebugEventsForAllResources(ctx, token, serviceID, environmentID, instanceID)
+	if err == nil && len(resourcesData) > 0 {
+		// Find the matching resource and assign its events
+		for _, resData := range resourcesData {
+			if resData.ResourceKey == resourceInfo.ID || resData.ResourceName == resourceInfo.Name {
+				resourceInfo.WorkflowEvents = resData.EventsByCategory
+				break
+			}
+		}
+		// If no specific resource found, use the first resource's events
+		if resourceInfo.WorkflowEvents == nil && len(resourcesData) > 0 {
+			resourceInfo.WorkflowEvents = resourcesData[0].EventsByCategory
+		}
 	}
 	if err == nil && workflowInfo != nil {
 		resourceInfo.WorkflowInfo = workflowInfo
@@ -610,9 +640,10 @@ func buildDebugEventsNode(resource ResourceInfo) *tview.TreeNode {
 	// Add category nodes using a loop
 	for _, category := range categories {
 		if len(category.events) > 0 {
+			
 			// Show last event summary and get icon/color
-			lastEvent := category.events[len(category.events)-1]
-			categoryIcon, categoryColor := getEventTypeOrStatusColorAndIcon(lastEvent.EventType)
+			eventType := getHighestPriorityEventType(category.events)
+			categoryIcon, categoryColor := getEventTypeOrStatusColorAndIcon(eventType)
 
 			categoryNode := tview.NewTreeNode(fmt.Sprintf("[%s]%s [white]%s (%d)", categoryColor, categoryIcon, category.name, len(category.events)))
 			categoryNode.SetReference(map[string]interface{}{
@@ -875,19 +906,24 @@ func handleDebugEventsOverviewSelection(ref map[string]interface{}, rightPanel *
 	for _, category := range categories {
 		if len(category.events) > 0 {
 			// Determine icon and color based on the most recent event type in this category
-			var categoryIcon, categoryColor string
-			lastEvent := category.events[len(category.events)-1]
-			categoryIcon, categoryColor = getEventTypeOrStatusColorAndIcon(lastEvent.EventType)
-			
-			
+			eventType := getHighestPriorityEventType(category.events)
+			categoryIcon, categoryColor := getEventTypeOrStatusColorAndIcon(eventType)
 			content.WriteString(fmt.Sprintf("[%s]%s [%s]%s[white] (%d events)\n", categoryColor, categoryIcon,"orange", category.name, len(category.events)))
 			
 			// Show last event summary
 			if len(category.events) > 0 {
-				lastEvent := category.events[len(category.events)-1]
 				// Get event type color
-				_, eventTypeColor := getEventTypeOrStatusColorAndIcon(lastEvent.EventType)
-				content.WriteString(fmt.Sprintf("  Last: [%s]%s[white] at %s\n", eventTypeColor, lastEvent.EventType, formatEventTime(lastEvent.EventTime)))
+				eventType := getHighestPriorityEventType(category.events)
+				_, eventTypeColor := getEventTypeOrStatusColorAndIcon(eventType)
+				// Find the event with the matching eventType to get its EventTime
+				eventTime := ""
+				for _, evt := range category.events {
+					if evt.EventType == eventType {
+						eventTime = evt.EventTime
+						break
+					}
+				}
+				content.WriteString(fmt.Sprintf("  Last: [%s]%s[white] at %s\n", eventTypeColor, eventType, formatEventTime(eventTime)))
 			}
 			content.WriteString("\n")
 		} else {
@@ -2257,18 +2293,29 @@ func pollDebugEventsAndWorkflowStatus(app *tview.Application, rightPanel *tview.
 				return
 			}
 
-			// Fetch updated debug events and workflow status
+			// Fetch updated debug events and workflow status for all resources
 			ctx := context.Background()
-			workflowEvents, workflowInfo, err := dataaccess.GetDebugEventsForResource(
-				ctx, token, serviceID, environmentID, instanceID, resource.ID)
+			resourcesData, workflowInfo, err := dataaccess.GetDebugEventsForAllResources(
+				ctx, token, serviceID, environmentID, instanceID)
 
 			if err != nil {
 				// Log error but continue polling
 				continue
 			}
 
-			// Update the resource with new data
-			resource.WorkflowEvents = workflowEvents
+			// Update the resource with new data - find matching resource
+			if len(resourcesData) > 0 {
+				for _, resData := range resourcesData {
+					if resData.ResourceKey == resource.ID || resData.ResourceName == resource.Name {
+						resource.WorkflowEvents = resData.EventsByCategory
+						break
+					}
+				}
+				// If no specific resource found, use the first resource's events
+				if resource.WorkflowEvents == nil {
+					resource.WorkflowEvents = resourcesData[0].EventsByCategory
+				}
+			}
 			resource.WorkflowInfo = workflowInfo
 
 			// Check if workflow is complete - stop polling immediately if so
@@ -2334,4 +2381,44 @@ func pollDebugEventsAndWorkflowStatus(app *tview.Application, rightPanel *tview.
 		}
 	}()
 }
+
+
+// getHighestPriorityEventType checks all events in a category and returns the highest priority event type
+func getHighestPriorityEventType(events []dataaccess.CustomWorkflowEvent) string {
+	if len(events) == 0 {
+		return ""
+	}
+
+	// Check in priority order
+	// 1. First check for failed events (highest priority)
+	for _, event := range events {
+		if event.EventType == "WorkflowStepFailed" || event.EventType == "WorkflowFailed" {
+			return event.EventType
+		}
+	}
+
+	// 2. Then check for completed events
+	for _, event := range events {
+		if event.EventType == "WorkflowStepCompleted" {
+			return event.EventType
+		}
+	}
+
+	// 3. Then check for debug or started events
+	for _, event := range events {
+		if event.EventType == "WorkflowStepDebug" || event.EventType == "WorkflowStepStarted" {
+			return event.EventType
+		}
+	}
+
+	// 4. If none of the above, return the last event type
+	if len(events) > 0 {
+		return events[len(events)-1].EventType
+	}
+
+	return ""
+}
+
+
+
 
