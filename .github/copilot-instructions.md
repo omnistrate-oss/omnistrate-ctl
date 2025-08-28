@@ -1,55 +1,104 @@
-# GitHub Copilot Instructions for omnistrate-ctl
+# GitHub Copilot Instructions for ctl
 
-## Documentation Generation Workflow
+*Last Updated: 2025-08-18T02:26:43.217592*
 
-**CRITICAL**: After making ANY changes to CLI commands, flags, or help text, you MUST run documentation generation commands to keep docs synchronized.
+## 🚀 Service Overview
+**ctl** is a critical component of the Omnistrate platform.
 
-### Required Commands After CLI Changes:
+### Repository Information
+- **Remote**: https://github.com/omnistrate/ctl.git
+- **Branch**: main
+- **Total Commits**: 303
 
+### Technologies Used
+- Go
+- Make
+- GitHub Actions
+
+### Health Status
+**Status**: healthy
+✅ No issues detected
+
+## 📊 Recent Activity (Last 30 Days)
+### Recent Commits
+- `6bea672` Fix build context not resolved error after generating compose.yaml (#408) (Xinyi, 2025-08-14)
+- `0f64a24` Fix product tier name in service plan details print (#407) (Alok Nikhil, 2025-08-14)
+- `3d7774d` expose sync target and fix logs (#405) (Yuhui, 2025-08-11)
+- `b065f44` Bump the gomod-updates group across 1 directory with 5 updates (#396) (dependabot[bot], 2025-08-07)
+- `c1c6638` rename hash method (#404) (pberton, 2025-08-07)
+
+### Files Recently Changed
+- .github/workflows/build-docs.yaml
+- .github/workflows/docs-deploy.yml
+- .github/workflows/package.yml
+- .github/workflows/release.yml
+- Makefile
+- build/Dockerfile
+- build/Dockerfile.docs
+- build/Dockerfile.docs.local
+- cmd/alarms/alarms.go
+- cmd/alarms/notificationchannel/event_history.go
+
+## 👥 Top Contributors
+- **pberton**: 111 commits
+- **Xinyi**: 103 commits
+- **Alok**: 27 commits
+- **Yuhui**: 23 commits
+- **dependabot[bot]**: 12 commits
+
+## 📈 File Statistics
+- **Total Files**: 5772
+- **Go Files**: 5116
+- **Test Files**: 39
+- **Total Size**: 137.8 MB
+
+## 🛠️ Development Guidelines
+
+### Code Standards
+- Follow Omnistrate platform conventions
+- Use goa.design for API development (if applicable)
+- Implement comprehensive error handling
+- Write unit and integration tests
+- Follow Go best practices
+
+### Build Commands
 ```bash
-make gen-doc    # Regenerates CLI documentation
-# OR
-make all        # Runs complete build pipeline including doc generation
+make build          # Build the service
+make test          # Run tests
+make lint          # Code quality checks
+make run           # Run locally
 ```
 
-### When to Run Documentation Generation:
+### Integration Points
+This service integrates with other Omnistrate components. Check dependencies before making changes.
 
-- After modifying any file in `cmd/` directory
-- After changing command definitions, flags, or help text
-- After adding new CLI commands or subcommands
-- After updating command usage examples
-- After modifying cobra command configurations
+## 🔧 AI Development Assistance
 
-### Documentation System:
+When working on this service:
+1. **Understand Context**: Review recent commits and changes
+2. **Follow Patterns**: Use established code patterns from the repository
+3. **Test Thoroughly**: Add appropriate tests for new functionality
+4. **Document Changes**: Update relevant documentation
+5. **Consider Dependencies**: Check impact on other services
 
-- Uses `go run doc-gen/main.go` to auto-generate markdown files
-- Outputs to `mkdocs/docs/` directory
-- Automatically removes old docs and regenerates fresh content
-- Documentation must stay synchronized with actual CLI behavior
+### Common Tasks
+- **API Changes**: Use goa.design patterns and regenerate code
+- **Database**: Follow GORM patterns and create migrations
+- **Testing**: Add table-driven tests and mock external dependencies
+- **Deployment**: Update Docker and Kubernetes configurations as needed
 
-### Build Pipeline:
+## 📚 Quick Reference
+- **Main Package**: `ctl`
+- **Entry Point**: Check `cmd/` or `main.go`
+- **Configuration**: Look for `config/` directory or environment variables
+- **Tests**: `*_test.go` files throughout the codebase
 
-The `make all` target runs the complete pipeline:
+## 🎯 Focus Areas
+Based on recent activity, focus development efforts on:
+- General maintenance and improvements
 
-1. `make tidy` - Clean up Go modules
-2. `make build` - Build the binary
-3. `make unit-test` - Run tests
-4. `make lint` - Code linting
-5. `make check-dependencies` - Verify dependencies
-6. `make gen-doc` - **Generate documentation**
-7. `make pretty` - Format code
+---
+*This file is automatically updated with git data. For the latest information, ensure the MCP integration is running.*
 
-## Code Modification Guidelines:
-
-- Always consider if your changes affect CLI behavior
-- If modifying anything in `cmd/`, documentation regeneration is required
-- Test your changes with `make build` before generating docs
-- Use `make all` for comprehensive validation including doc generation
-
-## Quick Reference:
-
-```bash
-# After CLI changes - ALWAYS run one of these:
-make gen-doc     # Just regenerate docs
-make all         # Full pipeline with docs
-```
+[//]: # (maz+customer-hosted@omnistrate.com)
+[//]: # (dumsud-Ziqjo3-fotmad)
