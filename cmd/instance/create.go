@@ -277,7 +277,7 @@ func runCreate(cmd *cobra.Command, args []string) error {
 		deploymentSpinner = deploymentSM.AddSpinner("Deployment progress...")
 		deploymentSM.Start()
 
-		err = displayWorkflowResourceData(cmd.Context(), token, formattedInstance.InstanceID, deploymentSpinner, deploymentSM)
+		err = displayWorkflowResourceDataWithSpinners(cmd.Context(), token, formattedInstance.InstanceID, deploymentSpinner, deploymentSM)
 		if err != nil {
 			// Handle spinner error if deployment monitoring fails
 			utils.HandleSpinnerError(deploymentSpinner, deploymentSM, err)
@@ -356,9 +356,14 @@ func formatInstance(instance *openapiclientfleet.ResourceInstanceSearchRecord, t
 	return formattedInstance
 }
 
-// displayWorkflowResourceData fetches and displays workflow data organized by resource categories
-// with live updates every 10 seconds until workflow is complete
-func displayWorkflowResourceData(ctx context.Context, token, instanceID string, deploymentSpinner *ysmrr.Spinner, deploymentSM ysmrr.SpinnerManager) error {
+// ResourceSpinner holds spinner information for a resource
+type ResourceSpinner struct {
+	ResourceName string
+	Spinner      *ysmrr.Spinner
+}
+
+// displayWorkflowResourceDataWithSpinners creates individual spinners for each resource and updates them dynamically
+func displayWorkflowResourceDataWithSpinners(ctx context.Context, token, instanceID string, deploymentSpinner *ysmrr.Spinner, deploymentSM ysmrr.SpinnerManager) error {
 	// Search for the instance to get service details
 	searchRes, err := dataaccess.SearchInventory(ctx, token, fmt.Sprintf("resourceinstance:%s", instanceID))
 	if err != nil {
@@ -370,6 +375,81 @@ func displayWorkflowResourceData(ctx context.Context, token, instanceID string, 
 	}
 
 	instance := searchRes.ResourceInstanceResults[0]
+	
+	// Initialize spinner manager
+	var sm ysmrr.SpinnerManager
+	sm = ysmrr.NewSpinnerManager()
+	
+	// Track resource spinners
+	var resourceSpinners []ResourceSpinner
+	
+	// Function to create or update spinners for each resource
+	createOrUpdateSpinners := func(resourcesData []dataaccess.ResourceWorkflowData) {
+		// If this is the first time, create spinners for each resource
+		if len(resourceSpinners) == 0 {
+			for _, resourceData := range resourcesData {
+				spinner := sm.AddSpinner(fmt.Sprintf("%s: Initializing...", resourceData.ResourceName))
+				resourceSpinners = append(resourceSpinners, ResourceSpinner{
+					ResourceName: resourceData.ResourceName,
+					Spinner:      spinner,
+				})
+			}
+			sm.Start()
+		}
+		
+		// Update each resource spinner with current status
+		for i, resourceData := range resourcesData {
+			if i < len(resourceSpinners) {
+				// Get status icons for each category
+				bootstrapEventType := getHighestPriorityEventType(resourceData.EventsByCategory.Bootstrap)
+				bootstrapIcon := getEventStatusIconFromType(bootstrapEventType)
+				
+				storageEventType := getHighestPriorityEventType(resourceData.EventsByCategory.Storage)
+				storageIcon := getEventStatusIconFromType(storageEventType)
+				
+				networkEventType := getHighestPriorityEventType(resourceData.EventsByCategory.Network)
+				networkIcon := getEventStatusIconFromType(networkEventType)
+				
+				computeEventType := getHighestPriorityEventType(resourceData.EventsByCategory.Compute)
+				computeIcon := getEventStatusIconFromType(computeEventType)
+
+				deploymentEventType := getHighestPriorityEventType(resourceData.EventsByCategory.Deployment)
+				deploymentIcon := getEventStatusIconFromType(deploymentEventType)
+
+				monitoringEventType := getHighestPriorityEventType(resourceData.EventsByCategory.Monitoring)
+				monitoringIcon := getEventStatusIconFromType(monitoringEventType)
+
+				// Create dynamic message for this resource
+				message := fmt.Sprintf("%s | Bootstrap: %s | Storage: %s | Network: %s | Compute: %s | Deployment: %s | Monitoring: %s",
+					resourceData.ResourceName,
+					bootstrapIcon,
+					storageIcon,
+					networkIcon,
+					computeIcon,
+					deploymentIcon,
+					monitoringIcon)
+				
+				// Update spinner message
+				resourceSpinners[i].Spinner.UpdateMessage(message)
+			}
+		}
+	}
+	
+	// Function to complete spinners when deployment is done
+	completeSpinners := func(resourcesData []dataaccess.ResourceWorkflowData, workflowInfo *dataaccess.WorkflowInfo) {
+		for i, resourceData := range resourcesData {
+			if i < len(resourceSpinners) {
+				if strings.ToLower(workflowInfo.WorkflowStatus) == "success" {
+					resourceSpinners[i].Spinner.UpdateMessage(fmt.Sprintf("%s: Deployment completed successfully", resourceData.ResourceName))
+					resourceSpinners[i].Spinner.Complete()
+				} else {
+					resourceSpinners[i].Spinner.UpdateMessage(fmt.Sprintf("%s: Deployment failed - %s", resourceData.ResourceName, workflowInfo.WorkflowStatus))
+					resourceSpinners[i].Spinner.Error()
+				}
+			}
+		}
+		sm.Stop()
+	}
 	
 	// Function to fetch and display current workflow status for all resources
 	displayCurrentStatus := func() (bool, error) {
@@ -385,7 +465,6 @@ func displayWorkflowResourceData(ctx context.Context, token, instanceID string, 
 		}
 
 		if workflowInfo == nil {
-			fmt.Println("No data available for this instance.")
 			return true, nil // Stop polling if no workflow data
 		}
 
@@ -394,55 +473,26 @@ func displayWorkflowResourceData(ctx context.Context, token, instanceID string, 
 					 strings.ToLower(workflowInfo.WorkflowStatus) == "failed" ||
 					 strings.ToLower(workflowInfo.WorkflowStatus) == "cancelled"
 
-	
 		if len(resourcesData) == 0 {
-			utils.HandleSpinnerError(deploymentSpinner, deploymentSM, fmt.Errorf("No resources found for this instance."))
 			return isWorkflowComplete, nil
 		}
 
-		// Display each resource and its categories in one line
-		for i, resourceData := range resourcesData {
-			// Get status icons for each category using priority-based logic
-			bootstrapEventType := getHighestPriorityEventType(resourceData.EventsByCategory.Bootstrap)
-			bootstrapIcon := getEventStatusIconFromType(bootstrapEventType)
-			
-			storageEventType := getHighestPriorityEventType(resourceData.EventsByCategory.Storage)
-			storageIcon := getEventStatusIconFromType(storageEventType)
-			
-			networkEventType := getHighestPriorityEventType(resourceData.EventsByCategory.Network)
-			networkIcon := getEventStatusIconFromType(networkEventType)
-			
-			computeEventType := getHighestPriorityEventType(resourceData.EventsByCategory.Compute)
-			computeIcon := getEventStatusIconFromType(computeEventType)
-
-			deploymentEventType := getHighestPriorityEventType(resourceData.EventsByCategory.Deployment)
-			deploymentIcon := getEventStatusIconFromType(deploymentEventType)
-
-			monitoringEventType := getHighestPriorityEventType(resourceData.EventsByCategory.Monitoring)
-			monitoringIcon := getEventStatusIconFromType(monitoringEventType)
-
-			// Display all categories in one line
-			fmt.Printf("Resource %d: %s | Bootstrap: %s | Storage: %s | Network: %s | Compute: %s | Deployment: %s | Monitoring: %s\n",
-				i+1,
-				resourceData.ResourceName,
-				bootstrapIcon,
-				storageIcon,
-				networkIcon,
-				computeIcon,
-				deploymentIcon,
-				monitoringIcon)
-		}
-
-		// Display status message similar to HandleSpinnerSuccess pattern
+		// Create or update spinners for each resource
+		createOrUpdateSpinners(resourcesData)
+		
+		// If workflow is complete, complete all spinners and stop
 		if isWorkflowComplete {
+			completeSpinners(resourcesData, workflowInfo)
 			if strings.ToLower(workflowInfo.WorkflowStatus) == "success" {
 				// Use HandleSpinnerSuccess pattern for successful deployment
 				utils.HandleSpinnerSuccess(deploymentSpinner, deploymentSM, "Deployment completed successfully")
 			} else {
 				utils.HandleSpinnerError(deploymentSpinner, deploymentSM, fmt.Errorf("Deployment completed with status: %s", workflowInfo.WorkflowStatus))
 			}
-		} 
-		return isWorkflowComplete, nil
+			return true, nil
+		}
+
+		return false, nil
 	}
 
 	// Initial display
@@ -456,14 +506,14 @@ func displayWorkflowResourceData(ctx context.Context, token, instanceID string, 
 		return nil
 	}
 
-	// Start polling every 5 seconds
-	ticker := time.NewTicker(5 * time.Second)
+	// Start polling every 10 seconds
+	ticker := time.NewTicker(10 * time.Second)
 	defer ticker.Stop()
 
 	for range ticker.C {
 		isComplete, err := displayCurrentStatus()
 		if err != nil {
-			fmt.Printf("Error fetching data: %v\n", err)
+			// Handle error but continue polling
 			continue
 		}
 
