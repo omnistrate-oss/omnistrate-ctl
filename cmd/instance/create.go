@@ -270,14 +270,14 @@ func runCreate(cmd *cobra.Command, args []string) error {
 
 	// Display workflow resource-wise data if output is not JSON
 	if output != "json" {
-
-		fmt.Println("Deployment progress...")
+		fmt.Println("🔄 Deployment progress...")
 		err = displayWorkflowResourceDataWithSpinners(cmd.Context(), token, formattedInstance.InstanceID)
 		if err != nil {
 			// Handle spinner error if deployment monitoring fails
-			fmt.Printf("Failed to display resource data -- %s",err)
+			fmt.Printf("❌ Deployment failed-- %s",err)
+		}else {
+		fmt.Println("✅ Deployment successful")
 		}
-		fmt.Println("Deployment successful")
 	}
 
 	return nil
@@ -433,13 +433,11 @@ func displayWorkflowResourceDataWithSpinners(ctx context.Context, token, instanc
 	
 	// Function to complete spinners when deployment is done
 	completeSpinners := func(resourcesData []dataaccess.ResourceWorkflowData, workflowInfo *dataaccess.WorkflowInfo) {
-		for i, resourceData := range resourcesData {
+		for i := range resourcesData {
 			if i < len(resourceSpinners) {
 				if strings.ToLower(workflowInfo.WorkflowStatus) == "success" {
-					resourceSpinners[i].Spinner.UpdateMessage(fmt.Sprintf("%s: Deployment completed successfully", resourceData.ResourceName))
 					resourceSpinners[i].Spinner.Complete()
 				} else {
-					resourceSpinners[i].Spinner.UpdateMessage(fmt.Sprintf("%s: Deployment failed - %s", resourceData.ResourceName, workflowInfo.WorkflowStatus))
 					resourceSpinners[i].Spinner.Error()
 				}
 			}
