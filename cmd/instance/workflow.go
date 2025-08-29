@@ -31,8 +31,7 @@ func displayWorkflowResourceDataWithSpinners(ctx context.Context, token, instanc
 	instance := searchRes.ResourceInstanceResults[0]
 	
 	// Initialize spinner manager
-	var sm ysmrr.SpinnerManager
-	sm = ysmrr.NewSpinnerManager()
+	sm := ysmrr.NewSpinnerManager()
 	
 	// Track resource spinners
 	var resourceSpinners []ResourceSpinner
