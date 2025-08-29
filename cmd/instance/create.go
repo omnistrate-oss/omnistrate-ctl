@@ -278,7 +278,6 @@ func runCreate(cmd *cobra.Command, args []string) error {
 			fmt.Println("✅ Deployment successful")
 		}
 	}
-		
 
 	return nil
 }
@@ -351,4 +350,3 @@ func formatInstance(instance *openapiclientfleet.ResourceInstanceSearchRecord, t
 
 	return formattedInstance
 }
-

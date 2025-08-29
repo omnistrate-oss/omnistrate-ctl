@@ -85,21 +85,11 @@ func displayWorkflowResourceDataWithSpinners(ctx context.Context, token, instanc
 				// Update spinner message
 				resourceSpinners[i].Spinner.UpdateMessage(message)
 
-				// Check if any category has failed
-				if bootstrapEventType == "WorkflowStepFailed" || bootstrapEventType == "WorkflowFailed" ||
-				   storageEventType == "WorkflowStepFailed" || storageEventType == "WorkflowFailed" ||
-				   networkEventType == "WorkflowStepFailed" || networkEventType == "WorkflowFailed" ||
-				   computeEventType == "WorkflowStepFailed" || computeEventType == "WorkflowFailed" ||
-				   deploymentEventType == "WorkflowStepFailed" || deploymentEventType == "WorkflowFailed" ||
-				   monitoringEventType == "WorkflowStepFailed" || monitoringEventType == "WorkflowFailed" {
+				// Check resource status and update spinner accordingly
+				if hasFailedEvent(bootstrapEventType, storageEventType, networkEventType, computeEventType, deploymentEventType, monitoringEventType) {
 					// Error spinner if any category failed
 					resourceSpinners[i].Spinner.Error()
-				} else if bootstrapEventType == "WorkflowStepCompleted" && 
-						  storageEventType == "WorkflowStepCompleted" && 
-						  networkEventType == "WorkflowStepCompleted" && 
-						  computeEventType == "WorkflowStepCompleted" && 
-						  deploymentEventType == "WorkflowStepCompleted" && 
-						  monitoringEventType == "WorkflowStepCompleted" {
+				} else if allEventsCompleted(bootstrapEventType, storageEventType, networkEventType, computeEventType, deploymentEventType, monitoringEventType) {
 					// Complete spinner if all categories are completed
 					resourceSpinners[i].Spinner.Complete()
 				}
@@ -214,14 +204,14 @@ func getHighestPriorityEventType(events []dataaccess.CustomWorkflowEvent) string
 
 	// 3. Then check for debug or started events
 	for _, event := range events {
-		if event.EventType == "WorkflowStepDebug"  {
+		if event.EventType == "WorkflowStepDebug" {
 			return event.EventType
 		}
 	}
 
 	// 4. Then check for started events
 	for _, event := range events {
-		if  event.EventType == "WorkflowStepStarted" {
+		if event.EventType == "WorkflowStepStarted" {
 			return event.EventType
 		}
 	}
@@ -245,4 +235,28 @@ func getEventStatusIconFromType(eventType string) string {
 	default:
 		return "🟡"
 	}
+}
+
+// hasFailedEvent checks if any of the event types indicates a failure
+func hasFailedEvent(eventTypes ...string) bool {
+	for _, eventType := range eventTypes {
+		if eventType == "WorkflowStepFailed" || eventType == "WorkflowFailed" {
+			return true
+		}
+	}
+	return false
+}
+
+// allEventsCompleted checks if all non-empty event types are completed
+func allEventsCompleted(eventTypes ...string) bool {
+	hasAtLeastOneEvent := false
+	for _, eventType := range eventTypes {
+		if eventType != "" {
+			hasAtLeastOneEvent = true
+			if eventType != "WorkflowStepCompleted" {
+				return false
+			}
+		}
+	}
+	return hasAtLeastOneEvent
 }
