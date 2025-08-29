@@ -215,12 +215,18 @@ func getHighestPriorityEventType(events []dataaccess.CustomWorkflowEvent) string
 
 	// 3. Then check for debug or started events
 	for _, event := range events {
-		if event.EventType == "WorkflowStepDebug" || event.EventType == "WorkflowStepStarted" {
+		if event.EventType == "WorkflowStepDebug"  {
 			return event.EventType
 		}
 	}
 
-	// 4. If none of the above, return the last event type
+	// 4. Then check for started events
+	for _, event := range events {
+		if  event.EventType == "WorkflowStepStarted" {
+			return event.EventType
+		}
+	}
+	// 5. If none of the above, return the last event type
 	if len(events) > 0 {
 		return events[len(events)-1].EventType
 	}
