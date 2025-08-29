@@ -2383,41 +2383,7 @@ func pollDebugEventsAndWorkflowStatus(app *tview.Application, rightPanel *tview.
 }
 
 
-// getHighestPriorityEventType checks all events in a category and returns the highest priority event type
-func getHighestPriorityEventType(events []dataaccess.CustomWorkflowEvent) string {
-	if len(events) == 0 {
-		return ""
-	}
 
-	// Check in priority order
-	// 1. First check for failed events (highest priority)
-	for _, event := range events {
-		if event.EventType == "WorkflowStepFailed" || event.EventType == "WorkflowFailed" {
-			return event.EventType
-		}
-	}
-
-	// 2. Then check for completed events
-	for _, event := range events {
-		if event.EventType == "WorkflowStepCompleted" {
-			return event.EventType
-		}
-	}
-
-	// 3. Then check for debug or started events
-	for _, event := range events {
-		if event.EventType == "WorkflowStepDebug" || event.EventType == "WorkflowStepStarted" {
-			return event.EventType
-		}
-	}
-
-	// 4. If none of the above, return the last event type
-	if len(events) > 0 {
-		return events[len(events)-1].EventType
-	}
-
-	return ""
-}
 
 
 
