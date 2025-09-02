@@ -31,7 +31,10 @@ omctl upgrade [instance1] [instance2] --version=preferred
 omctl upgrade [instance1] [instance2] --version-name=v0.1.1
 
 # Upgrade instance to a specific version with a schedule date in the future
-omctl upgrade [instance-id] --version=1.0 --scheduled-date="2023-12-01T00:00:00Z"`
+omctl upgrade [instance-id] --version=1.0 --scheduled-date="2023-12-01T00:00:00Z"
+
+# Upgrade instance with limited concurrent upgrades
+omctl upgrade [instance-id] --version=2.0 --max-concurrent-upgrades=5`
 )
 
 var Cmd = &cobra.Command{
@@ -57,15 +60,17 @@ func init() {
 	Cmd.Flags().StringP("version-name", "", "", "Specify the version name to upgrade to. Use either this flag or the --version flag to upgrade to a specific version.")
 	Cmd.Flags().StringP("scheduled-date", "", "", "Specify the scheduled date for the upgrade.")
 	Cmd.Flags().Bool("notify-customer", false, "Enable customer notifications for the upgrade")
+	Cmd.Flags().IntP("max-concurrent-upgrades", "", 0, "Maximum number of concurrent upgrades (1-25). If not specified, uses system default.")
 }
 
 type Args struct {
-	ServiceID      string
-	ProductTierID  string
-	SourceVersion  string
-	TargetVersion  string
-	NotifyCustomer bool
-	ScheduledDate  *string
+	ServiceID               string
+	ProductTierID           string
+	SourceVersion           string
+	TargetVersion           string
+	NotifyCustomer          bool
+	ScheduledDate           *string
+	MaxConcurrentUpgrades   *int
 }
 
 var UpgradePathIDs []string
@@ -104,6 +109,23 @@ func run(cmd *cobra.Command, args []string) error {
 	}
 
 	notifyCustomer, _ := cmd.Flags().GetBool("notify-customer")
+
+	maxConcurrentUpgrades, err := cmd.Flags().GetInt("max-concurrent-upgrades")
+	if err != nil {
+		utils.PrintError(err)
+		return err
+	}
+
+	// Validate max concurrent upgrades value
+	var maxConcurrentUpgradesPtr *int
+	if maxConcurrentUpgrades > 0 {
+		if maxConcurrentUpgrades < 1 || maxConcurrentUpgrades > 25 {
+			err = errors.New("max-concurrent-upgrades must be between 1 and 25")
+			utils.PrintError(err)
+			return err
+		}
+		maxConcurrentUpgradesPtr = &maxConcurrentUpgrades
+	}
 
 	// Validate input arguments
 	if version == "" && versionName == "" {
@@ -241,39 +263,43 @@ func run(cmd *cobra.Command, args []string) error {
 		}
 
 		if upgrades[Args{
-			ServiceID:      serviceID,
-			ProductTierID:  productTierID,
-			SourceVersion:  sourceVersion,
-			TargetVersion:  targetVersion,
-			ScheduledDate:  scheduledDate,
-			NotifyCustomer: notifyCustomer,
+			ServiceID:             serviceID,
+			ProductTierID:         productTierID,
+			SourceVersion:         sourceVersion,
+			TargetVersion:         targetVersion,
+			ScheduledDate:         scheduledDate,
+			NotifyCustomer:        notifyCustomer,
+			MaxConcurrentUpgrades: maxConcurrentUpgradesPtr,
 		}] == nil {
 			upgrades[Args{
-				ServiceID:      serviceID,
-				ProductTierID:  productTierID,
-				SourceVersion:  sourceVersion,
-				TargetVersion:  targetVersion,
-				ScheduledDate:  scheduledDate,
-				NotifyCustomer: notifyCustomer,
+				ServiceID:             serviceID,
+				ProductTierID:         productTierID,
+				SourceVersion:         sourceVersion,
+				TargetVersion:         targetVersion,
+				ScheduledDate:         scheduledDate,
+				NotifyCustomer:        notifyCustomer,
+				MaxConcurrentUpgrades: maxConcurrentUpgradesPtr,
 			}] = &Res{
 				InstanceIDs: make([]string, 0),
 			}
 		}
 
 		upgrades[Args{
-			ServiceID:      serviceID,
-			ProductTierID:  productTierID,
-			SourceVersion:  sourceVersion,
-			TargetVersion:  targetVersion,
-			ScheduledDate:  scheduledDate,
-			NotifyCustomer: notifyCustomer,
+			ServiceID:             serviceID,
+			ProductTierID:         productTierID,
+			SourceVersion:         sourceVersion,
+			TargetVersion:         targetVersion,
+			ScheduledDate:         scheduledDate,
+			NotifyCustomer:        notifyCustomer,
+			MaxConcurrentUpgrades: maxConcurrentUpgradesPtr,
 		}].InstanceIDs = append(upgrades[Args{
-			ServiceID:      serviceID,
-			ProductTierID:  productTierID,
-			SourceVersion:  sourceVersion,
-			TargetVersion:  targetVersion,
-			ScheduledDate:  scheduledDate,
-			NotifyCustomer: notifyCustomer,
+			ServiceID:             serviceID,
+			ProductTierID:         productTierID,
+			SourceVersion:         sourceVersion,
+			TargetVersion:         targetVersion,
+			ScheduledDate:         scheduledDate,
+			NotifyCustomer:        notifyCustomer,
+			MaxConcurrentUpgrades: maxConcurrentUpgradesPtr,
 		}].InstanceIDs, instanceID)
 	}
 
@@ -290,6 +316,7 @@ func run(cmd *cobra.Command, args []string) error {
 			upgradeArgs.ScheduledDate,
 			upgradeRes.InstanceIDs,
 			upgradeArgs.NotifyCustomer,
+			upgradeArgs.MaxConcurrentUpgrades,
 		)
 		if err != nil {
 			utils.HandleSpinnerError(spinner, sm, err)
@@ -306,12 +333,13 @@ func run(cmd *cobra.Command, args []string) error {
 	formattedUpgrades := make([]model.Upgrade, 0)
 	for upgradeArgs, upgradeRes := range upgrades {
 		formattedUpgrade := model.Upgrade{
-			UpgradeID:      upgradeRes.UpgradePathID,
-			SourceVersion:  upgradeArgs.SourceVersion,
-			TargetVersion:  upgradeArgs.TargetVersion,
-			InstanceIDs:    strings.Join(upgradeRes.InstanceIDs, ","),
-			NotifyCustomer: upgradeArgs.NotifyCustomer,
-			ScheduledDate:  upgradeArgs.ScheduledDate,
+			UpgradeID:             upgradeRes.UpgradePathID,
+			SourceVersion:         upgradeArgs.SourceVersion,
+			TargetVersion:         upgradeArgs.TargetVersion,
+			InstanceIDs:           strings.Join(upgradeRes.InstanceIDs, ","),
+			NotifyCustomer:        upgradeArgs.NotifyCustomer,
+			ScheduledDate:         upgradeArgs.ScheduledDate,
+			MaxConcurrentUpgrades: upgradeArgs.MaxConcurrentUpgrades,
 		}
 
 		formattedUpgrades = append(formattedUpgrades, formattedUpgrade)
