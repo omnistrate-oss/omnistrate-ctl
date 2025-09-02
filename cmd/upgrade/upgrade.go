@@ -60,7 +60,7 @@ func init() {
 	Cmd.Flags().StringP("version-name", "", "", "Specify the version name to upgrade to. Use either this flag or the --version flag to upgrade to a specific version.")
 	Cmd.Flags().StringP("scheduled-date", "", "", "Specify the scheduled date for the upgrade.")
 	Cmd.Flags().Bool("notify-customer", false, "Enable customer notifications for the upgrade")
-	Cmd.Flags().IntP("max-concurrent-upgrades", "", 0, "Maximum number of concurrent upgrades (1-25). If not specified, uses system default.")
+	Cmd.Flags().IntP("max-concurrent-upgrades", "", 0, "Maximum number of concurrent upgrades (1-25). If 0 or not specified, uses system default.")
 }
 
 type Args struct {
@@ -116,7 +116,8 @@ func run(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	// Validate max concurrent upgrades value
+	// Validate max concurrent upgrades value.
+	// 0 means "use system default". Only validate if explicitly set to a positive number.
 	var maxConcurrentUpgradesPtr *int
 	if maxConcurrentUpgrades > 0 {
 		if maxConcurrentUpgrades < 1 || maxConcurrentUpgrades > 25 {

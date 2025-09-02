@@ -205,11 +205,11 @@ func Test_upgrade_basic(t *testing.T) {
 	require.Error(err)
 	require.Contains(err.Error(), "instance-invalid not found. Please check the instance ID and try again")
 
-	// FAIL: upgrade instance with max-concurrent-upgrades below minimum (0)
+	// PASS: upgrade instance with max-concurrent-upgrades as 0 (should use system default)
 	cmd.RootCmd.SetArgs([]string{"upgrade", instanceID, "--version", "latest", "--max-concurrent-upgrades", "0"})
 	err = cmd.RootCmd.ExecuteContext(ctx)
-	require.Error(err)
-	require.Contains(err.Error(), "max-concurrent-upgrades must be between 1 and 25")
+	require.NoError(err)
+	require.Len(upgrade.UpgradePathIDs, 1)
 
 	// FAIL: upgrade instance with max-concurrent-upgrades above maximum (26)
 	cmd.RootCmd.SetArgs([]string{"upgrade", instanceID, "--version", "latest", "--max-concurrent-upgrades", "26"})
