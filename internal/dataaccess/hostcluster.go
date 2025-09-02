@@ -4,12 +4,34 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/omnistrate-oss/omnistrate-ctl/internal/utils"
-	"net/http"
-
 	"github.com/omnistrate-oss/omnistrate-ctl/internal/model"
+	"github.com/omnistrate-oss/omnistrate-ctl/internal/utils"
 	openapiclientfleet "github.com/omnistrate-oss/omnistrate-sdk-go/fleet"
+	"net/http"
 )
+
+func DebugHostCluster(ctx context.Context, token string, hostClusterID string) (*openapiclientfleet.DebugHostClusterResult, error) {
+	ctxWithToken := context.WithValue(ctx, openapiclientfleet.ContextAccessToken, token)
+	apiClient := getFleetClient()
+
+	fmt.Printf("Debugging host cluster with ID: %s\n", hostClusterID)
+	req := apiClient.HostclusterApiAPI.HostclusterApiDebugHostCluster(ctxWithToken, hostClusterID).
+		IncludeAmenitiesInstallationLogs(true)
+
+	var r *http.Response
+	defer func() {
+		if r != nil {
+			_ = r.Body.Close()
+		}
+	}()
+
+	debugRes, r, err := req.Execute()
+	if err != nil {
+		return nil, handleFleetError(err)
+	}
+
+	return debugRes, nil
+}
 
 func DescribeHostCluster(ctx context.Context, token string, hostClusterID string) (*openapiclientfleet.HostCluster, error) {
 	ctxWithToken := context.WithValue(ctx, openapiclientfleet.ContextAccessToken, token)
