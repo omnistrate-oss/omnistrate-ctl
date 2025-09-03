@@ -47,7 +47,7 @@ jobs:
     steps:
       - name: Checkout repository
         timeout-minutes: 5
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Set up go
         timeout-minutes: 10
@@ -289,7 +289,7 @@ jobs:
 
       - name: Checkout Homebrew Tap repository
         timeout-minutes: 5
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           repository: omnistrate/homebrew-tap
           token: ${{ secrets.PUBLISH_CTL_PAT }}
@@ -348,7 +348,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       # https://github.com/sigstore/cosign-installer
       - name: Install cosign
