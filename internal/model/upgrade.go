@@ -31,12 +31,13 @@ type UpgradeStatus struct {
 }
 
 type Upgrade struct {
-	UpgradeID      string  `json:"upgrade_id"`
-	SourceVersion  string  `json:"source_version"`
-	TargetVersion  string  `json:"target_version"`
-	InstanceIDs    string  `json:"instance_ids"`
-	ScheduledDate  *string `json:"scheduled_date,omitempty"`
-	NotifyCustomer bool    `json:"notify_customer"`
+	UpgradeID             string  `json:"upgrade_id"`
+	SourceVersion         string  `json:"source_version"`
+	TargetVersion         string  `json:"target_version"`
+	InstanceIDs           string  `json:"instance_ids"`
+	ScheduledDate         *string `json:"scheduled_date,omitempty"`
+	NotifyCustomer        bool    `json:"notify_customer"`
+	MaxConcurrentUpgrades *int    `json:"max_concurrent_upgrades,omitempty"`
 }
 
 type UpgradeStatusDetail struct {
