@@ -118,6 +118,10 @@ func Test_upgrade_basic(t *testing.T) {
 	require.NoError(err)
 	err = validateScheduledAndCancel(ctx, instanceID, "1.0", true)
 	require.NoError(err)
+	
+	// PASS: scheduled upgrade with max-concurrent-upgrades
+	err = validateScheduledAndCancelWithMaxConcurrency(ctx, instanceID, "preferred", false, 10)
+	require.NoError(err)
 	// PASS: upgrade instance to version 1.0
 	cmd.RootCmd.SetArgs([]string{"upgrade", instanceID, "--version", "1.0"})
 	err = cmd.RootCmd.ExecuteContext(ctx)
@@ -134,6 +138,44 @@ func Test_upgrade_basic(t *testing.T) {
 	err = cmd.RootCmd.ExecuteContext(ctx)
 	require.NoError(err)
 	require.Len(upgrade.UpgradePathIDs, 1)
+
+	// PASS: wait for instance to reach running status
+	time.Sleep(5 * time.Second)
+	err = testutils.WaitForInstanceToReachStatus(ctx, instanceID, instance.InstanceStatusRunning, 900*time.Second)
+	require.NoError(err)
+
+	// PASS: upgrade instance with max-concurrent-upgrades
+	cmd.RootCmd.SetArgs([]string{"upgrade", instanceID, "--version", "1.0", "--max-concurrent-upgrades", "5"})
+	err = cmd.RootCmd.ExecuteContext(ctx)
+	require.NoError(err)
+	require.Len(upgrade.UpgradePathIDs, 1)
+
+	// PASS: wait for instance to reach running status
+	time.Sleep(5 * time.Second)
+	err = testutils.WaitForInstanceToReachStatus(ctx, instanceID, instance.InstanceStatusRunning, 900*time.Second)
+	require.NoError(err)
+
+	// PASS: upgrade instance with max-concurrent-upgrades at minimum value
+	cmd.RootCmd.SetArgs([]string{"upgrade", instanceID, "--version", "preferred", "--max-concurrent-upgrades", "1"})
+	err = cmd.RootCmd.ExecuteContext(ctx)
+	require.NoError(err)
+	require.Len(upgrade.UpgradePathIDs, 1)
+
+	// PASS: wait for instance to reach running status
+	time.Sleep(5 * time.Second)
+	err = testutils.WaitForInstanceToReachStatus(ctx, instanceID, instance.InstanceStatusRunning, 900*time.Second)
+	require.NoError(err)
+
+	// PASS: upgrade instance with max-concurrent-upgrades at maximum value
+	cmd.RootCmd.SetArgs([]string{"upgrade", instanceID, "--version", "1.0", "--max-concurrent-upgrades", "25"})
+	err = cmd.RootCmd.ExecuteContext(ctx)
+	require.NoError(err)
+	require.Len(upgrade.UpgradePathIDs, 1)
+
+	// PASS: wait for instance to reach running status
+	time.Sleep(5 * time.Second)
+	err = testutils.WaitForInstanceToReachStatus(ctx, instanceID, instance.InstanceStatusRunning, 900*time.Second)
+	require.NoError(err)
 
 	// PASS: delete instance
 	cmd.RootCmd.SetArgs([]string{"instance", "delete", instanceID, "--yes"})
@@ -162,6 +204,24 @@ func Test_upgrade_basic(t *testing.T) {
 	err = cmd.RootCmd.ExecuteContext(ctx)
 	require.Error(err)
 	require.Contains(err.Error(), "instance-invalid not found. Please check the instance ID and try again")
+
+	// PASS: upgrade instance with max-concurrent-upgrades as 0 (should use system default)
+	cmd.RootCmd.SetArgs([]string{"upgrade", instanceID, "--version", "latest", "--max-concurrent-upgrades", "0"})
+	err = cmd.RootCmd.ExecuteContext(ctx)
+	require.NoError(err)
+	require.Len(upgrade.UpgradePathIDs, 1)
+
+	// FAIL: upgrade instance with max-concurrent-upgrades above maximum (26)
+	cmd.RootCmd.SetArgs([]string{"upgrade", instanceID, "--version", "latest", "--max-concurrent-upgrades", "26"})
+	err = cmd.RootCmd.ExecuteContext(ctx)
+	require.Error(err)
+	require.Contains(err.Error(), "max-concurrent-upgrades must be between 1 and 25")
+
+	// FAIL: upgrade instance with negative max-concurrent-upgrades
+	cmd.RootCmd.SetArgs([]string{"upgrade", instanceID, "--version", "latest", "--max-concurrent-upgrades", "-1"})
+	err = cmd.RootCmd.ExecuteContext(ctx)
+	require.Error(err)
+	require.Contains(err.Error(), "max-concurrent-upgrades must be between 1 and 25")
 
 	// FAIL: check upgrade status with invalid instance ID
 	cmd.RootCmd.SetArgs([]string{"upgrade", "status", "upgrade-invalid"})
@@ -247,6 +307,68 @@ func validateScheduledAndCancel(ctx context.Context, instanceID string, targetVe
 	}
 	if status.LastUpgradeStatus.Status != expectedStatus {
 		return fmt.Errorf("expected status %s, got %s", expectedStatus, status.LastUpgradeStatus.Status)
+	}
+	return nil
+}
+
+func validateScheduledAndCancelWithMaxConcurrency(ctx context.Context, instanceID string, targetVersion string, shouldSkipInstance bool, maxConcurrentUpgrades int) error {
+	// Upgrade instance with scheduled date and max-concurrent-upgrades
+	scheduledDate := time.Now().Add(3 * time.Hour).Truncate(time.Hour).Format(time.RFC3339)
+	cmd.RootCmd.SetArgs([]string{"upgrade", instanceID, "--version", targetVersion, "--scheduled-date", scheduledDate, "--max-concurrent-upgrades", fmt.Sprintf("%d", maxConcurrentUpgrades)})
+	err := cmd.RootCmd.ExecuteContext(ctx)
+	if err != nil {
+		return err
+	}
+	if len(upgrade.UpgradePathIDs) != 1 {
+		return fmt.Errorf("expected 1 upgrade path ID, got %d", len(upgrade.UpgradePathIDs))
+	}
+	upgradeID := upgrade.UpgradePathIDs[0]
+
+	cmd.RootCmd.SetArgs([]string{"upgrade", "status", upgradeID})
+	if err = cmd.RootCmd.ExecuteContext(ctx); err != nil {
+		return err
+	}
+	if status.LastUpgradeStatus.NotifyCustomer == true {
+		return fmt.Errorf("expected notify customer to be false, got %v", status.LastUpgradeStatus.NotifyCustomer)
+	}
+
+	for {
+		cmd.RootCmd.SetArgs([]string{"upgrade", "status", upgradeID})
+		if err = cmd.RootCmd.ExecuteContext(ctx); err != nil {
+			return err
+		}
+
+		if status.LastUpgradeStatus.Status != model.InProgress.String() {
+			break
+		}
+		time.Sleep(5 * time.Second)
+	}
+
+	if status.LastUpgradeStatus.Status != model.Scheduled.String() {
+		return fmt.Errorf("expected status %s, got %s", model.Scheduled.String(), status.LastUpgradeStatus.Status)
+	}
+	
+	// Cancel the scheduled upgrade
+	cmd.RootCmd.SetArgs([]string{"upgrade", "cancel", upgradeID})
+	err = cmd.RootCmd.ExecuteContext(ctx)
+	if err != nil {
+		return err
+	}
+
+	for {
+		cmd.RootCmd.SetArgs([]string{"upgrade", "status", upgradeID})
+		if err = cmd.RootCmd.ExecuteContext(ctx); err != nil {
+			return err
+		}
+
+		if status.LastUpgradeStatus.Status != model.Scheduled.String() {
+			break
+		}
+		time.Sleep(5 * time.Second)
+	}
+	
+	if status.LastUpgradeStatus.Status != model.Cancelled.String() {
+		return fmt.Errorf("expected status %s, got %s", model.Cancelled.String(), status.LastUpgradeStatus.Status)
 	}
 	return nil
 }
