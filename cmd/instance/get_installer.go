@@ -35,7 +35,7 @@ var getInstallerCmd = &cobra.Command{
 
 func init() {
 	getInstallerCmd.Args = cobra.ExactArgs(1) // Require exactly one argument
-	getInstallerCmd.Flags().StringP("output-path", "p", "", "Output path for the installer file (default: ./installer.tar.gz)")
+	getInstallerCmd.Flags().StringP("output-path", "p", "", "Output path for the installer file (default: ./installer-{instance-id}.tar.gz)")
 }
 
 func runGetInstaller(cmd *cobra.Command, args []string) error {
@@ -53,7 +53,7 @@ func runGetInstaller(cmd *cobra.Command, args []string) error {
 
 	// Set default output path if not provided
 	if outputPath == "" {
-		outputPath = "./installer.tar.gz"
+		outputPath = fmt.Sprintf("./installer-%s.tar.gz", instanceID)
 	}
 
 	// Validate user login

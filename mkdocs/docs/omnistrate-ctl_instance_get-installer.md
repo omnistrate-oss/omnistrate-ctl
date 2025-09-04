@@ -24,7 +24,7 @@ omctl instance get-installer instance-abcd1234 --output-path /tmp/installer.tar.
 
 ```
   -h, --help                 help for get-installer
-  -p, --output-path string   Output path for the installer file (default: ./installer.tar.gz)
+  -p, --output-path string   Output path for the installer file (default: ./installer-{instance-id}.tar.gz)
 ```
 
 ### Options inherited from parent commands

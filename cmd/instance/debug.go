@@ -2124,7 +2124,10 @@ func connectAndStreamLogs(app *tview.Application, logsUrl string, rightPanel *tv
 				return
 			}
 			
-			c, _, err := websocket.DefaultDialer.Dial(logsUrl, nil)
+			c, resp, err := websocket.DefaultDialer.Dial(logsUrl, nil)
+			if resp != nil && resp.Body != nil {
+				defer resp.Body.Close()
+			}
 			if err != nil {
 				retryCount++
 				
