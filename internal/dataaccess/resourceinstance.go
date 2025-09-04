@@ -446,6 +446,31 @@ func OneOffPatchResourceInstance(ctx context.Context, token string, serviceID, e
 	return
 }
 
+func DescribeResourceInstanceInstaller(ctx context.Context, token string, serviceID, environmentID, instanceID string) (resp *openapiclientfleet.DescribeResourceInstanceInstallerResult, err error) {
+	ctxWithToken := context.WithValue(ctx, openapiclientfleet.ContextAccessToken, token)
+	apiClient := getFleetClient()
+
+	req := apiClient.InventoryApiAPI.InventoryApiDescribeResourceInstanceInstaller(
+		ctxWithToken,
+		serviceID,
+		environmentID,
+		instanceID,
+	)
+
+	var r *http.Response
+	defer func() {
+		if r != nil {
+			_ = r.Body.Close()
+		}
+	}()
+
+	resp, r, err = req.Execute()
+	if err != nil {
+		return nil, handleFleetError(err)
+	}
+	return
+}
+
 func EvaluateExpression(ctx context.Context, token, serviceID, productTierID, instanceID, resourceKey, expression string, expressionMap map[string]interface{}) (result interface{}, err error) {
 	// Validate that either expression or expressionMap is provided
 	if expression == "" && expressionMap == nil {
