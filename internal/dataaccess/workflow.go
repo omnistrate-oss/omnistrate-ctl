@@ -123,14 +123,14 @@ func GetDebugEventsForAllResources(ctx context.Context, token string, serviceID,
 			actionLower := strings.ToLower(actionType)
 			
 			switch actionLower {
-			case "create", "deploy":
-				workflowMatches = strings.Contains(workflowLower, "deploy") || strings.Contains(workflowLower, "create")
-			case "modify", "update":
-				workflowMatches = strings.Contains(workflowLower, "modify") || strings.Contains(workflowLower, "update") || strings.Contains(workflowLower, "patch")
-			case "delete", "remove":
-				workflowMatches = strings.Contains(workflowLower, "delete") || strings.Contains(workflowLower, "remove") || strings.Contains(workflowLower, "destroy")
-			case "upgrade", "version-upgrade":
-				workflowMatches = strings.Contains(workflowLower, "upgrade") || strings.Contains(workflowLower, "patch")
+			case "create":
+				workflowMatches = strings. HasPrefix(workflowLower, "submit-create")
+			case "modify":
+				workflowMatches = strings.HasPrefix(workflowLower, "submit-update") || strings.HasPrefix(workflowLower, "submit-modify")
+			case "upgrade":
+				workflowMatches = strings.HasPrefix(workflowLower, "submit-update") || strings.HasPrefix(workflowLower, "submit-modify") || strings.Contains(workflowLower, "upgrade")
+			case "delete":
+				workflowMatches = strings.HasPrefix(workflowLower, "submit-delete")
 			default:
 				// If action type is unknown, fall back to original behavior
 				workflowMatches = true
