@@ -91,7 +91,7 @@ type WorkflowEventsByCategory struct {
 }
 
 // GetDebugEventsForAllResources gets workflow events for all resources in an instance, organized by resource and category
-func GetDebugEventsForAllResources(ctx context.Context, token string, serviceID, environmentID, instanceID string) ([]ResourceWorkflowData, *WorkflowInfo, error) {
+func GetDebugEventsForAllResources(ctx context.Context, token string, serviceID, environmentID, instanceID string, expectedAction ...string) ([]ResourceWorkflowData, *WorkflowInfo, error) {
 	// First, list all workflows for the instance
 	workflows, err := ListWorkflows(ctx, token, serviceID, environmentID, instanceID)
 	if err != nil {
@@ -105,13 +105,43 @@ func GetDebugEventsForAllResources(ctx context.Context, token string, serviceID,
 	workflowInfo := &WorkflowInfo{}
 	var resourcesData []ResourceWorkflowData
 	
-	// Find the latest workflow (assuming they are ordered by creation time or use the last one)
+	// Find the latest workflow that matches the expected action (if specified)
 	var latestWorkflowID string
 	for _, workflow := range workflows.Workflows {
 		// Skip workflows that are pending or have specific prefixes license and backup
 		if workflow.Id == "" || workflow.Status == "pending" || strings.HasPrefix(workflow.Id, "submit-rotate-license") || strings.HasPrefix(workflow.Id, "submit-backup") {
 			continue
 		}
+		
+		// If expected action is specified, validate workflow matches the action
+		if len(expectedAction) > 0 && expectedAction[0] != "" {
+			actionType := expectedAction[0]
+			workflowMatches := false
+			
+			// Check if workflow ID contains the expected action type
+			workflowLower := strings.ToLower(workflow.Id)
+			actionLower := strings.ToLower(actionType)
+			
+			switch actionLower {
+			case "create":
+				workflowMatches = strings. HasPrefix(workflowLower, "submit-create")
+			case "modify":
+				workflowMatches = strings.HasPrefix(workflowLower, "submit-update") || strings.HasPrefix(workflowLower, "submit-modify")
+			case "upgrade":
+				workflowMatches = strings.HasPrefix(workflowLower, "submit-update") || strings.HasPrefix(workflowLower, "submit-modify") || strings.Contains(workflowLower, "upgrade")
+			case "delete":
+				workflowMatches = strings.HasPrefix(workflowLower, "submit-delete")
+			default:
+				// If action type is unknown, fall back to original behavior
+				workflowMatches = true
+			}
+			
+			// Skip workflows that don't match the expected action
+			if !workflowMatches {
+				continue
+			}
+		}
+		
 		latestWorkflowID = workflow.Id
 
 		// Populate workflow metadata
