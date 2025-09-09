@@ -178,7 +178,7 @@ func Test_upgrade_basic(t *testing.T) {
 	require.NoError(err)
 
 	// PASS: upgrade instance with max-concurrent-upgrades as 0 (should use system default)
-	cmd.RootCmd.SetArgs([]string{"upgrade", instanceID, "--version", "1.0", "--max-concurrent-upgrades", "0"})
+	cmd.RootCmd.SetArgs([]string{"upgrade", instanceID, "--version", "preferred", "--max-concurrent-upgrades", "0"})
 	err = cmd.RootCmd.ExecuteContext(ctx)
 	require.NoError(err)
 	require.Len(upgrade.UpgradePathIDs, 1)
