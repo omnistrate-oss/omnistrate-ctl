@@ -904,7 +904,7 @@ x-omnistrate-image-registry-attributes:
 	spinner = sm.AddSpinner("Rendering compose spec")
 
 	if strings.Contains(string(fileData), "env_file:") {
-		fileData, err = RenderEnvFileAndInterpolateVariables(fileData, rootDir, file, sm, spinner)
+		fileData, err = renderEnvFileAndInterpolateVariables(fileData, rootDir, file, sm, spinner)
 		if err != nil {
 			utils.HandleSpinnerError(spinner, sm, err)
 			return err
@@ -1334,7 +1334,27 @@ func getOrCreatePAT(sm ysmrr.SpinnerManager, resetPAT bool) (newSm ysmrr.Spinner
 	return
 }
 
-func RenderEnvFileAndInterpolateVariables(fileData []byte, rootDir string, file string, sm ysmrr.SpinnerManager, spinner *ysmrr.Spinner) (newFileData []byte, err error) {
+func RenderFile(fileData []byte, rootDir string, file string, sm ysmrr.SpinnerManager, spinner *ysmrr.Spinner) (
+	newFileData []byte, err error) {
+	newFileData = fileData
+
+	newFileData, err = renderFileReferences(newFileData, file, sm, spinner)
+	if err != nil {
+		return
+	}
+
+	if strings.Contains(string(newFileData), "env_file:") {
+		newFileData, err = renderEnvFileAndInterpolateVariables(newFileData, rootDir, file, sm, spinner)
+		if err != nil {
+			return
+		}
+	}
+	return
+}
+
+func renderEnvFileAndInterpolateVariables(
+	fileData []byte, rootDir string, file string, sm ysmrr.SpinnerManager, spinner *ysmrr.Spinner) (
+	newFileData []byte, err error) {
 	// Replace `$` with `$$` to avoid interpolation. Do not replace for `${...}` since it's used to specify variable interpolations
 	fileData = []byte(strings.ReplaceAll(string(fileData), "$", "$$"))   // Escape $ to $$
 	fileData = []byte(strings.ReplaceAll(string(fileData), "$${", "${")) // Unescape $${ to ${ for variable interpolation
@@ -1383,5 +1403,116 @@ func RenderEnvFileAndInterpolateVariables(fileData []byte, rootDir string, file 
 	re := regexp.MustCompile(`(?m)(^\s*cpus:\s*)([0-9.]+)\s*$`)
 	newFileData = []byte(re.ReplaceAllString(string(newFileData), `$1"$2"`))
 
+	return
+}
+
+func renderFileReferences(
+	fileData []byte, file string, sm ysmrr.SpinnerManager, spinner *ysmrr.Spinner) (
+	newFileData []byte, err error) {
+	// reNoIndent is for regular expression that pastes file as-is
+	reNoIndent := regexp.MustCompile(`{{\s*\$file:(?P<filepath>[^\s}]+)\s*}}`)
+	var noIndentFilePathIndex int
+	groupNames := reNoIndent.SubexpNames()
+	for i, name := range groupNames {
+		if name == "filepath" {
+			noIndentFilePathIndex = i
+		}
+	}
+
+	// reWithIndent is for regular expression that pastes file with indentation matching the indentation of the parent file
+	reWithIndent := regexp.MustCompile(`(?m)^(?P<indent>[ \t]+)?(?P<key>(\S)+)?([ \t]*)?{{[ \t]*\$indentedFile:(?P<filepath>[^\s}]+)[ \t]*}}`)
+	var indentFilePathIndex, indentIndex int
+	groupNamesWithIndent := reWithIndent.SubexpNames()
+	for i, name := range groupNamesWithIndent {
+		if name == "filepath" {
+			indentFilePathIndex = i
+		}
+		if name == "indent" {
+			indentIndex = i
+		}
+	}
+
+	var renderingErr error
+	createReplacementFunction := func(re *regexp.Regexp, filePathIndex int, indentIndex *int) func(string) string {
+		return func(match string) (replacement string) {
+			replacement = match
+
+			submatches := re.FindStringSubmatch(match)
+			filePath := submatches[filePathIndex]
+			if len(filePath) == 0 {
+				renderingErr = fmt.Errorf("no file path found in file reference '%s'", match)
+				return
+			}
+
+			var addedIndentation *string
+			if indentIndex != nil {
+				addedIndentation = utils.ToPtr(submatches[*indentIndex])
+			}
+
+			// Read file content
+			cleanedFilePath := filepath.Clean(filePath)
+			fileDir := filepath.Dir(file)
+			isRelative := !filepath.IsAbs(cleanedFilePath)
+			if isRelative {
+				cleanedFilePath = filepath.Join(fileDir, cleanedFilePath)
+			}
+
+			if _, fileErr := os.Stat(cleanedFilePath); os.IsNotExist(fileErr) {
+				renderingErr = fmt.Errorf("file '%s' does not exist", filePath)
+				return
+			}
+
+			fileContent, readErr := os.ReadFile(cleanedFilePath)
+			if readErr != nil {
+				renderingErr = fmt.Errorf("file '%s' could not be read", filePath)
+				return
+			}
+
+			// Render the file (in case it uses nested file references)
+			renderedFileContentBytes, nestedRenderErr := renderFileReferences(fileContent, cleanedFilePath, sm, spinner)
+			if nestedRenderErr != nil {
+				renderingErr = errors.Wrapf(nestedRenderErr,
+					"failed to replace file references for file '%s'", filePath)
+				return
+			}
+
+			// Add indentation of parent context
+			replacement = string(renderedFileContentBytes)
+			if addedIndentation != nil && len(*addedIndentation) > 0 {
+				// Add indentation to each line
+				lines := strings.Split(replacement, "\n")
+				for i, line := range lines {
+					if len(line) > 0 {
+						lines[i] = *addedIndentation + line
+					}
+				}
+				replacement = strings.Join(lines, "\n")
+			}
+
+			return
+		}
+	}
+
+	// Render for both regexes
+	newFileDataStr := string(fileData)
+	newFileDataStr = reNoIndent.ReplaceAllStringFunc(newFileDataStr, createReplacementFunction(reNoIndent, noIndentFilePathIndex, nil))
+	if renderingErr == nil {
+		newFileDataStr = reWithIndent.ReplaceAllStringFunc(newFileDataStr, createReplacementFunction(reWithIndent, indentFilePathIndex, utils.ToPtr(indentIndex)))
+	}
+
+	// Handle error
+	if renderingErr != nil {
+		err = errors.Wrapf(renderingErr, "error rendering file '%s'", file)
+		if spinner != nil {
+			spinner.Error()
+			sm.Stop()
+		}
+		_, _ = fmt.Fprintf(os.Stderr, "%s", err.Error())
+		utils.HandleSpinnerError(spinner, sm, err)
+
+		return
+	}
+
+	newFileData = []byte(newFileDataStr)
 	return
 }

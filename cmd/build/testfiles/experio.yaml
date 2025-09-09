@@ -6,23 +6,7 @@ volumes:
   local_redis_data: {}
 
 services:
-  postgres:
-    restart: always
-    image: postgres:12
-    ports:
-      - 5432:5432
-    env_file:
-      - ".env"
-    environment:
-      - POSTGRES_DB=${DB_NAME}
-      - POSTGRES_USER=${DB_USER}
-      - POSTGRES_PASSWORD=${DB_PASS}
-      - SECURITY_CONTEXT_USER_ID=999
-      - SECURITY_CONTEXT_GROUP_ID=999
-      - ALLOWED_HOSTS2={{ $sys.network.externalClusterEndpoint }},server,localhost,127.0.0.1,0.0.0.0
-    volumes:
-      - local_postgres_data:/var/lib/postgresql/data/
-      - local_postgres_data_backups:/backups
+  {{ $indentedFile:./services/experio_service_postgres.yaml }}
 
   redis:
     image: redis/redis-stack-server:latest

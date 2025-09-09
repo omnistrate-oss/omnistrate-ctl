@@ -1,12 +1,13 @@
 package build
 
 import (
-	"github.com/stretchr/testify/require"
 	"os"
 	"os/exec"
 	"path"
 	"strings"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 
 	"github.com/chelnak/ysmrr"
 )
@@ -26,7 +27,7 @@ func TestRenderEnvFileAndInterpolateVariables(t *testing.T) {
 	expectedFileData, err := os.ReadFile(expectedFilePath)
 	require.NoError(t, err)
 
-	result, err := RenderEnvFileAndInterpolateVariables(fileData, cwd, filePath, sm, nil)
+	result, err := RenderFile(fileData, cwd, filePath, sm, nil)
 	require.NoError(t, err, "Error rendering env file and interpolating variables: %v", err)
 	require.Equal(t, strings.ReplaceAll(string(result), " ", ""), strings.ReplaceAll(string(expectedFileData), " ", ""), "Rendered file content does not match expected content")
 }
