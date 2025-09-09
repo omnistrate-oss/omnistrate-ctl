@@ -6,7 +6,7 @@ volumes:
   local_redis_data: {}
 
 services:
-  {{ $indentedFile:./services/experio_service_postgres.yaml }}
+  {{ $file:./services/experio_service_postgres.yaml }}
 
   redis:
     image: redis/redis-stack-server:latest
@@ -59,8 +59,4 @@ services:
         required: false
         export: true
 
-x-omnistrate-image-registry-attributes:
-  ghcr.io:
-    auth:
-      password: ${{ secrets.GitHubPAT }}
-      username: abc
+{{ $file:image_registry_attributes.yaml }}
