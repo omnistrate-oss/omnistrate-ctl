@@ -30,6 +30,7 @@ func init() {
 	Cmd.AddCommand(patchDeploymentCmd)
 	Cmd.AddCommand(triggerBackupCmd)
 	Cmd.AddCommand(listSnapshotsCmd)
+	Cmd.AddCommand(describeSnapshotCmd)
 	Cmd.AddCommand(restoreCmd)
 	Cmd.AddCommand(adoptCmd)
 	Cmd.AddCommand(versionUpgradeCmd)

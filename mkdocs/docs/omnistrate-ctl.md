@@ -37,6 +37,7 @@ omnistrate-ctl [flags]
 
 * [omnistrate-ctl account](omnistrate-ctl_account.md)	 - Manage your Cloud Provider Accounts
 * [omnistrate-ctl alarms](omnistrate-ctl_alarms.md)	 - Manage alarms and notification channels
+* [omnistrate-ctl audit](omnistrate-ctl_audit.md)	 - Audit events and logging management
 * [omnistrate-ctl build](omnistrate-ctl_build.md)	 - Build Services from image, compose spec or service plan spec
 * [omnistrate-ctl build-from-repo](omnistrate-ctl_build-from-repo.md)	 - Build Service from Git Repository
 * [omnistrate-ctl cost](omnistrate-ctl_cost.md)	 - Manage cost analytics for your services
@@ -50,6 +51,7 @@ omnistrate-ctl [flags]
 * [omnistrate-ctl login](omnistrate-ctl_login.md)	 - Log in to the Omnistrate platform
 * [omnistrate-ctl logout](omnistrate-ctl_logout.md)	 - Logout
 * [omnistrate-ctl mcp](omnistrate-ctl_mcp.md)	 - MCP server management
+* [omnistrate-ctl operations](omnistrate-ctl_operations.md)	 - Operations and health monitoring commands
 * [omnistrate-ctl secret](omnistrate-ctl_secret.md)	 - Manage secrets
 * [omnistrate-ctl service](omnistrate-ctl_service.md)	 - Manage Services for your account
 * [omnistrate-ctl service-plan](omnistrate-ctl_service-plan.md)	 - Manage Service Plans for your service
