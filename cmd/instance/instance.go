@@ -35,6 +35,7 @@ func init() {
 	Cmd.AddCommand(versionUpgradeCmd)
 	Cmd.AddCommand(debugCmd)
 	Cmd.AddCommand(evaluateCmd)
+	Cmd.AddCommand(getInstallerCmd)
 }
 
 func run(cmd *cobra.Command, args []string) {

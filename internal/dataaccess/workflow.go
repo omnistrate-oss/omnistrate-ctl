@@ -4,13 +4,22 @@ import (
 	"context"
 	"net/http"
 	"strings"
+	"time"
 
 	openapiclientfleet "github.com/omnistrate-oss/omnistrate-sdk-go/fleet"
 )
 
 
 
-func ListWorkflows(ctx context.Context, token string, serviceID, environmentID, instanceID string) (res *openapiclientfleet.ListServiceWorkflowsResult, err error) {
+type ListWorkflowsOptions struct {
+	InstanceID    string
+	StartDate     *time.Time
+	EndDate       *time.Time
+	PageSize      *int64
+	NextPageToken string
+}
+
+func ListWorkflows(ctx context.Context, token string, serviceID, environmentID string, opts *ListWorkflowsOptions) (res *openapiclientfleet.ListServiceWorkflowsResult, err error) {
 	ctxWithToken := context.WithValue(ctx, openapiclientfleet.ContextAccessToken, token)
 	apiClient := getFleetClient()
 
@@ -18,7 +27,25 @@ func ListWorkflows(ctx context.Context, token string, serviceID, environmentID, 
 		ctxWithToken,
 		serviceID,
 		environmentID,
-	).InstanceId(instanceID)
+	)
+
+	if opts != nil {
+		if opts.InstanceID != "" {
+			req = req.InstanceId(opts.InstanceID)
+		}
+		if opts.StartDate != nil {
+			req = req.StartDate(*opts.StartDate)
+		}
+		if opts.EndDate != nil {
+			req = req.EndDate(*opts.EndDate)
+		}
+		if opts.PageSize != nil {
+			req = req.PageSize(*opts.PageSize)
+		}
+		if opts.NextPageToken != "" {
+			req = req.NextPageToken(opts.NextPageToken)
+		}
+	}
 
 	var r *http.Response
 	defer func() {
@@ -44,6 +71,80 @@ func GetWorkflowEvents(ctx context.Context, token string, serviceID, environment
 	apiClient := getFleetClient()
 
 	req := apiClient.FleetWorkflowsApiAPI.FleetWorkflowsApiGetWorkflowEvents(
+		ctxWithToken,
+		serviceID,
+		environmentID,
+		workflowID,
+	)
+
+	var r *http.Response
+	defer func() {
+		if r != nil {
+			_ = r.Body.Close()
+		}
+	}()
+
+	res, r, err = req.Execute()
+	if err != nil {
+		return nil, handleFleetError(err)
+	}
+	return
+}
+
+func DescribeWorkflow(ctx context.Context, token string, serviceID, environmentID, workflowID string) (res *openapiclientfleet.DescribeServiceWorkflowResult, err error) {
+	ctxWithToken := context.WithValue(ctx, openapiclientfleet.ContextAccessToken, token)
+	apiClient := getFleetClient()
+
+	req := apiClient.FleetWorkflowsApiAPI.FleetWorkflowsApiDescribeServiceWorkflow(
+		ctxWithToken,
+		serviceID,
+		environmentID,
+		workflowID,
+	)
+
+	var r *http.Response
+	defer func() {
+		if r != nil {
+			_ = r.Body.Close()
+		}
+	}()
+
+	res, r, err = req.Execute()
+	if err != nil {
+		return nil, handleFleetError(err)
+	}
+	return
+}
+
+func DescribeWorkflowSummary(ctx context.Context, token string, serviceID, environmentID string) (res *openapiclientfleet.DescribeServiceWorkflowSummaryResult, err error) {
+	ctxWithToken := context.WithValue(ctx, openapiclientfleet.ContextAccessToken, token)
+	apiClient := getFleetClient()
+
+	req := apiClient.FleetWorkflowsApiAPI.FleetWorkflowsApiDescribeServiceWorkflowSummary(
+		ctxWithToken,
+		serviceID,
+		environmentID,
+	)
+
+	var r *http.Response
+	defer func() {
+		if r != nil {
+			_ = r.Body.Close()
+		}
+	}()
+
+	res, r, err = req.Execute()
+	if err != nil {
+		return nil, handleFleetError(err)
+	}
+	return
+}
+
+func TerminateWorkflow(ctx context.Context, token string, serviceID, environmentID, workflowID string) (res *openapiclientfleet.ServiceWorkflow, err error) {
+	ctxWithToken := context.WithValue(ctx, openapiclientfleet.ContextAccessToken, token)
+	apiClient := getFleetClient()
+
+	req := apiClient.FleetWorkflowsApiAPI.FleetWorkflowsApiTerminateServiceWorkflow(
 		ctxWithToken,
 		serviceID,
 		environmentID,
@@ -91,9 +192,11 @@ type WorkflowEventsByCategory struct {
 }
 
 // GetDebugEventsForAllResources gets workflow events for all resources in an instance, organized by resource and category
-func GetDebugEventsForAllResources(ctx context.Context, token string, serviceID, environmentID, instanceID string) ([]ResourceWorkflowData, *WorkflowInfo, error) {
+func GetDebugEventsForAllResources(ctx context.Context, token string, serviceID, environmentID, instanceID string, expectedAction ...string) ([]ResourceWorkflowData, *WorkflowInfo, error) {
 	// First, list all workflows for the instance
-	workflows, err := ListWorkflows(ctx, token, serviceID, environmentID, instanceID)
+	workflows, err := ListWorkflows(ctx, token, serviceID, environmentID, &ListWorkflowsOptions{
+		InstanceID: instanceID,
+	})
 	if err != nil {
 		return nil, nil, err
 	}
@@ -105,13 +208,43 @@ func GetDebugEventsForAllResources(ctx context.Context, token string, serviceID,
 	workflowInfo := &WorkflowInfo{}
 	var resourcesData []ResourceWorkflowData
 	
-	// Find the latest workflow (assuming they are ordered by creation time or use the last one)
+	// Find the latest workflow that matches the expected action (if specified)
 	var latestWorkflowID string
 	for _, workflow := range workflows.Workflows {
 		// Skip workflows that are pending or have specific prefixes license and backup
 		if workflow.Id == "" || workflow.Status == "pending" || strings.HasPrefix(workflow.Id, "submit-rotate-license") || strings.HasPrefix(workflow.Id, "submit-backup") {
 			continue
 		}
+		
+		// If expected action is specified, validate workflow matches the action
+		if len(expectedAction) > 0 && expectedAction[0] != "" {
+			actionType := expectedAction[0]
+			workflowMatches := false
+			
+			// Check if workflow ID contains the expected action type
+			workflowLower := strings.ToLower(workflow.Id)
+			actionLower := strings.ToLower(actionType)
+			
+			switch actionLower {
+			case "create":
+				workflowMatches = strings. HasPrefix(workflowLower, "submit-create")
+			case "modify":
+				workflowMatches = strings.HasPrefix(workflowLower, "submit-update") || strings.HasPrefix(workflowLower, "submit-modify")
+			case "upgrade":
+				workflowMatches = strings.HasPrefix(workflowLower, "submit-update") || strings.HasPrefix(workflowLower, "submit-modify") || strings.Contains(workflowLower, "upgrade")
+			case "delete":
+				workflowMatches = strings.HasPrefix(workflowLower, "submit-delete")
+			default:
+				// If action type is unknown, fall back to original behavior
+				workflowMatches = true
+			}
+			
+			// Skip workflows that don't match the expected action
+			if !workflowMatches {
+				continue
+			}
+		}
+		
 		latestWorkflowID = workflow.Id
 
 		// Populate workflow metadata

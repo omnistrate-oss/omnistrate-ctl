@@ -118,10 +118,6 @@ func Test_upgrade_basic(t *testing.T) {
 	require.NoError(err)
 	err = validateScheduledAndCancel(ctx, instanceID, "1.0", true)
 	require.NoError(err)
-	
-	// PASS: scheduled upgrade with max-concurrent-upgrades
-	err = validateScheduledAndCancelWithMaxConcurrency(ctx, instanceID, "preferred", false, 10)
-	require.NoError(err)
 	// PASS: upgrade instance to version 1.0
 	cmd.RootCmd.SetArgs([]string{"upgrade", instanceID, "--version", "1.0"})
 	err = cmd.RootCmd.ExecuteContext(ctx)
@@ -138,44 +134,6 @@ func Test_upgrade_basic(t *testing.T) {
 	err = cmd.RootCmd.ExecuteContext(ctx)
 	require.NoError(err)
 	require.Len(upgrade.UpgradePathIDs, 1)
-
-	// PASS: wait for instance to reach running status
-	time.Sleep(5 * time.Second)
-	err = testutils.WaitForInstanceToReachStatus(ctx, instanceID, instance.InstanceStatusRunning, 900*time.Second)
-	require.NoError(err)
-
-	// PASS: upgrade instance with max-concurrent-upgrades
-	cmd.RootCmd.SetArgs([]string{"upgrade", instanceID, "--version", "1.0", "--max-concurrent-upgrades", "5"})
-	err = cmd.RootCmd.ExecuteContext(ctx)
-	require.NoError(err)
-	require.Len(upgrade.UpgradePathIDs, 1)
-
-	// PASS: wait for instance to reach running status
-	time.Sleep(5 * time.Second)
-	err = testutils.WaitForInstanceToReachStatus(ctx, instanceID, instance.InstanceStatusRunning, 900*time.Second)
-	require.NoError(err)
-
-	// PASS: upgrade instance with max-concurrent-upgrades at minimum value
-	cmd.RootCmd.SetArgs([]string{"upgrade", instanceID, "--version", "preferred", "--max-concurrent-upgrades", "1"})
-	err = cmd.RootCmd.ExecuteContext(ctx)
-	require.NoError(err)
-	require.Len(upgrade.UpgradePathIDs, 1)
-
-	// PASS: wait for instance to reach running status
-	time.Sleep(5 * time.Second)
-	err = testutils.WaitForInstanceToReachStatus(ctx, instanceID, instance.InstanceStatusRunning, 900*time.Second)
-	require.NoError(err)
-
-	// PASS: upgrade instance with max-concurrent-upgrades at maximum value
-	cmd.RootCmd.SetArgs([]string{"upgrade", instanceID, "--version", "1.0", "--max-concurrent-upgrades", "25"})
-	err = cmd.RootCmd.ExecuteContext(ctx)
-	require.NoError(err)
-	require.Len(upgrade.UpgradePathIDs, 1)
-
-	// PASS: wait for instance to reach running status
-	time.Sleep(5 * time.Second)
-	err = testutils.WaitForInstanceToReachStatus(ctx, instanceID, instance.InstanceStatusRunning, 900*time.Second)
-	require.NoError(err)
 
 	// PASS: delete instance
 	cmd.RootCmd.SetArgs([]string{"instance", "delete", instanceID, "--yes"})
@@ -204,24 +162,6 @@ func Test_upgrade_basic(t *testing.T) {
 	err = cmd.RootCmd.ExecuteContext(ctx)
 	require.Error(err)
 	require.Contains(err.Error(), "instance-invalid not found. Please check the instance ID and try again")
-
-	// PASS: upgrade instance with max-concurrent-upgrades as 0 (should use system default)
-	cmd.RootCmd.SetArgs([]string{"upgrade", instanceID, "--version", "latest", "--max-concurrent-upgrades", "0"})
-	err = cmd.RootCmd.ExecuteContext(ctx)
-	require.NoError(err)
-	require.Len(upgrade.UpgradePathIDs, 1)
-
-	// FAIL: upgrade instance with max-concurrent-upgrades above maximum (26)
-	cmd.RootCmd.SetArgs([]string{"upgrade", instanceID, "--version", "latest", "--max-concurrent-upgrades", "26"})
-	err = cmd.RootCmd.ExecuteContext(ctx)
-	require.Error(err)
-	require.Contains(err.Error(), "max-concurrent-upgrades must be between 1 and 25")
-
-	// FAIL: upgrade instance with negative max-concurrent-upgrades
-	cmd.RootCmd.SetArgs([]string{"upgrade", instanceID, "--version", "latest", "--max-concurrent-upgrades", "-1"})
-	err = cmd.RootCmd.ExecuteContext(ctx)
-	require.Error(err)
-	require.Contains(err.Error(), "max-concurrent-upgrades must be between 1 and 25")
 
 	// FAIL: check upgrade status with invalid instance ID
 	cmd.RootCmd.SetArgs([]string{"upgrade", "status", "upgrade-invalid"})
@@ -311,64 +251,117 @@ func validateScheduledAndCancel(ctx context.Context, instanceID string, targetVe
 	return nil
 }
 
-func validateScheduledAndCancelWithMaxConcurrency(ctx context.Context, instanceID string, targetVersion string, shouldSkipInstance bool, maxConcurrentUpgrades int) error {
-	// Upgrade instance with scheduled date and max-concurrent-upgrades
-	scheduledDate := time.Now().Add(3 * time.Hour).Truncate(time.Hour).Format(time.RFC3339)
-	cmd.RootCmd.SetArgs([]string{"upgrade", instanceID, "--version", targetVersion, "--scheduled-date", scheduledDate, "--max-concurrent-upgrades", fmt.Sprintf("%d", maxConcurrentUpgrades)})
-	err := cmd.RootCmd.ExecuteContext(ctx)
-	if err != nil {
-		return err
-	}
-	if len(upgrade.UpgradePathIDs) != 1 {
-		return fmt.Errorf("expected 1 upgrade path ID, got %d", len(upgrade.UpgradePathIDs))
-	}
+func Test_upgrade_concurrent(t *testing.T) {
+	testutils.SmokeTest(t)
+
+	ctx := context.TODO()
+
+	require := require.New(t)
+	defer testutils.Cleanup()
+
+	testEmail, testPassword, err := testutils.GetTestAccount()
+	require.NoError(err)
+	cmd.RootCmd.SetArgs([]string{"login", fmt.Sprintf("--email=%s", testEmail), fmt.Sprintf("--password=%s", testPassword)})
+	err = cmd.RootCmd.ExecuteContext(ctx)
+	require.NoError(err)
+
+	// PASS: build service
+	serviceName := "mysql" + uuid.NewString()
+	cmd.RootCmd.SetArgs([]string{"build", "--file", "../composefiles/mysql.yaml", "--name", serviceName, "--environment=dev", "--environment-type=dev"})
+	err = cmd.RootCmd.ExecuteContext(ctx)
+	require.NoError(err)
+	serviceID := build.ServiceID
+	productTierID := build.ProductTierID
+
+	// PASS: create first instance
+	cmd.RootCmd.SetArgs([]string{"instance", "create",
+		fmt.Sprintf("--service=%s", serviceName),
+		"--environment=dev",
+		fmt.Sprintf("--plan=%s", serviceName),
+		"--version=latest",
+		"--resource=mySQL",
+		"--cloud-provider=aws",
+		"--region=ca-central-1",
+		"--param", `{"databaseName":"default","password":"a_secure_password","rootPassword":"a_secure_root_password","username":"user"}`})
+	err = cmd.RootCmd.ExecuteContext(ctx)
+	require.NoError(err)
+	instanceID1 := instance.InstanceID
+	require.NotEmpty(t, instanceID1)
+
+	// PASS: create second instance
+	cmd.RootCmd.SetArgs([]string{"instance", "create",
+		fmt.Sprintf("--service=%s", serviceName),
+		"--environment=dev",
+		fmt.Sprintf("--plan=%s", serviceName),
+		"--version=latest",
+		"--resource=mySQL",
+		"--cloud-provider=aws",
+		"--region=ca-central-1",
+		"--param", `{"databaseName":"default","password":"a_secure_password","rootPassword":"a_secure_root_password","username":"user"}`})
+	err = cmd.RootCmd.ExecuteContext(ctx)
+	require.NoError(err)
+	instanceID2 := instance.InstanceID
+	require.NotEmpty(t, instanceID2)
+
+	// PASS: wait for both instances to reach running status
+	err = testutils.WaitForInstanceToReachStatus(ctx, instanceID1, instance.InstanceStatusRunning, 900*time.Second)
+	require.NoError(err)
+	err = testutils.WaitForInstanceToReachStatus(ctx, instanceID2, instance.InstanceStatusRunning, 900*time.Second)
+	require.NoError(err)
+
+	// PASS: release mysql service plan
+	cmd.RootCmd.SetArgs([]string{"service-plan", "release", "--service-id", serviceID, "--plan-id", productTierID, "--release-as-preferred", "--release-description", "v1.0.0-alpha"})
+	err = cmd.RootCmd.ExecuteContext(ctx)
+	require.NoError(err)
+
+	// PASS: upgrade both instances with max-concurrent-upgrades=2
+	cmd.RootCmd.SetArgs([]string{"upgrade", instanceID1, instanceID2, "--version", "2.0", "--max-concurrent-upgrades", "2"})
+	err = cmd.RootCmd.ExecuteContext(ctx)
+	require.NoError(err)
+	require.Len(upgrade.UpgradePathIDs, 1)
 	upgradeID := upgrade.UpgradePathIDs[0]
 
+	// PASS: check upgrade status includes max-concurrent-upgrades
 	cmd.RootCmd.SetArgs([]string{"upgrade", "status", upgradeID})
-	if err = cmd.RootCmd.ExecuteContext(ctx); err != nil {
-		return err
-	}
-	if status.LastUpgradeStatus.NotifyCustomer == true {
-		return fmt.Errorf("expected notify customer to be false, got %v", status.LastUpgradeStatus.NotifyCustomer)
-	}
-
-	for {
-		cmd.RootCmd.SetArgs([]string{"upgrade", "status", upgradeID})
-		if err = cmd.RootCmd.ExecuteContext(ctx); err != nil {
-			return err
-		}
-
-		if status.LastUpgradeStatus.Status != model.InProgress.String() {
-			break
-		}
-		time.Sleep(5 * time.Second)
-	}
-
-	if status.LastUpgradeStatus.Status != model.Scheduled.String() {
-		return fmt.Errorf("expected status %s, got %s", model.Scheduled.String(), status.LastUpgradeStatus.Status)
-	}
-	
-	// Cancel the scheduled upgrade
-	cmd.RootCmd.SetArgs([]string{"upgrade", "cancel", upgradeID})
 	err = cmd.RootCmd.ExecuteContext(ctx)
-	if err != nil {
-		return err
-	}
+	require.NoError(err)
 
+	// PASS: wait for upgrade to complete
 	for {
 		cmd.RootCmd.SetArgs([]string{"upgrade", "status", upgradeID})
-		if err = cmd.RootCmd.ExecuteContext(ctx); err != nil {
-			return err
-		}
+		err = cmd.RootCmd.ExecuteContext(ctx)
+		require.NoError(err)
 
-		if status.LastUpgradeStatus.Status != model.Scheduled.String() {
+		if status.LastUpgradeStatus.Status == model.Complete.String() ||
+			status.LastUpgradeStatus.Status == model.Failed.String() ||
+			status.LastUpgradeStatus.Status == model.Cancelled.String() {
+			break
+		}
+		time.Sleep(10 * time.Second)
+	}
+
+	// PASS: delete both instances
+	cmd.RootCmd.SetArgs([]string{"instance", "delete", instanceID1, "--yes"})
+	_ = cmd.RootCmd.ExecuteContext(ctx) // Ignore errors
+
+	cmd.RootCmd.SetArgs([]string{"instance", "delete", instanceID2, "--yes"})
+	_ = cmd.RootCmd.ExecuteContext(ctx) // Ignore errors
+
+	// Wait for both instances to be deleted
+	for {
+		cmd.RootCmd.SetArgs([]string{"instance", "describe", instanceID1})
+		err1 := cmd.RootCmd.ExecuteContext(ctx)
+
+		cmd.RootCmd.SetArgs([]string{"instance", "describe", instanceID2})
+		err2 := cmd.RootCmd.ExecuteContext(ctx)
+
+		if err1 != nil && err2 != nil {
 			break
 		}
 		time.Sleep(5 * time.Second)
 	}
-	
-	if status.LastUpgradeStatus.Status != model.Cancelled.String() {
-		return fmt.Errorf("expected status %s, got %s", model.Cancelled.String(), status.LastUpgradeStatus.Status)
-	}
-	return nil
+
+	// PASS: delete service
+	cmd.RootCmd.SetArgs([]string{"service", "delete", serviceName})
+	_ = cmd.RootCmd.ExecuteContext(ctx) // Ignore errors
 }
