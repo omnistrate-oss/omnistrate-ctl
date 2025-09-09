@@ -315,7 +315,7 @@ func Test_upgrade_concurrent(t *testing.T) {
 	require.NoError(err)
 
 	// PASS: upgrade both instances with max-concurrent-upgrades=2
-	cmd.RootCmd.SetArgs([]string{"upgrade", instanceID1, instanceID2, "--version", "latest", "--max-concurrent-upgrades", "2"})
+	cmd.RootCmd.SetArgs([]string{"upgrade", instanceID1, instanceID2, "--version", "2.0", "--max-concurrent-upgrades", "2"})
 	err = cmd.RootCmd.ExecuteContext(ctx)
 	require.NoError(err)
 	require.Len(upgrade.UpgradePathIDs, 1)
