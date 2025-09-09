@@ -33,4 +33,5 @@ omctl custom-network delete --custom-network-id [custom-network-id]
 
 ### SEE ALSO
 
-- [omnistrate-ctl custom-network](omnistrate-ctl_custom-network.md) - List and describe custom networks of your customers
+* [omnistrate-ctl custom-network](omnistrate-ctl_custom-network.md)	 - List and describe custom networks of your customers
+

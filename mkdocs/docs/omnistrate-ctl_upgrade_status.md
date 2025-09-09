@@ -28,5 +28,6 @@ omctl upgrade status [upgrade-id]
 
 ### SEE ALSO
 
-- [omnistrate-ctl upgrade](omnistrate-ctl_upgrade.md) - Upgrade Instance Deployments to a newer or older version
-- [omnistrate-ctl upgrade status detail](omnistrate-ctl_upgrade_status_detail.md) - Get Upgrade status detail
+* [omnistrate-ctl upgrade](omnistrate-ctl_upgrade.md)	 - Upgrade Instance Deployments to a newer or older version
+* [omnistrate-ctl upgrade status detail](omnistrate-ctl_upgrade_status_detail.md)	 - Get Upgrade status detail
+

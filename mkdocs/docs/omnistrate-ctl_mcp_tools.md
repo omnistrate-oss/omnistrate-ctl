@@ -25,4 +25,5 @@ omnistrate-ctl mcp tools [flags]
 
 ### SEE ALSO
 
-- [omnistrate-ctl mcp](omnistrate-ctl_mcp.md) - MCP server management
+* [omnistrate-ctl mcp](omnistrate-ctl_mcp.md)	 - MCP server management
+

@@ -36,4 +36,5 @@ omctl instance get-installer instance-abcd1234 --output-path /tmp/installer.tar.
 
 ### SEE ALSO
 
-- [omnistrate-ctl instance](omnistrate-ctl_instance.md) - Manage Instance Deployments for your service
+* [omnistrate-ctl instance](omnistrate-ctl_instance.md)	 - Manage Instance Deployments for your service
+
