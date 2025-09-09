@@ -39,5 +39,4 @@ omctl environment create [environment-name] --service-id=[service-id] --type=[ty
 
 ### SEE ALSO
 
-* [omnistrate-ctl environment](omnistrate-ctl_environment.md)	 - Manage Service Environments for your service
-
+- [omnistrate-ctl environment](omnistrate-ctl_environment.md) - Manage Service Environments for your service

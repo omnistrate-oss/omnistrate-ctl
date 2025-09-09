@@ -31,5 +31,4 @@ omnistrate-ctl instance debug [instance-id] [flags]
 
 ### SEE ALSO
 
-* [omnistrate-ctl instance](omnistrate-ctl_instance.md)	 - Manage Instance Deployments for your service
-
+- [omnistrate-ctl instance](omnistrate-ctl_instance.md) - Manage Instance Deployments for your service

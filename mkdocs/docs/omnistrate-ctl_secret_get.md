@@ -35,5 +35,4 @@ omctl secret get prod db-password --output json
 
 ### SEE ALSO
 
-* [omnistrate-ctl secret](omnistrate-ctl_secret.md)	 - Manage secrets
-
+- [omnistrate-ctl secret](omnistrate-ctl_secret.md) - Manage secrets
