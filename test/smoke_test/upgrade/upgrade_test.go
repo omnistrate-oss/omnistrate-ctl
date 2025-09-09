@@ -94,7 +94,7 @@ func Test_upgrade_basic(t *testing.T) {
 	require.NoError(err)
 
 	// PASS: upgrade instance to version 1.0
-	cmd.RootCmd.SetArgs([]string{"upgrade", instanceID, "--version", "", "1.0"})
+	cmd.RootCmd.SetArgs([]string{"upgrade", instanceID, "--version", "1.0"})
 	err = cmd.RootCmd.ExecuteContext(ctx)
 	require.NoError(err)
 	require.Len(upgrade.UpgradePathIDs, 1)
