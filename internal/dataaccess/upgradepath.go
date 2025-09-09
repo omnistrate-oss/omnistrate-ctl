@@ -8,9 +8,18 @@ import (
 	openapiclientfleet "github.com/omnistrate-oss/omnistrate-sdk-go/fleet"
 )
 
-func CreateUpgradePath(ctx context.Context, token, serviceID, productTierID, sourceVersion, targetVersion string, scheduledDate *string, instanceIDs []string, notifyCustomer bool) (string, error) {
+func CreateUpgradePath(ctx context.Context, token, serviceID, productTierID, sourceVersion, targetVersion string, scheduledDate *string, instanceIDs []string, notifyCustomer bool, maxConcurrentUpgrades *int) (string, error) {
 	ctxWithToken := context.WithValue(ctx, openapiclientfleet.ContextAccessToken, token)
 	apiClient := getFleetClient()
+
+	additionalProperties := map[string]interface{}{
+		"notifyCustomer": notifyCustomer,
+	}
+
+	// Add maxConcurrentUpgrades if provided
+	if maxConcurrentUpgrades != nil {
+		additionalProperties["maxConcurrentUpgrades"] = *maxConcurrentUpgrades
+	}
 
 	req := apiClient.InventoryApiAPI.InventoryApiCreateUpgradePath(ctxWithToken, serviceID, productTierID).
 		CreateUpgradePathRequest2(openapiclientfleet.CreateUpgradePathRequest2{
@@ -20,9 +29,7 @@ func CreateUpgradePath(ctx context.Context, token, serviceID, productTierID, sou
 			UpgradeFilters: map[string][]string{
 				"INSTANCE_IDS": instanceIDs,
 			},
-			AdditionalProperties: map[string]interface{}{
-				"notifyCustomer": notifyCustomer,
-			},
+			AdditionalProperties: additionalProperties,
 		})
 
 	resp, r, err := req.Execute()

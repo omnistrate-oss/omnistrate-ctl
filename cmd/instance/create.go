@@ -267,6 +267,18 @@ func runCreate(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
+	// Display workflow resource-wise data if output is not JSON
+	if output != "json" {
+		fmt.Println("🔄 Deployment progress...")
+		err = displayWorkflowResourceDataWithSpinners(cmd.Context(), token, formattedInstance.InstanceID, "create")
+		if err != nil {
+			// Handle spinner error if deployment monitoring fails
+			fmt.Printf("❌ Deployment failed-- %s", err)
+		} else {
+			fmt.Println("✅ Deployment successful")
+		}
+	}
+
 	return nil
 }
 
