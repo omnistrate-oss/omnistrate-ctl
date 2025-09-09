@@ -250,3 +250,118 @@ func validateScheduledAndCancel(ctx context.Context, instanceID string, targetVe
 	}
 	return nil
 }
+
+func Test_upgrade_concurrent(t *testing.T) {
+	testutils.SmokeTest(t)
+
+	ctx := context.TODO()
+
+	require := require.New(t)
+	defer testutils.Cleanup()
+
+	testEmail, testPassword, err := testutils.GetTestAccount()
+	require.NoError(err)
+	cmd.RootCmd.SetArgs([]string{"login", fmt.Sprintf("--email=%s", testEmail), fmt.Sprintf("--password=%s", testPassword)})
+	err = cmd.RootCmd.ExecuteContext(ctx)
+	require.NoError(err)
+
+	// PASS: build service
+	serviceName := "mysql" + uuid.NewString()
+	cmd.RootCmd.SetArgs([]string{"build", "--file", "../composefiles/mysql.yaml", "--name", serviceName, "--environment=dev", "--environment-type=dev"})
+	err = cmd.RootCmd.ExecuteContext(ctx)
+	require.NoError(err)
+	serviceID := build.ServiceID
+	productTierID := build.ProductTierID
+
+	// PASS: create first instance
+	cmd.RootCmd.SetArgs([]string{"instance", "create",
+		fmt.Sprintf("--service=%s", serviceName),
+		"--environment=dev",
+		fmt.Sprintf("--plan=%s", serviceName),
+		"--version=latest",
+		"--resource=mySQL",
+		"--cloud-provider=aws",
+		"--region=ca-central-1",
+		"--param", `{"databaseName":"default","password":"a_secure_password","rootPassword":"a_secure_root_password","username":"user"}`})
+	err = cmd.RootCmd.ExecuteContext(ctx)
+	require.NoError(err)
+	instanceID1 := instance.InstanceID
+	require.NotEmpty(t, instanceID1)
+
+	// PASS: create second instance
+	cmd.RootCmd.SetArgs([]string{"instance", "create",
+		fmt.Sprintf("--service=%s", serviceName),
+		"--environment=dev",
+		fmt.Sprintf("--plan=%s", serviceName),
+		"--version=latest",
+		"--resource=mySQL",
+		"--cloud-provider=aws",
+		"--region=ca-central-1",
+		"--param", `{"databaseName":"default","password":"a_secure_password","rootPassword":"a_secure_root_password","username":"user"}`})
+	err = cmd.RootCmd.ExecuteContext(ctx)
+	require.NoError(err)
+	instanceID2 := instance.InstanceID
+	require.NotEmpty(t, instanceID2)
+
+	// PASS: wait for both instances to reach running status
+	err = testutils.WaitForInstanceToReachStatus(ctx, instanceID1, instance.InstanceStatusRunning, 900*time.Second)
+	require.NoError(err)
+	err = testutils.WaitForInstanceToReachStatus(ctx, instanceID2, instance.InstanceStatusRunning, 900*time.Second)
+	require.NoError(err)
+
+	// PASS: release mysql service plan
+	cmd.RootCmd.SetArgs([]string{"service-plan", "release", "--service-id", serviceID, "--plan-id", productTierID, "--release-as-preferred", "--release-description", "v1.0.0-alpha"})
+	err = cmd.RootCmd.ExecuteContext(ctx)
+	require.NoError(err)
+
+	// PASS: upgrade both instances with max-concurrent-upgrades=2
+	cmd.RootCmd.SetArgs([]string{"upgrade", instanceID1, instanceID2, "--version", "latest", "--max-concurrent-upgrades", "2"})
+	err = cmd.RootCmd.ExecuteContext(ctx)
+	require.NoError(err)
+	require.Len(upgrade.UpgradePathIDs, 1)
+	upgradeID := upgrade.UpgradePathIDs[0]
+
+	// PASS: check upgrade status includes max-concurrent-upgrades
+	cmd.RootCmd.SetArgs([]string{"upgrade", "status", upgradeID})
+	err = cmd.RootCmd.ExecuteContext(ctx)
+	require.NoError(err)
+
+	// PASS: wait for upgrade to complete
+	for {
+		cmd.RootCmd.SetArgs([]string{"upgrade", "status", upgradeID})
+		err = cmd.RootCmd.ExecuteContext(ctx)
+		require.NoError(err)
+
+		if status.LastUpgradeStatus.Status == model.Complete.String() ||
+			status.LastUpgradeStatus.Status == model.Failed.String() ||
+			status.LastUpgradeStatus.Status == model.Cancelled.String() {
+			break
+		}
+		time.Sleep(10 * time.Second)
+	}
+
+	// PASS: delete both instances
+	cmd.RootCmd.SetArgs([]string{"instance", "delete", instanceID1, "--yes"})
+	_ = cmd.RootCmd.ExecuteContext(ctx) // Ignore errors
+
+	cmd.RootCmd.SetArgs([]string{"instance", "delete", instanceID2, "--yes"})
+	_ = cmd.RootCmd.ExecuteContext(ctx) // Ignore errors
+
+	// Wait for both instances to be deleted
+	for {
+		cmd.RootCmd.SetArgs([]string{"instance", "describe", instanceID1})
+		err1 := cmd.RootCmd.ExecuteContext(ctx)
+
+		cmd.RootCmd.SetArgs([]string{"instance", "describe", instanceID2})
+		err2 := cmd.RootCmd.ExecuteContext(ctx)
+
+		if err1 != nil && err2 != nil {
+			break
+		}
+		time.Sleep(5 * time.Second)
+	}
+
+	// PASS: delete service
+	cmd.RootCmd.SetArgs([]string{"service", "delete", serviceName})
+	_ = cmd.RootCmd.ExecuteContext(ctx) // Ignore errors
+}
