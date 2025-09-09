@@ -24,7 +24,12 @@ const (
 	omnistrateHostSchema = "OMNISTRATE_HOST_SCHEME"
 	defaultRootDomain    = "omnistrate.cloud"
 	clientTimeout        = "CLIENT_TIMEOUT_IN_SECONDS"
+	llmsTxtUrl           = "LLMS_TXT_URL"
 )
+
+func GetLlmsTxtURL() string {
+	return GetEnv(llmsTxtUrl, "https://docs.omnistrate.com/llms.txt")
+}
 
 // GetToken returns the authentication token for current user
 func GetToken() (string, error) {
