@@ -6,7 +6,7 @@ volumes:
   local_redis_data: {}
 
 services:
-  {{ $indentedFile:./services/experio_service_postgres.yaml }}
+  {{ $$indentedFile:./services/experio_service_postgres.yaml }}
 
   redis:
     image: redis/redis-stack-server:latest
@@ -40,7 +40,7 @@ services:
     environment:
       - CHOKIDAR_USEPOLLING=true
       - VITE_CACHE_DIR=./vite
-      - KC_DB_PASSWORD=$var.backendhostportal
+      - KC_DB_PASSWORD=$$var.backendhostportal
     x-omnistrate-api-params:
       - key: backendhostportal
         description: Backend host portal
@@ -62,5 +62,5 @@ services:
 x-omnistrate-image-registry-attributes:
   ghcr.io:
     auth:
-      password: ${{ secrets.GitHubPAT }}
+      password: $${{ secrets.GitHubPAT }}
       username: abc
