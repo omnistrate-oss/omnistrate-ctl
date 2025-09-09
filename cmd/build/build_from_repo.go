@@ -1471,7 +1471,8 @@ func renderFileReferences(
 			// Render the file (in case it uses nested file references)
 			renderedFileContentBytes, nestedRenderErr := renderFileReferences(fileContent, cleanedFilePath, sm, spinner)
 			if nestedRenderErr != nil {
-				renderingErr = fmt.Errorf("failed to replace file references for file '%s'", filePath)
+				renderingErr = errors.Wrapf(nestedRenderErr,
+					"failed to replace file references for file '%s'", filePath)
 				return
 			}
 
