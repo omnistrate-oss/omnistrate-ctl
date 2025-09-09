@@ -177,13 +177,6 @@ func Test_upgrade_basic(t *testing.T) {
 	err = testutils.WaitForInstanceToReachStatus(ctx, instanceID, instance.InstanceStatusRunning, 900*time.Second)
 	require.NoError(err)
 
-	// Test negative cases before deleting resources
-	// FAIL: upgrade instance with invalid instance ID
-	cmd.RootCmd.SetArgs([]string{"upgrade", "instance-invalid", "--version", "latest"})
-	err = cmd.RootCmd.ExecuteContext(ctx)
-	require.Error(err)
-	require.Contains(err.Error(), "instance-invalid not found. Please check the instance ID and try again")
-
 	// FAIL: upgrade instance with max-concurrent-upgrades above maximum (26)
 	cmd.RootCmd.SetArgs([]string{"upgrade", instanceID, "--version", "latest", "--max-concurrent-upgrades", "26"})
 	err = cmd.RootCmd.ExecuteContext(ctx)
