@@ -5,6 +5,9 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/fatih/color"
+	"github.com/mitchellh/go-wordwrap"
+	"github.com/njayp/ophis"
 	"github.com/omnistrate-oss/omnistrate-ctl/cmd/account"
 	"github.com/omnistrate-oss/omnistrate-ctl/cmd/alarms"
 	"github.com/omnistrate-oss/omnistrate-ctl/cmd/auth/login"
@@ -25,9 +28,6 @@ import (
 	"github.com/omnistrate-oss/omnistrate-ctl/cmd/upgrade"
 	"github.com/omnistrate-oss/omnistrate-ctl/internal/config"
 	"github.com/omnistrate-oss/omnistrate-ctl/internal/utils"
-
-	"github.com/fatih/color"
-	"github.com/mitchellh/go-wordwrap"
 	"github.com/spf13/cobra"
 )
 
@@ -105,6 +105,7 @@ func init() {
 	RootCmd.PersistentFlags().BoolP("version", "v", false, "Print the version number of omnistrate-ctl")
 	RootCmd.PersistentFlags().StringP("output", "o", "table", "Output format (text|table|json)")
 
+	RootCmd.AddCommand(ophis.Command(nil))
 	RootCmd.AddCommand(login.LoginCmd)
 	RootCmd.AddCommand(logout.LogoutCmd)
 
