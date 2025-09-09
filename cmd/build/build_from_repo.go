@@ -1409,15 +1409,18 @@ func renderEnvFileAndInterpolateVariables(
 func renderFileReferences(
 	fileData []byte, file string, sm ysmrr.SpinnerManager, spinner *ysmrr.Spinner) (
 	newFileData []byte, err error) {
-	re := regexp.MustCompile(`(?m)^(?P<indent>[ \t]+)?(?P<key>(\S)+)?([ \t]*)?{{[ \t]*\$file:(?P<filepath>[^\s}]+)[ \t]*}}`)
-	var filePathIndex, indentIndex int
+	re := regexp.MustCompile(`(?m)^(?P<indent>[ \t]+)?(?P<key>[\S\t ]+)?{{[ \t]*\$file:(?P<filepath>[^\s}]+)[ \t]*}}`)
+	var filePathIndex, indentIndex, keyIndex int
 	groupNames := re.SubexpNames()
 	for i, name := range groupNames {
-		if name == "filepath" {
-			filePathIndex = i
-		}
 		if name == "indent" {
 			indentIndex = i
+		}
+		if name == "key" {
+			keyIndex = i
+		}
+		if name == "filepath" {
+			filePathIndex = i
 		}
 	}
 
@@ -1427,6 +1430,7 @@ func renderFileReferences(
 
 		submatches := re.FindStringSubmatch(match)
 		addedIndentation := submatches[indentIndex]
+		key := submatches[keyIndex]
 		filePath := submatches[filePathIndex]
 		if len(filePath) == 0 {
 			renderingErr = fmt.Errorf("no file path found in file reference '%s'", match)
@@ -1466,11 +1470,15 @@ func renderFileReferences(
 			// Add indentation to each line
 			lines := strings.Split(replacement, "\n")
 			for i, line := range lines {
-				if len(line) > 0 {
+				if i == 0 {
+					lines[i] = addedIndentation + key + line
+				} else if len(line) > 0 {
 					lines[i] = addedIndentation + line
 				}
 			}
 			replacement = strings.Join(lines, "\n")
+		} else {
+			replacement = key + replacement
 		}
 
 		return

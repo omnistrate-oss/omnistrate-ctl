@@ -59,8 +59,4 @@ services:
         required: false
         export: true
 
-x-omnistrate-image-registry-attributes:
-  ghcr.io:
-    auth:
-      password: ${{ secrets.GitHubPAT }}
-      username: abc
+{{ $file:image_registry_attributes.yaml }}
