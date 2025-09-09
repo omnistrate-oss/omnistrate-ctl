@@ -95,3 +95,13 @@ func TestDryRunModify(t *testing.T) {
 	t.Setenv(dryRunEnv, "true")
 	assert.True(t, IsDryRun(), "DryRun should be true")
 }
+func TestGetLlmsTxtURL(t *testing.T) {
+	url := GetLlmsTxtURL()
+	assert.Equal(t, "https://docs.omnistrate.com/llms.txt", url)
+}
+
+func TestGetLlmsTxtURLCustom(t *testing.T) {
+	t.Setenv(llmsTxtUrl, "https://custom.example.com/llms.txt")
+	url := GetLlmsTxtURL()
+	assert.Equal(t, "https://custom.example.com/llms.txt", url)
+}

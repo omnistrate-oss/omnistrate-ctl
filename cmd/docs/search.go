@@ -50,13 +50,6 @@ func runSearch(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	// Validate user login
-	_, err = common.GetTokenWithLogin()
-	if err != nil {
-		utils.PrintError(err)
-		return err
-	}
-
 	// Perform the search
 	results, err := dataaccess.PerformDocumentationSearch(query, limit)
 	if err != nil {
