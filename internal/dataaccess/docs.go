@@ -48,16 +48,6 @@ func PerformDocumentationSearch(query string, limit int) ([]DocumentationResult,
 
 	// TODO: Filter results based on query
 	filteredResults := results
-	// var filteredResults []DocumentationResult
-	// queryLower := strings.ToLower(query)
-
-	// for _, result := range results {
-	// 	if strings.Contains(strings.ToLower(result.Title), queryLower) ||
-	// 		strings.Contains(strings.ToLower(result.Description), queryLower) ||
-	// 		strings.Contains(strings.ToLower(result.Section), queryLower) {
-	// 		filteredResults = append(filteredResults, result)
-	// 	}
-	// }
 
 	// Apply limit
 	if limit > 0 && len(filteredResults) > limit {

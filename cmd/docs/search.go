@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/omnistrate-oss/omnistrate-ctl/cmd/common"
 	"github.com/omnistrate-oss/omnistrate-ctl/internal/dataaccess"
 	"github.com/omnistrate-oss/omnistrate-ctl/internal/utils"
 	"github.com/spf13/cobra"
@@ -30,7 +29,7 @@ var searchCmd = &cobra.Command{
 func init() {
 	searchCmd.Args = cobra.MinimumNArgs(1) // Require at least one argument (the search query)
 	searchCmd.Flags().StringP("output", "o", "table", "Output format (table|json)")
-	searchCmd.Flags().IntP("limit", "l", 10, "Maximum number of results to return")
+	searchCmd.Flags().IntP("limit", "l", 100, "Maximum number of results to return")
 }
 
 func runSearch(cmd *cobra.Command, args []string) error {
@@ -63,33 +62,11 @@ func runSearch(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
-	err = printSearchResults(results, output)
+	err = utils.PrintTextTableJsonOutput(output, results)
 	if err != nil {
 		utils.PrintError(err)
 		return err
 	}
 
 	return nil
-}
-
-// printSearchResults prints the search results in the specified format
-func printSearchResults(results []dataaccess.DocumentationResult, output string) error {
-	switch output {
-	case "json":
-		return utils.PrintTextTableJsonOutput("json", results)
-	case "table":
-		fmt.Printf("Found %d documentation result(s):\n\n", len(results))
-		for i, result := range results {
-			fmt.Printf("%d. %s\n", i+1, result.Title)
-			fmt.Printf("   Section: %s\n", result.Section)
-			fmt.Printf("   URL: %s\n", result.URL)
-			fmt.Printf("   Description: %s\n", result.Description)
-			if i < len(results)-1 {
-				fmt.Println()
-			}
-		}
-		return nil
-	default:
-		return fmt.Errorf("unsupported output format: %s", output)
-	}
 }
