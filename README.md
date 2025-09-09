@@ -19,17 +19,21 @@ Omnistrate CTL support configuration using environment variables
 ## Configuring the Omnistrate MCP server
 
 ### Login to your account
+
 ```bash
 omctl login
 ```
 
 ### Enable the MCP server for VSCode for GitHub Copilot
+
 ```bash
 omctl mcp vscode enable
 ```
+
 Follow instructions on https://code.visualstudio.com/docs/copilot/customization/mcp-servers#_manage-mcp-servers to start using the Omnistrate MCP server
 
 ### Enable the MCP server for Claude Desktop
+
 ```bash
 omctl mcp claude enable
 ```

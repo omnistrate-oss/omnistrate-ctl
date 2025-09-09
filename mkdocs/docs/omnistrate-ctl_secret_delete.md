@@ -35,5 +35,4 @@ omctl environment secret delete prod db-password
 
 ### SEE ALSO
 
-* [omnistrate-ctl secret](omnistrate-ctl_secret.md)	 - Manage secrets
-
+- [omnistrate-ctl secret](omnistrate-ctl_secret.md) - Manage secrets
