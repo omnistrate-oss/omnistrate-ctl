@@ -102,7 +102,10 @@ func parseDocumentationContent(body string) ([]DocumentationResult, error) {
 				}
 
 				// Fetch content from the URL
-				content, _ := fetchContentFromURL(url)
+				content, err := fetchContentFromURL(url)
+				if err != nil {
+					content = err.Error()
+				}
 
 				// Create a result entry
 				result := DocumentationResult{

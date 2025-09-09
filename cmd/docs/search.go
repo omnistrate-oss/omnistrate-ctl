@@ -62,7 +62,7 @@ func runSearch(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
-	err = utils.PrintTextTableJsonOutput(output, results)
+	err = utils.PrintTextTableJsonArrayOutput(output, results)
 	if err != nil {
 		utils.PrintError(err)
 		return err
