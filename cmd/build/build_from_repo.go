@@ -1462,7 +1462,7 @@ func renderFileReferences(
 				return
 			}
 
-			fileContent, readErr := os.ReadFile(filepath.Clean(cleanedFilePath))
+			fileContent, readErr := os.ReadFile(cleanedFilePath)
 			if readErr != nil {
 				renderingErr = fmt.Errorf("file '%s' could not be read", filePath)
 				return
