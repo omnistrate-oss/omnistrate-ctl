@@ -394,19 +394,18 @@ func runBuild(cmd *cobra.Command, args []string) error {
 		sm1.Start()
 	}
 
-	if strings.Contains(string(fileData), "env_file:") {
-		var cwd string
-		cwd, err = os.Getwd()
-		if err != nil {
-			utils.HandleSpinnerError(spinner1, sm1, err)
-			return err
-		}
+	var cwd string
+	cwd, err = os.Getwd()
+	if err != nil {
+		utils.HandleSpinnerError(spinner1, sm1, err)
+		return err
+	}
 
-		fileData, err = RenderEnvFileAndInterpolateVariables(fileData, cwd, file, sm1, spinner1)
-		if err != nil {
-			utils.HandleSpinnerError(spinner1, sm1, err)
-			return err
-		}
+	// Render files
+	fileData, err = RenderFile(fileData, cwd, file, sm1, spinner1)
+	if err != nil {
+		utils.HandleSpinnerError(spinner1, sm1, err)
+		return err
 	}
 
 	var undefinedResources map[string]string
