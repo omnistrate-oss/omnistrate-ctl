@@ -332,6 +332,7 @@ jobs:
           merge-method: squash
 
   release-package-multi-arch:
+    timeout-minutes: 60
     environment: Prod
     runs-on: ubuntu-latest
     needs: [sanity-check, smoke-tests]
