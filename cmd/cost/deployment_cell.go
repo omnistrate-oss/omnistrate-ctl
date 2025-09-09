@@ -52,12 +52,12 @@ func getDeploymentCellCost(cmd *cobra.Command, args []string) error {
 
 	startDate, err := time.Parse(time.RFC3339, startDateStr)
 	if err != nil {
-		return fmt.Errorf("invalid start-date format, expected RFC3339: %w", err)
+		return fmt.Errorf("invalid start-date format, expected RFC3339 (e.g. '2006-01-02T15:04:05Z07:00'): %w", err)
 	}
 
 	endDate, err := time.Parse(time.RFC3339, endDateStr)
 	if err != nil {
-		return fmt.Errorf("invalid end-date format, expected RFC3339: %w", err)
+		return fmt.Errorf("invalid end-date format, expected RFC3339 (e.g. '2006-01-02T15:04:05Z07:00'): %w", err)
 	}
 
 	token, err := common.GetTokenWithLogin()
