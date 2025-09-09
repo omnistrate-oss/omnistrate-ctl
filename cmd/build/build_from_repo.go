@@ -1381,7 +1381,7 @@ func renderEnvFileAndInterpolateVariables(
 			spinner.Error()
 			sm.Stop()
 		}
-		fmt.Fprintf(os.Stderr, "%s", cmdErr.String())
+		_, _ = fmt.Fprintf(os.Stderr, "%s", cmdErr.String())
 		utils.HandleSpinnerError(spinner, sm, err)
 
 		return
@@ -1409,23 +1409,12 @@ func renderEnvFileAndInterpolateVariables(
 func renderFileReferences(
 	fileData []byte, file string, sm ysmrr.SpinnerManager, spinner *ysmrr.Spinner) (
 	newFileData []byte, err error) {
-	// reNoIndent is for regular expression that pastes file as-is
-	reNoIndent := regexp.MustCompile(`{{\s*\$file:(?P<filepath>[^\s}]+)\s*}}`)
-	var noIndentFilePathIndex int
-	groupNames := reNoIndent.SubexpNames()
+	re := regexp.MustCompile(`(?m)^(?P<indent>[ \t]+)?(?P<key>(\S)+)?([ \t]*)?{{[ \t]*\$file:(?P<filepath>[^\s}]+)[ \t]*}}`)
+	var filePathIndex, indentIndex int
+	groupNames := re.SubexpNames()
 	for i, name := range groupNames {
 		if name == "filepath" {
-			noIndentFilePathIndex = i
-		}
-	}
-
-	// reWithIndent is for regular expression that pastes file with indentation matching the indentation of the parent file
-	reWithIndent := regexp.MustCompile(`(?m)^(?P<indent>[ \t]+)?(?P<key>(\S)+)?([ \t]*)?{{[ \t]*\$indentedFile:(?P<filepath>[^\s}]+)[ \t]*}}`)
-	var indentFilePathIndex, indentIndex int
-	groupNamesWithIndent := reWithIndent.SubexpNames()
-	for i, name := range groupNamesWithIndent {
-		if name == "filepath" {
-			indentFilePathIndex = i
+			filePathIndex = i
 		}
 		if name == "indent" {
 			indentIndex = i
@@ -1433,72 +1422,59 @@ func renderFileReferences(
 	}
 
 	var renderingErr error
-	createReplacementFunction := func(re *regexp.Regexp, filePathIndex int, indentIndex *int) func(string) string {
-		return func(match string) (replacement string) {
-			replacement = match
+	newFileDataStr := re.ReplaceAllStringFunc(string(fileData), func(match string) (replacement string) {
+		replacement = match
 
-			submatches := re.FindStringSubmatch(match)
-			filePath := submatches[filePathIndex]
-			if len(filePath) == 0 {
-				renderingErr = fmt.Errorf("no file path found in file reference '%s'", match)
-				return
-			}
-
-			var addedIndentation *string
-			if indentIndex != nil {
-				addedIndentation = utils.ToPtr(submatches[*indentIndex])
-			}
-
-			// Read file content
-			cleanedFilePath := filepath.Clean(filePath)
-			fileDir := filepath.Dir(file)
-			isRelative := !filepath.IsAbs(cleanedFilePath)
-			if isRelative {
-				cleanedFilePath = filepath.Join(fileDir, cleanedFilePath)
-			}
-
-			if _, fileErr := os.Stat(cleanedFilePath); os.IsNotExist(fileErr) {
-				renderingErr = fmt.Errorf("file '%s' does not exist", filePath)
-				return
-			}
-
-			fileContent, readErr := os.ReadFile(cleanedFilePath)
-			if readErr != nil {
-				renderingErr = fmt.Errorf("file '%s' could not be read", filePath)
-				return
-			}
-
-			// Render the file (in case it uses nested file references)
-			renderedFileContentBytes, nestedRenderErr := renderFileReferences(fileContent, cleanedFilePath, sm, spinner)
-			if nestedRenderErr != nil {
-				renderingErr = errors.Wrapf(nestedRenderErr,
-					"failed to replace file references for file '%s'", filePath)
-				return
-			}
-
-			// Add indentation of parent context
-			replacement = string(renderedFileContentBytes)
-			if addedIndentation != nil && len(*addedIndentation) > 0 {
-				// Add indentation to each line
-				lines := strings.Split(replacement, "\n")
-				for i, line := range lines {
-					if len(line) > 0 {
-						lines[i] = *addedIndentation + line
-					}
-				}
-				replacement = strings.Join(lines, "\n")
-			}
-
+		submatches := re.FindStringSubmatch(match)
+		addedIndentation := submatches[indentIndex]
+		filePath := submatches[filePathIndex]
+		if len(filePath) == 0 {
+			renderingErr = fmt.Errorf("no file path found in file reference '%s'", match)
 			return
 		}
-	}
 
-	// Render for both regexes
-	newFileDataStr := string(fileData)
-	newFileDataStr = reNoIndent.ReplaceAllStringFunc(newFileDataStr, createReplacementFunction(reNoIndent, noIndentFilePathIndex, nil))
-	if renderingErr == nil {
-		newFileDataStr = reWithIndent.ReplaceAllStringFunc(newFileDataStr, createReplacementFunction(reWithIndent, indentFilePathIndex, utils.ToPtr(indentIndex)))
-	}
+		// Read file content
+		cleanedFilePath := filepath.Clean(filePath)
+		fileDir := filepath.Dir(file)
+		isRelative := !filepath.IsAbs(cleanedFilePath)
+		if isRelative {
+			cleanedFilePath = filepath.Join(fileDir, cleanedFilePath)
+		}
+
+		if _, fileErr := os.Stat(cleanedFilePath); os.IsNotExist(fileErr) {
+			renderingErr = fmt.Errorf("file '%s' does not exist", filePath)
+			return
+		}
+
+		fileContent, readErr := os.ReadFile(cleanedFilePath)
+		if readErr != nil {
+			renderingErr = fmt.Errorf("file '%s' could not be read", filePath)
+			return
+		}
+
+		// Render the file (in case it uses nested file references)
+		renderedFileContentBytes, nestedRenderErr := renderFileReferences(fileContent, cleanedFilePath, sm, spinner)
+		if nestedRenderErr != nil {
+			renderingErr = errors.Wrapf(nestedRenderErr,
+				"failed to replace file references for file '%s'", filePath)
+			return
+		}
+
+		// Add indentation of parent context
+		replacement = string(renderedFileContentBytes)
+		if len(addedIndentation) > 0 {
+			// Add indentation to each line
+			lines := strings.Split(replacement, "\n")
+			for i, line := range lines {
+				if len(line) > 0 {
+					lines[i] = addedIndentation + line
+				}
+			}
+			replacement = strings.Join(lines, "\n")
+		}
+
+		return
+	})
 
 	// Handle error
 	if renderingErr != nil {
