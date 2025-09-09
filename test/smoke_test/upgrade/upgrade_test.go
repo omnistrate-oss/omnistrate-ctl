@@ -118,9 +118,9 @@ func Test_upgrade_basic(t *testing.T) {
 	require.NoError(err)
 	err = validateScheduledAndCancel(ctx, instanceID, "1.0", true)
 	require.NoError(err)
-	
+
 	// PASS: scheduled upgrade with max-concurrent-upgrades
-	err = validateScheduledAndCancelWithMaxConcurrency(ctx, instanceID, "preferred", false, 10)
+	err = validateScheduledAndCancelWithMaxConcurrency(ctx, instanceID, "1.0", false, 10)
 	require.NoError(err)
 	// PASS: upgrade instance to version 1.0
 	cmd.RootCmd.SetArgs([]string{"upgrade", instanceID, "--version", "1.0"})
@@ -177,6 +177,42 @@ func Test_upgrade_basic(t *testing.T) {
 	err = testutils.WaitForInstanceToReachStatus(ctx, instanceID, instance.InstanceStatusRunning, 900*time.Second)
 	require.NoError(err)
 
+	// Test negative cases before deleting resources
+	// FAIL: upgrade instance with invalid instance ID
+	cmd.RootCmd.SetArgs([]string{"upgrade", "instance-invalid", "--version", "latest"})
+	err = cmd.RootCmd.ExecuteContext(ctx)
+	require.Error(err)
+	require.Contains(err.Error(), "instance-invalid not found. Please check the instance ID and try again")
+
+	// FAIL: upgrade instance with max-concurrent-upgrades above maximum (26)
+	cmd.RootCmd.SetArgs([]string{"upgrade", instanceID, "--version", "latest", "--max-concurrent-upgrades", "26"})
+	err = cmd.RootCmd.ExecuteContext(ctx)
+	require.Error(err)
+	require.Contains(err.Error(), "max-concurrent-upgrades must be between 1 and 25")
+
+	// FAIL: upgrade instance with negative max-concurrent-upgrades
+	cmd.RootCmd.SetArgs([]string{"upgrade", instanceID, "--version", "latest", "--max-concurrent-upgrades", "-1"})
+	err = cmd.RootCmd.ExecuteContext(ctx)
+	require.Error(err)
+	require.Contains(err.Error(), "max-concurrent-upgrades must be between 1 and 25")
+
+	// FAIL: check upgrade status with invalid upgrade ID
+	cmd.RootCmd.SetArgs([]string{"upgrade", "status", "upgrade-invalid"})
+	err = cmd.RootCmd.ExecuteContext(ctx)
+	require.Error(err)
+	require.Contains(err.Error(), "upgrade-invalid not found")
+
+	// PASS: upgrade instance with max-concurrent-upgrades as 0 (should use system default)
+	cmd.RootCmd.SetArgs([]string{"upgrade", instanceID, "--version", "1.0", "--max-concurrent-upgrades", "0"})
+	err = cmd.RootCmd.ExecuteContext(ctx)
+	require.NoError(err)
+	require.Len(upgrade.UpgradePathIDs, 1)
+
+	// PASS: wait for final upgrade to complete
+	time.Sleep(5 * time.Second)
+	err = testutils.WaitForInstanceToReachStatus(ctx, instanceID, instance.InstanceStatusRunning, 900*time.Second)
+	require.NoError(err)
+
 	// PASS: delete instance
 	cmd.RootCmd.SetArgs([]string{"instance", "delete", instanceID, "--yes"})
 	err = cmd.RootCmd.ExecuteContext(ctx)
@@ -198,36 +234,6 @@ func Test_upgrade_basic(t *testing.T) {
 	cmd.RootCmd.SetArgs([]string{"service", "delete", serviceName})
 	err = cmd.RootCmd.ExecuteContext(ctx)
 	require.NoError(err)
-
-	// FAIL: upgrade instance with invalid instance ID
-	cmd.RootCmd.SetArgs([]string{"upgrade", "instance-invalid", "--version", "latest"})
-	err = cmd.RootCmd.ExecuteContext(ctx)
-	require.Error(err)
-	require.Contains(err.Error(), "instance-invalid not found. Please check the instance ID and try again")
-
-	// PASS: upgrade instance with max-concurrent-upgrades as 0 (should use system default)
-	cmd.RootCmd.SetArgs([]string{"upgrade", instanceID, "--version", "latest", "--max-concurrent-upgrades", "0"})
-	err = cmd.RootCmd.ExecuteContext(ctx)
-	require.NoError(err)
-	require.Len(upgrade.UpgradePathIDs, 1)
-
-	// FAIL: upgrade instance with max-concurrent-upgrades above maximum (26)
-	cmd.RootCmd.SetArgs([]string{"upgrade", instanceID, "--version", "latest", "--max-concurrent-upgrades", "26"})
-	err = cmd.RootCmd.ExecuteContext(ctx)
-	require.Error(err)
-	require.Contains(err.Error(), "max-concurrent-upgrades must be between 1 and 25")
-
-	// FAIL: upgrade instance with negative max-concurrent-upgrades
-	cmd.RootCmd.SetArgs([]string{"upgrade", instanceID, "--version", "latest", "--max-concurrent-upgrades", "-1"})
-	err = cmd.RootCmd.ExecuteContext(ctx)
-	require.Error(err)
-	require.Contains(err.Error(), "max-concurrent-upgrades must be between 1 and 25")
-
-	// FAIL: check upgrade status with invalid instance ID
-	cmd.RootCmd.SetArgs([]string{"upgrade", "status", "upgrade-invalid"})
-	err = cmd.RootCmd.ExecuteContext(ctx)
-	require.Error(err)
-	require.Contains(err.Error(), "upgrade-invalid not found")
 }
 
 func validateScheduledAndCancel(ctx context.Context, instanceID string, targetVersion string, shouldSkipInstance bool) error {
@@ -347,7 +353,7 @@ func validateScheduledAndCancelWithMaxConcurrency(ctx context.Context, instanceI
 	if status.LastUpgradeStatus.Status != model.Scheduled.String() {
 		return fmt.Errorf("expected status %s, got %s", model.Scheduled.String(), status.LastUpgradeStatus.Status)
 	}
-	
+
 	// Cancel the scheduled upgrade
 	cmd.RootCmd.SetArgs([]string{"upgrade", "cancel", upgradeID})
 	err = cmd.RootCmd.ExecuteContext(ctx)
@@ -366,7 +372,7 @@ func validateScheduledAndCancelWithMaxConcurrency(ctx context.Context, instanceI
 		}
 		time.Sleep(5 * time.Second)
 	}
-	
+
 	if status.LastUpgradeStatus.Status != model.Cancelled.String() {
 		return fmt.Errorf("expected status %s, got %s", model.Cancelled.String(), status.LastUpgradeStatus.Status)
 	}
