@@ -47,6 +47,8 @@ var Cmd = &cobra.Command{
 }
 
 func init() {
+	Cmd.AddCommand(listCmd)
+	Cmd.AddCommand(describeCmd)
 	Cmd.AddCommand(status.Cmd)
 	Cmd.AddCommand(manageupgradelifecycle.CancelCmd)
 	Cmd.AddCommand(manageupgradelifecycle.ResumeCmd)

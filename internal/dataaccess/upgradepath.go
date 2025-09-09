@@ -2,6 +2,7 @@ package dataaccess
 
 import (
 	"context"
+	"net/http"
 
 	"github.com/omnistrate-oss/omnistrate-ctl/internal/model"
 
@@ -121,4 +122,58 @@ func ListEligibleInstancesPerUpgrade(ctx context.Context, token, serviceID, prod
 	}
 
 	return resp.GetInstances(), nil
+}
+
+type ListUpgradePathsOptions struct {
+	SourceProductTierVersion string
+	TargetProductTierVersion string
+	Status                   string
+	Type                     string
+	NextPageToken            string
+	PageSize                 *int64
+}
+
+func ListUpgradePaths(ctx context.Context, token, serviceID, productTierID string, opts *ListUpgradePathsOptions) (resp *openapiclientfleet.ListUpgradePathsResult, err error) {
+	ctxWithToken := context.WithValue(ctx, openapiclientfleet.ContextAccessToken, token)
+	apiClient := getFleetClient()
+
+	req := apiClient.InventoryApiAPI.InventoryApiListUpgradePaths(
+		ctxWithToken,
+		serviceID,
+		productTierID,
+	)
+
+	if opts != nil {
+		if opts.SourceProductTierVersion != "" {
+			req = req.SourceProductTierVersion(opts.SourceProductTierVersion)
+		}
+		if opts.TargetProductTierVersion != "" {
+			req = req.TargetProductTierVersion(opts.TargetProductTierVersion)
+		}
+		if opts.Status != "" {
+			req = req.Status(opts.Status)
+		}
+		if opts.Type != "" {
+			req = req.Type_(opts.Type)
+		}
+		if opts.NextPageToken != "" {
+			req = req.NextPageToken(opts.NextPageToken)
+		}
+		if opts.PageSize != nil {
+			req = req.PageSize(*opts.PageSize)
+		}
+	}
+
+	var r *http.Response
+	defer func() {
+		if r != nil {
+			_ = r.Body.Close()
+		}
+	}()
+
+	resp, r, err = req.Execute()
+	if err != nil {
+		return nil, handleFleetError(err)
+	}
+	return
 }

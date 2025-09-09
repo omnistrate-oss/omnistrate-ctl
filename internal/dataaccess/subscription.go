@@ -119,3 +119,264 @@ func GetSubscriptionByCustomerEmail(ctx context.Context, token string, serviceID
 	err = errors.New("no subscription found for the given customer email or the plan does not exist")
 	return
 }
+
+func ListSubscriptions(ctx context.Context, token string, serviceID, environmentID string) (resp *openapiclientfleet.FleetListSubscriptionsResult, err error) {
+	ctxWithToken := context.WithValue(ctx, openapiclientfleet.ContextAccessToken, token)
+	apiClient := getFleetClient()
+
+	req := apiClient.InventoryApiAPI.InventoryApiListSubscription(
+		ctxWithToken,
+		serviceID,
+		environmentID,
+	)
+
+	var r *http.Response
+	defer func() {
+		if r != nil {
+			_ = r.Body.Close()
+		}
+	}()
+
+	resp, r, err = req.Execute()
+	if err != nil {
+		return nil, handleFleetError(err)
+	}
+	return
+}
+
+func ListSubscriptionRequests(ctx context.Context, token string, serviceID, environmentID string) (resp *openapiclientfleet.ListSubscriptionRequestsResult, err error) {
+	ctxWithToken := context.WithValue(ctx, openapiclientfleet.ContextAccessToken, token)
+	apiClient := getFleetClient()
+
+	req := apiClient.InventoryApiAPI.InventoryApiListSubscriptionRequests(
+		ctxWithToken,
+		serviceID,
+		environmentID,
+	)
+
+	var r *http.Response
+	defer func() {
+		if r != nil {
+			_ = r.Body.Close()
+		}
+	}()
+
+	resp, r, err = req.Execute()
+	if err != nil {
+		return nil, handleFleetError(err)
+	}
+	return
+}
+
+func DescribeSubscriptionRequest(ctx context.Context, token string, serviceID, environmentID, requestID string) (resp *openapiclientfleet.DescribeSubscriptionRequestResult, err error) {
+	ctxWithToken := context.WithValue(ctx, openapiclientfleet.ContextAccessToken, token)
+	apiClient := getFleetClient()
+
+	req := apiClient.InventoryApiAPI.InventoryApiDescribeSubscriptionRequest(
+		ctxWithToken,
+		serviceID,
+		environmentID,
+		requestID,
+	)
+
+	var r *http.Response
+	defer func() {
+		if r != nil {
+			_ = r.Body.Close()
+		}
+	}()
+
+	resp, r, err = req.Execute()
+	if err != nil {
+		return nil, handleFleetError(err)
+	}
+	return
+}
+
+func ApproveSubscriptionRequest(ctx context.Context, token string, serviceID, environmentID, requestID string) (err error) {
+	ctxWithToken := context.WithValue(ctx, openapiclientfleet.ContextAccessToken, token)
+	apiClient := getFleetClient()
+
+	req := apiClient.InventoryApiAPI.InventoryApiApproveSubscriptionRequest(
+		ctxWithToken,
+		serviceID,
+		environmentID,
+		requestID,
+	)
+
+	var r *http.Response
+	defer func() {
+		if r != nil {
+			_ = r.Body.Close()
+		}
+	}()
+
+	r, err = req.Execute()
+	if err != nil {
+		return handleFleetError(err)
+	}
+	return
+}
+
+func DenySubscriptionRequest(ctx context.Context, token string, serviceID, environmentID, requestID string) (err error) {
+	ctxWithToken := context.WithValue(ctx, openapiclientfleet.ContextAccessToken, token)
+	apiClient := getFleetClient()
+
+	req := apiClient.InventoryApiAPI.InventoryApiDenySubscriptionRequest(
+		ctxWithToken,
+		serviceID,
+		environmentID,
+		requestID,
+	)
+
+	var r *http.Response
+	defer func() {
+		if r != nil {
+			_ = r.Body.Close()
+		}
+	}()
+
+	r, err = req.Execute()
+	if err != nil {
+		return handleFleetError(err)
+	}
+	return
+}
+
+type CreateSubscriptionOnBehalfOptions struct {
+	ProductTierID                          string
+	OnBehalfOfCustomerUserID               string
+	AllowCreatesWhenPaymentNotConfigured   *bool
+	BillingProvider                        string
+	CustomPrice                            *bool
+	CustomPricePerUnit                     map[string]interface{}
+	ExternalPayerID                        string
+	MaxNumberOfInstances                   *int64
+	PriceEffectiveDate                     string
+}
+
+func CreateSubscriptionOnBehalf(ctx context.Context, token string, serviceID, environmentID string, opts *CreateSubscriptionOnBehalfOptions) (resp *openapiclientfleet.FleetCreateSubscriptionOnBehalfOfCustomerResult, err error) {
+	ctxWithToken := context.WithValue(ctx, openapiclientfleet.ContextAccessToken, token)
+	apiClient := getFleetClient()
+
+	requestBody := openapiclientfleet.FleetCreateSubscriptionOnBehalfOfCustomerRequest2{
+		ProductTierId:            opts.ProductTierID,
+		OnBehalfOfCustomerUserId: opts.OnBehalfOfCustomerUserID,
+	}
+
+	if opts.AllowCreatesWhenPaymentNotConfigured != nil {
+		requestBody.AllowCreatesWhenPaymentNotConfigured = opts.AllowCreatesWhenPaymentNotConfigured
+	}
+	if opts.BillingProvider != "" {
+		requestBody.BillingProvider = &opts.BillingProvider
+	}
+	if opts.CustomPrice != nil {
+		requestBody.CustomPrice = opts.CustomPrice
+	}
+	if opts.CustomPricePerUnit != nil {
+		requestBody.CustomPricePerUnit = opts.CustomPricePerUnit
+	}
+	if opts.ExternalPayerID != "" {
+		requestBody.ExternalPayerId = &opts.ExternalPayerID
+	}
+	if opts.MaxNumberOfInstances != nil {
+		requestBody.MaxNumberOfInstances = opts.MaxNumberOfInstances
+	}
+	if opts.PriceEffectiveDate != "" {
+		requestBody.PriceEffectiveDate = &opts.PriceEffectiveDate
+	}
+
+	req := apiClient.InventoryApiAPI.InventoryApiCreateSubscriptionOnBehalfOfCustomer(
+		ctxWithToken,
+		serviceID,
+		environmentID,
+	).FleetCreateSubscriptionOnBehalfOfCustomerRequest2(requestBody)
+
+	var r *http.Response
+	defer func() {
+		if r != nil {
+			_ = r.Body.Close()
+		}
+	}()
+
+	resp, r, err = req.Execute()
+	if err != nil {
+		return nil, handleFleetError(err)
+	}
+	return
+}
+
+func SuspendSubscription(ctx context.Context, token string, serviceID, environmentID, subscriptionID string) (err error) {
+	ctxWithToken := context.WithValue(ctx, openapiclientfleet.ContextAccessToken, token)
+	apiClient := getFleetClient()
+
+	req := apiClient.InventoryApiAPI.InventoryApiSuspendSubscription(
+		ctxWithToken,
+		serviceID,
+		environmentID,
+		subscriptionID,
+	)
+
+	var r *http.Response
+	defer func() {
+		if r != nil {
+			_ = r.Body.Close()
+		}
+	}()
+
+	r, err = req.Execute()
+	if err != nil {
+		return handleFleetError(err)
+	}
+	return
+}
+
+func ResumeSubscription(ctx context.Context, token string, serviceID, environmentID, subscriptionID string) (err error) {
+	ctxWithToken := context.WithValue(ctx, openapiclientfleet.ContextAccessToken, token)
+	apiClient := getFleetClient()
+
+	req := apiClient.InventoryApiAPI.InventoryApiResumeSubscription(
+		ctxWithToken,
+		serviceID,
+		environmentID,
+		subscriptionID,
+	)
+
+	var r *http.Response
+	defer func() {
+		if r != nil {
+			_ = r.Body.Close()
+		}
+	}()
+
+	r, err = req.Execute()
+	if err != nil {
+		return handleFleetError(err)
+	}
+	return
+}
+
+func TerminateSubscription(ctx context.Context, token string, serviceID, environmentID, subscriptionID string) (err error) {
+	ctxWithToken := context.WithValue(ctx, openapiclientfleet.ContextAccessToken, token)
+	apiClient := getFleetClient()
+
+	req := apiClient.InventoryApiAPI.InventoryApiTerminateSubscription(
+		ctxWithToken,
+		serviceID,
+		environmentID,
+		subscriptionID,
+	)
+
+	var r *http.Response
+	defer func() {
+		if r != nil {
+			_ = r.Body.Close()
+		}
+	}()
+
+	r, err = req.Execute()
+	if err != nil {
+		return handleFleetError(err)
+	}
+	return
+}
