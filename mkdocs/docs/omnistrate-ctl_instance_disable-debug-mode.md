@@ -34,4 +34,5 @@ omctl instance disable-debug-mode i-1234 --resource-name terraform --force
 
 ### SEE ALSO
 
-- [omnistrate-ctl instance](omnistrate-ctl_instance.md) - Manage Instance Deployments for your service
+* [omnistrate-ctl instance](omnistrate-ctl_instance.md)	 - Manage Instance Deployments for your service
+

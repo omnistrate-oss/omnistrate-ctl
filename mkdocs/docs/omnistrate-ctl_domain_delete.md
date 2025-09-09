@@ -32,4 +32,5 @@ omctl delete domain [domain-name]
 
 ### SEE ALSO
 
-- [omnistrate-ctl domain](omnistrate-ctl_domain.md) - Manage Customer Domains for your service
+* [omnistrate-ctl domain](omnistrate-ctl_domain.md)	 - Manage Customer Domains for your service
+

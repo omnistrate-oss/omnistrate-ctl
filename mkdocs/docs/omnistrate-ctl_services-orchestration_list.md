@@ -33,4 +33,5 @@ omctl services-orchestration list --environment-type=prod
 
 ### SEE ALSO
 
-- [omnistrate-ctl services-orchestration](omnistrate-ctl_services-orchestration.md) - Manage Services Orchestration Deployments across services
+* [omnistrate-ctl services-orchestration](omnistrate-ctl_services-orchestration.md)	 - Manage Services Orchestration Deployments across services
+

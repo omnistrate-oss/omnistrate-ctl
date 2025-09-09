@@ -9,8 +9,8 @@ omnistrate-ctl upgrade pause [upgrade-id] [flags]
 ### Examples
 
 ```
- Pausing ongoing upgrade #
-omctl upgrade pause [upgrade-id]
+ Pausing ongoing upgrade # 
+omctl upgrade pause [upgrade-id] 
 ```
 
 ### Options
@@ -28,4 +28,5 @@ omctl upgrade pause [upgrade-id]
 
 ### SEE ALSO
 
-- [omnistrate-ctl upgrade](omnistrate-ctl_upgrade.md) - Upgrade Instance Deployments to a newer or older version
+* [omnistrate-ctl upgrade](omnistrate-ctl_upgrade.md)	 - Upgrade Instance Deployments to a newer or older version
+

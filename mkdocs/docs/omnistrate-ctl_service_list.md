@@ -35,4 +35,5 @@ omctl service list
 
 ### SEE ALSO
 
-- [omnistrate-ctl service](omnistrate-ctl_service.md) - Manage Services for your account
+* [omnistrate-ctl service](omnistrate-ctl_service.md)	 - Manage Services for your account
+

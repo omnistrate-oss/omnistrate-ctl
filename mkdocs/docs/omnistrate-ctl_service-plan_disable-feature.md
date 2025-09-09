@@ -13,7 +13,7 @@ omnistrate-ctl service-plan disable-feature [service-name] [plan-name] [flags]
 ### Examples
 
 ```
-# Disable service plan feature
+# Disable service plan feature 
 omctl service-plan disable-feature [service-name] [plan-name] --feature [feature-name]
 
 #  Disable service plan feature by ID instead of name
@@ -39,4 +39,5 @@ omctl service-plan enable-feature --service-id [service-id] --plan-id [plan-id] 
 
 ### SEE ALSO
 
-- [omnistrate-ctl service-plan](omnistrate-ctl_service-plan.md) - Manage Service Plans for your service
+* [omnistrate-ctl service-plan](omnistrate-ctl_service-plan.md)	 - Manage Service Plans for your service
+

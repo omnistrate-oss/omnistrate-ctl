@@ -9,8 +9,8 @@ omnistrate-ctl upgrade notify-customer [upgrade-id] [flags]
 ### Examples
 
 ```
- Enable customer notifications for a scheduled upgrade #
-omctl upgrade notify-customer [upgrade-id]
+ Enable customer notifications for a scheduled upgrade # 
+omctl upgrade notify-customer [upgrade-id] 
 ```
 
 ### Options
@@ -28,4 +28,5 @@ omctl upgrade notify-customer [upgrade-id]
 
 ### SEE ALSO
 
-- [omnistrate-ctl upgrade](omnistrate-ctl_upgrade.md) - Upgrade Instance Deployments to a newer or older version
+* [omnistrate-ctl upgrade](omnistrate-ctl_upgrade.md)	 - Upgrade Instance Deployments to a newer or older version
+

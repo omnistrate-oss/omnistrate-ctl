@@ -27,4 +27,5 @@ omnistrate-ctl workflow summary [flags]
 
 ### SEE ALSO
 
-- [omnistrate-ctl workflow](omnistrate-ctl_workflow.md) - Manage service workflows
+* [omnistrate-ctl workflow](omnistrate-ctl_workflow.md)	 - Manage service workflows
+
