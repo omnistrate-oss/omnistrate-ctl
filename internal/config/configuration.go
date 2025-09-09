@@ -2,6 +2,7 @@ package config
 
 import (
 	_ "embed"
+	"fmt"
 	"strings"
 	"time"
 
@@ -22,13 +23,17 @@ const (
 	omnistrateHost       = "OMNISTRATE_HOST"
 	omnistrateRootDomain = "OMNISTRATE_ROOT_DOMAIN"
 	omnistrateHostSchema = "OMNISTRATE_HOST_SCHEME"
+	omnistrateDocsDomain = "OMNISTRATE_DOCS_DOMAIN"
 	defaultRootDomain    = "omnistrate.cloud"
 	clientTimeout        = "CLIENT_TIMEOUT_IN_SECONDS"
-	llmsTxtUrl           = "LLMS_TXT_URL"
 )
 
 func GetLlmsTxtURL() string {
-	return GetEnv(llmsTxtUrl, "https://docs.omnistrate.com/llms.txt")
+	return fmt.Sprintf("https://%s/llms.txt", GetOmnistrateDocsDomain())
+}
+
+func GetOmnistrateDocsDomain() string {
+	return GetEnv(omnistrateDocsDomain, "docs.omnistrate.com")
 }
 
 // GetToken returns the authentication token for current user
