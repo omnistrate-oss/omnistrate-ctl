@@ -29,6 +29,9 @@ import (
 	"github.com/omnistrate-oss/omnistrate-ctl/cmd/subscription"
 	"github.com/omnistrate-oss/omnistrate-ctl/cmd/upgrade"
 	"github.com/omnistrate-oss/omnistrate-ctl/cmd/workflow"
+	"github.com/omnistrate-oss/omnistrate-ctl/cmd/cost"
+	"github.com/omnistrate-oss/omnistrate-ctl/cmd/operations"
+	"github.com/omnistrate-oss/omnistrate-ctl/cmd/audit"
 	"github.com/omnistrate-oss/omnistrate-ctl/internal/config"
 	"github.com/omnistrate-oss/omnistrate-ctl/internal/utils"
 	"github.com/spf13/cobra"
@@ -133,6 +136,8 @@ func init() {
 	RootCmd.AddCommand(secret.Cmd)
 	RootCmd.AddCommand(workflow.Cmd)
 	RootCmd.AddCommand(cost.Cmd)
+	RootCmd.AddCommand(operations.Cmd)
+	RootCmd.AddCommand(audit.Cmd)
 
 	// Hide the default completion command
 	RootCmd.Root().CompletionOptions.DisableDefaultCmd = true
