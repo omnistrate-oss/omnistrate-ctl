@@ -1336,13 +1336,15 @@ func getOrCreatePAT(sm ysmrr.SpinnerManager, resetPAT bool) (newSm ysmrr.Spinner
 
 func RenderFile(fileData []byte, rootDir string, file string, sm ysmrr.SpinnerManager, spinner *ysmrr.Spinner) (
 	newFileData []byte, err error) {
-	newFileData, err = renderFileReferences(fileData, file, sm, spinner)
+	newFileData = fileData
+
+	newFileData, err = renderFileReferences(newFileData, file, sm, spinner)
 	if err != nil {
 		return
 	}
 
 	if strings.Contains(string(newFileData), "env_file:") {
-		newFileData, err = renderEnvFileAndInterpolateVariables(fileData, rootDir, file, sm, spinner)
+		newFileData, err = renderEnvFileAndInterpolateVariables(newFileData, rootDir, file, sm, spinner)
 		if err != nil {
 			return
 		}
