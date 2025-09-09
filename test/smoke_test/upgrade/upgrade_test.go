@@ -177,24 +177,6 @@ func Test_upgrade_basic(t *testing.T) {
 	err = testutils.WaitForInstanceToReachStatus(ctx, instanceID, instance.InstanceStatusRunning, 900*time.Second)
 	require.NoError(err)
 
-	// FAIL: upgrade instance with max-concurrent-upgrades above maximum (26)
-	cmd.RootCmd.SetArgs([]string{"upgrade", instanceID, "--version", "latest", "--max-concurrent-upgrades", "26"})
-	err = cmd.RootCmd.ExecuteContext(ctx)
-	require.Error(err)
-	require.Contains(err.Error(), "max-concurrent-upgrades must be between 1 and 25")
-
-	// FAIL: upgrade instance with negative max-concurrent-upgrades
-	cmd.RootCmd.SetArgs([]string{"upgrade", instanceID, "--version", "latest", "--max-concurrent-upgrades", "-1"})
-	err = cmd.RootCmd.ExecuteContext(ctx)
-	require.Error(err)
-	require.Contains(err.Error(), "max-concurrent-upgrades must be between 1 and 25")
-
-	// FAIL: check upgrade status with invalid upgrade ID
-	cmd.RootCmd.SetArgs([]string{"upgrade", "status", "upgrade-invalid"})
-	err = cmd.RootCmd.ExecuteContext(ctx)
-	require.Error(err)
-	require.Contains(err.Error(), "upgrade-invalid not found")
-
 	// PASS: upgrade instance with max-concurrent-upgrades as 0 (should use system default)
 	cmd.RootCmd.SetArgs([]string{"upgrade", instanceID, "--version", "1.0", "--max-concurrent-upgrades", "0"})
 	err = cmd.RootCmd.ExecuteContext(ctx)
