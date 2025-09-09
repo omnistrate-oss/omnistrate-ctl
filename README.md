@@ -15,3 +15,25 @@ Omnistrate CTL support configuration using environment variables
 | `OMNISTRATE_LOG_FORMAT_LEVEL` | Determines the format of log output (e.g., json, pretty).                                       |
 | `OMNISTRATE_ROOT_DOMAIN`      | The root domain for the Omnistrate platform.                                                    |
 | `OMNISTRATE_HOST_SCHEME`      | The protocol scheme to use for the host (e.g., HTTP, HTTPS).                                    |
+
+## Configuring the Omnistrate MCP server
+
+### Login to your account
+
+```bash
+omctl login
+```
+
+### Enable the MCP server for VSCode for GitHub Copilot
+
+```bash
+omctl mcp vscode enable
+```
+
+Follow instructions on https://code.visualstudio.com/docs/copilot/customization/mcp-servers#_manage-mcp-servers to start using the Omnistrate MCP server
+
+### Enable the MCP server for Claude Desktop
+
+```bash
+omctl mcp claude enable
+```
