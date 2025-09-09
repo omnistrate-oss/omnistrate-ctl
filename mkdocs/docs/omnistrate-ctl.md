@@ -48,6 +48,7 @@ omnistrate-ctl [flags]
 * [omnistrate-ctl instance](omnistrate-ctl_instance.md)	 - Manage Instance Deployments for your service
 * [omnistrate-ctl login](omnistrate-ctl_login.md)	 - Log in to the Omnistrate platform
 * [omnistrate-ctl logout](omnistrate-ctl_logout.md)	 - Logout
+* [omnistrate-ctl mcp](omnistrate-ctl_mcp.md)	 - MCP server management
 * [omnistrate-ctl secret](omnistrate-ctl_secret.md)	 - Manage secrets
 * [omnistrate-ctl service](omnistrate-ctl_service.md)	 - Manage Services for your account
 * [omnistrate-ctl service-plan](omnistrate-ctl_service-plan.md)	 - Manage Service Plans for your service
