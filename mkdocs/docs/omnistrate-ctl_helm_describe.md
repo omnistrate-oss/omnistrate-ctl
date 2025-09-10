@@ -32,5 +32,4 @@ omctl helm describe redis --version=20.0.1
 
 ### SEE ALSO
 
-* [omnistrate-ctl helm](omnistrate-ctl_helm.md)	 - Manage Helm Charts for your service
-
+- [omnistrate-ctl helm](omnistrate-ctl_helm.md) - Manage Helm Charts for your service

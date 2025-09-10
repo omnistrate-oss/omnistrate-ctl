@@ -27,5 +27,4 @@ omnistrate-ctl subscription deny-request <request-id> [flags]
 
 ### SEE ALSO
 
-* [omnistrate-ctl subscription](omnistrate-ctl_subscription.md)	 - Manage Customer Subscriptions for your service
-
+- [omnistrate-ctl subscription](omnistrate-ctl_subscription.md) - Manage Customer Subscriptions for your service

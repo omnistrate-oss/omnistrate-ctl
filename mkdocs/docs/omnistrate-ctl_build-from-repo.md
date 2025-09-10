@@ -6,9 +6,9 @@ Build Service from Git Repository
 
 This command helps to build service from git repository. Run this command from the root of the repository. Make sure you have the Dockerfile in the repository and have the Docker daemon running on your machine. By default, the service name will be the repository name, but you can specify a custom service name with the --product-name flag.
 
-You can also skip specific stages of the build process using the --skip-* flags. For example, you can skip building the Docker image with --skip-docker-build, skip creating the service with --skip-service-build, skip environment promotion with --skip-environment-promotion, or skip SaaS portal initialization with --skip-saas-portal-init.
+You can also skip specific stages of the build process using the --skip-\* flags. For example, you can skip building the Docker image with --skip-docker-build, skip creating the service with --skip-service-build, skip environment promotion with --skip-environment-promotion, or skip SaaS portal initialization with --skip-saas-portal-init.
 
-For testing purposes, use the --dry-run flag to only build the Docker image locally without pushing, skip service creation, and generate a local spec file with a '-dry-run' suffix. Note that --dry-run cannot be used together with any of the --skip-* flags as they are mutually exclusive.
+For testing purposes, use the --dry-run flag to only build the Docker image locally without pushing, skip service creation, and generate a local spec file with a '-dry-run' suffix. Note that --dry-run cannot be used together with any of the --skip-\* flags as they are mutually exclusive.
 
 ```
 omnistrate-ctl build-from-repo [flags]
@@ -24,7 +24,7 @@ omctl build-from-repo
 omctl build-from-repo --env-var POSTGRES_PASSWORD=default --deployment-type byoa --aws-account-id 442426883376
 
 # Build service from an existing compose spec in the repository
-omctl build-from-repo --file omnistrate-compose.yaml
+omctl build-from-repo --file compose.yaml
 
 # Build service with a custom service name
 omctl build-from-repo --product-name my-custom-service
@@ -80,5 +80,4 @@ omctl build-from-repo
 
 ### SEE ALSO
 
-* [omnistrate-ctl](omnistrate-ctl.md)	 - Manage your Omnistrate SaaS from the command line
-
+- [omnistrate-ctl](omnistrate-ctl.md) - Manage your Omnistrate SaaS from the command line

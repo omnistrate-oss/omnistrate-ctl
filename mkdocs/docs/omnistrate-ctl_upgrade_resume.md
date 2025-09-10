@@ -9,8 +9,8 @@ omnistrate-ctl upgrade resume [upgrade-id] [flags]
 ### Examples
 
 ```
- Resuming paused upgrade # 
-omctl upgrade resume [upgrade-id] 
+ Resuming paused upgrade #
+omctl upgrade resume [upgrade-id]
 ```
 
 ### Options
@@ -28,5 +28,4 @@ omctl upgrade resume [upgrade-id]
 
 ### SEE ALSO
 
-* [omnistrate-ctl upgrade](omnistrate-ctl_upgrade.md)	 - Upgrade Instance Deployments to a newer or older version
-
+- [omnistrate-ctl upgrade](omnistrate-ctl_upgrade.md) - Upgrade Instance Deployments to a newer or older version

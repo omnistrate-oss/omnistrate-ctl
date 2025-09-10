@@ -29,5 +29,4 @@ omnistrate-ctl mcp vscode disable [flags]
 
 ### SEE ALSO
 
-* [omnistrate-ctl mcp vscode](omnistrate-ctl_mcp_vscode.md)	 - Configure VSCode MCP servers
-
+- [omnistrate-ctl mcp vscode](omnistrate-ctl_mcp_vscode.md) - Configure VSCode MCP servers

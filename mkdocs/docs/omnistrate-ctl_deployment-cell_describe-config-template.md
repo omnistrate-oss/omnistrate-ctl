@@ -6,27 +6,33 @@ Describe deployment cell configuration template
 
 Describe the current deployment cell configuration template for your organization.
 
-This command shows the current amenities configuration template that is applied to 
+This command shows the current amenities configuration template that is applied to
 new deployment cells in the specified environment and cloud provider.
 
-You can also describe the configuration of a specific deployment cell by providing 
+You can also describe the configuration of a specific deployment cell by providing
 its ID as an argument.
 
 Examples:
-  # Describe organization template for PROD environment and AWS
-  omnistrate-ctl deployment-cell describe-config-template -e PROD --cloud aws
 
-  # Describe specific deployment cell configuration
-  omnistrate-ctl deployment-cell describe-config-template hc-12345
+# Describe organization template for PROD environment and AWS
 
-  # Get JSON output format
-  omnistrate-ctl deployment-cell describe-config-template -e PROD --cloud aws --output json
+omnistrate-ctl deployment-cell describe-config-template -e PROD --cloud aws
 
-  # Generate YAML template to local file
-  omnistrate-ctl deployment-cell describe-config-template -e PROD --cloud aws --output-file template.yaml
+# Describe specific deployment cell configuration
 
-  # Generate template for specific deployment cell to file
-  omnistrate-ctl deployment-cell describe-config-template hc-12345 --output-file deployment-cell-config.yaml
+omnistrate-ctl deployment-cell describe-config-template hc-12345
+
+# Get JSON output format
+
+omnistrate-ctl deployment-cell describe-config-template -e PROD --cloud aws --output json
+
+# Generate YAML template to local file
+
+omnistrate-ctl deployment-cell describe-config-template -e PROD --cloud aws --output-file template.yaml
+
+# Generate template for specific deployment cell to file
+
+omnistrate-ctl deployment-cell describe-config-template hc-12345 --output-file deployment-cell-config.yaml
 
 ```
 omnistrate-ctl deployment-cell describe-config-template [flags]
@@ -51,5 +57,4 @@ omnistrate-ctl deployment-cell describe-config-template [flags]
 
 ### SEE ALSO
 
-* [omnistrate-ctl deployment-cell](omnistrate-ctl_deployment-cell.md)	 - Manage Deployment Cells
-
+- [omnistrate-ctl deployment-cell](omnistrate-ctl_deployment-cell.md) - Manage Deployment Cells

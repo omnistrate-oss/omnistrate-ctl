@@ -1,0 +1,84 @@
+version: "3.4"
+
+volumes:
+  local_postgres_data: {}
+  local_postgres_data_backups: {}
+  local_redis_data: {}
+
+services:
+  postgres:
+    restart: always
+    image: { { $$file:./pg_image } }
+    ports:
+      - 5432:5432
+    env_file:
+      - ".env"
+    environment:
+      - POSTGRES_DB=${DB_NAME}
+      - POSTGRES_USER=${DB_USER}
+      - POSTGRES_PASSWORD=${DB_PASS}
+      - SECURITY_CONTEXT_USER_ID=999
+      - SECURITY_CONTEXT_GROUP_ID=999
+      - ALLOWED_HOSTS2={{ $$sys.network.externalClusterEndpoint }},server,localhost,127.0.0.1,0.0.0.0
+    volumes:
+      - local_postgres_data:/var/lib/postgresql/data/
+      - local_postgres_data_backups:/backups
+
+
+  redis:
+    image: redis/redis-stack-server:latest
+    container_name: redis
+    restart: always
+    volumes:
+      - local_redis_data:/data
+    ports:
+      - 6379:6379
+
+  server:
+    image: "ghcr.io/experio-ai/experio-dockerfile.server:sha-47065d21819504bca486ae305ed9ca67632be085640f7cef4369fb628e646c72"
+    restart: always
+    command: /start
+    depends_on:
+      - postgres
+    env_file:
+      - ".env"
+    environment:
+      - DB_HOST=postgres
+    ports:
+      - "8000:8000"
+    user: ${DOCKER_UID}
+
+  client:
+    container_name: client
+    image: "ghcr.io/experio-ai/experio-dockerfile.client:sha-0d1b8e629f5c97a824590b13f500f478cd440aafecb15c4f9303337b45f8fed1"
+    ports:
+      - "8080:8080"
+      #- "49153:49153"
+    environment:
+      - CHOKIDAR_USEPOLLING=true
+      - VITE_CACHE_DIR=./vite
+      - KC_DB_PASSWORD=$$var.backendhostportal
+    x-omnistrate-api-params:
+      - key: backendhostportal
+        description: Backend host portal
+        defaultvalue: "portal.whiteswansec.io"
+        name: Backend Host Portal
+        type: String
+        modifiable: true
+        required: false
+        export: true
+      - key: backendurl
+        description: Backend url
+        name: Backend url
+        defaultvalue: "https://portal.whiteswansec.io"
+        type: String
+        modifiable: true
+        required: false
+        export: true
+
+x-omnistrate-image-registry-attributes:
+  ghcr.io:
+    auth:
+      password: $${{ secrets.GitHubPAT }}
+      username: abc
+

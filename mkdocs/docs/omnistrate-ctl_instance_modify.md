@@ -38,5 +38,4 @@ omctl instance modify instance-abcd1234 --param-file /path/to/param.json
 
 ### SEE ALSO
 
-* [omnistrate-ctl instance](omnistrate-ctl_instance.md)	 - Manage Instance Deployments for your service
-
+- [omnistrate-ctl instance](omnistrate-ctl_instance.md) - Manage Instance Deployments for your service

@@ -26,14 +26,9 @@ var (
 	ServiceID     string
 	EnvironmentID string
 	ProductTierID string
-
-	validSpecType = []string{DockerComposeSpecType, ServicePlanSpecType}
 )
 
 const (
-	DockerComposeSpecType = "DockerCompose"
-	ServicePlanSpecType   = "ServicePlanSpec"
-
 	buildExample = `# Build service from image in dev environment
 omctl build --image docker.io/mysql:5.7 --product-name MySQL --env-var "MYSQL_ROOT_PASSWORD=password" --env-var "MYSQL_DATABASE=mydb"
 
@@ -41,31 +36,31 @@ omctl build --image docker.io/mysql:5.7 --product-name MySQL --env-var "MYSQL_RO
 omctl build --image docker.io/namespace/my-image:v1.2 --product-name "My Service" --image-registry-auth-username username --image-registry-auth-password password --env-var KEY1:VALUE1 --env-var KEY2:VALUE2
 
 # Build service with compose spec in dev environment
-omctl build --file docker-compose.yml --product-name "My Service"
+omctl build --file compose.yaml --product-name "My Service"
 
 # Build service with compose spec in prod environment
-omctl build --file docker-compose.yml --product-name "My Service" --environment prod --environment-type prod
+omctl build --file compose.yaml --product-name "My Service" --environment prod --environment-type prod
 
 # Build service with compose spec and release the service with a release description
-omctl build --file docker-compose.yml --product-name "My Service" --release --release-description "v1.0.0-alpha"
+omctl build --file compose.yaml --product-name "My Service" --release --release-description "v1.0.0-alpha"
 
 # Build service with compose spec and release the service as preferred with a release description
-omctl build --file docker-compose.yml --product-name "My Service" --release-as-preferred --release-description "v1.0.0-alpha"
+omctl build --file compose.yaml --product-name "My Service" --release-as-preferred --release-description "v1.0.0-alpha"
 
 # Build service with compose spec interactively
-omctl build --file docker-compose.yml --product-name "My Service" --interactive
+omctl build --file compose.yaml --product-name "My Service" --interactive
 
 # Build service with compose spec with service description and service logo
-omctl build --file docker-compose.yml --product-name "My Service" --description "My Service Description" --service-logo-url "https://example.com/logo.png"
+omctl build --file compose.yaml --product-name "My Service" --description "My Service Description" --service-logo-url "https://example.com/logo.png"
 
 # Build service with service specification for Helm, Operator or Kustomize in dev environment
-omctl build --spec-type ServicePlanSpec --file service-spec.yml --product-name "My Service"
+omctl build --spec-type ServicePlanSpec --file spec.yaml --product-name "My Service"
 
 # Build service with service specification for Helm, Operator or Kustomize in prod environment
-omctl build --spec-type ServicePlanSpec --file service-spec.yml --product-name "My Service" --environment prod --environment-type prod
+omctl build --spec-type ServicePlanSpec --file spec.yaml --product-name "My Service" --environment prod --environment-type prod
 
 # Build service with service specification for Helm, Operator or Kustomize as preferred
-omctl build --spec-type ServicePlanSpec --file service-spec.yml --product-name "My Service" --release-as-preferred --release-description "v1.0.0-alpha"
+omctl build --spec-type ServicePlanSpec --file spec.yaml --product-name "My Service" --release-as-preferred --release-description "v1.0.0-alpha"
 `
 
 	buildLong = `Build command can be used to build a service from image, docker compose, and service plan spec. 
@@ -94,7 +89,7 @@ var BuildCmd = &cobra.Command{
 }
 
 func init() {
-	BuildCmd.Flags().StringP("file", "f", "", "Path to the docker compose file")
+	BuildCmd.Flags().StringP("file", "f", ComposeFileName, "Path to the docker compose file")
 	BuildCmd.Flags().StringP("name", "n", "", "Name of the service. A service can have multiple service plans. The build command will build a new or existing service plan inside the specified service.")
 	BuildCmd.Flags().StringP("product-name", "", "", "Name of the service. A service can have multiple service plans. The build command will build a new or existing service plan inside the specified service.")
 	BuildCmd.Flags().StringP("description", "", "", "A short description for the whole service. A service can have multiple service plans.")
@@ -147,10 +142,28 @@ func runBuild(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
+	// Check if file was explicitly provided
+	fileExplicit := cmd.Flags().Changed("file")
+	if fileExplicit {
+		fmt.Printf("Using user-provided file: %s\n", file)
+	} else {
+		fmt.Printf("Using default file: %s\n", file)
+	}
+
 	specType, err := cmd.Flags().GetString("spec-type")
 	if err != nil {
 		return err
 	}
+	// Check if spec-type was explicitly provided
+	specTypeExplicit := cmd.Flags().Changed("spec-type")
+	if !specTypeExplicit {
+		if file == ComposeFileName {
+			specType = DockerComposeSpecType
+		} else {
+			specType = ServicePlanSpecType
+		}
+	}
+
 	name, err := cmd.Flags().GetString("name")
 	if err != nil {
 		return err
@@ -239,7 +252,7 @@ func runBuild(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	if file != "" && imageUrl != "" {
+	if fileExplicit && imageUrl != "" {
 		err := errors.New("only one of file or image can be provided")
 		utils.PrintError(err)
 		return err
@@ -255,8 +268,17 @@ func runBuild(cmd *cobra.Command, args []string) error {
 	var fileData []byte
 	if file != "" {
 		if _, err := os.Stat(file); os.IsNotExist(err) {
-			utils.PrintError(err)
-			return err
+			if fileExplicit {
+				utils.PrintError(err)
+				return err
+			} else {
+				// If the file doesn't exist and wasn't explicitly provided, we check if there is a spec file
+				file = PlanSpecFileName
+				if _, err := os.Stat(file); os.IsNotExist(err) {
+					utils.PrintError(err)
+					return err
+				}
+			}
 		}
 
 		var err error
