@@ -43,6 +43,7 @@ omnistrate-ctl [flags]
 * [omnistrate-ctl cost](omnistrate-ctl_cost.md)	 - Manage cost analytics for your services
 * [omnistrate-ctl custom-network](omnistrate-ctl_custom-network.md)	 - List and describe custom networks of your customers
 * [omnistrate-ctl deployment-cell](omnistrate-ctl_deployment-cell.md)	 - Manage Deployment Cells
+* [omnistrate-ctl docs](omnistrate-ctl_docs.md)	 - Search and access documentation
 * [omnistrate-ctl domain](omnistrate-ctl_domain.md)	 - Manage Customer Domains for your service
 * [omnistrate-ctl environment](omnistrate-ctl_environment.md)	 - Manage Service Environments for your service
 * [omnistrate-ctl helm](omnistrate-ctl_helm.md)	 - Manage Helm Charts for your service
