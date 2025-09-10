@@ -1,4 +1,4 @@
-package generate
+package compose
 
 import (
 	"encoding/json"
@@ -9,9 +9,9 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// ComposeCmd represents the compose command under generate
-var ComposeCmd = &cobra.Command{
-	Use:   "compose",
+// GenerateCmd represents the generate command under compose
+var GenerateCmd = &cobra.Command{
+	Use:   "generate",
 	Short: "Generate a Docker Compose spec with Omnistrate extensions for multiple services",
 	Long: `Generate a Docker Compose spec with Omnistrate extensions based on provided parameters.
 This command creates a compose file that follows the Omnistrate specification with x-omnistrate-* extensions.
@@ -23,7 +23,7 @@ The command supports two modes:
 Examples:
 
 Multiple services with JSON:
-  omnistrate-ctl generate compose \
+  omnistrate-ctl compose generate \
     --service-plan-name "Multi-Service Stack" \
     --services '[
       {
@@ -49,7 +49,7 @@ Multiple services with JSON:
     ]'
 
 Legacy single service:
-  omnistrate-ctl generate compose \
+  omnistrate-ctl compose generate \
     --service-plan-name "Single Service" \
     --service-name "web" \
     --image "nginx:latest" \
@@ -193,37 +193,37 @@ type ImageRegistryAuth struct {
 }
 
 func init() {
-	Cmd.AddCommand(ComposeCmd)
+	Cmd.AddCommand(GenerateCmd)
 	
 	// Service Plan flags
-	ComposeCmd.Flags().StringP("service-plan-name", "n", "", "Name of the service plan (required)")
-	ComposeCmd.MarkFlagRequired("service-plan-name")
+	GenerateCmd.Flags().StringP("service-plan-name", "n", "", "Name of the service plan (required)")
+	GenerateCmd.MarkFlagRequired("service-plan-name")
 	
 	// Multiple services configuration
-	ComposeCmd.Flags().StringP("services", "", "", "Services configuration as JSON string")
+	GenerateCmd.Flags().StringP("services", "", "", "Services configuration as JSON string")
 	
 	// Legacy single service flags (for backward compatibility)
-	ComposeCmd.Flags().StringP("service-name", "s", "", "Name of the main service (legacy, use --services for multiple services)")
-	ComposeCmd.Flags().StringP("image", "i", "", "Docker image for the service (legacy, use --services for multiple services)")
-	ComposeCmd.Flags().StringArray("ports", nil, "Port mappings (legacy, use --services for multiple services)")
-	ComposeCmd.Flags().StringArray("environment", nil, "Environment variables (legacy, use --services for multiple services)")
-	ComposeCmd.Flags().StringArray("volumes", nil, "Volume mounts (legacy, use --services for multiple services)")
-	ComposeCmd.Flags().IntP("root-volume-size", "", 20, "Root volume size in GB (legacy, use --services for multiple services)")
-	ComposeCmd.Flags().IntP("replica-count", "", 1, "Number of replicas (legacy, use --services for multiple services)")
-	ComposeCmd.Flags().StringP("replica-count-api-param", "", "", "API parameter name for replica count (legacy, use --services for multiple services)")
-	ComposeCmd.Flags().BoolP("enable-multi-zone", "", false, "Enable multi-zone deployment (legacy, use --services for multiple services)")
-	ComposeCmd.Flags().BoolP("enable-endpoint-per-replica", "", false, "Enable endpoint per replica (legacy, use --services for multiple services)")
-	ComposeCmd.Flags().BoolP("mode-internal", "", false, "Set service as internal mode (legacy, use --services for multiple services)")
-	ComposeCmd.Flags().StringArrayP("cloud-providers", "", nil, "Supported cloud providers (legacy, use --services for multiple services)")
-	ComposeCmd.Flags().StringP("instance-type-api-param", "", "", "API parameter name for instance type (legacy, use --services for multiple services)")
-	ComposeCmd.Flags().StringP("api-params", "", "", "API parameters as JSON string (legacy, use --services for multiple services)")
+	GenerateCmd.Flags().StringP("service-name", "s", "", "Name of the main service (legacy, use --services for multiple services)")
+	GenerateCmd.Flags().StringP("image", "i", "", "Docker image for the service (legacy, use --services for multiple services)")
+	GenerateCmd.Flags().StringArray("ports", nil, "Port mappings (legacy, use --services for multiple services)")
+	GenerateCmd.Flags().StringArray("environment", nil, "Environment variables (legacy, use --services for multiple services)")
+	GenerateCmd.Flags().StringArray("volumes", nil, "Volume mounts (legacy, use --services for multiple services)")
+	GenerateCmd.Flags().IntP("root-volume-size", "", 20, "Root volume size in GB (legacy, use --services for multiple services)")
+	GenerateCmd.Flags().IntP("replica-count", "", 1, "Number of replicas (legacy, use --services for multiple services)")
+	GenerateCmd.Flags().StringP("replica-count-api-param", "", "", "API parameter name for replica count (legacy, use --services for multiple services)")
+	GenerateCmd.Flags().BoolP("enable-multi-zone", "", false, "Enable multi-zone deployment (legacy, use --services for multiple services)")
+	GenerateCmd.Flags().BoolP("enable-endpoint-per-replica", "", false, "Enable endpoint per replica (legacy, use --services for multiple services)")
+	GenerateCmd.Flags().BoolP("mode-internal", "", false, "Set service as internal mode (legacy, use --services for multiple services)")
+	GenerateCmd.Flags().StringArrayP("cloud-providers", "", nil, "Supported cloud providers (legacy, use --services for multiple services)")
+	GenerateCmd.Flags().StringP("instance-type-api-param", "", "", "API parameter name for instance type (legacy, use --services for multiple services)")
+	GenerateCmd.Flags().StringP("api-params", "", "", "API parameters as JSON string (legacy, use --services for multiple services)")
 	
 	// Global integrations
-	ComposeCmd.Flags().StringArrayP("integrations", "", nil, "Omnistrate integrations (omnistrateLogging, omnistrateMetrics)")
+	GenerateCmd.Flags().StringArrayP("integrations", "", nil, "Omnistrate integrations (omnistrateLogging, omnistrateMetrics)")
 	
 	// Output flags
-	ComposeCmd.Flags().StringP("output-file", "f", "", "Output file path (default: stdout)")
-	ComposeCmd.Flags().StringP("compose-version", "", "3.9", "Docker Compose version")
+	GenerateCmd.Flags().StringP("output-file", "f", "", "Output file path (default: stdout)")
+	GenerateCmd.Flags().StringP("compose-version", "", "3.9", "Docker Compose version")
 }
 
 // ServiceConfig represents the configuration for a single service in JSON format
