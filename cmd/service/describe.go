@@ -6,8 +6,6 @@ import (
 	"strings"
 
 	"github.com/omnistrate-oss/omnistrate-ctl/cmd/common"
-
-	"github.com/chelnak/ysmrr"
 	"github.com/omnistrate-oss/omnistrate-ctl/internal/config"
 	"github.com/omnistrate-oss/omnistrate-ctl/internal/dataaccess"
 	"github.com/omnistrate-oss/omnistrate-ctl/internal/utils"
@@ -15,6 +13,7 @@ import (
 	openapiclient "github.com/omnistrate-oss/omnistrate-sdk-go/v1"
 	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
+	"github.com/chelnak/ysmrr"
 )
 
 const (
@@ -101,10 +100,30 @@ func runDescribe(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
+	// Get account information for Customer hosted plans
+	var accountInfo *dataaccess.ServiceAccountInfo
+	accountInfo, err = dataaccess.GetServiceAccountInfo(cmd.Context(), token, service)
+	if err != nil {
+		// Don't fail the entire command if account info retrieval fails
+		// Just log a warning and continue
+		fmt.Printf("Warning: Could not retrieve account information: %v\n", err)
+	}
+
 	utils.HandleSpinnerSuccess(spinner, sm, "Successfully described service")
 
+	// Create extended service description with account information
+	type ExtendedServiceDescription struct {
+		*openapiclient.DescribeServiceResult
+		CustomerHostedAccounts *dataaccess.ServiceAccountInfo `json:"customerHostedAccounts,omitempty"`
+	}
+
+	extendedResult := &ExtendedServiceDescription{
+		DescribeServiceResult:  service,
+		CustomerHostedAccounts: accountInfo,
+	}
+
 	// Print output
-	err = utils.PrintTextTableJsonOutput("json", service)
+	err = utils.PrintTextTableJsonOutput("json", extendedResult)
 	if err != nil {
 		utils.PrintError(err)
 		return err
