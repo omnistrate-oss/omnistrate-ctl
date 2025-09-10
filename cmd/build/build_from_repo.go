@@ -60,9 +60,10 @@ omctl build-from-repo --release-description "v1.0.0-alpha"
 set GH_PAT=ghp_xxxxxxxx
 omctl build-from-repo
 "`
-	GitHubPATGenerateURL = "https://github.com/settings/tokens"
-	DefaultProdEnvName   = "Production"
-	defaultServiceName   = "default" // Default service name when no compose spec exists in the repo. It won't show up in the resulting image or compose spec. Only intermediate use.
+	GitHubPATGenerateURL      = "https://github.com/settings/tokens"
+	DefaultProdEnvName        = "Production"
+	defaultServiceName        = "default" // Default service name when no compose spec exists in the repo. It won't show up in the resulting image or compose spec. Only intermediate use.
+	ignoreKeyForFileEmbedding = "x-embed-$"
 )
 
 var BuildFromRepoCmd = &cobra.Command{
@@ -1430,6 +1431,10 @@ func renderFileReferences(
 		submatches := re.FindStringSubmatch(match)
 		addedIndentation := submatches[indentIndex]
 		key := submatches[keyIndex]
+		if strings.HasPrefix(key, ignoreKeyForFileEmbedding) {
+			key = ""
+		}
+
 		filePath := submatches[filePathIndex]
 		if len(filePath) == 0 {
 			renderingErr = fmt.Errorf("no file path found in file reference '%s'", match)
