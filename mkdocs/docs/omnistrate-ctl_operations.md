@@ -21,7 +21,8 @@ Manage and monitor operational health of your services, deployment cells, and in
 
 ### SEE ALSO
 
-- [omnistrate-ctl](omnistrate-ctl.md) - Manage your Omnistrate SaaS from the command line
-- [omnistrate-ctl operations deployment-cell-health](omnistrate-ctl_operations_deployment-cell-health.md) - Get deployment cell health details
-- [omnistrate-ctl operations events](omnistrate-ctl_operations_events.md) - List operational events
-- [omnistrate-ctl operations health](omnistrate-ctl_operations_health.md) - Get service health summary
+* [omnistrate-ctl](omnistrate-ctl.md)	 - Manage your Omnistrate SaaS from the command line
+* [omnistrate-ctl operations deployment-cell-health](omnistrate-ctl_operations_deployment-cell-health.md)	 - Get deployment cell health details
+* [omnistrate-ctl operations events](omnistrate-ctl_operations_events.md)	 - List operational events
+* [omnistrate-ctl operations health](omnistrate-ctl_operations_health.md)	 - Get service health summary
+

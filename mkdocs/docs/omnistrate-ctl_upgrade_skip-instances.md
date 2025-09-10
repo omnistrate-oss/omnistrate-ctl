@@ -10,7 +10,7 @@ omnistrate-ctl upgrade skip-instances [upgrade-id] [flags]
 
 ```
  Skip specific instances from an upgrade path #
-omctl upgrade skip-instances [upgrade-id] --resource-ids instance-1,instance-2
+omctl upgrade skip-instances [upgrade-id] --resource-ids instance-1,instance-2 
 ```
 
 ### Options
@@ -29,4 +29,5 @@ omctl upgrade skip-instances [upgrade-id] --resource-ids instance-1,instance-2
 
 ### SEE ALSO
 
-- [omnistrate-ctl upgrade](omnistrate-ctl_upgrade.md) - Upgrade Instance Deployments to a newer or older version
+* [omnistrate-ctl upgrade](omnistrate-ctl_upgrade.md)	 - Upgrade Instance Deployments to a newer or older version
+

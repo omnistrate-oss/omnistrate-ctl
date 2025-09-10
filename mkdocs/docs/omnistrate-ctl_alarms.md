@@ -25,5 +25,6 @@ omnistrate-ctl alarms [operation] [flags]
 
 ### SEE ALSO
 
-- [omnistrate-ctl](omnistrate-ctl.md) - Manage your Omnistrate SaaS from the command line
-- [omnistrate-ctl alarms notification-channel](omnistrate-ctl_alarms_notification-channel.md) - Manage notification channels
+* [omnistrate-ctl](omnistrate-ctl.md)	 - Manage your Omnistrate SaaS from the command line
+* [omnistrate-ctl alarms notification-channel](omnistrate-ctl_alarms_notification-channel.md)	 - Manage notification channels
+

@@ -31,4 +31,5 @@ omctl logout
 
 ### SEE ALSO
 
-- [omnistrate-ctl](omnistrate-ctl.md) - Manage your Omnistrate SaaS from the command line
+* [omnistrate-ctl](omnistrate-ctl.md)	 - Manage your Omnistrate SaaS from the command line
+

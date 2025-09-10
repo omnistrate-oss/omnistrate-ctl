@@ -26,7 +26,8 @@ omnistrate-ctl service [operation] [flags]
 
 ### SEE ALSO
 
-- [omnistrate-ctl](omnistrate-ctl.md) - Manage your Omnistrate SaaS from the command line
-- [omnistrate-ctl service delete](omnistrate-ctl_service_delete.md) - Delete a service
-- [omnistrate-ctl service describe](omnistrate-ctl_service_describe.md) - Describe a service
-- [omnistrate-ctl service list](omnistrate-ctl_service_list.md) - List services for your account
+* [omnistrate-ctl](omnistrate-ctl.md)	 - Manage your Omnistrate SaaS from the command line
+* [omnistrate-ctl service delete](omnistrate-ctl_service_delete.md)	 - Delete a service
+* [omnistrate-ctl service describe](omnistrate-ctl_service_describe.md)	 - Describe a service
+* [omnistrate-ctl service list](omnistrate-ctl_service_list.md)	 - List services for your account
+

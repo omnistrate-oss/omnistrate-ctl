@@ -33,4 +33,5 @@ omnistrate-ctl cost region [flags]
 
 ### SEE ALSO
 
-- [omnistrate-ctl cost](omnistrate-ctl_cost.md) - Manage cost analytics for your services
+* [omnistrate-ctl cost](omnistrate-ctl_cost.md)	 - Manage cost analytics for your services
+

@@ -37,4 +37,5 @@ omctl environment describe --service-id=[service-id] --environment-id=[environme
 
 ### SEE ALSO
 
-- [omnistrate-ctl environment](omnistrate-ctl_environment.md) - Manage Service Environments for your service
+* [omnistrate-ctl environment](omnistrate-ctl_environment.md)	 - Manage Service Environments for your service
+

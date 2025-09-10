@@ -33,4 +33,5 @@ omctl services-orchestration create --dsl-file /path/to/dsl.yaml
 
 ### SEE ALSO
 
-- [omnistrate-ctl services-orchestration](omnistrate-ctl_services-orchestration.md) - Manage Services Orchestration Deployments across services
+* [omnistrate-ctl services-orchestration](omnistrate-ctl_services-orchestration.md)	 - Manage Services Orchestration Deployments across services
+

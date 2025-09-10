@@ -27,4 +27,5 @@ omnistrate-ctl deployment-cell list [flags]
 
 ### SEE ALSO
 
-- [omnistrate-ctl deployment-cell](omnistrate-ctl_deployment-cell.md) - Manage Deployment Cells
+* [omnistrate-ctl deployment-cell](omnistrate-ctl_deployment-cell.md)	 - Manage Deployment Cells
+

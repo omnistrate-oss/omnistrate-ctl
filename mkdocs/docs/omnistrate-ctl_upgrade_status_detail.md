@@ -28,4 +28,5 @@ omctl upgrade status detail [upgrade-id]
 
 ### SEE ALSO
 
-- [omnistrate-ctl upgrade status](omnistrate-ctl_upgrade_status.md) - Get Upgrade status
+* [omnistrate-ctl upgrade status](omnistrate-ctl_upgrade_status.md)	 - Get Upgrade status
+

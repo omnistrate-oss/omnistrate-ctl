@@ -38,4 +38,5 @@ omctl deployment-cell update-kubeconfig deployment-cell-id-123 --kubeconfig ~/.k
 
 ### SEE ALSO
 
-- [omnistrate-ctl deployment-cell](omnistrate-ctl_deployment-cell.md) - Manage Deployment Cells
+* [omnistrate-ctl deployment-cell](omnistrate-ctl_deployment-cell.md)	 - Manage Deployment Cells
+

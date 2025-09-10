@@ -26,8 +26,9 @@ omnistrate-ctl cost [operation] [flags]
 
 ### SEE ALSO
 
-- [omnistrate-ctl](omnistrate-ctl.md) - Manage your Omnistrate SaaS from the command line
-- [omnistrate-ctl cost cloud-provider](omnistrate-ctl_cost_cloud-provider.md) - Get cost breakdown by cloud provider
-- [omnistrate-ctl cost deployment-cell](omnistrate-ctl_cost_deployment-cell.md) - Get cost breakdown by deployment cell
-- [omnistrate-ctl cost region](omnistrate-ctl_cost_region.md) - Get cost breakdown by region
-- [omnistrate-ctl cost user](omnistrate-ctl_cost_user.md) - Get cost breakdown by user
+* [omnistrate-ctl](omnistrate-ctl.md)	 - Manage your Omnistrate SaaS from the command line
+* [omnistrate-ctl cost cloud-provider](omnistrate-ctl_cost_cloud-provider.md)	 - Get cost breakdown by cloud provider
+* [omnistrate-ctl cost deployment-cell](omnistrate-ctl_cost_deployment-cell.md)	 - Get cost breakdown by deployment cell
+* [omnistrate-ctl cost region](omnistrate-ctl_cost_region.md)	 - Get cost breakdown by region
+* [omnistrate-ctl cost user](omnistrate-ctl_cost_user.md)	 - Get cost breakdown by user
+
