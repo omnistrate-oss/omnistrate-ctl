@@ -27,7 +27,7 @@ func init() {
 
 func getWorkflowEvents(cmd *cobra.Command, args []string) error {
 	ctx := cmd.Context()
-	
+
 	workflowID := args[0]
 	serviceID, _ := cmd.Flags().GetString("service-id")
 	environmentID, _ := cmd.Flags().GetString("environment-id")

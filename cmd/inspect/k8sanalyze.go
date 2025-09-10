@@ -6,8 +6,8 @@ import (
 
 // Cmd is the main inspect command
 var Cmd = &cobra.Command{
-	Use:          "inspect [instance-id]",
-	Short:        "Interactive TUI to inspect Kubernetes resources",
+	Use:   "inspect [instance-id]",
+	Short: "Interactive TUI to inspect Kubernetes resources",
 	Long: `This command provides an interactive Terminal UI to inspect resources in a Kubernetes namespace.
 	
 The command connects to a Kubernetes cluster using your kubeconfig file and displays resources 

@@ -144,10 +144,10 @@ func (ls *LogsService) BuildLogStreams(instance *openapiclientfleet.ResourceInst
 			if !ok || podName == "" {
 				continue
 			}
-			logsURL := fmt.Sprintf("wss://%s/logs?username=%s&password=%s&podName=%s&instanceId=%s", 
+			logsURL := fmt.Sprintf("wss://%s/logs?username=%s&password=%s&podName=%s&instanceId=%s",
 				logsConfig.BaseURL, logsConfig.Username, logsConfig.Password, podName, instanceID)
 			logStreams = append(logStreams, LogsStream{
-				PodName: podName, 
+				PodName: podName,
 				LogsURL: logsURL,
 			})
 		}

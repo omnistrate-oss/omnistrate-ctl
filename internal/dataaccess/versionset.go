@@ -150,7 +150,7 @@ func UpdateVersionSetName(ctx context.Context, token, serviceID, productTierID, 
 
 	apiClient := getV1Client()
 	updateRequest := openapiclient.NewUpdateTierVersionSetRequest2(newName)
-	
+
 	res, r, err := apiClient.TierVersionSetApiAPI.TierVersionSetApiUpdateTierVersionSet(
 		ctxWithToken,
 		serviceID,

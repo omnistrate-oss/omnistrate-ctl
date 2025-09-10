@@ -6,9 +6,9 @@ import (
 
 // InspectWorkloadItem represents a workload (StatefulSet or Deployment)
 type InspectWorkloadItem struct {
-	Type  string // StatefulSet or Deployment
-	Name  string
-	AZs   map[string][]InspectPodItem
+	Type string // StatefulSet or Deployment
+	Name string
+	AZs  map[string][]InspectPodItem
 }
 
 // InspectVMItem represents a node in the cluster
@@ -31,13 +31,13 @@ type ResourceList map[string]string
 
 // InspectPodItem represents a pod
 type InspectPodItem struct {
-	Name         string
-	Status       string
-	NodeName     string
-	Namespace    string
-	PVCs         []InspectPVCItem // PVCs attached to this pod
-	Labels       map[string]string
-	Resources    ResourceRequirements
+	Name      string
+	Status    string
+	NodeName  string
+	Namespace string
+	PVCs      []InspectPVCItem // PVCs attached to this pod
+	Labels    map[string]string
+	Resources ResourceRequirements
 }
 
 // InspectPVCItem represents a persistent volume claim
@@ -80,7 +80,7 @@ type InspectStorageClassItem struct {
 type K8sInspectClient interface {
 	// GetClusterData returns detailed information about workloads, AZs, and storage in a namespace
 	GetClusterData(ctx context.Context, namespace string) ([]InspectWorkloadItem, []InspectAZItem, []InspectStorageClassItem, error)
-	
+
 	// GetSampleData returns sample data for demonstration purposes
 	GetSampleData(instanceID string) ([]InspectWorkloadItem, []InspectAZItem, []InspectStorageClassItem)
 }

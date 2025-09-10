@@ -18,14 +18,14 @@ var listCmd = &cobra.Command{
 }
 
 type WorkflowListItem struct {
-	ID              string  `json:"id" table:"ID"`
-	Status          string  `json:"status" table:"Status"`
-	WorkflowType    string  `json:"workflowType" table:"Workflow Type"`
-	CloudProvider   string  `json:"cloudProvider" table:"Cloud Provider"`
-	StartTime       string  `json:"startTime" table:"Start Time"`
-	EndTime         string  `json:"endTime" table:"End Time"`
-	OrgName         string  `json:"orgName" table:"Organization"`
-	ServicePlanName string  `json:"servicePlanName" table:"Service Plan"`
+	ID              string `json:"id" table:"ID"`
+	Status          string `json:"status" table:"Status"`
+	WorkflowType    string `json:"workflowType" table:"Workflow Type"`
+	CloudProvider   string `json:"cloudProvider" table:"Cloud Provider"`
+	StartTime       string `json:"startTime" table:"Start Time"`
+	EndTime         string `json:"endTime" table:"End Time"`
+	OrgName         string `json:"orgName" table:"Organization"`
+	ServicePlanName string `json:"servicePlanName" table:"Service Plan"`
 }
 
 func init() {
@@ -43,7 +43,7 @@ func init() {
 
 func listWorkflows(cmd *cobra.Command, args []string) error {
 	ctx := cmd.Context()
-	
+
 	serviceID, _ := cmd.Flags().GetString("service-id")
 	environmentID, _ := cmd.Flags().GetString("environment-id")
 	instanceID, _ := cmd.Flags().GetString("instance-id")
@@ -63,11 +63,11 @@ func listWorkflows(cmd *cobra.Command, args []string) error {
 			InstanceID:    instanceID,
 			NextPageToken: nextPageToken,
 		}
-		
+
 		if pageSize != 0 {
 			opts.PageSize = &pageSize
 		}
-		
+
 		if startDateStr != "" {
 			startDate, err := time.Parse(time.RFC3339, startDateStr)
 			if err != nil {
@@ -75,7 +75,7 @@ func listWorkflows(cmd *cobra.Command, args []string) error {
 			}
 			opts.StartDate = &startDate
 		}
-		
+
 		if endDateStr != "" {
 			endDate, err := time.Parse(time.RFC3339, endDateStr)
 			if err != nil {

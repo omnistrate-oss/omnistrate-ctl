@@ -8,8 +8,8 @@ import (
 	"github.com/omnistrate-oss/omnistrate-ctl/cmd/common"
 	"github.com/omnistrate-oss/omnistrate-ctl/internal/dataaccess"
 	"github.com/omnistrate-oss/omnistrate-ctl/internal/utils"
-	"github.com/spf13/cobra"
 	openapiclientfleet "github.com/omnistrate-oss/omnistrate-sdk-go/fleet"
+	"github.com/spf13/cobra"
 )
 
 var listCmd = &cobra.Command{
@@ -57,7 +57,7 @@ func displayChannelsTable(channels []openapiclientfleet.Channel) error {
 
 	for _, channel := range channels {
 		subscription := channel.GetSubscription()
-		
+
 		// Format arrays as comma-separated strings, truncating if too long
 		eventCategories := formatStringArray(subscription.GetEventCategories(), 30)
 		eventPriorities := formatStringArray(subscription.GetEventPriorities(), 20)
@@ -82,12 +82,12 @@ func formatStringArray(arr []string, maxLength int) string {
 	if len(arr) == 0 {
 		return "-"
 	}
-	
+
 	joined := strings.Join(arr, ", ")
 	if len(joined) <= maxLength {
 		return joined
 	}
-	
+
 	// Truncate and add ellipsis
 	return joined[:maxLength-3] + "..."
 }

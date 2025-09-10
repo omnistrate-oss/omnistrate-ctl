@@ -10,9 +10,9 @@ import (
 	"github.com/omnistrate-oss/omnistrate-ctl/cmd/common"
 	"github.com/omnistrate-oss/omnistrate-ctl/internal/dataaccess"
 	"github.com/omnistrate-oss/omnistrate-ctl/internal/utils"
+	openapiclientfleet "github.com/omnistrate-oss/omnistrate-sdk-go/fleet"
 	"github.com/rivo/tview"
 	"github.com/spf13/cobra"
-	openapiclientfleet "github.com/omnistrate-oss/omnistrate-sdk-go/fleet"
 )
 
 var eventHistoryCmd = &cobra.Command{
@@ -35,7 +35,7 @@ func init() {
 
 func runEventHistory(cmd *cobra.Command, args []string) error {
 	channelID := args[0]
-	
+
 	// Validate user is currently logged in
 	token, err := common.GetTokenWithLogin()
 	if err != nil {
@@ -51,7 +51,7 @@ func runEventHistory(cmd *cobra.Command, args []string) error {
 		}
 		startTime = &t
 	}
-	
+
 	if endTimeFlag != "" {
 		t, err := time.Parse(time.RFC3339, endTimeFlag)
 		if err != nil {
@@ -104,7 +104,7 @@ func showEventHistoryTUI(events []openapiclientfleet.Event, channelID string) er
 			}
 			eventLabel = fmt.Sprintf("Event %d (%s)", i+1, idShort)
 		}
-		
+
 		eventNode := tview.NewTreeNode(eventLabel)
 		eventNode.SetReference(event)
 		eventNode.SetColor(getEventColor(event))
@@ -321,7 +321,7 @@ func formatEventBody(body interface{}) string {
 	}
 
 	content := "[yellow]Event Body[white]\n\n"
-	
+
 	jsonBytes, err := json.MarshalIndent(body, "", "  ")
 	if err == nil {
 		// Apply JSON syntax highlighting
@@ -340,7 +340,7 @@ func formatChannelResponse(response interface{}) string {
 	}
 
 	content := "[yellow]Channel Response[white]\n\n"
-	
+
 	jsonBytes, err := json.MarshalIndent(response, "", "  ")
 	if err == nil {
 		// Apply JSON syntax highlighting
