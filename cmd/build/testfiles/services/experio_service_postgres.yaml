@@ -1,6 +1,6 @@
 postgres:
   restart: always
-  image: { { $file:./pg_image } }
+  image: {{ $file:./pg_image }}
   ports:
     - 5432:5432
   env_file:
