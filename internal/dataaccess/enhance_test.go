@@ -17,7 +17,7 @@ func TestEnhanceServicePlansStructure(t *testing.T) {
 				Name: "Dev",
 				ServicePlans: []openapiclient.ServicePlan{
 					{
-						Description:           "Test Customer Hosted Plan",
+						Description:          "Test Customer Hosted Plan",
 						ModelType:            "CUSTOMER_HOSTED",
 						Name:                 "Test Plan",
 						ProductTierID:        "pt-test123",
@@ -39,7 +39,7 @@ func TestEnhanceServicePlansStructure(t *testing.T) {
 	// Mock the enhancement (since we can't actually call the APIs in tests)
 	// This simulates what the enhance function should do
 	customerHostedPlan := &service.ServiceEnvironments[0].ServicePlans[0]
-	
+
 	// Initialize AdditionalProperties
 	if customerHostedPlan.AdditionalProperties == nil {
 		customerHostedPlan.AdditionalProperties = make(map[string]interface{})

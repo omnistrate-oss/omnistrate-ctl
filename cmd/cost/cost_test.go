@@ -11,15 +11,15 @@ func TestCostCommands(t *testing.T) {
 
 	// Test that the cost command has all expected subcommands
 	expectedCommands := []string{"cloud-provider", "deployment-cell", "region", "user"}
-	
+
 	require.Equal("cost [operation] [flags]", Cmd.Use)
 	require.Contains(Cmd.Short, "Manage cost analytics")
-	
+
 	actualCommands := make([]string, 0)
 	for _, cmd := range Cmd.Commands() {
 		actualCommands = append(actualCommands, cmd.Name())
 	}
-	
+
 	for _, expected := range expectedCommands {
 		require.Contains(actualCommands, expected, "Expected command %s not found", expected)
 	}
@@ -27,7 +27,7 @@ func TestCostCommands(t *testing.T) {
 
 func TestCloudProviderCommandFlags(t *testing.T) {
 	require := require.New(t)
-	
+
 	// Test that cloud-provider command has expected flags
 	require.NotNil(cloudProviderCmd.Flag("start-date"))
 	require.NotNil(cloudProviderCmd.Flag("end-date"))
@@ -39,7 +39,7 @@ func TestCloudProviderCommandFlags(t *testing.T) {
 
 func TestDeploymentCellCommandFlags(t *testing.T) {
 	require := require.New(t)
-	
+
 	// Test that deployment-cell command has expected flags
 	require.NotNil(deploymentCellCmd.Flag("start-date"))
 	require.NotNil(deploymentCellCmd.Flag("end-date"))
@@ -56,7 +56,7 @@ func TestDeploymentCellCommandFlags(t *testing.T) {
 
 func TestRegionCommandFlags(t *testing.T) {
 	require := require.New(t)
-	
+
 	// Test that region command has expected flags
 	require.NotNil(regionCmd.Flag("start-date"))
 	require.NotNil(regionCmd.Flag("end-date"))
@@ -73,7 +73,7 @@ func TestRegionCommandFlags(t *testing.T) {
 
 func TestUserCommandFlags(t *testing.T) {
 	require := require.New(t)
-	
+
 	// Test that user command has expected flags
 	require.NotNil(userCmd.Flag("start-date"))
 	require.NotNil(userCmd.Flag("end-date"))

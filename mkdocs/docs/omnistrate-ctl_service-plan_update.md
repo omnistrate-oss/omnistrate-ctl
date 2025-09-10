@@ -41,4 +41,5 @@ omctl service-plan update --service-id=[service-id] --plan-id=[plan-id] --versio
 
 ### SEE ALSO
 
-- [omnistrate-ctl service-plan](omnistrate-ctl_service-plan.md) - Manage Service Plans for your service
+* [omnistrate-ctl service-plan](omnistrate-ctl_service-plan.md)	 - Manage Service Plans for your service
+

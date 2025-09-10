@@ -35,4 +35,5 @@ omctl secret set prod db-password secret123
 
 ### SEE ALSO
 
-- [omnistrate-ctl secret](omnistrate-ctl_secret.md) - Manage secrets
+* [omnistrate-ctl secret](omnistrate-ctl_secret.md)	 - Manage secrets
+

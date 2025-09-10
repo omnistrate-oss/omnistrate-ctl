@@ -26,7 +26,7 @@ func init() {
 
 func describeWorkflowSummary(cmd *cobra.Command, args []string) error {
 	ctx := cmd.Context()
-	
+
 	serviceID, _ := cmd.Flags().GetString("service-id")
 	environmentID, _ := cmd.Flags().GetString("environment-id")
 

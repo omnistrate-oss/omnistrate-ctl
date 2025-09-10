@@ -25,8 +25,9 @@ omnistrate-ctl secret [operation] [flags]
 
 ### SEE ALSO
 
-- [omnistrate-ctl](omnistrate-ctl.md) - Manage your Omnistrate SaaS from the command line
-- [omnistrate-ctl secret delete](omnistrate-ctl_secret_delete.md) - Delete an environment secret
-- [omnistrate-ctl secret get](omnistrate-ctl_secret_get.md) - Get an environment secret
-- [omnistrate-ctl secret list](omnistrate-ctl_secret_list.md) - List environment secrets
-- [omnistrate-ctl secret set](omnistrate-ctl_secret_set.md) - Set an environment secret
+* [omnistrate-ctl](omnistrate-ctl.md)	 - Manage your Omnistrate SaaS from the command line
+* [omnistrate-ctl secret delete](omnistrate-ctl_secret_delete.md)	 - Delete an environment secret
+* [omnistrate-ctl secret get](omnistrate-ctl_secret_get.md)	 - Get an environment secret
+* [omnistrate-ctl secret list](omnistrate-ctl_secret_list.md)	 - List environment secrets
+* [omnistrate-ctl secret set](omnistrate-ctl_secret_set.md)	 - Set an environment secret
+

@@ -244,15 +244,15 @@ func DenySubscriptionRequest(ctx context.Context, token string, serviceID, envir
 }
 
 type CreateSubscriptionOnBehalfOptions struct {
-	ProductTierID                          string
-	OnBehalfOfCustomerUserID               string
-	AllowCreatesWhenPaymentNotConfigured   *bool
-	BillingProvider                        string
-	CustomPrice                            *bool
-	CustomPricePerUnit                     map[string]interface{}
-	ExternalPayerID                        string
-	MaxNumberOfInstances                   *int64
-	PriceEffectiveDate                     string
+	ProductTierID                        string
+	OnBehalfOfCustomerUserID             string
+	AllowCreatesWhenPaymentNotConfigured *bool
+	BillingProvider                      string
+	CustomPrice                          *bool
+	CustomPricePerUnit                   map[string]interface{}
+	ExternalPayerID                      string
+	MaxNumberOfInstances                 *int64
+	PriceEffectiveDate                   string
 }
 
 func CreateSubscriptionOnBehalf(ctx context.Context, token string, serviceID, environmentID string, opts *CreateSubscriptionOnBehalfOptions) (resp *openapiclientfleet.FleetCreateSubscriptionOnBehalfOfCustomerResult, err error) {

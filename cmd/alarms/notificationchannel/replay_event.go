@@ -18,7 +18,7 @@ var replayEventCmd = &cobra.Command{
 
 func runReplayEvent(cmd *cobra.Command, args []string) error {
 	eventID := args[0]
-	
+
 	// Validate user is currently logged in
 	token, err := common.GetTokenWithLogin()
 	if err != nil {

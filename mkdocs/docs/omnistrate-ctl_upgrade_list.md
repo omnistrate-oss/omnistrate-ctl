@@ -33,4 +33,5 @@ omnistrate-ctl upgrade list [flags]
 
 ### SEE ALSO
 
-- [omnistrate-ctl upgrade](omnistrate-ctl_upgrade.md) - Upgrade Instance Deployments to a newer or older version
+* [omnistrate-ctl upgrade](omnistrate-ctl_upgrade.md)	 - Upgrade Instance Deployments to a newer or older version
+

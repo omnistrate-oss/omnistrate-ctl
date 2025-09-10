@@ -27,4 +27,5 @@ omnistrate-ctl operations health [flags]
 
 ### SEE ALSO
 
-- [omnistrate-ctl operations](omnistrate-ctl_operations.md) - Operations and health monitoring commands
+* [omnistrate-ctl operations](omnistrate-ctl_operations.md)	 - Operations and health monitoring commands
+

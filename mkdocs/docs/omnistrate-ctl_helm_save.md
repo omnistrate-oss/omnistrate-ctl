@@ -36,4 +36,5 @@ omctl helm save redis --repo-url=https://charts.bitnami.com/bitnami --version=20
 
 ### SEE ALSO
 
-- [omnistrate-ctl helm](omnistrate-ctl_helm.md) - Manage Helm Charts for your service
+* [omnistrate-ctl helm](omnistrate-ctl_helm.md)	 - Manage Helm Charts for your service
+

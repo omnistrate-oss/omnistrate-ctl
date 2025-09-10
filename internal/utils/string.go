@@ -54,17 +54,17 @@ func ParseCommaSeparatedList(input string) []string {
 	if strings.TrimSpace(input) == "" {
 		return []string{}
 	}
-	
+
 	parts := strings.Split(input, ",")
 	result := make([]string, 0, len(parts))
-	
+
 	for _, part := range parts {
 		trimmed := strings.TrimSpace(part)
 		if trimmed != "" {
 			result = append(result, trimmed)
 		}
 	}
-	
+
 	return result
 }
 

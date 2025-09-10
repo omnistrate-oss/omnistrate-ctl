@@ -13,7 +13,7 @@ omnistrate-ctl service-plan enable-feature [service-name] [plan-name] [flags]
 ### Examples
 
 ```
-# Enable service plan feature
+# Enable service plan feature 
 omctl service-plan enable-feature [service-name] [plan-name] --feature [feature-name] --feature-configuration [feature-configuration]
 
 # Enable service plan feature by ID instead of name and configure using file
@@ -41,4 +41,5 @@ omctl service-plan enable-feature --service-id [service-id] --plan-id [plan-id] 
 
 ### SEE ALSO
 
-- [omnistrate-ctl service-plan](omnistrate-ctl_service-plan.md) - Manage Service Plans for your service
+* [omnistrate-ctl service-plan](omnistrate-ctl_service-plan.md)	 - Manage Service Plans for your service
+

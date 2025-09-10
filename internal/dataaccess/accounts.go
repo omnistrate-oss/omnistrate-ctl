@@ -4,30 +4,30 @@ import (
 	"context"
 	"strings"
 
-	openapiclient "github.com/omnistrate-oss/omnistrate-sdk-go/v1"
 	openapiclientfleet "github.com/omnistrate-oss/omnistrate-sdk-go/fleet"
+	openapiclient "github.com/omnistrate-oss/omnistrate-sdk-go/v1"
 )
 
 // AccountsByCloudProviderAndPlan holds account configuration information grouped by cloud provider and plan
 type AccountsByCloudProviderAndPlan struct {
-	CloudProvider string                                           `json:"cloudProvider"`
-	Plans         []PlanWithAccounts                               `json:"plans"`
+	CloudProvider string             `json:"cloudProvider"`
+	Plans         []PlanWithAccounts `json:"plans"`
 }
 
 type PlanWithAccounts struct {
-	PlanName             string                                           `json:"planName"`
-	PlanID               string                                           `json:"planID"`
-	ModelType            string                                           `json:"modelType"`
-	ServiceModelId       string                                           `json:"serviceModelId,omitempty"`
-	AccountConfigIds     []string                                         `json:"accountConfigIds,omitempty"`
-	ActiveAccountConfigIds map[string]interface{}                        `json:"activeAccountConfigIds,omitempty"`
-	Accounts             []openapiclientfleet.FleetDescribeAccountConfigResult `json:"accounts"`
+	PlanName               string                                                `json:"planName"`
+	PlanID                 string                                                `json:"planID"`
+	ModelType              string                                                `json:"modelType"`
+	ServiceModelId         string                                                `json:"serviceModelId,omitempty"`
+	AccountConfigIds       []string                                              `json:"accountConfigIds,omitempty"`
+	ActiveAccountConfigIds map[string]interface{}                                `json:"activeAccountConfigIds,omitempty"`
+	Accounts               []openapiclientfleet.FleetDescribeAccountConfigResult `json:"accounts"`
 }
 
 type ServiceAccountInfo struct {
-	ServiceID           string                                `json:"serviceId"`
-	ServiceName         string                                `json:"serviceName"`
-	AccountsByProvider  []AccountsByCloudProviderAndPlan      `json:"accountsByProvider"`
+	ServiceID          string                           `json:"serviceId"`
+	ServiceName        string                           `json:"serviceName"`
+	AccountsByProvider []AccountsByCloudProviderAndPlan `json:"accountsByProvider"`
 }
 
 func ListAccountConfigs(ctx context.Context, token, cloudProviderName string) (*openapiclientfleet.ListAccountConfigsResult, error) {
@@ -62,7 +62,7 @@ func ListAllAccountConfigs(ctx context.Context, token string) (*openapiclientfle
 	}
 
 	cloudProviders := []string{"aws", "gcp", "azure"}
-	
+
 	for _, provider := range cloudProviders {
 		request := openapiclientfleet.FleetListAccountConfigsRequest2{
 			CloudProviderName: provider,
@@ -122,7 +122,6 @@ func ListServicePlans(ctx context.Context, token, serviceID, serviceEnvironmentI
 	r.Body.Close()
 	return resp, nil
 }
-
 
 // GetServiceAccountInfo gets account information for Customer hosted plans only, grouped by cloud provider and plan
 func GetServiceAccountInfo(ctx context.Context, token string, service *openapiclient.DescribeServiceResult) (*ServiceAccountInfo, error) {
@@ -291,7 +290,7 @@ func EnhanceServicePlansWithAccountInfo(ctx context.Context, token string, servi
 			service.ServiceEnvironments[envIdx].ServicePlans[planIdx].AdditionalProperties["accountConfigIds"] = detailedPlan.AccountConfigIds
 			service.ServiceEnvironments[envIdx].ServicePlans[planIdx].AdditionalProperties["activeAccountConfigIds"] = detailedPlan.ActiveAccountConfigIds
 			service.ServiceEnvironments[envIdx].ServicePlans[planIdx].AdditionalProperties["accountsByProvider"] = accountsByProvider
-			
+
 			// Add additional detailed plan information that might be useful
 			service.ServiceEnvironments[envIdx].ServicePlans[planIdx].AdditionalProperties["productTierKey"] = detailedPlan.ProductTierKey
 			service.ServiceEnvironments[envIdx].ServicePlans[planIdx].AdditionalProperties["serviceApiId"] = detailedPlan.ServiceApiId
@@ -321,7 +320,7 @@ func getCloudProviderName(cloudProviderID string) string {
 	case "aws":
 		return "AWS"
 	case "gcp":
-		return "GCP"  
+		return "GCP"
 	case "azure":
 		return "Azure"
 	default:

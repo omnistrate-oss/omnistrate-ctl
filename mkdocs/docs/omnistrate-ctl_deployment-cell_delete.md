@@ -28,4 +28,5 @@ omnistrate-ctl deployment-cell delete [flags]
 
 ### SEE ALSO
 
-- [omnistrate-ctl deployment-cell](omnistrate-ctl_deployment-cell.md) - Manage Deployment Cells
+* [omnistrate-ctl deployment-cell](omnistrate-ctl_deployment-cell.md)	 - Manage Deployment Cells
+

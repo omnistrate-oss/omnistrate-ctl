@@ -25,4 +25,5 @@ omnistrate-ctl alarms notification-channel replay-event [event-id] [flags]
 
 ### SEE ALSO
 
-- [omnistrate-ctl alarms notification-channel](omnistrate-ctl_alarms_notification-channel.md) - Manage notification channels
+* [omnistrate-ctl alarms notification-channel](omnistrate-ctl_alarms_notification-channel.md)	 - Manage notification channels
+

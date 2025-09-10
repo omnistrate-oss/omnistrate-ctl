@@ -34,4 +34,5 @@ omnistrate-ctl audit list [flags]
 
 ### SEE ALSO
 
-- [omnistrate-ctl audit](omnistrate-ctl_audit.md) - Audit events and logging management
+* [omnistrate-ctl audit](omnistrate-ctl_audit.md)	 - Audit events and logging management
+

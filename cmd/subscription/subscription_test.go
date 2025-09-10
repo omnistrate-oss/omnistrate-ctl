@@ -17,7 +17,7 @@ func TestSubscriptionCommands(t *testing.T) {
 		"approve-request", "deny-request", "create-on-behalf",
 		"suspend", "resume", "terminate",
 	}
-	
+
 	for _, expectedCmd := range expectedCommands {
 		found := false
 		for _, cmd := range Cmd.Commands() {

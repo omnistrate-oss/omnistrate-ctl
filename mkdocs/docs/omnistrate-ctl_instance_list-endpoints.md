@@ -32,4 +32,5 @@ omctl instance list-endpoints instance-abcd1234
 
 ### SEE ALSO
 
-- [omnistrate-ctl instance](omnistrate-ctl_instance.md) - Manage Instance Deployments for your service
+* [omnistrate-ctl instance](omnistrate-ctl_instance.md)	 - Manage Instance Deployments for your service
+
