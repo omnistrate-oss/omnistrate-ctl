@@ -156,10 +156,10 @@ func runBuild(cmd *cobra.Command, args []string) error {
 	// Check if spec-type was explicitly provided
 	specTypeExplicit := cmd.Flags().Changed("spec-type")
 	if !specTypeExplicit {
-		if file == ComposeFileName {
-			specType = DockerComposeSpecType
-		} else {
+		if file == ServicePlanSpecType {
 			specType = ServicePlanSpecType
+		} else {
+			specType = DockerComposeSpecType
 		}
 	}
 
