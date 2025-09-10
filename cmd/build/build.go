@@ -265,7 +265,7 @@ func runBuild(cmd *cobra.Command, args []string) error {
 
 	// Load the compose file
 	var fileData []byte
-	if file != "" {
+	if file != "" && imageUrl == "" {
 		if _, err := os.Stat(file); os.IsNotExist(err) {
 			if fileExplicit {
 				utils.PrintError(err)
