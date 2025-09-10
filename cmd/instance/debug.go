@@ -23,13 +23,18 @@ import (
 // Global variables for managing right panel type
 var currentRightPanelType string
 
+var (
+	outputFlag string
+)
+
 var debugCmd = &cobra.Command{
-	Use:     "debug [instance-id]",
-	Short:   "Debug instance resources",
-	Long:    `Debug instance resources with an interactive TUI showing helm charts, terraform files, and logs.`,
-	Args:    cobra.ExactArgs(1),
-	RunE:    runDebug,
-	Example: `  omnistrate-ctl instance debug <instance-id>`,
+	Use:   "debug [instance-id]",
+	Short: "Debug instance resources",
+	Long:  `Debug instance resources with an interactive TUI showing helm charts, terraform files, and logs. Use --output=json for non-interactive JSON output.`,
+	Args:  cobra.ExactArgs(1),
+	RunE:  runDebug,
+	Example: `  omnistrate-ctl instance debug <instance-id>
+  omnistrate-ctl instance debug <instance-id> --output=json`,
 }
 
 type DebugData struct {
@@ -74,8 +79,14 @@ type TerraformData struct {
 	LiveLogs []dataaccess.LogsStream `json:"liveLogs"`
 }
 
-func runDebug(_ *cobra.Command, args []string) error {
+func runDebug(cmd *cobra.Command, args []string) error {
 	instanceID := args[0]
+
+	// Get output flag
+	outputFlag, err := cmd.Flags().GetString("output")
+	if err != nil {
+		return fmt.Errorf("failed to get output flag: %w", err)
+	}
 
 	token, err := common.GetTokenWithLogin()
 	if err != nil {
@@ -129,8 +140,20 @@ func runDebug(_ *cobra.Command, args []string) error {
 		}
 	}
 
-	// Launch TUI
-	return launchDebugTUI(data)
+	// Handle output format
+	switch outputFlag {
+	case "json":
+		// Output JSON and return (non-interactive)
+		jsonData, err := json.MarshalIndent(data, "", "  ")
+		if err != nil {
+			return fmt.Errorf("failed to marshal debug data to JSON: %w", err)
+		}
+		fmt.Println(string(jsonData))
+		return nil
+	default:
+		// Launch interactive TUI (default behavior)
+		return launchDebugTUI(data)
+	}
 }
 
 // processResourceByType identifies the resource type and processes it accordingly
@@ -2076,6 +2099,8 @@ func showLogsBrowser(app *tview.Application, terraformData *TerraformData, mainF
 }
 
 func init() {
+	// Add output flag
+	debugCmd.Flags().StringVarP(&outputFlag, "output", "o", "interactive", "Output format (interactive|json)")
 	// Command will be added by the parent instance command
 }
 

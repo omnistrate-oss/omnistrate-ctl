@@ -18,8 +18,6 @@ var config = &ophis.Config{
 			"logout",
 			"services-orchestration",
 			"secret",
-			"inspect",
-			"debug",
 			"disable-feature",
 			"enable-feature",
 		})),
