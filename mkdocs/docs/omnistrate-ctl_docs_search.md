@@ -24,7 +24,7 @@ omctl docs search "service plan deployment"
 
 ```
   -h, --help            help for search
-  -l, --limit int       Maximum number of results to return (default 10)
+  -l, --limit int       Maximum number of results to return (default 100)
   -o, --output string   Output format (table|json) (default "table")
 ```
 
@@ -36,4 +36,5 @@ omctl docs search "service plan deployment"
 
 ### SEE ALSO
 
-- [omnistrate-ctl docs](omnistrate-ctl_docs.md) - Search and access documentation
+* [omnistrate-ctl docs](omnistrate-ctl_docs.md)	 - Search and access documentation
+
