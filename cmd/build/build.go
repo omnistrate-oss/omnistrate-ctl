@@ -148,11 +148,6 @@ func runBuild(cmd *cobra.Command, args []string) error {
 	}
 	// Check if file was explicitly provided
 	fileExplicit := cmd.Flags().Changed("file")
-	if fileExplicit {
-		fmt.Printf("Using user-provided file: %s\n", file)
-	} else {
-		fmt.Printf("Using default file: %s\n", file)
-	}
 
 	specType, err := cmd.Flags().GetString("spec-type")
 	if err != nil {
