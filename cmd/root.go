@@ -10,16 +10,20 @@ import (
 	"github.com/njayp/ophis"
 	"github.com/omnistrate-oss/omnistrate-ctl/cmd/account"
 	"github.com/omnistrate-oss/omnistrate-ctl/cmd/alarms"
+	"github.com/omnistrate-oss/omnistrate-ctl/cmd/audit"
 	"github.com/omnistrate-oss/omnistrate-ctl/cmd/auth/login"
 	"github.com/omnistrate-oss/omnistrate-ctl/cmd/auth/logout"
 	"github.com/omnistrate-oss/omnistrate-ctl/cmd/build"
+	"github.com/omnistrate-oss/omnistrate-ctl/cmd/cost"
 	"github.com/omnistrate-oss/omnistrate-ctl/cmd/customnetwork"
 	"github.com/omnistrate-oss/omnistrate-ctl/cmd/deploymentcell"
+	"github.com/omnistrate-oss/omnistrate-ctl/cmd/docs"
 	"github.com/omnistrate-oss/omnistrate-ctl/cmd/domain"
 	"github.com/omnistrate-oss/omnistrate-ctl/cmd/environment"
 	"github.com/omnistrate-oss/omnistrate-ctl/cmd/helm"
 	"github.com/omnistrate-oss/omnistrate-ctl/cmd/inspect"
 	"github.com/omnistrate-oss/omnistrate-ctl/cmd/instance"
+	"github.com/omnistrate-oss/omnistrate-ctl/cmd/operations"
 	"github.com/omnistrate-oss/omnistrate-ctl/cmd/secret"
 	"github.com/omnistrate-oss/omnistrate-ctl/cmd/service"
 	"github.com/omnistrate-oss/omnistrate-ctl/cmd/serviceplan"
@@ -27,9 +31,6 @@ import (
 	"github.com/omnistrate-oss/omnistrate-ctl/cmd/subscription"
 	"github.com/omnistrate-oss/omnistrate-ctl/cmd/upgrade"
 	"github.com/omnistrate-oss/omnistrate-ctl/cmd/workflow"
-	"github.com/omnistrate-oss/omnistrate-ctl/cmd/cost"
-	"github.com/omnistrate-oss/omnistrate-ctl/cmd/operations"
-	"github.com/omnistrate-oss/omnistrate-ctl/cmd/audit"
 	"github.com/omnistrate-oss/omnistrate-ctl/internal/config"
 	"github.com/omnistrate-oss/omnistrate-ctl/internal/utils"
 	"github.com/spf13/cobra"
@@ -119,6 +120,7 @@ func init() {
 	RootCmd.AddCommand(service.Cmd)
 	RootCmd.AddCommand(account.Cmd)
 	RootCmd.AddCommand(alarms.Cmd)
+	RootCmd.AddCommand(docs.Cmd)
 	RootCmd.AddCommand(domain.Cmd)
 	RootCmd.AddCommand(upgrade.Cmd)
 	RootCmd.AddCommand(helm.Cmd)
