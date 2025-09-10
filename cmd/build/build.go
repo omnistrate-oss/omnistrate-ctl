@@ -274,7 +274,7 @@ func runBuild(cmd *cobra.Command, args []string) error {
 				// If the file doesn't exist and wasn't explicitly provided, we check if there is a spec file
 				file = PlanSpecFileName
 				if _, err := os.Stat(file); os.IsNotExist(err) {
-					utils.PrintError(err)
+					utils.PrintError(errors.New("no compose or spec file found, please provide a valid file using --file flag"))
 					return err
 				}
 			}
