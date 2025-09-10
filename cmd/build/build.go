@@ -29,11 +29,9 @@ var (
 )
 
 const (
-	buildExample = `# Build service from image in dev environment
-omctl build --image docker.io/mysql:5.7 --product-name MySQL --env-var "MYSQL_ROOT_PASSWORD=password" --env-var "MYSQL_DATABASE=mydb"
-
-# Build service with private image in dev environment
-omctl build --image docker.io/namespace/my-image:v1.2 --product-name "My Service" --image-registry-auth-username username --image-registry-auth-password password --env-var KEY1:VALUE1 --env-var KEY2:VALUE2
+	buildExample = `
+# Build service in dev environment
+omctl build --product-name "My Service"
 
 # Build service with compose spec in dev environment
 omctl build --file compose.yaml --product-name "My Service"
@@ -61,6 +59,12 @@ omctl build --spec-type ServicePlanSpec --file spec.yaml --product-name "My Serv
 
 # Build service with service specification for Helm, Operator or Kustomize as preferred
 omctl build --spec-type ServicePlanSpec --file spec.yaml --product-name "My Service" --release-as-preferred --release-description "v1.0.0-alpha"
+
+# Build service from image in dev environment
+omctl build --image docker.io/mysql:5.7 --product-name MySQL --env-var "MYSQL_ROOT_PASSWORD=password" --env-var "MYSQL_DATABASE=mydb"
+
+# Build service with private image in dev environment
+omctl build --image docker.io/namespace/my-image:v1.2 --product-name "My Service" --image-registry-auth-username username --image-registry-auth-password password --env-var KEY1:VALUE1 --env-var KEY2:VALUE2
 `
 
 	buildLong = `Build command can be used to build a service from image, docker compose, and service plan spec. 
