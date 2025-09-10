@@ -101,7 +101,7 @@ func TestGetLlmsTxtURL(t *testing.T) {
 }
 
 func TestGetLlmsTxtURLCustom(t *testing.T) {
-	t.Setenv(llmsTxtUrl, "https://custom.example.com/llms.txt")
+	t.Setenv(omnistrateDocsDomain, "custom.example.com")
 	url := GetLlmsTxtURL()
 	assert.Equal(t, "https://custom.example.com/llms.txt", url)
 }
