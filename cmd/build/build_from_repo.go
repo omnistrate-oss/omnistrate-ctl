@@ -36,7 +36,7 @@ omctl build-from-repo
 omctl build-from-repo --env-var POSTGRES_PASSWORD=default --deployment-type byoa --aws-account-id 442426883376
 
 # Build service from an existing compose spec in the repository
-omctl build-from-repo --file omnistrate-compose.yaml
+omctl build-from-repo --file compose.yaml
 
 # Build service with a custom service name
 omctl build-from-repo --product-name my-custom-service
@@ -61,7 +61,6 @@ set GH_PAT=ghp_xxxxxxxx
 omctl build-from-repo
 "`
 	GitHubPATGenerateURL = "https://github.com/settings/tokens"
-	ComposeFileName      = "compose.yaml"
 	DefaultProdEnvName   = "Production"
 	defaultServiceName   = "default" // Default service name when no compose spec exists in the repo. It won't show up in the resulting image or compose spec. Only intermediate use.
 )
