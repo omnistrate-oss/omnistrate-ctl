@@ -20,7 +20,7 @@ omctl instance version-upgrade instance-abcd1234 --upgrade-configuration-overrid
 omctl instance version-upgrade instance-abcd1234 --upgrade-configuration-override /path/to/config.yaml --target-tier-version 3.0
 
 # [HELM ONLY] Use generate-configuration with a target tier version to generate a default deployment instance configuration file based on the current helm values as well as the proposed helm values for the target tier version
-omctl instance version-upgrade instance-abcd1234 --existing-configuration existing-config.yaml --proposed-configuration proposed-config.yaml --generate-configuration --target-tier-version 3.0 
+omctl instance version-upgrade instance-abcd1234 --existing-configuration existing-config.yaml --proposed-configuration proposed-config.yaml --generate-configuration --target-tier-version 3.0
 
 # Example upgrade configuration override YAML file:
 # resource-key-1:
@@ -54,5 +54,4 @@ omctl instance version-upgrade instance-abcd1234 --existing-configuration existi
 
 ### SEE ALSO
 
-* [omnistrate-ctl instance](omnistrate-ctl_instance.md)	 - Manage Instance Deployments for your service
-
+- [omnistrate-ctl instance](omnistrate-ctl_instance.md) - Manage Instance Deployments for your service

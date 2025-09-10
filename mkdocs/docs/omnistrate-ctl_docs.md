@@ -26,6 +26,5 @@ omnistrate-ctl docs [operation] [flags]
 
 ### SEE ALSO
 
-* [omnistrate-ctl](omnistrate-ctl.md)	 - Manage your Omnistrate SaaS from the command line
-* [omnistrate-ctl docs search](omnistrate-ctl_docs_search.md)	 - Search through Omnistrate documentation
-
+- [omnistrate-ctl](omnistrate-ctl.md) - Manage your Omnistrate SaaS from the command line
+- [omnistrate-ctl docs search](omnistrate-ctl_docs_search.md) - Search through Omnistrate documentation

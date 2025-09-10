@@ -37,5 +37,4 @@ omctl environment delete --service-id=[service-id] --environment-id=[environment
 
 ### SEE ALSO
 
-* [omnistrate-ctl environment](omnistrate-ctl_environment.md)	 - Manage Service Environments for your service
-
+- [omnistrate-ctl environment](omnistrate-ctl_environment.md) - Manage Service Environments for your service

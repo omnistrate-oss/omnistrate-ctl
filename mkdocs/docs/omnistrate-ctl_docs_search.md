@@ -36,5 +36,4 @@ omctl docs search "service plan deployment"
 
 ### SEE ALSO
 
-* [omnistrate-ctl docs](omnistrate-ctl_docs.md)	 - Search and access documentation
-
+- [omnistrate-ctl docs](omnistrate-ctl_docs.md) - Search and access documentation

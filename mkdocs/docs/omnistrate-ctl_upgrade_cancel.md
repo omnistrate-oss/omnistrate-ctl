@@ -9,8 +9,8 @@ omnistrate-ctl upgrade cancel [upgrade-id] [flags]
 ### Examples
 
 ```
- Cancelling uncompleted upgrade # 
-omctl upgrade cancel [upgrade-id] 
+ Cancelling uncompleted upgrade #
+omctl upgrade cancel [upgrade-id]
 ```
 
 ### Options
@@ -28,5 +28,4 @@ omctl upgrade cancel [upgrade-id]
 
 ### SEE ALSO
 
-* [omnistrate-ctl upgrade](omnistrate-ctl_upgrade.md)	 - Upgrade Instance Deployments to a newer or older version
-
+- [omnistrate-ctl upgrade](omnistrate-ctl_upgrade.md) - Upgrade Instance Deployments to a newer or older version

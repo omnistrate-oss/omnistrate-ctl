@@ -100,30 +100,18 @@ func runDescribe(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	// Get account information for Customer hosted plans
-	var accountInfo *dataaccess.ServiceAccountInfo
-	accountInfo, err = dataaccess.GetServiceAccountInfo(cmd.Context(), token, service)
+	// Enhance service plans with detailed account information
+	err = dataaccess.EnhanceServicePlansWithAccountInfo(cmd.Context(), token, service)
 	if err != nil {
-		// Don't fail the entire command if account info retrieval fails
+		// Don't fail the entire command if account info enhancement fails
 		// Just log a warning and continue
-		fmt.Printf("Warning: Could not retrieve account information: %v\n", err)
+		fmt.Printf("Warning: Could not enhance service plans with account information: %v\n", err)
 	}
 
 	utils.HandleSpinnerSuccess(spinner, sm, "Successfully described service")
 
-	// Create extended service description with account information
-	type ExtendedServiceDescription struct {
-		*openapiclient.DescribeServiceResult
-		CustomerHostedAccounts *dataaccess.ServiceAccountInfo `json:"customerHostedAccounts,omitempty"`
-	}
-
-	extendedResult := &ExtendedServiceDescription{
-		DescribeServiceResult:  service,
-		CustomerHostedAccounts: accountInfo,
-	}
-
 	// Print output
-	err = utils.PrintTextTableJsonOutput("json", extendedResult)
+	err = utils.PrintTextTableJsonOutput("json", service)
 	if err != nil {
 		utils.PrintError(err)
 		return err

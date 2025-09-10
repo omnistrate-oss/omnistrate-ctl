@@ -15,10 +15,13 @@ type AccountsByCloudProviderAndPlan struct {
 }
 
 type PlanWithAccounts struct {
-	PlanName     string                                           `json:"planName"`
-	PlanID       string                                           `json:"planID"`
-	ModelType    string                                           `json:"modelType"`
-	Accounts     []openapiclientfleet.FleetDescribeAccountConfigResult `json:"accounts"`
+	PlanName             string                                           `json:"planName"`
+	PlanID               string                                           `json:"planID"`
+	ModelType            string                                           `json:"modelType"`
+	ServiceModelId       string                                           `json:"serviceModelId,omitempty"`
+	AccountConfigIds     []string                                         `json:"accountConfigIds,omitempty"`
+	ActiveAccountConfigIds map[string]interface{}                        `json:"activeAccountConfigIds,omitempty"`
+	Accounts             []openapiclientfleet.FleetDescribeAccountConfigResult `json:"accounts"`
 }
 
 type ServiceAccountInfo struct {
@@ -103,6 +106,23 @@ func ListServiceModels(ctx context.Context, token, serviceID, serviceAPIID strin
 	return resp, nil
 }
 
+func ListServicePlans(ctx context.Context, token, serviceID, serviceEnvironmentID string) (*openapiclient.ListServicePlansResult, error) {
+	ctxWithToken := context.WithValue(ctx, openapiclient.ContextAccessToken, token)
+	apiClient := getV1Client()
+
+	resp, r, err := apiClient.ServicePlanApiAPI.ServicePlanApiListServicePlans(ctxWithToken, serviceID, serviceEnvironmentID).
+		SkipHasPendingChangesCheck(false).
+		Execute()
+
+	err = handleV1Error(err)
+	if err != nil {
+		return nil, err
+	}
+
+	r.Body.Close()
+	return resp, nil
+}
+
 
 // GetServiceAccountInfo gets account information for Customer hosted plans only, grouped by cloud provider and plan
 func GetServiceAccountInfo(ctx context.Context, token string, service *openapiclient.DescribeServiceResult) (*ServiceAccountInfo, error) {
@@ -112,10 +132,13 @@ func GetServiceAccountInfo(ctx context.Context, token string, service *openapicl
 		AccountsByProvider: []AccountsByCloudProviderAndPlan{},
 	}
 
-	// Get all account configs first
+	// Get all account configs first for detailed account information
 	allAccountConfigs, err := ListAllAccountConfigs(ctx, token)
 	if err != nil {
-		return nil, err
+		// Continue without detailed account info if fleet API fails
+		allAccountConfigs = &openapiclientfleet.ListAccountConfigsResult{
+			AccountConfigs: []openapiclientfleet.FleetDescribeAccountConfigResult{},
+		}
 	}
 
 	// Create a map for quick account config lookup
@@ -127,54 +150,62 @@ func GetServiceAccountInfo(ctx context.Context, token string, service *openapicl
 	// Group plans by cloud provider
 	cloudProviderPlans := make(map[string][]PlanWithAccounts)
 
-	// Process each service environment
+	// Process each service environment using the detailed service plan API
 	for _, env := range service.ServiceEnvironments {
-		// Process each service plan
-		for _, plan := range env.ServicePlans {
+		// Get detailed service plan information for this environment
+		servicePlansResult, err := ListServicePlans(ctx, token, service.Id, env.Id)
+		if err != nil {
+			// Skip this environment if we can't get detailed service plan info
+			continue
+		}
+
+		// Process each detailed service plan
+		for _, detailedPlan := range servicePlansResult.ServicePlans {
 			// Only process Customer hosted plans (skip Omnistrate hosted and BYOA)
-			if !isCustomerHosted(plan.ModelType) {
+			if !isCustomerHosted(detailedPlan.ModelType) {
 				continue
 			}
 
-			// Get product tier details to find service model ID
-			productTier, err := DescribeProductTier(ctx, token, service.Id, plan.ProductTierID)
-			if err != nil {
-				// Skip this plan if we can't get product tier details
-				continue
-			}
-
-			// Get service model details to find account configs
-			serviceModel, err := DescribeServiceModel(ctx, token, service.Id, productTier.ServiceModelId)
-			if err != nil {
-				// Skip this plan if we can't get service model details
-				continue
-			}
-
-			// Get account configs for this service model
+			// Get account details for this plan
 			var planAccounts []openapiclientfleet.FleetDescribeAccountConfigResult
-			for _, accountID := range serviceModel.AccountConfigIds {
+			for _, accountID := range detailedPlan.AccountConfigIds {
 				if account, exists := accountConfigMap[accountID]; exists {
 					planAccounts = append(planAccounts, account)
 				}
 			}
 
-			// Group accounts by cloud provider
-			cloudProviderAccountsMap := make(map[string][]openapiclientfleet.FleetDescribeAccountConfigResult)
-			for _, account := range planAccounts {
-				provider := getCloudProviderName(account.CloudProviderId)
-				cloudProviderAccountsMap[provider] = append(cloudProviderAccountsMap[provider], account)
+			// Create plan with detailed information from the service plan API
+			planWithAccounts := PlanWithAccounts{
+				PlanName:               detailedPlan.ProductTierName,
+				PlanID:                 detailedPlan.ProductTierId,
+				ModelType:              detailedPlan.ModelType,
+				ServiceModelId:         detailedPlan.ServiceModelId,
+				AccountConfigIds:       detailedPlan.AccountConfigIds,
+				ActiveAccountConfigIds: detailedPlan.ActiveAccountConfigIds,
+				Accounts:               planAccounts,
 			}
 
-			// Add plan to each cloud provider group
-			for provider, accounts := range cloudProviderAccountsMap {
-				planWithAccounts := PlanWithAccounts{
-					PlanName:  plan.Name,
-					PlanID:    plan.ProductTierID,
-					ModelType: plan.ModelType,
-					Accounts:  accounts,
+			// If no detailed account information is available, group by active account configs
+			if len(planAccounts) == 0 && len(detailedPlan.AccountConfigIds) > 0 {
+				// Plan has account config IDs but we couldn't get detailed info
+				cloudProviderPlans["Account Details Unavailable"] = append(cloudProviderPlans["Account Details Unavailable"], planWithAccounts)
+			} else if len(planAccounts) == 0 {
+				// Plan has no account configs at all
+				cloudProviderPlans["No Accounts Configured"] = append(cloudProviderPlans["No Accounts Configured"], planWithAccounts)
+			} else {
+				// Group accounts by cloud provider
+				cloudProviderAccountsMap := make(map[string][]openapiclientfleet.FleetDescribeAccountConfigResult)
+				for _, account := range planAccounts {
+					provider := getCloudProviderName(account.CloudProviderId)
+					cloudProviderAccountsMap[provider] = append(cloudProviderAccountsMap[provider], account)
 				}
 
-				cloudProviderPlans[provider] = append(cloudProviderPlans[provider], planWithAccounts)
+				// Add plan to each cloud provider group
+				for provider, accounts := range cloudProviderAccountsMap {
+					planCopy := planWithAccounts
+					planCopy.Accounts = accounts
+					cloudProviderPlans[provider] = append(cloudProviderPlans[provider], planCopy)
+				}
 			}
 		}
 	}
@@ -190,10 +221,95 @@ func GetServiceAccountInfo(ctx context.Context, token string, service *openapicl
 	return result, nil
 }
 
+// EnhanceServicePlansWithAccountInfo enhances the existing service plans with detailed account information
+func EnhanceServicePlansWithAccountInfo(ctx context.Context, token string, service *openapiclient.DescribeServiceResult) error {
+	// Get all account configs first for detailed account information
+	allAccountConfigs, err := ListAllAccountConfigs(ctx, token)
+	if err != nil {
+		// Continue without detailed account info if fleet API fails
+		allAccountConfigs = &openapiclientfleet.ListAccountConfigsResult{
+			AccountConfigs: []openapiclientfleet.FleetDescribeAccountConfigResult{},
+		}
+	}
+
+	// Create a map for quick account config lookup
+	accountConfigMap := make(map[string]openapiclientfleet.FleetDescribeAccountConfigResult)
+	for _, account := range allAccountConfigs.AccountConfigs {
+		accountConfigMap[account.Id] = account
+	}
+
+	// Process each service environment
+	for envIdx, env := range service.ServiceEnvironments {
+		// Get detailed service plan information for this environment
+		servicePlansResult, err := ListServicePlans(ctx, token, service.Id, env.Id)
+		if err != nil {
+			// Skip this environment if we can't get detailed service plan info
+			continue
+		}
+
+		// Create a map of detailed plans by product tier ID for quick lookup
+		detailedPlanMap := make(map[string]openapiclient.GetServicePlanResult)
+		for _, detailedPlan := range servicePlansResult.ServicePlans {
+			detailedPlanMap[detailedPlan.ProductTierId] = detailedPlan
+		}
+
+		// Enhance each existing service plan with detailed information
+		for planIdx, plan := range env.ServicePlans {
+			// Only enhance Customer hosted plans (skip Omnistrate hosted and BYOA)
+			if !isCustomerHosted(plan.ModelType) {
+				continue
+			}
+
+			// Find the corresponding detailed plan
+			detailedPlan, exists := detailedPlanMap[plan.ProductTierID]
+			if !exists {
+				continue
+			}
+
+			// Get account details for this plan
+			var planAccounts []openapiclientfleet.FleetDescribeAccountConfigResult
+			for _, accountID := range detailedPlan.AccountConfigIds {
+				if account, exists := accountConfigMap[accountID]; exists {
+					planAccounts = append(planAccounts, account)
+				}
+			}
+
+			// Group accounts by cloud provider
+			accountsByProvider := make(map[string][]openapiclientfleet.FleetDescribeAccountConfigResult)
+			for _, account := range planAccounts {
+				provider := getCloudProviderName(account.CloudProviderId)
+				accountsByProvider[provider] = append(accountsByProvider[provider], account)
+			}
+
+			// Initialize AdditionalProperties if nil
+			if service.ServiceEnvironments[envIdx].ServicePlans[planIdx].AdditionalProperties == nil {
+				service.ServiceEnvironments[envIdx].ServicePlans[planIdx].AdditionalProperties = make(map[string]interface{})
+			}
+
+			// Add enhanced information to the existing service plan
+			service.ServiceEnvironments[envIdx].ServicePlans[planIdx].AdditionalProperties["serviceModelId"] = detailedPlan.ServiceModelId
+			service.ServiceEnvironments[envIdx].ServicePlans[planIdx].AdditionalProperties["accountConfigIds"] = detailedPlan.AccountConfigIds
+			service.ServiceEnvironments[envIdx].ServicePlans[planIdx].AdditionalProperties["activeAccountConfigIds"] = detailedPlan.ActiveAccountConfigIds
+			service.ServiceEnvironments[envIdx].ServicePlans[planIdx].AdditionalProperties["accountsByProvider"] = accountsByProvider
+			
+			// Add additional detailed plan information that might be useful
+			service.ServiceEnvironments[envIdx].ServicePlans[planIdx].AdditionalProperties["productTierKey"] = detailedPlan.ProductTierKey
+			service.ServiceEnvironments[envIdx].ServicePlans[planIdx].AdditionalProperties["serviceApiId"] = detailedPlan.ServiceApiId
+			service.ServiceEnvironments[envIdx].ServicePlans[planIdx].AdditionalProperties["deploymentConfigId"] = detailedPlan.DeploymentConfigId
+			service.ServiceEnvironments[envIdx].ServicePlans[planIdx].AdditionalProperties["versionSetStatus"] = detailedPlan.VersionSetStatus
+			service.ServiceEnvironments[envIdx].ServicePlans[planIdx].AdditionalProperties["latestMajorVersion"] = detailedPlan.LatestMajorVersion
+			service.ServiceEnvironments[envIdx].ServicePlans[planIdx].AdditionalProperties["hasAccountsConfigured"] = len(detailedPlan.AccountConfigIds) > 0
+			service.ServiceEnvironments[envIdx].ServicePlans[planIdx].AdditionalProperties["accountsAvailable"] = len(planAccounts) > 0
+		}
+	}
+
+	return nil
+}
+
 // isCustomerHosted checks if a model type represents Customer hosted deployment
 func isCustomerHosted(modelType string) bool {
 	// Customer hosted plans typically have modelType that includes "Customer" or similar
-	// This may need to be adjusted based on actual values
+	// Based on the example, it can be "CUSTOMER_HOSTED"
 	modelTypeLower := strings.ToLower(modelType)
 	return strings.Contains(modelTypeLower, "customer")
 }

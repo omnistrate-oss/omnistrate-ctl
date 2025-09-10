@@ -34,5 +34,4 @@ omctl account list
 
 ### SEE ALSO
 
-* [omnistrate-ctl account](omnistrate-ctl_account.md)	 - Manage your Cloud Provider Accounts
-
+- [omnistrate-ctl account](omnistrate-ctl_account.md) - Manage your Cloud Provider Accounts

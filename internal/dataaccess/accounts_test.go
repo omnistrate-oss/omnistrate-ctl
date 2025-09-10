@@ -16,9 +16,12 @@ func TestAccountStructures(t *testing.T) {
 				CloudProvider: "AWS",
 				Plans: []PlanWithAccounts{
 					{
-						PlanName:  "Basic Plan",
-						PlanID:    "basic-plan-id",
-						ModelType: "Customer",
+						PlanName:               "Basic Plan",
+						PlanID:                 "basic-plan-id",
+						ModelType:              "Customer",
+						ServiceModelId:         "sm-12345",
+						AccountConfigIds:       []string{"account-1"},
+						ActiveAccountConfigIds: map[string]interface{}{"aws": []string{"account-1"}},
 						Accounts: []openapiclientfleet.FleetDescribeAccountConfigResult{
 							{
 								Id:              "account-1",
@@ -70,7 +73,9 @@ func TestIsCustomerHosted(t *testing.T) {
 		{"Customer", true},
 		{"customer", true},
 		{"CUSTOMER", true},
+		{"CUSTOMER_HOSTED", true},
 		{"Customer-Hosted", true},
+		{"customer_hosted", true},
 		{"Omnistrate", false},
 		{"BYOA", false},
 		{"SaaS", false},

@@ -32,5 +32,4 @@ omctl helm list
 
 ### SEE ALSO
 
-* [omnistrate-ctl helm](omnistrate-ctl_helm.md)	 - Manage Helm Charts for your service
-
+- [omnistrate-ctl helm](omnistrate-ctl_helm.md) - Manage Helm Charts for your service

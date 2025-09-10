@@ -27,5 +27,4 @@ omnistrate-ctl mcp claude disable [flags]
 
 ### SEE ALSO
 
-* [omnistrate-ctl mcp claude](omnistrate-ctl_mcp_claude.md)	 - Configure Claude Desktop MCP servers
-
+- [omnistrate-ctl mcp claude](omnistrate-ctl_mcp_claude.md) - Configure Claude Desktop MCP servers

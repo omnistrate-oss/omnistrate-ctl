@@ -13,7 +13,7 @@ omnistrate-ctl custom-network create [flags]
 ### Examples
 
 ```
-# Create a custom network for specific cloud provider and region 
+# Create a custom network for specific cloud provider and region
 omctl custom-network create --cloud-provider=[cloud-provider-name] --region=[cloud-provider-region] --cidr=[cidr-block] --name=[friendly-network-name]
 ```
 
@@ -36,5 +36,4 @@ omctl custom-network create --cloud-provider=[cloud-provider-name] --region=[clo
 
 ### SEE ALSO
 
-* [omnistrate-ctl custom-network](omnistrate-ctl_custom-network.md)	 - List and describe custom networks of your customers
-
+- [omnistrate-ctl custom-network](omnistrate-ctl_custom-network.md) - List and describe custom networks of your customers
