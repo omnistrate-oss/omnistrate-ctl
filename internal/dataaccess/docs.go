@@ -49,10 +49,7 @@ func PerformDocumentationSearch(query string, limit int) ([]DocumentationResult,
 	// TODO: Filter results based on query
 	filteredResults := results
 
-	// Apply limit
-	if limit > 0 && len(filteredResults) > limit {
-		filteredResults = filteredResults[:limit]
-	}
+	// TODO: Apply limit
 
 	return filteredResults, nil
 }

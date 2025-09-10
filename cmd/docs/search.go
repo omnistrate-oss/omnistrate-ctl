@@ -29,7 +29,7 @@ var searchCmd = &cobra.Command{
 func init() {
 	searchCmd.Args = cobra.MinimumNArgs(1) // Require at least one argument (the search query)
 	searchCmd.Flags().StringP("output", "o", "table", "Output format (table|json)")
-	searchCmd.Flags().IntP("limit", "l", 100, "Maximum number of results to return")
+	searchCmd.Flags().IntP("limit", "l", 10, "Maximum number of results to return")
 }
 
 func runSearch(cmd *cobra.Command, args []string) error {

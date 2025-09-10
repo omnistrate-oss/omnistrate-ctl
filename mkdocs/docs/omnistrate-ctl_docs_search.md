@@ -24,7 +24,7 @@ omctl docs search "service plan deployment"
 
 ```
   -h, --help            help for search
-  -l, --limit int       Maximum number of results to return (default 100)
+  -l, --limit int       Maximum number of results to return (default 10)
   -o, --output string   Output format (table|json) (default "table")
 ```
 

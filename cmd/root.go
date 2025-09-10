@@ -7,7 +7,6 @@ import (
 
 	"github.com/fatih/color"
 	"github.com/mitchellh/go-wordwrap"
-	"github.com/njayp/ophis"
 	"github.com/omnistrate-oss/omnistrate-ctl/cmd/account"
 	"github.com/omnistrate-oss/omnistrate-ctl/cmd/alarms"
 	"github.com/omnistrate-oss/omnistrate-ctl/cmd/audit"
@@ -23,6 +22,7 @@ import (
 	"github.com/omnistrate-oss/omnistrate-ctl/cmd/helm"
 	"github.com/omnistrate-oss/omnistrate-ctl/cmd/inspect"
 	"github.com/omnistrate-oss/omnistrate-ctl/cmd/instance"
+	"github.com/omnistrate-oss/omnistrate-ctl/cmd/mcp"
 	"github.com/omnistrate-oss/omnistrate-ctl/cmd/operations"
 	"github.com/omnistrate-oss/omnistrate-ctl/cmd/secret"
 	"github.com/omnistrate-oss/omnistrate-ctl/cmd/service"
@@ -110,7 +110,6 @@ func init() {
 	RootCmd.PersistentFlags().BoolP("version", "v", false, "Print the version number of omnistrate-ctl")
 	RootCmd.PersistentFlags().StringP("output", "o", "table", "Output format (text|table|json)")
 
-	RootCmd.AddCommand(ophis.Command(nil))
 	RootCmd.AddCommand(login.LoginCmd)
 	RootCmd.AddCommand(logout.LogoutCmd)
 
@@ -137,6 +136,7 @@ func init() {
 	RootCmd.AddCommand(cost.Cmd)
 	RootCmd.AddCommand(operations.Cmd)
 	RootCmd.AddCommand(audit.Cmd)
+	RootCmd.AddCommand(mcp.Cmd)
 
 	// Hide the default completion command
 	RootCmd.Root().CompletionOptions.DisableDefaultCmd = true
