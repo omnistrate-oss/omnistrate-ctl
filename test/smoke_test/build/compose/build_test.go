@@ -270,7 +270,7 @@ func Test_build_invalid_file(t *testing.T) {
 	cmd.RootCmd.SetArgs([]string{"build", "-f", "invalid_file.yaml", "--product-name", "My Service" + uuid.NewString(), "--description", "My Service Description", "--service-logo-url", "https://freepnglogos.com/uploads/server-png/server-computer-database-network-vector-graphic-pixabay-31.png"})
 	err = cmd.RootCmd.ExecuteContext(ctx)
 	require.Error(err)
-	require.Contains(err.Error(), "no such file or directory")
+	require.Contains(err.Error(), "does not exist")
 }
 
 func Test_build_no_file(t *testing.T) {

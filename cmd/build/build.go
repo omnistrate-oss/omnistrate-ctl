@@ -268,6 +268,7 @@ func runBuild(cmd *cobra.Command, args []string) error {
 	if file != "" && imageUrl == "" {
 		if _, err := os.Stat(file); os.IsNotExist(err) {
 			if fileExplicit {
+				err = fmt.Errorf("file %s does not exist", file)
 				utils.PrintError(err)
 				return err
 			} else {
