@@ -20,3 +20,4 @@ omnistrate-ctl
 __debug_bin*
 **/.claude/settings.local.json
 mcp-tools.json
+*.tmp
