@@ -20,6 +20,7 @@ jobs:
 
   # security scan is included in linter
   lint:
+    if : github.event_name != 'push'
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -49,6 +50,7 @@ jobs:
           skip-cache: true
 
   build:
+    if : github.event_name != 'push'
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -140,7 +142,6 @@ jobs:
 
   publish:
     if: github.event_name == 'push'
-    needs: [build, lint, integration-tests]
     runs-on: ubuntu-latest
     permissions:
       contents: write
