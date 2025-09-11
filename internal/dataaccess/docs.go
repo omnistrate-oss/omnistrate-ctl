@@ -241,19 +241,19 @@ func searchDocuments(query string, limit int) ([]DocumentationResult, error) {
 	// Create a query that searches across title, description, and content fields
 	titleQuery := bleve.NewMatchQuery(query)
 	titleQuery.SetField("title")
-	titleQuery.SetBoost(3.0) // Boost title matches
+	titleQuery.SetBoost(8.0) // Boost title matches
 
 	descriptionQuery := bleve.NewMatchQuery(query)
 	descriptionQuery.SetField("description")
-	descriptionQuery.SetBoost(2.0) // Boost description matches
+	descriptionQuery.SetBoost(5.0) // Boost description matches
 
-	contentQuery := bleve.NewMatchQuery(query)
+	contentQuery := bleve.NewMatchPhraseQuery(query)
 	contentQuery.SetField("content")
 	contentQuery.SetBoost(1.0) // Normal boost for content matches
 
 	sectionQuery := bleve.NewMatchQuery(query)
 	sectionQuery.SetField("section")
-	sectionQuery.SetBoost(2.5) // Boost section matches
+	sectionQuery.SetBoost(10.0) // Boost section matches
 
 	// Combine queries with OR
 	combinedQuery := bleve.NewDisjunctionQuery(titleQuery, descriptionQuery, contentQuery, sectionQuery)
@@ -264,15 +264,23 @@ func searchDocuments(query string, limit int) ([]DocumentationResult, error) {
 	searchRequest.Fields = []string{"title", "url", "description", "section", "content"}
 	searchRequest.IncludeLocations = false
 
+	// Ensure results are sorted by score (highest to lowest) - this is default but explicit
+	searchRequest.SortBy([]string{"-_score"})
+
 	// Execute search
 	searchResult, err := searchIndex.Search(searchRequest)
 	if err != nil {
 		return nil, fmt.Errorf("failed to execute search: %w", err)
 	}
 
-	// Convert search results to DocumentationResult
+	// Convert search results to DocumentationResult, results are already ordered by score
 	var results []DocumentationResult
-	for _, hit := range searchResult.Hits {
+	for i, hit := range searchResult.Hits {
+		// Only process up to the limit (extra safety check)
+		if i >= limit {
+			break
+		}
+
 		result := DocumentationResult{
 			Score: hit.Score,
 		}
@@ -291,94 +299,18 @@ func searchDocuments(query string, limit int) ([]DocumentationResult, error) {
 			result.Section = section
 		}
 		if content, ok := hit.Fields["content"].(string); ok {
-			// Truncate content for display
-			if len(content) > 500 {
-				result.Content = content[:500] + "..."
-			} else {
-				result.Content = content
-			}
+			result.Content = content
 		}
 
 		results = append(results, result)
 	}
 
-	log.Debug().Msgf("Search for '%s' returned %d results", query, len(results))
-	return results, nil
-}
-
-// parseDocumentationContent parses the llms.txt content and extracts documentation entries (legacy function for backward compatibility)
-func parseDocumentationContent(body string) ([]DocumentationResult, error) {
-	var results []DocumentationResult
-	scanner := bufio.NewScanner(strings.NewReader(body))
-
-	var currentSection string
-
-	for scanner.Scan() {
-		line := strings.TrimSpace(scanner.Text())
-
-		// Skip empty lines
-		if line == "" {
-			continue
-		}
-
-		// Check if line starts with "## " - this indicates a section name
-		if strings.HasPrefix(line, "## ") {
-			currentSection = strings.TrimPrefix(line, "## ")
-			continue
-		}
-
-		// Parse markdown links format: - [Title](URL): Description
-		if strings.HasPrefix(line, "- [") && strings.Contains(line, "](") {
-			// Parse the current line
-			// Format: - [Title](URL): Description or - [Title](URL)
-			parts := strings.SplitN(line, "](", 2)
-			if len(parts) == 2 {
-				title := strings.TrimPrefix(parts[0], "- [")
-
-				// Handle both formats: with and without description
-				var url, description string
-				if strings.Contains(parts[1], "): ") {
-					// Format: - [Title](URL): Description
-					urlAndDesc := strings.SplitN(parts[1], "): ", 2)
-					url = urlAndDesc[0]
-					if len(urlAndDesc) == 2 {
-						description = urlAndDesc[1]
-					}
-				} else {
-					// Format: - [Title](URL)
-					url = strings.TrimSuffix(parts[1], ")")
-					description = title // Use title as description if no separate description
-				}
-
-				// Fetch content from the URL
-				content, err := fetchContentFromURL(url)
-				if err != nil {
-					content = err.Error()
-				}
-
-				// Create a result entry
-				result := DocumentationResult{
-					Title:       title,
-					URL:         strings.TrimSuffix(url, "index.md"), // Remove index.md from URLs
-					Description: description,
-					Section:     currentSection,
-					Content:     content,
-				}
-
-				results = append(results, result)
-			}
-		}
-	}
-
-	if err := scanner.Err(); err != nil {
-		return nil, fmt.Errorf("error reading documentation: %w", err)
-	}
-
+	log.Debug().Msgf("Search for '%s' returned %d results (ordered by relevance score)", query, len(results))
 	return results, nil
 }
 
 // CleanupSearchIndex closes the in-memory search index
-func CleanupSearchIndex(removeFromDisk bool) error {
+func cleanupSearchIndex() error {
 	indexMutex.Lock()
 	defer indexMutex.Unlock()
 
@@ -390,15 +322,13 @@ func CleanupSearchIndex(removeFromDisk bool) error {
 		log.Debug().Msg("Closed in-memory search index")
 	}
 
-	// Note: removeFromDisk parameter is ignored for in-memory index
-	// but kept for backward compatibility
 	return nil
 }
 
-// RefreshSearchIndex rebuilds the search index with fresh data
-func RefreshSearchIndex() error {
+// refreshSearchIndex rebuilds the search index with fresh data
+func refreshSearchIndex() error {
 	// Clean up existing index
-	if err := CleanupSearchIndex(false); err != nil {
+	if err := cleanupSearchIndex(); err != nil {
 		return fmt.Errorf("failed to cleanup existing index: %w", err)
 	}
 

@@ -60,15 +60,15 @@ func TestParseDocumentationContent(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			results, err := parseDocumentationContent(test.input)
+			results, err := parseDocumentationContentForIndexing(test.input)
 
 			if err != nil {
-				assert.NoError(err, "parseDocumentationContent() should not return an error")
+				assert.NoError(err, "parseDocumentationContentForIndexing() should not return an error")
 				return
 			}
 
 			if len(results) != len(test.expected) {
-				assert.Equal(len(test.expected), len(results), "parseDocumentationContent() returned %d results, expected %d", len(results), len(test.expected))
+				assert.Equal(len(test.expected), len(results), "parseDocumentationContentForIndexing() returned %d results, expected %d", len(results), len(test.expected))
 				return
 			}
 
@@ -95,7 +95,7 @@ func TestParseDocumentationContent(t *testing.T) {
 func TestPerformDocumentationSearchWithBleve(t *testing.T) {
 	// Clean up any existing index before test
 	defer func() {
-		_ = CleanupSearchIndex(false) // Changed to false since we're using in-memory index
+		_ = cleanupSearchIndex()
 	}()
 
 	// Test basic search functionality
@@ -135,13 +135,13 @@ func TestCleanupSearchIndex(t *testing.T) {
 	}
 
 	// Test cleanup without removing from disk
-	err = CleanupSearchIndex(false)
+	err = cleanupSearchIndex()
 	if err != nil {
 		t.Errorf("Expected no error for cleanup, got: %v", err)
 	}
 
 	// Test cleanup (removeFromDisk parameter is ignored for in-memory index)
-	err = CleanupSearchIndex(true)
+	err = cleanupSearchIndex()
 	if err != nil {
 		t.Errorf("Expected no error for cleanup, got: %v", err)
 	}
@@ -150,11 +150,11 @@ func TestCleanupSearchIndex(t *testing.T) {
 func TestRefreshSearchIndex(t *testing.T) {
 	// Clean up any existing index before test
 	defer func() {
-		_ = CleanupSearchIndex(false) // Changed to false since we're using in-memory index
+		_ = cleanupSearchIndex()
 	}()
 
 	// Test refresh functionality
-	err := RefreshSearchIndex()
+	err := refreshSearchIndex()
 	if err != nil {
 		t.Logf("RefreshSearchIndex failed (might be expected if documentation source is not available): %v", err)
 		return
