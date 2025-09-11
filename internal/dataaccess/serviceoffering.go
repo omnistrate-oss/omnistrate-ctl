@@ -5,6 +5,7 @@ import (
 	"net/http"
 
 	openapiclientfleet "github.com/omnistrate-oss/omnistrate-sdk-go/fleet"
+	openapiclientv1 "github.com/omnistrate-oss/omnistrate-sdk-go/v1"
 )
 
 func ListServiceOfferings(ctx context.Context, token, orgID string) (inventory *openapiclientfleet.InventoryListServiceOfferingsResult, err error) {
@@ -72,6 +73,58 @@ func DescribeServiceOffering(ctx context.Context, token, serviceID, productTierI
 	res, r, err = req.Execute()
 	if err != nil {
 		return nil, handleFleetError(err)
+	}
+
+	return res, nil
+}
+
+func DescribeServiceOfferingResourceV1(ctx context.Context, token, serviceID, resourceID, instanceID, productTierID, productTierVersion string) (res *openapiclientv1.DescribeServiceOfferingResourceResult, err error) {
+	ctxWithToken := context.WithValue(ctx, openapiclientv1.ContextAccessToken, token)
+	apiClient := getV1Client()
+
+	req := apiClient.ServiceOfferingApiAPI.ServiceOfferingApiDescribeServiceOfferingResource(ctxWithToken, serviceID, resourceID, instanceID)
+	if productTierID != "" {
+		req = req.ProductTierId(productTierID)
+	}
+	if productTierVersion != "" {
+		req = req.ProductTierVersion(productTierVersion)
+	}
+	var r *http.Response
+	defer func() {
+		if r != nil {
+			_ = r.Body.Close()
+		}
+	}()
+
+	res, r, err = req.Execute()
+	if err != nil {
+		return nil, handleV1Error(err)
+	}
+
+	return res, nil
+}
+
+func ListInputParameters(ctx context.Context, token, serviceID, resourceID, productTierID, productTierVersion string) (res *openapiclientv1.ListInputParametersResult, err error) {
+	ctxWithToken := context.WithValue(ctx, openapiclientv1.ContextAccessToken, token)
+	apiClient := getV1Client()
+
+	req := apiClient.InputParameterApiAPI.InputParameterApiListInputParameter(ctxWithToken, serviceID, resourceID)
+	if productTierID != "" {
+		req = req.ProductTierId(productTierID)
+	}
+	if productTierVersion != "" {
+		req = req.ProductTierVersion(productTierVersion)
+	}
+	var r *http.Response
+	defer func() {
+		if r != nil {
+			_ = r.Body.Close()
+		}
+	}()
+
+	res, r, err = req.Execute()
+	if err != nil {
+		return nil, handleV1Error(err)
 	}
 
 	return res, nil
