@@ -155,13 +155,6 @@ func runBuild(cmd *cobra.Command, args []string) error {
 	}
 	// Check if spec-type was explicitly provided
 	specTypeExplicit := cmd.Flags().Changed("spec-type")
-	if !specTypeExplicit {
-		if file == ServicePlanSpecType {
-			specType = ServicePlanSpecType
-		} else {
-			specType = DockerComposeSpecType
-		}
-	}
 
 	name, err := cmd.Flags().GetString("name")
 	if err != nil {
@@ -272,12 +265,23 @@ func runBuild(cmd *cobra.Command, args []string) error {
 				utils.PrintError(err)
 				return err
 			} else {
-				// If the file doesn't exist and wasn't explicitly provided, we check if there is a spec file
-				file = PlanSpecFileName
+				// check for compose file
+				file = ComposeFileName
+				if !specTypeExplicit {
+					specType = DockerComposeSpecType
+				}
 				if _, err := os.Stat(file); os.IsNotExist(err) {
-					err = errors.New("no compose or spec file found, please provide a valid file using --file flag")
-					utils.PrintError(err)
-					return err
+
+					// If the file doesn't exist and wasn't explicitly provided, we check if there is a spec file
+					file = PlanSpecFileName
+					if !specTypeExplicit {
+						specType = ServicePlanSpecType
+					}
+					if _, err := os.Stat(file); os.IsNotExist(err) {
+						err = errors.New("no compose or spec file found, please provide a valid file using --file flag")
+						utils.PrintError(err)
+						return err
+					}
 				}
 			}
 		}
