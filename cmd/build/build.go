@@ -93,7 +93,7 @@ var BuildCmd = &cobra.Command{
 }
 
 func init() {
-	BuildCmd.Flags().StringP("file", "f", ComposeFileName, "Path to the docker compose file")
+	BuildCmd.Flags().StringP("file", "f", "", "Path to the docker compose file (defaults to compose.yaml or spec.yaml)")
 	BuildCmd.Flags().StringP("name", "n", "", "Name of the service. A service can have multiple service plans. The build command will build a new or existing service plan inside the specified service.")
 	BuildCmd.Flags().StringP("product-name", "", "", "Name of the service. A service can have multiple service plans. The build command will build a new or existing service plan inside the specified service.")
 	BuildCmd.Flags().StringP("description", "", "", "A short description for the whole service. A service can have multiple service plans.")
@@ -105,7 +105,7 @@ func init() {
 	BuildCmd.Flags().StringP("release-name", "", "", "Custom description of the release version. Deprecated: use --release-description instead")
 	BuildCmd.Flags().StringP("release-description", "", "", "Used together with --release or --release-as-preferred flag. Provide a description for the release version")
 	BuildCmd.Flags().BoolP("interactive", "i", false, "Interactive mode")
-	BuildCmd.Flags().StringP("spec-type", "s", DockerComposeSpecType, "Spec type")
+	BuildCmd.Flags().StringP("spec-type", "s", "", "Spec type (will infer from file if not provided). Valid options include: 'DockerCompose', 'ServicePlanSpec'")
 	BuildCmd.Flags().BoolP("dry-run", "d", false, "Simulate building the service without actually creating resources")
 
 	BuildCmd.Flags().StringP("image", "", "", "Provide the complete image repository URL with the image name and tag (e.g., docker.io/namespace/my-image:v1.2)")
@@ -146,20 +146,17 @@ func runBuild(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
-	// Check if file was explicitly provided
-	fileExplicit := cmd.Flags().Changed("file")
 
 	specType, err := cmd.Flags().GetString("spec-type")
 	if err != nil {
 		return err
 	}
-	// Check if spec-type was explicitly provided
-	specTypeExplicit := cmd.Flags().Changed("spec-type")
-	if !specTypeExplicit {
-		if file == ComposeFileName {
-			specType = DockerComposeSpecType
-		} else {
+	// Check if spec-type was provided and default if not
+	if specType == "" {
+		if file == PlanSpecFileName {
 			specType = ServicePlanSpecType
+		} else {
+			specType = DockerComposeSpecType
 		}
 	}
 
@@ -245,13 +242,7 @@ func runBuild(cmd *cobra.Command, args []string) error {
 	}
 
 	// Validate input arguments
-	if file == "" && imageUrl == "" {
-		err := errors.New("either file or image is required")
-		utils.PrintError(err)
-		return err
-	}
-
-	if fileExplicit && imageUrl != "" {
+	if file != "" && imageUrl != "" {
 		err := errors.New("only one of file or image can be provided")
 		utils.PrintError(err)
 		return err
@@ -265,15 +256,23 @@ func runBuild(cmd *cobra.Command, args []string) error {
 
 	// Load the compose file
 	var fileData []byte
-	if file != "" {
-		if _, err := os.Stat(file); os.IsNotExist(err) {
-			if fileExplicit {
+	if imageUrl == "" {
+		if file != "" {
+			if _, err := os.Stat(file); os.IsNotExist(err) {
+				err = fmt.Errorf("file %s does not exist", file)
 				utils.PrintError(err)
 				return err
-			} else {
+			}
+		} else {
+			// check for compose file
+			file = ComposeFileName
+			specType = DockerComposeSpecType
+			if _, err := os.Stat(file); os.IsNotExist(err) {
 				// If the file doesn't exist and wasn't explicitly provided, we check if there is a spec file
 				file = PlanSpecFileName
+				specType = ServicePlanSpecType
 				if _, err := os.Stat(file); os.IsNotExist(err) {
+					err = errors.New("no compose or spec file found, please provide a valid file using --file flag")
 					utils.PrintError(err)
 					return err
 				}
@@ -384,7 +383,7 @@ func runBuild(cmd *cobra.Command, args []string) error {
 	}
 
 	if !isValidSpecType(specType) {
-		err = errors.New(fmt.Sprintf("invalid spec type, valid options are: %s", strings.Join(validSpecType, ", ")))
+		err = errors.New(fmt.Sprintf("invalid spec type %s, valid options are: %s", specType, strings.Join(validSpecType, ", ")))
 		utils.PrintError(err)
 		return err
 	}
