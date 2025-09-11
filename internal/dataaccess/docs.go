@@ -115,7 +115,7 @@ func createIndexMapping() mapping.IndexMapping {
 	docMapping.AddFieldMappingsAt("title", textFieldMapping)
 	docMapping.AddFieldMappingsAt("url", keywordFieldMapping)
 	docMapping.AddFieldMappingsAt("description", textFieldMapping)
-	docMapping.AddFieldMappingsAt("section", keywordFieldMapping)
+	docMapping.AddFieldMappingsAt("section", textFieldMapping) 
 	docMapping.AddFieldMappingsAt("content", textFieldMapping)
 
 	indexMapping.AddDocumentMapping("_default", docMapping)
@@ -238,31 +238,67 @@ func searchDocuments(query string, limit int) ([]DocumentationResult, error) {
 		return nil, fmt.Errorf("search index not initialized")
 	}
 
-	// Create a query that searches across title, description, and content fields
+	// Create a more sophisticated query strategy for better scoring
+
+	// 1. First try exact phrase queries for each field with reasonable boost
+	titlePhraseQuery := bleve.NewMatchPhraseQuery(query)
+	titlePhraseQuery.SetField("title")
+	titlePhraseQuery.SetBoost(8.0) // High boost for exact phrase in title
+
+	sectionPhraseQuery := bleve.NewMatchPhraseQuery(query)
+	sectionPhraseQuery.SetField("section")
+	sectionPhraseQuery.SetBoost(6.0) // Very high boost for exact phrase in section
+
+	descriptionPhraseQuery := bleve.NewMatchPhraseQuery(query)
+	descriptionPhraseQuery.SetField("description")
+	descriptionPhraseQuery.SetBoost(4.0) // Good boost for exact phrase in description
+
+	contentPhraseQuery := bleve.NewMatchPhraseQuery(query)
+	contentPhraseQuery.SetField("content")
+	contentPhraseQuery.SetBoost(1.0) // Normal boost for exact phrase in content
+
+	// 2. Then add individual word queries for broader matching
 	titleQuery := bleve.NewMatchQuery(query)
 	titleQuery.SetField("title")
-	titleQuery.SetBoost(8.0) // Boost title matches
+	titleQuery.SetBoost(5.0) // High boost for title matches
 
 	descriptionQuery := bleve.NewMatchQuery(query)
 	descriptionQuery.SetField("description")
-	descriptionQuery.SetBoost(5.0) // Boost description matches
+	descriptionQuery.SetBoost(3.0) // Boost description matches
 
-	contentQuery := bleve.NewMatchPhraseQuery(query)
+	contentQuery := bleve.NewMatchQuery(query)
 	contentQuery.SetField("content")
 	contentQuery.SetBoost(1.0) // Normal boost for content matches
 
 	sectionQuery := bleve.NewMatchQuery(query)
 	sectionQuery.SetField("section")
-	sectionQuery.SetBoost(10.0) // Boost section matches
+	sectionQuery.SetBoost(7.0) // Very high boost for section matches
 
-	// Combine queries with OR
-	combinedQuery := bleve.NewDisjunctionQuery(titleQuery, descriptionQuery, contentQuery, sectionQuery)
+	// 3. Use BooleanQuery with SHOULD clauses for better scoring accumulation
+	// This allows scores to accumulate when multiple fields match
+	combinedQuery := bleve.NewBooleanQuery()
+
+	// Add phrase queries first (highest priority)
+	combinedQuery.AddShould(titlePhraseQuery)
+	combinedQuery.AddShould(sectionPhraseQuery)
+	combinedQuery.AddShould(descriptionPhraseQuery)
+	combinedQuery.AddShould(contentPhraseQuery)
+
+	// Add individual word queries
+	combinedQuery.AddShould(titleQuery)
+	combinedQuery.AddShould(descriptionQuery)
+	combinedQuery.AddShould(contentQuery)
+	combinedQuery.AddShould(sectionQuery)
+
+	// Set minimum should match to 1 (at least one field must match)
+	combinedQuery.SetMinShould(1)
 
 	// Create search request
 	searchRequest := bleve.NewSearchRequest(combinedQuery)
-	searchRequest.Size = limit
 	searchRequest.Fields = []string{"title", "url", "description", "section", "content"}
-	searchRequest.IncludeLocations = false
+
+	// Set the size to the requested limit
+	searchRequest.Size = limit
 
 	// Ensure results are sorted by score (highest to lowest) - this is default but explicit
 	searchRequest.SortBy([]string{"-_score"})
@@ -276,7 +312,7 @@ func searchDocuments(query string, limit int) ([]DocumentationResult, error) {
 	// Convert search results to DocumentationResult, results are already ordered by score
 	var results []DocumentationResult
 	for i, hit := range searchResult.Hits {
-		// Only process up to the limit (extra safety check)
+		// Only process up to the limit
 		if i >= limit {
 			break
 		}
