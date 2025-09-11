@@ -93,7 +93,7 @@ var BuildCmd = &cobra.Command{
 }
 
 func init() {
-	BuildCmd.Flags().StringP("file", "f", ComposeFileName, "Path to the docker compose file")
+	BuildCmd.Flags().StringP("file", "f", "", "Path to the docker compose file")
 	BuildCmd.Flags().StringP("name", "n", "", "Name of the service. A service can have multiple service plans. The build command will build a new or existing service plan inside the specified service.")
 	BuildCmd.Flags().StringP("product-name", "", "", "Name of the service. A service can have multiple service plans. The build command will build a new or existing service plan inside the specified service.")
 	BuildCmd.Flags().StringP("description", "", "", "A short description for the whole service. A service can have multiple service plans.")
@@ -105,7 +105,7 @@ func init() {
 	BuildCmd.Flags().StringP("release-name", "", "", "Custom description of the release version. Deprecated: use --release-description instead")
 	BuildCmd.Flags().StringP("release-description", "", "", "Used together with --release or --release-as-preferred flag. Provide a description for the release version")
 	BuildCmd.Flags().BoolP("interactive", "i", false, "Interactive mode")
-	BuildCmd.Flags().StringP("spec-type", "s", DockerComposeSpecType, "Spec type")
+	BuildCmd.Flags().StringP("spec-type", "s", "", "Spec type")
 	BuildCmd.Flags().BoolP("dry-run", "d", false, "Simulate building the service without actually creating resources")
 
 	BuildCmd.Flags().StringP("image", "", "", "Provide the complete image repository URL with the image name and tag (e.g., docker.io/namespace/my-image:v1.2)")
