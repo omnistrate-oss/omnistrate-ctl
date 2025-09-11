@@ -146,16 +146,13 @@ func runBuild(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
-	// Check if file was explicitly provided
-	fileExplicit := cmd.Flags().Changed("file")
 
 	specType, err := cmd.Flags().GetString("spec-type")
 	if err != nil {
 		return err
 	}
-	// Check if spec-type was explicitly provided
-	specTypeExplicit := cmd.Flags().Changed("spec-type")
-	if !specTypeExplicit || specType == "" {
+	// Check if spec-type was provided and default if not
+	if specType == "" {
 		if file == PlanSpecFileName {
 			specType = ServicePlanSpecType
 		} else {
@@ -251,7 +248,7 @@ func runBuild(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	if fileExplicit && imageUrl != "" {
+	if file != "" && imageUrl != "" {
 		err := errors.New("only one of file or image can be provided")
 		utils.PrintError(err)
 		return err
@@ -267,7 +264,7 @@ func runBuild(cmd *cobra.Command, args []string) error {
 	var fileData []byte
 	if file != "" && imageUrl == "" {
 		if _, err := os.Stat(file); os.IsNotExist(err) {
-			if fileExplicit {
+			if file != "" {
 				err = fmt.Errorf("file %s does not exist", file)
 				utils.PrintError(err)
 				return err
