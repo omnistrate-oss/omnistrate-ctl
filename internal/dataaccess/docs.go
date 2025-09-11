@@ -266,7 +266,7 @@ func searchDocuments(query string, limit int) ([]DocumentationResult, error) {
 	descriptionQuery.SetField("description")
 	descriptionQuery.SetBoost(3.0) // Boost description matches
 
-	contentQuery := bleve.NewMatchQuery(query)
+	contentQuery := bleve.NewMatchPhraseQuery(query)
 	contentQuery.SetField("content")
 	contentQuery.SetBoost(1.0) // Normal boost for content matches
 
@@ -299,6 +299,9 @@ func searchDocuments(query string, limit int) ([]DocumentationResult, error) {
 
 	// Set the size to the requested limit
 	searchRequest.Size = limit
+
+	// Ensure results are sorted by score (highest to lowest) - this is default but explicit
+	searchRequest.SortBy([]string{"-_score"})
 
 	// Ensure results are sorted by score (highest to lowest) - this is default but explicit
 	searchRequest.SortBy([]string{"-_score"})
