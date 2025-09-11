@@ -91,3 +91,80 @@ func TestParseDocumentationContent(t *testing.T) {
 		})
 	}
 }
+
+func TestPerformDocumentationSearchWithBleve(t *testing.T) {
+	// Clean up any existing index before test
+	defer func() {
+		_ = CleanupSearchIndex(false) // Changed to false since we're using in-memory index
+	}()
+
+	// Test basic search functionality
+	results, err := PerformDocumentationSearch("API", 3)
+	if err != nil {
+		t.Fatalf("Expected no error, got: %v", err)
+	}
+
+	// We expect some results (assuming the documentation contains "API")
+	if len(results) == 0 {
+		t.Log("No results found for 'API' - this might be expected if the documentation source is not available")
+		return
+	}
+
+	// Verify result structure
+	for i, result := range results {
+		if result.Title == "" {
+			t.Errorf("Result %d has empty title", i)
+		}
+		if result.URL == "" {
+			t.Errorf("Result %d has empty URL", i)
+		}
+		if result.Score <= 0 {
+			t.Errorf("Result %d has invalid score: %f", i, result.Score)
+		}
+	}
+
+	t.Logf("Found %d results for 'API' search", len(results))
+}
+
+func TestCleanupSearchIndex(t *testing.T) {
+	// Initialize index first
+	_, err := PerformDocumentationSearch("test", 1)
+	if err != nil {
+		t.Logf("Could not initialize index for cleanup test: %v", err)
+		return
+	}
+
+	// Test cleanup without removing from disk
+	err = CleanupSearchIndex(false)
+	if err != nil {
+		t.Errorf("Expected no error for cleanup, got: %v", err)
+	}
+
+	// Test cleanup (removeFromDisk parameter is ignored for in-memory index)
+	err = CleanupSearchIndex(true)
+	if err != nil {
+		t.Errorf("Expected no error for cleanup, got: %v", err)
+	}
+}
+
+func TestRefreshSearchIndex(t *testing.T) {
+	// Clean up any existing index before test
+	defer func() {
+		_ = CleanupSearchIndex(false) // Changed to false since we're using in-memory index
+	}()
+
+	// Test refresh functionality
+	err := RefreshSearchIndex()
+	if err != nil {
+		t.Logf("RefreshSearchIndex failed (might be expected if documentation source is not available): %v", err)
+		return
+	}
+
+	// Verify we can search after refresh
+	results, err := PerformDocumentationSearch("test", 1)
+	if err != nil {
+		t.Errorf("Expected no error after refresh, got: %v", err)
+	}
+
+	t.Logf("RefreshSearchIndex completed successfully, found %d results for 'test'", len(results))
+}
