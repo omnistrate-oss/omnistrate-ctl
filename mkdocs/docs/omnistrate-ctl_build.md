@@ -72,7 +72,7 @@ omctl build --image docker.io/namespace/my-image:v1.2 --product-name "My Service
       --env-var stringArray                   Used together with --image flag. Provide environment variables in the format --env-var key1=var1 --env-var key2=var2
       --environment string                    Name of the environment to build the service in (default "Dev")
       --environment-type string               Type of environment. Valid options include: 'dev', 'prod', 'qa', 'canary', 'staging', 'private') (default "dev")
-  -f, --file string                           Path to the docker compose file
+  -f, --file string                           Path to the docker compose file (defaults to compose.yaml or spec.yaml)
   -h, --help                                  help for build
       --image string                          Provide the complete image repository URL with the image name and tag (e.g., docker.io/namespace/my-image:v1.2)
       --image-registry-auth-password string   Used together with --image flag. Provide the password to authenticate with the image registry if it's a private registry
@@ -83,7 +83,7 @@ omctl build --image docker.io/namespace/my-image:v1.2 --product-name "My Service
       --release-as-preferred                  Release the service as preferred after building it
       --release-description string            Used together with --release or --release-as-preferred flag. Provide a description for the release version
       --service-logo-url string               URL to the service logo
-  -s, --spec-type string                      Spec type
+  -s, --spec-type string                      Spec type (will infer from file if not provided). Valid options include: 'DockerCompose', 'ServicePlanSpec'
 ```
 
 ### Options inherited from parent commands
