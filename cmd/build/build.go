@@ -262,18 +262,19 @@ func runBuild(cmd *cobra.Command, args []string) error {
 
 	// Load the compose file
 	var fileData []byte
-	if file != "" && imageUrl == "" {
-		if _, err := os.Stat(file); os.IsNotExist(err) {
-			if file != "" {
+	if imageUrl == "" {
+		if file != "" {
+			if _, err := os.Stat(file); os.IsNotExist(err) {
 				err = fmt.Errorf("file %s does not exist", file)
 				utils.PrintError(err)
 				return err
-			} else {
-				// check for compose file
-				file = ComposeFileName
-				specType = DockerComposeSpecType
-				if _, err := os.Stat(file); os.IsNotExist(err) {
-					// If the file doesn't exist and wasn't explicitly provided, we check if there is a spec file
+			}
+		} else {
+			// check for compose file
+			file = ComposeFileName
+			specType = DockerComposeSpecType
+			if _, err := os.Stat(file); os.IsNotExist(err) {
+				// If the file doesn't exist and wasn't explicitly provided, we check if there is a spec file
 					file = PlanSpecFileName
 					specType = ServicePlanSpecType
 					if _, err := os.Stat(file); os.IsNotExist(err) {
