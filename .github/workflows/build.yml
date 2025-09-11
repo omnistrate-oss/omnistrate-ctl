@@ -17,13 +17,6 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  smoke-tests:
-    uses: ./.github/workflows/smoke-tests.yml
-    with:
-      environment: Dev-us-west-2
-    secrets: inherit
-    permissions:
-      contents: read
 
   # security scan is included in linter
   lint:
@@ -135,9 +128,19 @@ jobs:
           OMNISTRATE_DRY_RUN: true
         run: gotestsum --format github-actions -- ./test/integration_test/... -timeout 1800s -p 1 -p 1 -v
 
+  smoke-tests:
+    if: github.event_name != 'push'
+    needs: [build, lint]
+    uses: ./.github/workflows/smoke-tests.yml
+    with:
+      environment: Dev-us-west-2
+    secrets: inherit
+    permissions:
+      contents: read
+
   publish:
     if: github.event_name == 'push'
-    needs: [build, lint]
+    needs: [build, lint, integration-tests]
     runs-on: ubuntu-latest
     permissions:
       contents: write
