@@ -155,7 +155,7 @@ func runBuild(cmd *cobra.Command, args []string) error {
 	}
 	// Check if spec-type was explicitly provided
 	specTypeExplicit := cmd.Flags().Changed("spec-type")
-	if !specTypeExplicit {
+	if !specTypeExplicit || specType == "" {
 		if file == PlanSpecFileName {
 			specType = ServicePlanSpecType
 		} else {
