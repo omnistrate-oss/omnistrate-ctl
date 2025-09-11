@@ -20,9 +20,9 @@ var (
 )
 
 var deploymentParametersCmd = &cobra.Command{
-	Use:     "deployment-parameters --service=[service] --plan=[plan] --version=[version] --resource=[resource]",
-	Short:   "List API parameters configurable for instance deployment",
-	Long:    `This command retrieves and displays the configurable API parameters from the service offerings API that can be used during instance deployment.`,
+	Use:   "deployment-parameters --service=[service] --plan=[plan] --version=[version] --resource=[resource]",
+	Short: "List API parameters configurable for instance deployment",
+	Long:  `This command retrieves and displays the configurable API parameters from the service offerings API that can be used during instance deployment.`,
 	Example: `  omnistrate-ctl instance deployment-parameters --service=mysql --plan=mysql --version=latest --resource=mySQL
   omnistrate-ctl instance deployment-parameters --service=mysql --plan=mysql --version=latest --resource=mySQL --output=json`,
 	RunE:         runDeploymentParameters,
@@ -64,11 +64,11 @@ type ParameterInfo struct {
 }
 
 type DeploymentParametersOutput struct {
-	ServiceName string          `json:"serviceName"`
-	PlanName    string          `json:"planName"`
-	Version     string          `json:"version"`
-	ResourceName string         `json:"resourceName"`
-	Parameters  []ParameterInfo `json:"parameters"`
+	ServiceName  string          `json:"serviceName"`
+	PlanName     string          `json:"planName"`
+	Version      string          `json:"version"`
+	ResourceName string          `json:"resourceName"`
+	Parameters   []ParameterInfo `json:"parameters"`
 }
 
 func runDeploymentParameters(cmd *cobra.Command, args []string) error {
@@ -118,7 +118,7 @@ func runDeploymentParameters(cmd *cobra.Command, args []string) error {
 		if err != nil {
 			return fmt.Errorf("failed to describe service offering to get version: %w", err)
 		}
-		
+
 		serviceOffering := serviceOfferingResult.GetConsumptionDescribeServiceOfferingResult()
 		for _, offering := range serviceOffering.GetOfferings() {
 			if offering.GetProductTierID() == productTierID {
@@ -126,7 +126,7 @@ func runDeploymentParameters(cmd *cobra.Command, args []string) error {
 				break
 			}
 		}
-		
+
 		if productTierVersion == "" {
 			return fmt.Errorf("could not determine product tier version for plan %s", planName)
 		}
@@ -167,7 +167,7 @@ func runDeploymentParameters(cmd *cobra.Command, args []string) error {
 			DefaultValue: defaultValue,
 			Options:      options,
 			Regex:        regex,
-			Custom:       false, // Not available in v1 API
+			Custom:       false,    // Not available in v1 API
 			API:          "create", // Default API for deployment parameters
 		}
 		parameters = append(parameters, paramInfo)
@@ -220,17 +220,17 @@ func getServiceAndPlanInfo(ctx context.Context, token, serviceName, planName, re
 		if strings.EqualFold(res.Name, resourceName) &&
 			strings.EqualFold(res.ServiceName, serviceName) &&
 			strings.EqualFold(res.ProductTierName, planName) {
-			
+
 			serviceID = res.ServiceId
 			resourceID = res.Id
 			productTierID = res.ProductTierId
-			
+
 			// Handle version
 			if version != "preferred" && version != "latest" {
 				productTierVersion = version
 			}
 			// For preferred/latest, leave productTierVersion empty
-			
+
 			return serviceID, resourceID, productTierID, productTierVersion, nil
 		}
 	}
@@ -240,7 +240,7 @@ func getServiceAndPlanInfo(ctx context.Context, token, serviceName, planName, re
 
 // printParametersTable prints the parameters in a table format
 func printParametersTable(output DeploymentParametersOutput) {
-	fmt.Printf("Deployment Parameters for %s/%s (version: %s, resource: %s)\n\n", 
+	fmt.Printf("Deployment Parameters for %s/%s (version: %s, resource: %s)\n\n",
 		output.ServiceName, output.PlanName, output.Version, output.ResourceName)
 
 	if len(output.Parameters) == 0 {
@@ -249,10 +249,10 @@ func printParametersTable(output DeploymentParametersOutput) {
 	}
 
 	// Print header
-	fmt.Printf("%-25s %-20s %-12s %-12s %-8s %s\n", 
+	fmt.Printf("%-25s %-20s %-12s %-12s %-8s %s\n",
 		"PARAMETER KEY", "DISPLAY NAME", "TYPE", "REQUIRED", "API", "DESCRIPTION")
-	fmt.Printf("%-25s %-20s %-12s %-12s %-8s %s\n", 
-		strings.Repeat("-", 25), strings.Repeat("-", 20), strings.Repeat("-", 12), 
+	fmt.Printf("%-25s %-20s %-12s %-12s %-8s %s\n",
+		strings.Repeat("-", 25), strings.Repeat("-", 20), strings.Repeat("-", 12),
 		strings.Repeat("-", 12), strings.Repeat("-", 8), strings.Repeat("-", 20))
 
 	// Print parameters
@@ -272,7 +272,7 @@ func printParametersTable(output DeploymentParametersOutput) {
 			description = description[:47] + "..."
 		}
 
-		fmt.Printf("%-25s %-20s %-12s %-12s %-8s %s\n", 
+		fmt.Printf("%-25s %-20s %-12s %-12s %-8s %s\n",
 			param.Key, displayName, param.Type, required, param.API, description)
 	}
 
