@@ -266,7 +266,7 @@ func searchDocuments(query string, limit int) ([]DocumentationResult, error) {
 	descriptionQuery.SetField("description")
 	descriptionQuery.SetBoost(3.0) // Boost description matches
 
-	contentQuery := bleve.NewMatchPhraseQuery(query)
+	contentQuery := bleve.NewMatchQuery(query)
 	contentQuery.SetField("content")
 	contentQuery.SetBoost(1.0) // Normal boost for content matches
 
