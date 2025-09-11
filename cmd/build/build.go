@@ -278,7 +278,6 @@ func runBuild(cmd *cobra.Command, args []string) error {
 					specType = DockerComposeSpecType
 				}
 				if _, err := os.Stat(file); os.IsNotExist(err) {
-
 					// If the file doesn't exist and wasn't explicitly provided, we check if there is a spec file
 					file = PlanSpecFileName
 					if !specTypeExplicit {
@@ -397,7 +396,7 @@ func runBuild(cmd *cobra.Command, args []string) error {
 	}
 
 	if !isValidSpecType(specType) {
-		err = errors.New(fmt.Sprintf("invalid spec type, valid options are: %s", strings.Join(validSpecType, ", ")))
+		err = errors.New(fmt.Sprintf("invalid spec type %s, valid options are: %s", specType, strings.Join(validSpecType, ", ")))
 		utils.PrintError(err)
 		return err
 	}
