@@ -37,6 +37,7 @@ func init() {
 	Cmd.AddCommand(debugCmd)
 	Cmd.AddCommand(evaluateCmd)
 	Cmd.AddCommand(getInstallerCmd)
+	Cmd.AddCommand(deploymentParametersCmd)
 }
 
 func run(cmd *cobra.Command, args []string) {
