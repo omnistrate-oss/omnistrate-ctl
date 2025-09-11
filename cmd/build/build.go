@@ -242,12 +242,6 @@ func runBuild(cmd *cobra.Command, args []string) error {
 	}
 
 	// Validate input arguments
-	if file == "" && imageUrl == "" {
-		err := errors.New("either file or image is required")
-		utils.PrintError(err)
-		return err
-	}
-
 	if file != "" && imageUrl != "" {
 		err := errors.New("only one of file or image can be provided")
 		utils.PrintError(err)
