@@ -94,7 +94,8 @@ var BuildCmd = &cobra.Command{
 
 func init() {
 	BuildCmd.Flags().StringP("file", "f", "", "Path to the docker compose file (defaults to compose.yaml or spec.yaml)")
-	BuildCmd.Flags().StringP("name", "n", "", "Name of the service. A service can have multiple service plans. The build command will build a new or existing service plan inside the specified service.")
+	BuildCmd.Flags().StringP("spec-type", "s", "", "Spec type (will infer from file if not provided). Valid options include: 'DockerCompose', 'ServicePlanSpec'")
+	BuildCmd.Flags().BoolP("dry-run", "d", false, "Simulate building the service without actually creating resources")
 	BuildCmd.Flags().StringP("product-name", "", "", "Name of the service. A service can have multiple service plans. The build command will build a new or existing service plan inside the specified service.")
 	BuildCmd.Flags().StringP("description", "", "", "A short description for the whole service. A service can have multiple service plans.")
 	BuildCmd.Flags().StringP("service-logo-url", "", "", "URL to the service logo")
@@ -105,13 +106,13 @@ func init() {
 	BuildCmd.Flags().StringP("release-name", "", "", "Custom description of the release version. Deprecated: use --release-description instead")
 	BuildCmd.Flags().StringP("release-description", "", "", "Used together with --release or --release-as-preferred flag. Provide a description for the release version")
 	BuildCmd.Flags().BoolP("interactive", "i", false, "Interactive mode")
-	BuildCmd.Flags().StringP("spec-type", "s", "", "Spec type (will infer from file if not provided). Valid options include: 'DockerCompose', 'ServicePlanSpec'")
-	BuildCmd.Flags().BoolP("dry-run", "d", false, "Simulate building the service without actually creating resources")
 
-	BuildCmd.Flags().StringP("image", "", "", "Provide the complete image repository URL with the image name and tag (e.g., docker.io/namespace/my-image:v1.2)")
-	BuildCmd.Flags().StringArrayP("env-var", "", nil, "Used together with --image flag. Provide environment variables in the format --env-var key1=var1 --env-var key2=var2")
-	BuildCmd.Flags().StringP("image-registry-auth-username", "", "", "Used together with --image flag. Provide the username to authenticate with the image registry if it's a private registry")
-	BuildCmd.Flags().StringP("image-registry-auth-password", "", "", "Used together with --image flag. Provide the password to authenticate with the image registry if it's a private registry")
+	// Deprecated flags
+	BuildCmd.Flags().StringP("name", "n", "", "Name of the service. A service can have multiple service plans. The build command will build a new or existing service plan inside the specified service. Deprecated: use --product-name instead")
+	BuildCmd.Flags().StringP("image", "", "", "Provide the complete image repository URL with the image name and tag (e.g., docker.io/namespace/my-image:v1.2). Deprecated: build from a docker compose file instead")
+	BuildCmd.Flags().StringArrayP("env-var", "", nil, "Used together with --image flag. Provide environment variables in the format --env-var key1=var1 --env-var key2=var2. Deprecated: build from a docker compose file instead")
+	BuildCmd.Flags().StringP("image-registry-auth-username", "", "", "Used together with --image flag. Provide the username to authenticate with the image registry if it's a private registry. Deprecated: build from a docker compose file instead")
+	BuildCmd.Flags().StringP("image-registry-auth-password", "", "", "Used together with --image flag. Provide the password to authenticate with the image registry if it's a private registry. Deprecated: build from a docker compose file instead")
 
 	BuildCmd.MarkFlagsRequiredTogether("image-registry-auth-username", "image-registry-auth-password")
 	// Mark one of them as required
@@ -123,6 +124,40 @@ func init() {
 	}
 	// Hide the deprecated flag from help
 	if err := BuildCmd.Flags().MarkHidden("name"); err != nil {
+		utils.PrintError(err)
+		return
+	}
+	// Deprecate the old --image flag, including --env-var and image-registry-auth-username, image-registry-auth-password
+	if err := BuildCmd.Flags().MarkDeprecated("image", "build from a docker compose file instead"); err != nil {
+		utils.PrintError(err)
+		return
+	}
+	if err := BuildCmd.Flags().MarkDeprecated("env-var", "build from a docker compose file instead"); err != nil {
+		utils.PrintError(err)
+		return
+	}
+	if err := BuildCmd.Flags().MarkDeprecated("image-registry-auth-username", "build from a docker compose file instead"); err != nil {
+		utils.PrintError(err)
+		return
+	}
+	if err := BuildCmd.Flags().MarkDeprecated("image-registry-auth-password", "build from a docker compose file instead"); err != nil {
+		utils.PrintError(err)
+		return
+	}
+	// Hide the deprecated flag from help
+	if err := BuildCmd.Flags().MarkHidden("image"); err != nil {
+		utils.PrintError(err)
+		return
+	}
+	if err := BuildCmd.Flags().MarkHidden("env-var"); err != nil {
+		utils.PrintError(err)
+		return
+	}
+	if err := BuildCmd.Flags().MarkHidden("image-registry-auth-username"); err != nil {
+		utils.PrintError(err)
+		return
+	}
+	if err := BuildCmd.Flags().MarkHidden("image-registry-auth-password"); err != nil {
 		utils.PrintError(err)
 		return
 	}
