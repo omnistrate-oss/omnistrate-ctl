@@ -21,3 +21,4 @@ __debug_bin*
 **/.claude/settings.local.json
 mcp-tools.json
 *.tmp
+results.json

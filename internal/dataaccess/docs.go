@@ -7,7 +7,10 @@ import (
 	"net/http"
 	"net/http/httputil"
 	"strings"
+	"sync"
 
+	"github.com/blevesearch/bleve/v2"
+	"github.com/blevesearch/bleve/v2/mapping"
 	"github.com/hashicorp/go-retryablehttp"
 	"github.com/omnistrate-oss/omnistrate-ctl/internal/config"
 	"github.com/rs/zerolog/log"
@@ -26,6 +29,17 @@ func (t *userAgentTransport) RoundTrip(req *http.Request) (*http.Response, error
 
 // DocumentationResult represents a search result
 type DocumentationResult struct {
+	Title       string  `json:"title"`
+	URL         string  `json:"url"`
+	Description string  `json:"description"`
+	Section     string  `json:"section"`
+	Content     string  `json:"content"`
+	Score       float64 `json:"score,omitempty"`
+}
+
+// Document represents a document to be indexed by Bleve
+type Document struct {
+	ID          string `json:"id"`
 	Title       string `json:"title"`
 	URL         string `json:"url"`
 	Description string `json:"description"`
@@ -33,33 +47,120 @@ type DocumentationResult struct {
 	Content     string `json:"content"`
 }
 
+var (
+	searchIndex bleve.Index
+	indexMutex  sync.RWMutex
+)
+
 func PerformDocumentationSearch(query string, limit int) ([]DocumentationResult, error) {
+	// Initialize the search index if not already done
+	if err := initializeSearchIndex(); err != nil {
+		return nil, fmt.Errorf("failed to initialize search index: %w", err)
+	}
+
+	// Perform the search
+	results, err := searchDocuments(query, limit)
+	if err != nil {
+		return nil, fmt.Errorf("failed to search documents: %w", err)
+	}
+
+	return results, nil
+}
+
+// initializeSearchIndex creates and populates the Bleve search index in memory
+func initializeSearchIndex() error {
+	indexMutex.Lock()
+	defer indexMutex.Unlock()
+
+	// If index is already initialized, return
+	if searchIndex != nil {
+		return nil
+	}
+
+	// Create new in-memory index
+	indexMapping := createIndexMapping()
+	var err error
+	searchIndex, err = bleve.NewMemOnly(indexMapping)
+	if err != nil {
+		return fmt.Errorf("failed to create in-memory search index: %w", err)
+	}
+
+	log.Debug().Msg("Created new in-memory search index")
+
+	// Populate the index with documentation
+	if err := populateIndex(); err != nil {
+		return fmt.Errorf("failed to populate search index: %w", err)
+	}
+
+	return nil
+}
+
+// createIndexMapping creates the mapping for the search index
+func createIndexMapping() mapping.IndexMapping {
+	// Create a new index mapping
+	indexMapping := bleve.NewIndexMapping()
+
+	// Create field mappings
+	textFieldMapping := bleve.NewTextFieldMapping()
+	textFieldMapping.Store = true
+	textFieldMapping.Index = true
+	textFieldMapping.IncludeTermVectors = true
+
+	keywordFieldMapping := bleve.NewKeywordFieldMapping()
+	keywordFieldMapping.Store = true
+	keywordFieldMapping.Index = true
+
+	// Create document mapping
+	docMapping := bleve.NewDocumentMapping()
+	docMapping.AddFieldMappingsAt("title", textFieldMapping)
+	docMapping.AddFieldMappingsAt("url", keywordFieldMapping)
+	docMapping.AddFieldMappingsAt("description", textFieldMapping)
+	docMapping.AddFieldMappingsAt("section", textFieldMapping)
+	docMapping.AddFieldMappingsAt("content", textFieldMapping)
+
+	indexMapping.AddDocumentMapping("_default", docMapping)
+
+	return indexMapping
+}
+
+// populateIndex fetches documentation and adds it to the search index
+func populateIndex() error {
 	// Fetch documentation from llms.txt
 	contentReader, err := fetchContentFromURL(config.GetLlmsTxtURL())
 	if err != nil {
-		return nil, fmt.Errorf("failed to fetch documentation: %w", err)
+		return fmt.Errorf("failed to fetch documentation: %w", err)
 	}
 
 	// Parse the documentation content
-	results, err := parseDocumentationContent(contentReader)
+	documents, err := parseDocumentationContentForIndexing(contentReader)
 	if err != nil {
-		return nil, err
+		return err
 	}
 
-	// TODO: Filter results based on query
-	filteredResults := results
+	// Add documents to the index
+	batch := searchIndex.NewBatch()
+	for _, doc := range documents {
+		if err := batch.Index(doc.ID, doc); err != nil {
+			log.Warn().Err(err).Str("docID", doc.ID).Msg("Failed to add document to batch")
+			continue
+		}
+	}
 
-	// TODO: Apply limit
+	if err := searchIndex.Batch(batch); err != nil {
+		return fmt.Errorf("failed to index documents: %w", err)
+	}
 
-	return filteredResults, nil
+	log.Debug().Msgf("Indexed %d documents", len(documents))
+	return nil
 }
 
-// parseDocumentationContent parses the llms.txt content and extracts documentation entries
-func parseDocumentationContent(body string) ([]DocumentationResult, error) {
-	var results []DocumentationResult
+// parseDocumentationContentForIndexing parses the llms.txt content and creates documents for indexing
+func parseDocumentationContentForIndexing(body string) ([]Document, error) {
+	var documents []Document
 	scanner := bufio.NewScanner(strings.NewReader(body))
 
 	var currentSection string
+	docID := 0
 
 	for scanner.Scan() {
 		line := strings.TrimSpace(scanner.Text())
@@ -101,11 +202,13 @@ func parseDocumentationContent(body string) ([]DocumentationResult, error) {
 				// Fetch content from the URL
 				content, err := fetchContentFromURL(url)
 				if err != nil {
-					content = err.Error()
+					content = fmt.Sprintf("Error fetching content: %s", err.Error())
+					log.Warn().Err(err).Str("url", url).Msg("Failed to fetch content for indexing")
 				}
 
-				// Create a result entry
-				result := DocumentationResult{
+				// Create a document for indexing
+				doc := Document{
+					ID:          fmt.Sprintf("doc_%d", docID),
 					Title:       title,
 					URL:         strings.TrimSuffix(url, "index.md"), // Remove index.md from URLs
 					Description: description,
@@ -113,7 +216,8 @@ func parseDocumentationContent(body string) ([]DocumentationResult, error) {
 					Content:     content,
 				}
 
-				results = append(results, result)
+				documents = append(documents, doc)
+				docID++
 			}
 		}
 	}
@@ -122,7 +226,150 @@ func parseDocumentationContent(body string) ([]DocumentationResult, error) {
 		return nil, fmt.Errorf("error reading documentation: %w", err)
 	}
 
+	return documents, nil
+}
+
+// searchDocuments performs a search query against the indexed documents
+func searchDocuments(query string, limit int) ([]DocumentationResult, error) {
+	indexMutex.RLock()
+	defer indexMutex.RUnlock()
+
+	if searchIndex == nil {
+		return nil, fmt.Errorf("search index not initialized")
+	}
+
+	// Create a more sophisticated query strategy for better scoring
+
+	// 1. First try exact phrase queries for each field with reasonable boost
+	titlePhraseQuery := bleve.NewMatchPhraseQuery(query)
+	titlePhraseQuery.SetField("title")
+	titlePhraseQuery.SetBoost(8.0) // High boost for exact phrase in title
+
+	sectionPhraseQuery := bleve.NewMatchPhraseQuery(query)
+	sectionPhraseQuery.SetField("section")
+	sectionPhraseQuery.SetBoost(6.0) // Very high boost for exact phrase in section
+
+	descriptionPhraseQuery := bleve.NewMatchPhraseQuery(query)
+	descriptionPhraseQuery.SetField("description")
+	descriptionPhraseQuery.SetBoost(4.0) // Good boost for exact phrase in description
+
+	contentPhraseQuery := bleve.NewMatchPhraseQuery(query)
+	contentPhraseQuery.SetField("content")
+	contentPhraseQuery.SetBoost(1.0) // Normal boost for exact phrase in content
+
+	// 2. Then add individual word queries for broader matching
+	titleQuery := bleve.NewMatchQuery(query)
+	titleQuery.SetField("title")
+	titleQuery.SetBoost(5.0) // High boost for title matches
+
+	descriptionQuery := bleve.NewMatchQuery(query)
+	descriptionQuery.SetField("description")
+	descriptionQuery.SetBoost(3.0) // Boost description matches
+
+	contentQuery := bleve.NewMatchQuery(query)
+	contentQuery.SetField("content")
+	contentQuery.SetBoost(1.0) // Normal boost for content matches
+
+	sectionQuery := bleve.NewMatchQuery(query)
+	sectionQuery.SetField("section")
+	sectionQuery.SetBoost(7.0) // Very high boost for section matches
+
+	// 3. Use BooleanQuery with SHOULD clauses for better scoring accumulation
+	// This allows scores to accumulate when multiple fields match
+	combinedQuery := bleve.NewBooleanQuery()
+
+	// Add phrase queries first (highest priority)
+	combinedQuery.AddShould(titlePhraseQuery)
+	combinedQuery.AddShould(sectionPhraseQuery)
+	combinedQuery.AddShould(descriptionPhraseQuery)
+	combinedQuery.AddShould(contentPhraseQuery)
+
+	// Add individual word queries
+	combinedQuery.AddShould(titleQuery)
+	combinedQuery.AddShould(descriptionQuery)
+	combinedQuery.AddShould(contentQuery)
+	combinedQuery.AddShould(sectionQuery)
+
+	// Set minimum should match to 1 (at least one field must match)
+	combinedQuery.SetMinShould(1)
+
+	// Create search request
+	searchRequest := bleve.NewSearchRequest(combinedQuery)
+	searchRequest.Fields = []string{"title", "url", "description", "section", "content"}
+
+	// Set the size to the requested limit
+	searchRequest.Size = limit
+
+	// Ensure results are sorted by score (highest to lowest) - this is default but explicit
+	searchRequest.SortBy([]string{"-_score"})
+
+	// Execute search
+	searchResult, err := searchIndex.Search(searchRequest)
+	if err != nil {
+		return nil, fmt.Errorf("failed to execute search: %w", err)
+	}
+
+	// Convert search results to DocumentationResult, results are already ordered by score
+	var results []DocumentationResult
+	for i, hit := range searchResult.Hits {
+		// Only process up to the limit
+		if i >= limit {
+			break
+		}
+
+		result := DocumentationResult{
+			Score: hit.Score,
+		}
+
+		// Extract fields from the hit
+		if title, ok := hit.Fields["title"].(string); ok {
+			result.Title = title
+		}
+		if url, ok := hit.Fields["url"].(string); ok {
+			result.URL = url
+		}
+		if description, ok := hit.Fields["description"].(string); ok {
+			result.Description = description
+		}
+		if section, ok := hit.Fields["section"].(string); ok {
+			result.Section = section
+		}
+		if content, ok := hit.Fields["content"].(string); ok {
+			result.Content = content
+		}
+
+		results = append(results, result)
+	}
+
+	log.Debug().Msgf("Search for '%s' returned %d results (ordered by relevance score)", query, len(results))
 	return results, nil
+}
+
+// CleanupSearchIndex closes the in-memory search index
+func cleanupSearchIndex() error {
+	indexMutex.Lock()
+	defer indexMutex.Unlock()
+
+	if searchIndex != nil {
+		if err := searchIndex.Close(); err != nil {
+			log.Warn().Err(err).Msg("Failed to close search index")
+		}
+		searchIndex = nil
+		log.Debug().Msg("Closed in-memory search index")
+	}
+
+	return nil
+}
+
+// refreshSearchIndex rebuilds the search index with fresh data
+func refreshSearchIndex() error {
+	// Clean up existing index
+	if err := cleanupSearchIndex(); err != nil {
+		return fmt.Errorf("failed to cleanup existing index: %w", err)
+	}
+
+	// Reinitialize the index
+	return initializeSearchIndex()
 }
 
 func fetchContentFromURL(url string) (string, error) {
