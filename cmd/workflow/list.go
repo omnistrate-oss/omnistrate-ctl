@@ -2,6 +2,7 @@ package workflow
 
 import (
 	"fmt"
+	"sort"
 	"time"
 
 	"github.com/omnistrate-oss/omnistrate-ctl/cmd/common"
@@ -13,7 +14,7 @@ import (
 var listCmd = &cobra.Command{
 	Use:   "list",
 	Short: "List workflows for a service environment",
-	Long:  "List all workflows for a specific service and environment.",
+	Long:  "List workflows for a specific service and environment. By default, shows the 10 most recent workflows.",
 	RunE:  listWorkflows,
 }
 
@@ -32,24 +33,24 @@ func init() {
 	listCmd.Flags().StringP("service-id", "s", "", "Service ID (required)")
 	listCmd.Flags().StringP("environment-id", "e", "", "Environment ID (required)")
 	listCmd.Flags().StringP("instance-id", "i", "", "Filter by instance ID (optional)")
+	listCmd.Flags().Int("limit", 10, "Maximum number of workflows to return (default: 10, use 0 for no limit)")
 	listCmd.Flags().String("start-date", "", "Filter workflows created after this date (RFC3339 format)")
 	listCmd.Flags().String("end-date", "", "Filter workflows created before this date (RFC3339 format)")
-	listCmd.Flags().Int64("page-size", 0, "Number of results per page")
 	listCmd.Flags().String("next-page-token", "", "Token for next page of results")
 
 	_ = listCmd.MarkFlagRequired("service-id")
 	_ = listCmd.MarkFlagRequired("environment-id")
 }
 
-func listWorkflows(cmd *cobra.Command, args []string) error {
+func listWorkflows(cmd *cobra.Command, _ []string) error {
 	ctx := cmd.Context()
 
 	serviceID, _ := cmd.Flags().GetString("service-id")
 	environmentID, _ := cmd.Flags().GetString("environment-id")
 	instanceID, _ := cmd.Flags().GetString("instance-id")
+	limit, _ := cmd.Flags().GetInt("limit")
 	startDateStr, _ := cmd.Flags().GetString("start-date")
 	endDateStr, _ := cmd.Flags().GetString("end-date")
-	pageSize, _ := cmd.Flags().GetInt64("page-size")
 	nextPageToken, _ := cmd.Flags().GetString("next-page-token")
 
 	token, err := common.GetTokenWithLogin()
@@ -57,32 +58,32 @@ func listWorkflows(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to get user token: %w", err)
 	}
 
-	var opts *dataaccess.ListWorkflowsOptions
-	if instanceID != "" || startDateStr != "" || endDateStr != "" || pageSize != 0 || nextPageToken != "" {
-		opts = &dataaccess.ListWorkflowsOptions{
-			InstanceID:    instanceID,
-			NextPageToken: nextPageToken,
-		}
+	// Always create options to handle limit
+	opts := &dataaccess.ListWorkflowsOptions{
+		InstanceID:    instanceID,
+		NextPageToken: nextPageToken,
+	}
 
-		if pageSize != 0 {
-			opts.PageSize = &pageSize
-		}
+	// Use limit as page size to get workflows
+	if limit > 0 {
+		limitInt64 := int64(limit)
+		opts.PageSize = &limitInt64
+	}
 
-		if startDateStr != "" {
-			startDate, err := time.Parse(time.RFC3339, startDateStr)
-			if err != nil {
-				return fmt.Errorf("invalid start-date format, expected RFC3339: %w", err)
-			}
-			opts.StartDate = &startDate
+	if startDateStr != "" {
+		startDate, err := time.Parse(time.RFC3339, startDateStr)
+		if err != nil {
+			return fmt.Errorf("invalid start-date format, expected RFC3339: %w", err)
 		}
+		opts.StartDate = &startDate
+	}
 
-		if endDateStr != "" {
-			endDate, err := time.Parse(time.RFC3339, endDateStr)
-			if err != nil {
-				return fmt.Errorf("invalid end-date format, expected RFC3339: %w", err)
-			}
-			opts.EndDate = &endDate
+	if endDateStr != "" {
+		endDate, err := time.Parse(time.RFC3339, endDateStr)
+		if err != nil {
+			return fmt.Errorf("invalid end-date format, expected RFC3339: %w", err)
 		}
+		opts.EndDate = &endDate
 	}
 
 	result, err := dataaccess.ListWorkflows(ctx, token, serviceID, environmentID, opts)
@@ -112,6 +113,25 @@ func listWorkflows(cmd *cobra.Command, args []string) error {
 			item.ServicePlanName = *workflow.ServicePlanName
 		}
 		workflows = append(workflows, item)
+	}
+
+	// Sort workflows by start time (most recent first) to ensure we show the most recent
+	sort.Slice(workflows, func(i, j int) bool {
+		timeI, errI := time.Parse(time.RFC3339, workflows[i].StartTime)
+		timeJ, errJ := time.Parse(time.RFC3339, workflows[j].StartTime)
+
+		// If we can't parse times, keep original order
+		if errI != nil || errJ != nil {
+			return false
+		}
+
+		// Sort descending (most recent first)
+		return timeI.After(timeJ)
+	})
+
+	// Apply client-side limit if API returned more than requested
+	if limit > 0 && len(workflows) > limit {
+		workflows = workflows[:limit]
 	}
 
 	outputFormat, _ := cmd.Flags().GetString("output")

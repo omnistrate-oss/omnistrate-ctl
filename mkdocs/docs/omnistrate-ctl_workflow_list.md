@@ -4,7 +4,7 @@ List workflows for a service environment
 
 ### Synopsis
 
-List all workflows for a specific service and environment.
+List workflows for a specific service and environment. By default, shows the 10 most recent workflows.
 
 ```
 omnistrate-ctl workflow list [flags]
@@ -17,8 +17,8 @@ omnistrate-ctl workflow list [flags]
   -e, --environment-id string    Environment ID (required)
   -h, --help                     help for list
   -i, --instance-id string       Filter by instance ID (optional)
+      --limit int                Maximum number of workflows to return (default: 10, use 0 for no limit) (default 10)
       --next-page-token string   Token for next page of results
-      --page-size int            Number of results per page
   -s, --service-id string        Service ID (required)
       --start-date string        Filter workflows created after this date (RFC3339 format)
 ```
