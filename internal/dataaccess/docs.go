@@ -202,7 +202,7 @@ func parseDocumentationContentForIndexing(body string) ([]Document, error) {
 				// Fetch content from the URL
 				content, err := fetchContentFromURL(url)
 				if err != nil {
-					content = fmt.Sprintf("Error fetching content: %s", err.Error())
+					content = err.Error()
 					log.Warn().Err(err).Str("url", url).Msg("Failed to fetch content for indexing")
 				}
 
