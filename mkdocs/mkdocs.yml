@@ -126,13 +126,6 @@ plugins:
       htmlmin_opts:
         remove_comments: true
       cache_safe: true
-  - minify:
-      minify_html: true
-      minify_js: true
-      minify_css: true
-      htmlmin_opts:
-        remove_comments: true
-      cache_safe: true
   - llmstxt:
       full_output: llms-full.txt
       sections:
@@ -143,7 +136,7 @@ plugins:
           - omnistrate-ctl*.md
 
   - redirects:
-      redirects:
+      redirect_maps:
         install.md: index.md
 
 copyright: |
