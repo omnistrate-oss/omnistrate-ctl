@@ -82,10 +82,20 @@ type TerraformData struct {
 func runDebug(cmd *cobra.Command, args []string) error {
 	instanceID := args[0]
 
-	// Get output flag
+	// Get output flag and resource filters
 	outputFlag, err := cmd.Flags().GetString("output")
 	if err != nil {
 		return fmt.Errorf("failed to get output flag: %w", err)
+	}
+
+	resourceID, err := cmd.Flags().GetString("resource-id")
+	if err != nil {
+		return fmt.Errorf("failed to get resource-id flag: %w", err)
+	}
+
+	resourceKeyFilter, err := cmd.Flags().GetString("resource-key")
+	if err != nil {
+		return fmt.Errorf("failed to get resource-key flag: %w", err)
 	}
 
 	token, err := common.GetTokenWithLogin()
@@ -132,8 +142,14 @@ func runDebug(cmd *cobra.Command, args []string) error {
 				continue
 			}
 
+			// Apply resource filtering if specified
+			if resourceKeyFilter != "" && resourceKeyFilter != resourceKey {
+				// If resource-key filter is specified and doesn't match, skip
+				continue
+			}
+
 			// Process each resource based on its type
-			resourceInfo := processResourceByType(resourceKey, resourceDebugInfo, instanceData, instanceID, IsLogsEnabled, logsService, ctx, token, serviceID, environmentID)
+			resourceInfo := processResourceByType(resourceKey, resourceDebugInfo, instanceData, instanceID, IsLogsEnabled, logsService, ctx, token, serviceID, environmentID, resourceID, resourceKeyFilter)
 			if resourceInfo != nil {
 				data.Resources = append(data.Resources, *resourceInfo)
 			}
@@ -157,12 +173,30 @@ func runDebug(cmd *cobra.Command, args []string) error {
 }
 
 // processResourceByType identifies the resource type and processes it accordingly
-func processResourceByType(resourceKey string, resourceDebugInfo interface{}, instanceData *fleet.ResourceInstance, instanceID string, isLogsEnabled bool, logsService *dataaccess.LogsService, ctx context.Context, token, serviceID, environmentID string) *ResourceInfo {
+func processResourceByType(resourceKey string, resourceDebugInfo interface{}, instanceData *fleet.ResourceInstance, instanceID string, isLogsEnabled bool, logsService *dataaccess.LogsService, ctx context.Context, token, serviceID, environmentID string, resourceIDFilter, resourceKeyFilter string) *ResourceInfo {
+	// Get actual resource ID from resource name if needed for filtering
+	var actualResourceID string
+	if resourceIDFilter != "" {
+		var err error
+		actualResourceID, _, err = getResourceFromInstance(ctx, token, instanceID, resourceKey)
+		if err == nil && actualResourceID != "" {
+			// If resource ID filter is specified and doesn't match, return nil to skip this resource
+			if resourceIDFilter != actualResourceID {
+				return nil
+			}
+		}
+	}
+
 	resourceInfo := &ResourceInfo{
-		ID:        resourceKey,
+		ID:        resourceKey, // Keep resourceKey as ID for backwards compatibility
 		Name:      resourceKey,
 		Type:      "unknown",
 		DebugData: resourceDebugInfo,
+	}
+
+	// If we have the actual resource ID, store it as well (could be useful for output)
+	if actualResourceID != "" {
+		resourceInfo.ID = actualResourceID
 	}
 
 	debugData, ok := resourceDebugInfo.(map[string]interface{})
@@ -2101,6 +2135,8 @@ func showLogsBrowser(app *tview.Application, terraformData *TerraformData, mainF
 func init() {
 	// Add output flag
 	debugCmd.Flags().StringVarP(&outputFlag, "output", "o", "interactive", "Output format (interactive|json)")
+	debugCmd.Flags().String("resource-id", "", "Filter results by resource ID")
+	debugCmd.Flags().String("resource-key", "", "Filter results by resource key")
 	// Command will be added by the parent instance command
 }
 

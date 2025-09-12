@@ -15,6 +15,8 @@ omnistrate-ctl workflow events [workflow-id] [flags]
 ```
   -e, --environment-id string   Environment ID (required)
   -h, --help                    help for events
+      --resource-id string      Filter results by resource ID
+      --resource-key string     Filter results by resource key
   -s, --service-id string       Service ID (required)
 ```
 
