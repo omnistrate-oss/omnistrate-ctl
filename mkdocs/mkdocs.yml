@@ -56,6 +56,7 @@ nav:
       - build: "omnistrate-ctl_build.md"
       - build-from-repo: "omnistrate-ctl_build-from-repo.md"
       - custom-network: "omnistrate-ctl_custom-network.md"
+      - docs: "omnistrate-ctl_docs.md"
       - domain: "omnistrate-ctl_domain.md"
       - environment: "omnistrate-ctl_environment.md"
       - helm: "omnistrate-ctl_helm.md"
