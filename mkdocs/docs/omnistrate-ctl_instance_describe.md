@@ -20,8 +20,10 @@ omctl instance describe instance-abcd1234
 ### Options
 
 ```
-  -h, --help            help for describe
-  -o, --output string   Output format. Only json is supported (default "json")
+  -h, --help                  help for describe
+  -o, --output string         Output format. Only json is supported (default "json")
+      --resource-id string    Filter results by resource ID
+      --resource-key string   Filter results by resource key
 ```
 
 ### Options inherited from parent commands
