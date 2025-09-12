@@ -115,7 +115,7 @@ func createIndexMapping() mapping.IndexMapping {
 	docMapping.AddFieldMappingsAt("title", textFieldMapping)
 	docMapping.AddFieldMappingsAt("url", keywordFieldMapping)
 	docMapping.AddFieldMappingsAt("description", textFieldMapping)
-	docMapping.AddFieldMappingsAt("section", textFieldMapping) 
+	docMapping.AddFieldMappingsAt("section", textFieldMapping)
 	docMapping.AddFieldMappingsAt("content", textFieldMapping)
 
 	indexMapping.AddDocumentMapping("_default", docMapping)
