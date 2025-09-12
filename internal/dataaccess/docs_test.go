@@ -134,13 +134,13 @@ func TestCleanupSearchIndex(t *testing.T) {
 		return
 	}
 
-	// Test cleanup without removing from disk
+	// Test cleanup
 	err = cleanupSearchIndex()
 	if err != nil {
 		t.Errorf("Expected no error for cleanup, got: %v", err)
 	}
 
-	// Test cleanup (removeFromDisk parameter is ignored for in-memory index)
+	// Test cleanup again to ensure idempotency
 	err = cleanupSearchIndex()
 	if err != nil {
 		t.Errorf("Expected no error for cleanup, got: %v", err)
