@@ -202,7 +202,7 @@ func parseDocumentationContentForIndexing(body string) ([]Document, error) {
 				// Fetch content from the URL
 				content, err := fetchContentFromURL(url)
 				if err != nil {
-					content = fmt.Sprintf("Error fetching content: %s", err.Error())
+					content = err.Error()
 					log.Warn().Err(err).Str("url", url).Msg("Failed to fetch content for indexing")
 				}
 
@@ -299,6 +299,9 @@ func searchDocuments(query string, limit int) ([]DocumentationResult, error) {
 
 	// Set the size to the requested limit
 	searchRequest.Size = limit
+
+	// Ensure results are sorted by score (highest to lowest) - this is default but explicit
+	searchRequest.SortBy([]string{"-_score"})
 
 	// Ensure results are sorted by score (highest to lowest) - this is default but explicit
 	searchRequest.SortBy([]string{"-_score"})

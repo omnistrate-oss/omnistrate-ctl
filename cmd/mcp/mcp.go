@@ -20,6 +20,7 @@ var config = &ophis.Config{
 			"secret",
 			"disable-feature",
 			"enable-feature",
+			"build-from-repo", // we only want build from mcp
 		})),
 		// Exclude hidden commands
 		tools.AddFilter(tools.Hidden()),
