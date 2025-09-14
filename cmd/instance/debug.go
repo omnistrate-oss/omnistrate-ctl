@@ -136,7 +136,7 @@ func runDebug(cmd *cobra.Command, args []string) error {
 	IsLogsEnabled := logsService.IsLogsEnabled(instanceData)
 
 	if debugResult.ResourcesDebug != nil {
-		for resourceKey, resourceDebugInfo := range debugResult.ResourcesDebug {
+		for resourceKey, resourceDebugInfo := range *debugResult.ResourcesDebug {
 			// Skip adding omnistrateobserv as a resource
 			if resourceKey == "omnistrateobserv" {
 				continue

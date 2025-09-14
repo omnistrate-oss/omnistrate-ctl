@@ -184,7 +184,8 @@ func runVersionUpgrade(cmd *cobra.Command, args []string) error {
 		}
 
 		resourceOverrideConfig := make(map[string]openapiclientfleet.ResourceOneOffPatchConfigurationOverride)
-		if len(instance.ConsumptionResourceInstanceResult.DetailedNetworkTopology) == 0 {
+		if instance.ConsumptionResourceInstanceResult.DetailedNetworkTopology == nil ||
+			len(*instance.ConsumptionResourceInstanceResult.DetailedNetworkTopology) == 0 {
 			utils.HandleSpinnerError(spinner, sm, errors.New("no eligible component topology found for the instance"))
 			return errors.New("no eligible component topology found for the instance")
 		}
@@ -200,18 +201,15 @@ func runVersionUpgrade(cmd *cobra.Command, args []string) error {
 				continue
 			}
 
-			resourceIntfc := instance.ConsumptionResourceInstanceResult.DetailedNetworkTopology[*resourceVersionSummary.ResourceId]
+			resource, ok := (*instance.ConsumptionResourceInstanceResult.DetailedNetworkTopology)[*resourceVersionSummary.ResourceId]
 
-			if resourceIntfc == nil {
+			if !ok {
 				// Skip
 				continue
 			}
 
-			if resourceMap, ok := resourceIntfc.(map[string]interface{}); ok {
-				resourceKey := resourceMap["resourceKey"].(string)
-				resourceOverrideConfig[resourceKey] = openapiclientfleet.ResourceOneOffPatchConfigurationOverride{
-					HelmChartValues: resourceVersionSummary.HelmDeploymentConfiguration.Values,
-				}
+			resourceOverrideConfig[resource.ResourceKey] = openapiclientfleet.ResourceOneOffPatchConfigurationOverride{
+				HelmChartValues: resourceVersionSummary.HelmDeploymentConfiguration.Values,
 			}
 		}
 

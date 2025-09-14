@@ -66,17 +66,10 @@ func (ls *LogsService) GetLogsConfig(instance *openapiclientfleet.ResourceInstan
 	}
 
 	// Find omnistrateobserv resource for log endpoint
-	for _, entry := range topology {
-		if entry == nil {
-			continue
-		}
-		entryMap, ok := entry.(map[string]interface{})
-		if !ok {
-			continue
-		}
-		if rk, ok := entryMap["resourceKey"].(string); ok && rk == "omnistrateobserv" {
-			if ce, ok := entryMap["clusterEndpoint"].(string); ok && ce != "" {
-				parts := strings.SplitN(ce, "@", 2)
+	for _, entry := range *topology {
+		if entry.ResourceKey == "omnistrateobserv" {
+			if entry.ClusterEndpoint != "" {
+				parts := strings.SplitN(entry.ClusterEndpoint, "@", 2)
 				if len(parts) == 2 {
 					userPass := parts[0]
 					baseURL := parts[1]
@@ -119,35 +112,19 @@ func (ls *LogsService) BuildLogStreams(instance *openapiclientfleet.ResourceInst
 	var logStreams []LogsStream
 
 	// Find the topology entry matching the resourceKey and build log URLs for its nodes
-	for _, entry := range topology {
-		if entry == nil {
+	for _, entry := range *topology {
+		if entry.ResourceKey != resourceKey {
 			continue
 		}
-		entryMap, ok := entry.(map[string]interface{})
-		if !ok {
-			continue
-		}
-		rk, ok := entryMap["resourceKey"].(string)
-		if !ok || rk != resourceKey {
-			continue
-		}
-		nodes, ok := entryMap["nodes"].([]interface{})
-		if !ok {
-			continue
-		}
-		for _, n := range nodes {
-			node, ok := n.(map[string]interface{})
-			if !ok {
-				continue
-			}
-			podName, ok := node["id"].(string)
-			if !ok || podName == "" {
+
+		for _, n := range entry.Nodes {
+			if n.Id == nil || *n.Id == "" {
 				continue
 			}
 			logsURL := fmt.Sprintf("wss://%s/logs?username=%s&password=%s&podName=%s&instanceId=%s",
-				logsConfig.BaseURL, logsConfig.Username, logsConfig.Password, podName, instanceID)
+				logsConfig.BaseURL, logsConfig.Username, logsConfig.Password, *n.Id, instanceID)
 			logStreams = append(logStreams, LogsStream{
-				PodName: podName,
+				PodName: *n.Id,
 				LogsURL: logsURL,
 			})
 		}
@@ -245,19 +222,14 @@ func (ls *LogsService) GetAllLogStreamsForInstance(instance *openapiclientfleet.
 	result := make(map[string][]LogsStream)
 
 	// Get all resource keys from topology (except omnistrateobserv)
-	for _, entry := range topology {
-		if entry == nil {
+	for _, entry := range *topology {
+		if entry.ResourceKey == "omnistrateobserv" {
 			continue
 		}
-		entryMap, ok := entry.(map[string]interface{})
-		if !ok {
-			continue
-		}
-		if rk, ok := entryMap["resourceKey"].(string); ok && rk != "omnistrateobserv" {
-			logStreams, err := ls.BuildLogStreams(instance, instanceID, rk)
-			if err == nil && len(logStreams) > 0 {
-				result[rk] = logStreams
-			}
+
+		logStreams, err := ls.BuildLogStreams(instance, instanceID, entry.ResourceKey)
+		if err == nil && len(logStreams) > 0 {
+			result[entry.ResourceKey] = logStreams
 		}
 	}
 
