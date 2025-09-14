@@ -131,9 +131,13 @@ func formatServicePlanDetails(ctx context.Context, token, serviceName, planName,
 		return model.ServicePlanDetails{}, err
 	}
 
+	if productTier.ApiGroups == nil || len(*productTier.ApiGroups) == 0 {
+		return model.ServicePlanDetails{}, fmt.Errorf("no resources found in the service plan")
+	}
+
 	// Get resource details
 	var resources []model.Resource
-	for resourceID := range productTier.ApiGroups {
+	for resourceID := range *productTier.ApiGroups {
 		// Get resource details
 		desRes, err := dataaccess.DescribeResource(ctx, token, productTier.ServiceId, resourceID, nil, nil)
 		if err != nil {
@@ -202,19 +206,17 @@ func formatServicePlanDetails(ctx context.Context, token, serviceName, planName,
 	}
 
 	formattedPendingChanges := make(map[string]model.ResourceChangeSet)
-	for resourceID, changeSet := range pendingChanges.ResourceChangeSets {
-		if cs, ok := changeSet.(openapiclient.ChangeSet); ok {
-			formattedChangeSet := model.ResourceChangeSet{
-				ResourceChanges:           cs.ResourceChanges,
-				ProductTierFeatureChanges: cs.ProductTierFeatureChanges,
-				ImageConfigChanges:        cs.ImageConfigChanges,
-				InfraConfigChanges:        cs.InfraConfigChanges,
-			}
-			if cs.ResourceName != nil {
-				formattedChangeSet.ResourceName = *cs.ResourceName
-			}
-			formattedPendingChanges[resourceID] = formattedChangeSet
+	for resourceID, cs := range pendingChanges.ResourceChangeSets {
+		formattedChangeSet := model.ResourceChangeSet{
+			ResourceChanges:           cs.ResourceChanges,
+			ProductTierFeatureChanges: cs.ProductTierFeatureChanges,
+			ImageConfigChanges:        cs.ImageConfigChanges,
+			InfraConfigChanges:        cs.InfraConfigChanges,
 		}
+		if cs.ResourceName != nil {
+			formattedChangeSet.ResourceName = *cs.ResourceName
+		}
+		formattedPendingChanges[resourceID] = formattedChangeSet
 	}
 
 	formattedServicePlan := model.ServicePlanDetails{

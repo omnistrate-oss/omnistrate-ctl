@@ -21,7 +21,7 @@ func TestAccountStructures(t *testing.T) {
 						ModelType:              "Customer",
 						ServiceModelId:         "sm-12345",
 						AccountConfigIds:       []string{"account-1"},
-						ActiveAccountConfigIds: map[string]interface{}{"aws": []string{"account-1"}},
+						ActiveAccountConfigIds: map[string]string{"aws": "account-1"},
 						Accounts: []openapiclientfleet.FleetDescribeAccountConfigResult{
 							{
 								Id:              "account-1",

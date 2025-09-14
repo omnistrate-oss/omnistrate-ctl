@@ -4,6 +4,7 @@ import (
 	"context"
 	"strings"
 
+	"github.com/omnistrate-oss/omnistrate-ctl/internal/utils"
 	openapiclientfleet "github.com/omnistrate-oss/omnistrate-sdk-go/fleet"
 	openapiclient "github.com/omnistrate-oss/omnistrate-sdk-go/v1"
 )
@@ -20,7 +21,7 @@ type PlanWithAccounts struct {
 	ModelType              string                                                `json:"modelType"`
 	ServiceModelId         string                                                `json:"serviceModelId,omitempty"`
 	AccountConfigIds       []string                                              `json:"accountConfigIds,omitempty"`
-	ActiveAccountConfigIds map[string]interface{}                                `json:"activeAccountConfigIds,omitempty"`
+	ActiveAccountConfigIds map[string]string                                     `json:"activeAccountConfigIds,omitempty"`
 	Accounts               []openapiclientfleet.FleetDescribeAccountConfigResult `json:"accounts"`
 }
 
@@ -180,7 +181,7 @@ func GetServiceAccountInfo(ctx context.Context, token string, service *openapicl
 				ModelType:              detailedPlan.ModelType,
 				ServiceModelId:         detailedPlan.ServiceModelId,
 				AccountConfigIds:       detailedPlan.AccountConfigIds,
-				ActiveAccountConfigIds: detailedPlan.ActiveAccountConfigIds,
+				ActiveAccountConfigIds: utils.FromPtr(detailedPlan.ActiveAccountConfigIds),
 				Accounts:               planAccounts,
 			}
 

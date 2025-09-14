@@ -326,10 +326,10 @@ func filterInstanceByResource(ctx context.Context, token string, instance *opena
 
 	// Filter DetailedNetworkTopology if present - this contains resource-specific network information
 	if instance.ConsumptionResourceInstanceResult.DetailedNetworkTopology != nil {
-		filteredTopology := make(map[string]interface{})
+		filteredTopology := make(map[string]openapiclientfleet.ResourceNetworkTopologyResult)
 
 		// Filter the topology based on resourceID or resourceKey
-		for key, value := range instance.ConsumptionResourceInstanceResult.DetailedNetworkTopology {
+		for key, value := range *instance.ConsumptionResourceInstanceResult.DetailedNetworkTopology {
 			includeResource := false
 
 			if resourceID != "" {
@@ -351,7 +351,7 @@ func filterInstanceByResource(ctx context.Context, token string, instance *opena
 			}
 		}
 
-		filteredInstance.ConsumptionResourceInstanceResult.DetailedNetworkTopology = filteredTopology
+		filteredInstance.ConsumptionResourceInstanceResult.DetailedNetworkTopology = utils.ToPtr(filteredTopology)
 	}
 
 	// Add filtered resource information as additional metadata
@@ -374,10 +374,15 @@ func filterInstanceByResource(ctx context.Context, token string, instance *opena
 		"totalResourceVersionSummaries":    len(instance.ResourceVersionSummaries),
 		"filteredResourceVersionSummaries": len(filteredInstance.ResourceVersionSummaries),
 	}
+
 	if instance.ConsumptionResourceInstanceResult.DetailedNetworkTopology != nil {
-		countInfo["totalNetworkTopologyEntries"] = len(instance.ConsumptionResourceInstanceResult.DetailedNetworkTopology)
-		countInfo["filteredNetworkTopologyEntries"] = len(filteredInstance.ConsumptionResourceInstanceResult.DetailedNetworkTopology)
+		countInfo["totalNetworkTopologyEntries"] = len(*instance.ConsumptionResourceInstanceResult.DetailedNetworkTopology)
 	}
+
+	if filteredInstance.ConsumptionResourceInstanceResult.DetailedNetworkTopology != nil {
+		countInfo["filteredNetworkTopologyEntries"] = len(*filteredInstance.ConsumptionResourceInstanceResult.DetailedNetworkTopology)
+	}
+
 	filteredInstance.AdditionalProperties["filteringStats"] = countInfo
 
 	return &filteredInstance, nil
