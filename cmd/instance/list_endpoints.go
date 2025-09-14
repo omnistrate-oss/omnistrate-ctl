@@ -164,16 +164,23 @@ func extractEndpoints(instance *openapiclientfleet.ResourceInstance) (resourceEn
 	}
 
 	for _, resource := range *instance.ConsumptionResourceInstanceResult.DetailedNetworkTopology {
-		if resource.ClusterEndpoint == "" && (resource.AdditionalEndpoints == nil ||
-			len(*resource.AdditionalEndpoints) == 0) {
-			// If both clusterEndpoint and additionalEndpoints are empty, skip this resource
-			continue
+		if resource.ClusterEndpoint == "" {
+			if resource.AdditionalEndpoints == nil || len(*resource.AdditionalEndpoints) == 0 {
+				// If both clusterEndpoint and additionalEndpoints are empty, skip this resource
+				continue
+			}
 		}
 
 		// Add to the map with resourceName as key
+		var additionalEndpoints map[string]openapiclientfleet.Endpoint
+		if resource.AdditionalEndpoints != nil {
+			additionalEndpoints = *resource.AdditionalEndpoints
+		} else {
+			additionalEndpoints = make(map[string]openapiclientfleet.Endpoint)
+		}
 		resourceEndpoints[resource.ResourceName] = ResourceEndpoints{
 			ClusterEndpoint:     resource.ClusterEndpoint,
-			AdditionalEndpoints: *resource.AdditionalEndpoints,
+			AdditionalEndpoints: additionalEndpoints,
 		}
 	}
 

@@ -67,7 +67,7 @@ func (ls *LogsService) GetLogsConfig(instance *openapiclientfleet.ResourceInstan
 
 	// Find omnistrateobserv resource for log endpoint
 	for _, entry := range *topology {
-		if entry.ResourceKey != "omnistrateobserv" {
+		if entry.ResourceKey == "omnistrateobserv" {
 			if entry.ClusterEndpoint != "" {
 				parts := strings.SplitN(entry.ClusterEndpoint, "@", 2)
 				if len(parts) == 2 {
