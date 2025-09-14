@@ -172,11 +172,11 @@ func extractEndpoints(instance *openapiclientfleet.ResourceInstance) (resourceEn
 		}
 
 		// Add to the map with resourceName as key
-		var additionalEndpoints map[string]openapiclientfleet.Endpoint
+		var additionalEndpoints map[string]openapiclientfleet.ClusterEndpoint
 		if resource.AdditionalEndpoints != nil {
 			additionalEndpoints = *resource.AdditionalEndpoints
 		} else {
-			additionalEndpoints = make(map[string]openapiclientfleet.Endpoint)
+			additionalEndpoints = make(map[string]openapiclientfleet.ClusterEndpoint)
 		}
 		resourceEndpoints[resource.ResourceName] = ResourceEndpoints{
 			ClusterEndpoint:     resource.ClusterEndpoint,
