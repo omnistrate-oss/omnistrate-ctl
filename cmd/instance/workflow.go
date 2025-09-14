@@ -29,13 +29,13 @@ func displayWorkflowResourceDataWithSpinners(ctx context.Context, token, instanc
 	}
 
 	instance := searchRes.ResourceInstanceResults[0]
-	
+
 	// Initialize spinner manager
 	sm := ysmrr.NewSpinnerManager()
-	
+
 	// Track resource spinners
 	var resourceSpinners []ResourceSpinner
-	
+
 	// Function to create or update spinners for each resource
 	createOrUpdateSpinners := func(resourcesData []dataaccess.ResourceWorkflowData) {
 		// If this is the first time, create spinners for each resource
@@ -49,20 +49,20 @@ func displayWorkflowResourceDataWithSpinners(ctx context.Context, token, instanc
 			}
 			sm.Start()
 		}
-		
+
 		// Update each resource spinner with current status
 		for i, resourceData := range resourcesData {
 			if i < len(resourceSpinners) {
 				// Get status icons for each category
 				bootstrapEventType := getHighestPriorityEventType(resourceData.EventsByCategory.Bootstrap, "bootstrap", &resourceData)
 				bootstrapIcon := getEventStatusIconFromType(bootstrapEventType)
-				
+
 				storageEventType := getHighestPriorityEventType(resourceData.EventsByCategory.Storage, "storage", &resourceData)
 				storageIcon := getEventStatusIconFromType(storageEventType)
-				
+
 				networkEventType := getHighestPriorityEventType(resourceData.EventsByCategory.Network, "network", &resourceData)
 				networkIcon := getEventStatusIconFromType(networkEventType)
-				
+
 				computeEventType := getHighestPriorityEventType(resourceData.EventsByCategory.Compute, "compute", &resourceData)
 				computeIcon := getEventStatusIconFromType(computeEventType)
 
@@ -96,7 +96,7 @@ func displayWorkflowResourceDataWithSpinners(ctx context.Context, token, instanc
 			}
 		}
 	}
-	
+
 	// Function to complete spinners when deployment is done
 	completeSpinners := func(resourcesData []dataaccess.ResourceWorkflowData, workflowInfo *dataaccess.WorkflowInfo) {
 		for i := range resourcesData {
@@ -110,7 +110,7 @@ func displayWorkflowResourceDataWithSpinners(ctx context.Context, token, instanc
 		}
 		sm.Stop()
 	}
-	
+
 	// Function to fetch and display current workflow status for all resources
 	displayCurrentStatus := func() (bool, error) {
 		// Get workflow events for all resources in the instance
@@ -131,8 +131,8 @@ func displayWorkflowResourceDataWithSpinners(ctx context.Context, token, instanc
 
 		// Check if workflow is complete
 		isWorkflowComplete := strings.ToLower(workflowInfo.WorkflowStatus) == "success" ||
-					 strings.ToLower(workflowInfo.WorkflowStatus) == "failed" ||
-					 strings.ToLower(workflowInfo.WorkflowStatus) == "cancelled"
+			strings.ToLower(workflowInfo.WorkflowStatus) == "failed" ||
+			strings.ToLower(workflowInfo.WorkflowStatus) == "cancelled"
 
 		if len(resourcesData) == 0 {
 			return isWorkflowComplete, nil
@@ -140,7 +140,7 @@ func displayWorkflowResourceDataWithSpinners(ctx context.Context, token, instanc
 
 		// Create or update spinners for each resource
 		createOrUpdateSpinners(resourcesData)
-		
+
 		// If workflow is complete, complete all spinners and stop
 		if isWorkflowComplete {
 			completeSpinners(resourcesData, workflowInfo)
@@ -169,7 +169,6 @@ func displayWorkflowResourceDataWithSpinners(ctx context.Context, token, instanc
 	return nil
 }
 
-
 // getHighestPriorityEventType checks all events in a category and returns the highest priority event type
 func getHighestPriorityEventType(events []dataaccess.CustomWorkflowEvent, categoryName string, resourceData *dataaccess.ResourceWorkflowData) string {
 	// Case 1: No events at all - need to determine if step is not started or not applicable
@@ -181,7 +180,7 @@ func getHighestPriorityEventType(events []dataaccess.CustomWorkflowEvent, catego
 			"deployment": true,
 			"compute":    true,
 		}
-		
+
 		if commonCategories[categoryName] {
 			return "not_started" // Likely workflow step exists but not started yet
 		} else {
@@ -217,10 +216,10 @@ func getHighestPriorityEventType(events []dataaccess.CustomWorkflowEvent, catego
 			return event.EventType
 		}
 	}
-	
+
 	// 5. If none of the above known types, return the last event type as fallback
 	return "unknown"
-	
+
 }
 
 // getEventStatusIconFromType returns an appropriate icon based on event type string
@@ -267,7 +266,7 @@ func allEventsCompleted(eventTypes ...string) bool {
 		if eventType == "not_started" || eventType == "not_applicable" || eventType == "" {
 			continue
 		}
-		
+
 		hasAtLeastOneEvent = true
 		if eventType != "WorkflowStepCompleted" {
 			return false

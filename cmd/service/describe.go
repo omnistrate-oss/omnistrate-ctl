@@ -5,9 +5,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/omnistrate-oss/omnistrate-ctl/cmd/common"
-
 	"github.com/chelnak/ysmrr"
+	"github.com/omnistrate-oss/omnistrate-ctl/cmd/common"
 	"github.com/omnistrate-oss/omnistrate-ctl/internal/config"
 	"github.com/omnistrate-oss/omnistrate-ctl/internal/dataaccess"
 	"github.com/omnistrate-oss/omnistrate-ctl/internal/utils"
@@ -99,6 +98,14 @@ func runDescribe(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		utils.HandleSpinnerError(spinner, sm, err)
 		return err
+	}
+
+	// Enhance service plans with detailed account information
+	err = dataaccess.EnhanceServicePlansWithAccountInfo(cmd.Context(), token, service)
+	if err != nil {
+		// Don't fail the entire command if account info enhancement fails
+		// Just log a warning and continue
+		fmt.Printf("Warning: Could not enhance service plans with account information: %v\n", err)
 	}
 
 	utils.HandleSpinnerSuccess(spinner, sm, "Successfully described service")

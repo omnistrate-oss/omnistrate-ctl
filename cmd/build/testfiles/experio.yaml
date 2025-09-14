@@ -6,7 +6,7 @@ volumes:
   local_redis_data: {}
 
 services:
-  {{ $file:./services/experio_service_postgres.yaml }}
+  x-embed-$: {{ $file:./services/experio_service_postgres.yaml }}
 
   redis:
     image: redis/redis-stack-server:latest
@@ -59,4 +59,4 @@ services:
         required: false
         export: true
 
-{{ $file:image_registry_attributes.yaml }}
+x-embed-$: {{ $file:image_registry_attributes.yaml }}

@@ -114,11 +114,12 @@ func generateDeploymentCellTemplate(ctx context.Context, token string, cloudProv
 		return model.DeploymentCellTemplate{}, fmt.Errorf("failed to get service provider organization: %w", err)
 	}
 
-	if res.DefaultDeploymentCellConfigurations == nil {
+	if res.DefaultDeploymentCellConfigurations == nil ||
+		res.DefaultDeploymentCellConfigurations.DeploymentCellConfigurationPerCloudProvider == nil {
 		return model.DeploymentCellTemplate{}, fmt.Errorf("no default deployment cell configurations found in service provider organization")
 	}
 
-	for cloudProvider, cellConfig := range res.DefaultDeploymentCellConfigurations.DeploymentCellConfigurationPerCloudProvider {
+	for cloudProvider, cellConfig := range *res.DefaultDeploymentCellConfigurations.DeploymentCellConfigurationPerCloudProvider {
 		if cloudProvider != cloudProviderName {
 			continue // Skip if the cloud provider does not match
 		}

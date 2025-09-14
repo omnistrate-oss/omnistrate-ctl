@@ -7,19 +7,23 @@ import (
 
 	"github.com/fatih/color"
 	"github.com/mitchellh/go-wordwrap"
-	"github.com/njayp/ophis"
 	"github.com/omnistrate-oss/omnistrate-ctl/cmd/account"
 	"github.com/omnistrate-oss/omnistrate-ctl/cmd/alarms"
+	"github.com/omnistrate-oss/omnistrate-ctl/cmd/audit"
 	"github.com/omnistrate-oss/omnistrate-ctl/cmd/auth/login"
 	"github.com/omnistrate-oss/omnistrate-ctl/cmd/auth/logout"
 	"github.com/omnistrate-oss/omnistrate-ctl/cmd/build"
+	"github.com/omnistrate-oss/omnistrate-ctl/cmd/cost"
 	"github.com/omnistrate-oss/omnistrate-ctl/cmd/customnetwork"
 	"github.com/omnistrate-oss/omnistrate-ctl/cmd/deploymentcell"
+	"github.com/omnistrate-oss/omnistrate-ctl/cmd/docs"
 	"github.com/omnistrate-oss/omnistrate-ctl/cmd/domain"
 	"github.com/omnistrate-oss/omnistrate-ctl/cmd/environment"
 	"github.com/omnistrate-oss/omnistrate-ctl/cmd/helm"
 	"github.com/omnistrate-oss/omnistrate-ctl/cmd/inspect"
 	"github.com/omnistrate-oss/omnistrate-ctl/cmd/instance"
+	"github.com/omnistrate-oss/omnistrate-ctl/cmd/mcp"
+	"github.com/omnistrate-oss/omnistrate-ctl/cmd/operations"
 	"github.com/omnistrate-oss/omnistrate-ctl/cmd/secret"
 	"github.com/omnistrate-oss/omnistrate-ctl/cmd/service"
 	"github.com/omnistrate-oss/omnistrate-ctl/cmd/serviceplan"
@@ -27,7 +31,6 @@ import (
 	"github.com/omnistrate-oss/omnistrate-ctl/cmd/subscription"
 	"github.com/omnistrate-oss/omnistrate-ctl/cmd/upgrade"
 	"github.com/omnistrate-oss/omnistrate-ctl/cmd/workflow"
-	"github.com/omnistrate-oss/omnistrate-ctl/cmd/cost"
 	"github.com/omnistrate-oss/omnistrate-ctl/internal/config"
 	"github.com/omnistrate-oss/omnistrate-ctl/internal/utils"
 	"github.com/spf13/cobra"
@@ -107,7 +110,6 @@ func init() {
 	RootCmd.PersistentFlags().BoolP("version", "v", false, "Print the version number of omnistrate-ctl")
 	RootCmd.PersistentFlags().StringP("output", "o", "table", "Output format (text|table|json)")
 
-	RootCmd.AddCommand(ophis.Command(nil))
 	RootCmd.AddCommand(login.LoginCmd)
 	RootCmd.AddCommand(logout.LogoutCmd)
 
@@ -117,6 +119,7 @@ func init() {
 	RootCmd.AddCommand(service.Cmd)
 	RootCmd.AddCommand(account.Cmd)
 	RootCmd.AddCommand(alarms.Cmd)
+	RootCmd.AddCommand(docs.Cmd)
 	RootCmd.AddCommand(domain.Cmd)
 	RootCmd.AddCommand(upgrade.Cmd)
 	RootCmd.AddCommand(helm.Cmd)
@@ -131,6 +134,9 @@ func init() {
 	RootCmd.AddCommand(secret.Cmd)
 	RootCmd.AddCommand(workflow.Cmd)
 	RootCmd.AddCommand(cost.Cmd)
+	RootCmd.AddCommand(operations.Cmd)
+	RootCmd.AddCommand(audit.Cmd)
+	RootCmd.AddCommand(mcp.Cmd)
 
 	// Hide the default completion command
 	RootCmd.Root().CompletionOptions.DisableDefaultCmd = true

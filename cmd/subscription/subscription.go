@@ -14,8 +14,15 @@ var Cmd = &cobra.Command{
 
 func init() {
 	Cmd.AddCommand(listCmd)
+	Cmd.AddCommand(listForServiceCmd)
 	Cmd.AddCommand(describeCmd)
-
+	Cmd.AddCommand(listRequestsCmd)
+	Cmd.AddCommand(approveRequestCmd)
+	Cmd.AddCommand(denyRequestCmd)
+	Cmd.AddCommand(createOnBehalfCmd)
+	Cmd.AddCommand(suspendCmd)
+	Cmd.AddCommand(resumeCmd)
+	Cmd.AddCommand(terminateCmd)
 }
 
 func run(cmd *cobra.Command, args []string) {

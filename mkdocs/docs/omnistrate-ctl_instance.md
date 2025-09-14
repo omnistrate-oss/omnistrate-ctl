@@ -31,7 +31,9 @@ omnistrate-ctl instance [operation] [flags]
 * [omnistrate-ctl instance create](omnistrate-ctl_instance_create.md)	 - Create an instance deployment
 * [omnistrate-ctl instance debug](omnistrate-ctl_instance_debug.md)	 - Debug instance resources
 * [omnistrate-ctl instance delete](omnistrate-ctl_instance_delete.md)	 - Delete an instance deployment
+* [omnistrate-ctl instance deployment-parameters](omnistrate-ctl_instance_deployment-parameters.md)	 - List API parameters configurable for instance deployment
 * [omnistrate-ctl instance describe](omnistrate-ctl_instance_describe.md)	 - Describe an instance deployment for your service
+* [omnistrate-ctl instance describe-snapshot](omnistrate-ctl_instance_describe-snapshot.md)	 - Describe a specific instance snapshot
 * [omnistrate-ctl instance disable-debug-mode](omnistrate-ctl_instance_disable-debug-mode.md)	 - Disable debug mode for an instance deployment
 * [omnistrate-ctl instance enable-debug-mode](omnistrate-ctl_instance_enable-debug-mode.md)	 - Enable debug mode for an instance deployment
 * [omnistrate-ctl instance evaluate](omnistrate-ctl_instance_evaluate.md)	 - Evaluate an expression in the context of an instance

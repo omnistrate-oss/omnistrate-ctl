@@ -26,12 +26,12 @@ CGO_ENABLED=0
 GOPRIVATE=github.com/omnistrate
 
 .PHONY: all
-all: tidy build unit-test lint check-dependencies gen-doc pretty
+all: tidy pretty build unit-test lint check-dependencies gen-doc
 
 .PHONE: pretty 
 pretty:
 	@echo "Running go fmt"
-	@npx prettier --write .
+	@go fmt ./...
 	
 .PHONY: tidy
 tidy:

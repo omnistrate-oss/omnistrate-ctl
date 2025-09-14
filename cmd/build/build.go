@@ -26,46 +26,45 @@ var (
 	ServiceID     string
 	EnvironmentID string
 	ProductTierID string
-
-	validSpecType = []string{DockerComposeSpecType, ServicePlanSpecType}
 )
 
 const (
-	DockerComposeSpecType = "DockerCompose"
-	ServicePlanSpecType   = "ServicePlanSpec"
+	buildExample = `
+# Build service in dev environment
+omctl build --product-name "My Service"
 
-	buildExample = `# Build service from image in dev environment
+# Build service with compose spec in dev environment
+omctl build --file compose.yaml --product-name "My Service"
+
+# Build service with compose spec in prod environment
+omctl build --file compose.yaml --product-name "My Service" --environment prod --environment-type prod
+
+# Build service with compose spec and release the service with a release description
+omctl build --file compose.yaml --product-name "My Service" --release --release-description "v1.0.0-alpha"
+
+# Build service with compose spec and release the service as preferred with a release description
+omctl build --file compose.yaml --product-name "My Service" --release-as-preferred --release-description "v1.0.0-alpha"
+
+# Build service with compose spec interactively
+omctl build --file compose.yaml --product-name "My Service" --interactive
+
+# Build service with compose spec with service description and service logo
+omctl build --file compose.yaml --product-name "My Service" --description "My Service Description" --service-logo-url "https://example.com/logo.png"
+
+# Build service with service specification for Helm, Operator or Kustomize in dev environment
+omctl build --spec-type ServicePlanSpec --file spec.yaml --product-name "My Service"
+
+# Build service with service specification for Helm, Operator or Kustomize in prod environment
+omctl build --spec-type ServicePlanSpec --file spec.yaml --product-name "My Service" --environment prod --environment-type prod
+
+# Build service with service specification for Helm, Operator or Kustomize as preferred
+omctl build --spec-type ServicePlanSpec --file spec.yaml --product-name "My Service" --release-as-preferred --release-description "v1.0.0-alpha"
+
+# Build service from image in dev environment
 omctl build --image docker.io/mysql:5.7 --product-name MySQL --env-var "MYSQL_ROOT_PASSWORD=password" --env-var "MYSQL_DATABASE=mydb"
 
 # Build service with private image in dev environment
 omctl build --image docker.io/namespace/my-image:v1.2 --product-name "My Service" --image-registry-auth-username username --image-registry-auth-password password --env-var KEY1:VALUE1 --env-var KEY2:VALUE2
-
-# Build service with compose spec in dev environment
-omctl build --file docker-compose.yml --product-name "My Service"
-
-# Build service with compose spec in prod environment
-omctl build --file docker-compose.yml --product-name "My Service" --environment prod --environment-type prod
-
-# Build service with compose spec and release the service with a release description
-omctl build --file docker-compose.yml --product-name "My Service" --release --release-description "v1.0.0-alpha"
-
-# Build service with compose spec and release the service as preferred with a release description
-omctl build --file docker-compose.yml --product-name "My Service" --release-as-preferred --release-description "v1.0.0-alpha"
-
-# Build service with compose spec interactively
-omctl build --file docker-compose.yml --product-name "My Service" --interactive
-
-# Build service with compose spec with service description and service logo
-omctl build --file docker-compose.yml --product-name "My Service" --description "My Service Description" --service-logo-url "https://example.com/logo.png"
-
-# Build service with service specification for Helm, Operator or Kustomize in dev environment
-omctl build --spec-type ServicePlanSpec --file service-spec.yml --product-name "My Service"
-
-# Build service with service specification for Helm, Operator or Kustomize in prod environment
-omctl build --spec-type ServicePlanSpec --file service-spec.yml --product-name "My Service" --environment prod --environment-type prod
-
-# Build service with service specification for Helm, Operator or Kustomize as preferred
-omctl build --spec-type ServicePlanSpec --file service-spec.yml --product-name "My Service" --release-as-preferred --release-description "v1.0.0-alpha"
 `
 
 	buildLong = `Build command can be used to build a service from image, docker compose, and service plan spec. 
@@ -94,8 +93,9 @@ var BuildCmd = &cobra.Command{
 }
 
 func init() {
-	BuildCmd.Flags().StringP("file", "f", "", "Path to the docker compose file")
-	BuildCmd.Flags().StringP("name", "n", "", "Name of the service. A service can have multiple service plans. The build command will build a new or existing service plan inside the specified service.")
+	BuildCmd.Flags().StringP("file", "f", "", "Path to the docker compose file (defaults to compose.yaml or spec.yaml)")
+	BuildCmd.Flags().StringP("spec-type", "s", "", "Spec type (will infer from file if not provided). Valid options include: 'DockerCompose', 'ServicePlanSpec'")
+	BuildCmd.Flags().BoolP("dry-run", "d", false, "Simulate building the service without actually creating resources")
 	BuildCmd.Flags().StringP("product-name", "", "", "Name of the service. A service can have multiple service plans. The build command will build a new or existing service plan inside the specified service.")
 	BuildCmd.Flags().StringP("description", "", "", "A short description for the whole service. A service can have multiple service plans.")
 	BuildCmd.Flags().StringP("service-logo-url", "", "", "URL to the service logo")
@@ -106,13 +106,13 @@ func init() {
 	BuildCmd.Flags().StringP("release-name", "", "", "Custom description of the release version. Deprecated: use --release-description instead")
 	BuildCmd.Flags().StringP("release-description", "", "", "Used together with --release or --release-as-preferred flag. Provide a description for the release version")
 	BuildCmd.Flags().BoolP("interactive", "i", false, "Interactive mode")
-	BuildCmd.Flags().StringP("spec-type", "s", DockerComposeSpecType, "Spec type")
-	BuildCmd.Flags().BoolP("dry-run", "d", false, "Simulate building the service without actually creating resources")
 
-	BuildCmd.Flags().StringP("image", "", "", "Provide the complete image repository URL with the image name and tag (e.g., docker.io/namespace/my-image:v1.2)")
-	BuildCmd.Flags().StringArrayP("env-var", "", nil, "Used together with --image flag. Provide environment variables in the format --env-var key1=var1 --env-var key2=var2")
-	BuildCmd.Flags().StringP("image-registry-auth-username", "", "", "Used together with --image flag. Provide the username to authenticate with the image registry if it's a private registry")
-	BuildCmd.Flags().StringP("image-registry-auth-password", "", "", "Used together with --image flag. Provide the password to authenticate with the image registry if it's a private registry")
+	// Deprecated flags
+	BuildCmd.Flags().StringP("name", "n", "", "Name of the service. A service can have multiple service plans. The build command will build a new or existing service plan inside the specified service. Deprecated: use --product-name instead")
+	BuildCmd.Flags().StringP("image", "", "", "Provide the complete image repository URL with the image name and tag (e.g., docker.io/namespace/my-image:v1.2). Deprecated: build from a docker compose file instead")
+	BuildCmd.Flags().StringArrayP("env-var", "", nil, "Used together with --image flag. Provide environment variables in the format --env-var key1=var1 --env-var key2=var2. Deprecated: build from a docker compose file instead")
+	BuildCmd.Flags().StringP("image-registry-auth-username", "", "", "Used together with --image flag. Provide the username to authenticate with the image registry if it's a private registry. Deprecated: build from a docker compose file instead")
+	BuildCmd.Flags().StringP("image-registry-auth-password", "", "", "Used together with --image flag. Provide the password to authenticate with the image registry if it's a private registry. Deprecated: build from a docker compose file instead")
 
 	BuildCmd.MarkFlagsRequiredTogether("image-registry-auth-username", "image-registry-auth-password")
 	// Mark one of them as required
@@ -124,6 +124,40 @@ func init() {
 	}
 	// Hide the deprecated flag from help
 	if err := BuildCmd.Flags().MarkHidden("name"); err != nil {
+		utils.PrintError(err)
+		return
+	}
+	// Deprecate the old --image flag, including --env-var and image-registry-auth-username, image-registry-auth-password
+	if err := BuildCmd.Flags().MarkDeprecated("image", "build from a docker compose file instead"); err != nil {
+		utils.PrintError(err)
+		return
+	}
+	if err := BuildCmd.Flags().MarkDeprecated("env-var", "build from a docker compose file instead"); err != nil {
+		utils.PrintError(err)
+		return
+	}
+	if err := BuildCmd.Flags().MarkDeprecated("image-registry-auth-username", "build from a docker compose file instead"); err != nil {
+		utils.PrintError(err)
+		return
+	}
+	if err := BuildCmd.Flags().MarkDeprecated("image-registry-auth-password", "build from a docker compose file instead"); err != nil {
+		utils.PrintError(err)
+		return
+	}
+	// Hide the deprecated flag from help
+	if err := BuildCmd.Flags().MarkHidden("image"); err != nil {
+		utils.PrintError(err)
+		return
+	}
+	if err := BuildCmd.Flags().MarkHidden("env-var"); err != nil {
+		utils.PrintError(err)
+		return
+	}
+	if err := BuildCmd.Flags().MarkHidden("image-registry-auth-username"); err != nil {
+		utils.PrintError(err)
+		return
+	}
+	if err := BuildCmd.Flags().MarkHidden("image-registry-auth-password"); err != nil {
 		utils.PrintError(err)
 		return
 	}
@@ -147,10 +181,20 @@ func runBuild(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
+
 	specType, err := cmd.Flags().GetString("spec-type")
 	if err != nil {
 		return err
 	}
+	// Check if spec-type was provided and default if not
+	if specType == "" {
+		if file == PlanSpecFileName {
+			specType = ServicePlanSpecType
+		} else {
+			specType = DockerComposeSpecType
+		}
+	}
+
 	name, err := cmd.Flags().GetString("name")
 	if err != nil {
 		return err
@@ -233,12 +277,6 @@ func runBuild(cmd *cobra.Command, args []string) error {
 	}
 
 	// Validate input arguments
-	if file == "" && imageUrl == "" {
-		err := errors.New("either file or image is required")
-		utils.PrintError(err)
-		return err
-	}
-
 	if file != "" && imageUrl != "" {
 		err := errors.New("only one of file or image can be provided")
 		utils.PrintError(err)
@@ -253,10 +291,27 @@ func runBuild(cmd *cobra.Command, args []string) error {
 
 	// Load the compose file
 	var fileData []byte
-	if file != "" {
-		if _, err := os.Stat(file); os.IsNotExist(err) {
-			utils.PrintError(err)
-			return err
+	if imageUrl == "" {
+		if file != "" {
+			if _, err := os.Stat(file); os.IsNotExist(err) {
+				err = fmt.Errorf("file %s does not exist", file)
+				utils.PrintError(err)
+				return err
+			}
+		} else {
+			// check for compose file
+			file = ComposeFileName
+			specType = DockerComposeSpecType
+			if _, err := os.Stat(file); os.IsNotExist(err) {
+				// If the file doesn't exist and wasn't explicitly provided, we check if there is a spec file
+				file = PlanSpecFileName
+				specType = ServicePlanSpecType
+				if _, err := os.Stat(file); os.IsNotExist(err) {
+					err = errors.New("no compose or spec file found, please provide a valid file using --file flag")
+					utils.PrintError(err)
+					return err
+				}
+			}
 		}
 
 		var err error
@@ -363,7 +418,7 @@ func runBuild(cmd *cobra.Command, args []string) error {
 	}
 
 	if !isValidSpecType(specType) {
-		err = errors.New(fmt.Sprintf("invalid spec type, valid options are: %s", strings.Join(validSpecType, ", ")))
+		err = errors.New(fmt.Sprintf("invalid spec type %s, valid options are: %s", specType, strings.Join(validSpecType, ", ")))
 		utils.PrintError(err)
 		return err
 	}

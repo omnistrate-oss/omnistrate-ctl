@@ -45,7 +45,7 @@ validation:
   absolute_links: ignore
 
 nav:
-  - Install CTL: "install.md"
+  - Install CTL: "index.md"
   - Integrate CTL: "integrating.md"
   - CTL Usage: "omnistrate-ctl.md"
   - Commands:
@@ -56,6 +56,7 @@ nav:
       - build: "omnistrate-ctl_build.md"
       - build-from-repo: "omnistrate-ctl_build-from-repo.md"
       - custom-network: "omnistrate-ctl_custom-network.md"
+      - docs: "omnistrate-ctl_docs.md"
       - domain: "omnistrate-ctl_domain.md"
       - environment: "omnistrate-ctl_environment.md"
       - helm: "omnistrate-ctl_helm.md"
@@ -70,6 +71,8 @@ nav:
 
 extra_css:
   - stylesheets/extra.css
+
+  
 
 extra:
   homepage: https://docs.omnistrate.com/
@@ -114,10 +117,8 @@ plugins:
   - glightbox:
       skip_classes:
         - skip-lightbox
-  - include_dir_to_nav
   - search:
-      separator: '[\s\-,:!=\[\]()"`/]+|\.(?!\d)|&[lg]t;|(?!\b)(?=[A-Z][a-z])'
-      lang:
+      lang: 
         - en
   - minify:
       minify_html: true
@@ -126,6 +127,18 @@ plugins:
       htmlmin_opts:
         remove_comments: true
       cache_safe: true
+  - llmstxt:
+      full_output: llms-full.txt
+      sections:
+        Installation: 
+          - index.md
+          - integrating.md
+        Commands:
+          - omnistrate-ctl*.md
+
+  - redirects:
+      redirect_maps:
+        install.md: index.md
 
 copyright: |
-  &copy; 2023 Omnistrate.Inc All rights reserved.
+  &copy; 2025 Omnistrate.Inc All rights reserved.

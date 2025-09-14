@@ -30,12 +30,14 @@ func init() {
 	Cmd.AddCommand(patchDeploymentCmd)
 	Cmd.AddCommand(triggerBackupCmd)
 	Cmd.AddCommand(listSnapshotsCmd)
+	Cmd.AddCommand(describeSnapshotCmd)
 	Cmd.AddCommand(restoreCmd)
 	Cmd.AddCommand(adoptCmd)
 	Cmd.AddCommand(versionUpgradeCmd)
 	Cmd.AddCommand(debugCmd)
 	Cmd.AddCommand(evaluateCmd)
 	Cmd.AddCommand(getInstallerCmd)
+	Cmd.AddCommand(deploymentParametersCmd)
 }
 
 func run(cmd *cobra.Command, args []string) {

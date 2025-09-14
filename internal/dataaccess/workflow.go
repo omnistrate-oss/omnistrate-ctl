@@ -9,8 +9,6 @@ import (
 	openapiclientfleet "github.com/omnistrate-oss/omnistrate-sdk-go/fleet"
 )
 
-
-
 type ListWorkflowsOptions struct {
 	InstanceID    string
 	StartDate     *time.Time
@@ -60,11 +58,6 @@ func ListWorkflows(ctx context.Context, token string, serviceID, environmentID s
 	}
 	return
 }
-
-
-
-
-
 
 func GetWorkflowEvents(ctx context.Context, token string, serviceID, environmentID, workflowID string) (res *openapiclientfleet.GetWorkflowEventsResult, err error) {
 	ctxWithToken := context.WithValue(ctx, openapiclientfleet.ContextAccessToken, token)
@@ -207,7 +200,7 @@ func GetDebugEventsForAllResources(ctx context.Context, token string, serviceID,
 
 	workflowInfo := &WorkflowInfo{}
 	var resourcesData []ResourceWorkflowData
-	
+
 	// Find the latest workflow that matches the expected action (if specified)
 	var latestWorkflowID string
 	for _, workflow := range workflows.Workflows {
@@ -215,19 +208,19 @@ func GetDebugEventsForAllResources(ctx context.Context, token string, serviceID,
 		if workflow.Id == "" || workflow.Status == "pending" || strings.HasPrefix(workflow.Id, "submit-rotate-license") || strings.HasPrefix(workflow.Id, "submit-backup") {
 			continue
 		}
-		
+
 		// If expected action is specified, validate workflow matches the action
 		if len(expectedAction) > 0 && expectedAction[0] != "" {
 			actionType := expectedAction[0]
 			workflowMatches := false
-			
+
 			// Check if workflow ID contains the expected action type
 			workflowLower := strings.ToLower(workflow.Id)
 			actionLower := strings.ToLower(actionType)
-			
+
 			switch actionLower {
 			case "create":
-				workflowMatches = strings. HasPrefix(workflowLower, "submit-create")
+				workflowMatches = strings.HasPrefix(workflowLower, "submit-create")
 			case "modify":
 				workflowMatches = strings.HasPrefix(workflowLower, "submit-update") || strings.HasPrefix(workflowLower, "submit-modify")
 			case "upgrade":
@@ -238,26 +231,26 @@ func GetDebugEventsForAllResources(ctx context.Context, token string, serviceID,
 				// If action type is unknown, fall back to original behavior
 				workflowMatches = true
 			}
-			
+
 			// Skip workflows that don't match the expected action
 			if !workflowMatches {
 				continue
 			}
 		}
-		
+
 		latestWorkflowID = workflow.Id
 
 		// Populate workflow metadata
 		workflowInfo.WorkflowID = workflow.Id
 		workflowInfo.WorkflowStatus = workflow.Status
-		
+
 		if workflow.StartTime != "" {
 			workflowInfo.StartTime = workflow.StartTime
 		}
 		if workflow.EndTime != nil {
 			workflowInfo.EndTime = *workflow.EndTime
 		}
-		
+
 		// Use the last workflow found (assuming they are ordered)
 		break
 	}
@@ -286,7 +279,7 @@ func GetDebugEventsForAllResources(ctx context.Context, token string, serviceID,
 				if resource.WorkflowSteps != nil {
 					for _, step := range resource.WorkflowSteps {
 						stepCategory := categorizeStepName(step.StepName)
-						
+
 						if step.Events != nil {
 							for _, event := range step.Events {
 								// Create a CustomWorkflowEvent with proper data
@@ -332,20 +325,18 @@ func GetDebugEventsForAllResources(ctx context.Context, token string, serviceID,
 	return resourcesData, workflowInfo, nil
 }
 
-
-
 // ResourceWorkflowData represents workflow events for a resource organized by category
 type ResourceWorkflowData struct {
-	ResourceID       string                  `json:"resourceId"`
-	ResourceKey      string                  `json:"resourceKey"`
-	ResourceName     string                  `json:"resourceName"`
+	ResourceID       string                    `json:"resourceId"`
+	ResourceKey      string                    `json:"resourceKey"`
+	ResourceName     string                    `json:"resourceName"`
 	EventsByCategory *WorkflowEventsByCategory `json:"eventsByCategory"`
 }
 
 // categorizeStepName determines the category for a workflow step name
 func categorizeStepName(stepName string) string {
 	stepLower := strings.ToLower(stepName)
-	
+
 	// More comprehensive categorization based on step name patterns
 	if strings.Contains(stepLower, "bootstrap") || strings.Contains(stepLower, "init") {
 		return "bootstrap"
@@ -365,7 +356,6 @@ func categorizeStepName(stepName string) string {
 	if strings.Contains(stepLower, "monitoring") || strings.Contains(stepLower, "observability") || strings.Contains(stepLower, "metrics") {
 		return "monitoring"
 	}
-	
+
 	return "other"
 }
-

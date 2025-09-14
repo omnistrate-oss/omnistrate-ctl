@@ -47,6 +47,8 @@ var Cmd = &cobra.Command{
 }
 
 func init() {
+	Cmd.AddCommand(listCmd)
+	Cmd.AddCommand(describeCmd)
 	Cmd.AddCommand(status.Cmd)
 	Cmd.AddCommand(manageupgradelifecycle.CancelCmd)
 	Cmd.AddCommand(manageupgradelifecycle.ResumeCmd)
@@ -64,13 +66,13 @@ func init() {
 }
 
 type Args struct {
-	ServiceID               string
-	ProductTierID           string
-	SourceVersion           string
-	TargetVersion           string
-	NotifyCustomer          bool
-	ScheduledDate           *string
-	MaxConcurrentUpgrades   *int
+	ServiceID             string
+	ProductTierID         string
+	SourceVersion         string
+	TargetVersion         string
+	NotifyCustomer        bool
+	ScheduledDate         *string
+	MaxConcurrentUpgrades *int
 }
 
 var UpgradePathIDs []string
