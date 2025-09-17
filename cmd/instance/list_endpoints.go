@@ -184,7 +184,7 @@ func extractEndpoints(instance *openapiclientfleet.ResourceInstance) (resourceEn
 		}
 	}
 
-	return
+	return resourceEndpoints
 }
 
 // convertToTableRows converts the nested endpoint structure to a flat table format
