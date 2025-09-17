@@ -23,8 +23,11 @@ omctl instance version-upgrade instance-abcd1234 --upgrade-configuration-overrid
 # Issue a version upgrade to a specific target tier version
 omctl instance version-upgrade instance-abcd1234 --upgrade-configuration-override /path/to/config.yaml --target-tier-version 3.0
 
+# Issue a version upgrade and wait for completion with progress tracking
+omctl instance version-upgrade instance-abcd1234 --upgrade-configuration-override /path/to/config.yaml --target-tier-version 3.0 --wait
+
 # [HELM ONLY] Use generate-configuration with a target tier version to generate a default deployment instance configuration file based on the current helm values as well as the proposed helm values for the target tier version
-omctl instance version-upgrade instance-abcd1234 --existing-configuration existing-config.yaml --proposed-configuration proposed-config.yaml --generate-configuration --target-tier-version 3.0 
+omctl instance version-upgrade instance-abcd1234 --existing-configuration existing-config.yaml --proposed-configuration proposed-config.yaml --generate-configuration --target-tier-version 3.0
 
 # Example upgrade configuration override YAML file:
 # resource-key-1:
@@ -54,6 +57,7 @@ func init() {
 	versionUpgradeCmd.Flags().String("target-tier-version", "", "Target tier version for the version upgrade")
 	versionUpgradeCmd.Flags().Bool("generate-configuration", false, "Generate a default configuration file based on current helm values and proposed helm values for the target tier version."+
 		"This will not perform an upgrade, but will generate a configuration file that can be used for the upgrade.")
+	versionUpgradeCmd.Flags().Bool("wait", false, "Wait for upgrade to complete and show progress")
 
 	versionUpgradeCmd.Args = cobra.ExactArgs(1) // Require exactly one argument (i.e. instance ID)
 
@@ -98,6 +102,12 @@ func runVersionUpgrade(cmd *cobra.Command, args []string) error {
 	if targetTierVersion == "" {
 		utils.PrintError(errors.New("target tier version is required for version upgrade"))
 		return errors.New("target tier version is required for version upgrade")
+	}
+
+	waitFlag, err := cmd.Flags().GetBool("wait")
+	if err != nil {
+		utils.PrintError(err)
+		return err
 	}
 
 	output, err := cmd.Flags().GetString("output")
@@ -331,8 +341,8 @@ func runVersionUpgrade(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	// Display workflow resource-wise data if output is not JSON
-	if output != "json" {
+	// Display workflow resource-wise data if output is not JSON and wait flag is enabled
+	if output != "json" && waitFlag {
 		fmt.Println("🔄 Deployment progress...")
 		err = displayWorkflowResourceDataWithSpinners(cmd.Context(), token, formattedInstance.InstanceID, "upgrade")
 		if err != nil {
