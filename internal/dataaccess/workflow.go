@@ -343,7 +343,6 @@ func GetResourceStatusFromDescribeWorkflow(ctx context.Context, token string, se
 	}
 
 	resourceStatusMap := make(map[string]string)
-	
 	if describeResult != nil {
 		// Get workflow status as fallback
 		workflowStatus := describeResult.Workflow.Status

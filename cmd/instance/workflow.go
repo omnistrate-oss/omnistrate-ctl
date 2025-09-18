@@ -277,7 +277,6 @@ func getEventStatusIconFromType(eventType string) string {
 		return "N/A"
 	default:
 		return "🟡"
-
 	}
 }
 
@@ -400,10 +399,6 @@ func getDynamicCategoryStatuses(eventsByCategory *dataaccess.WorkflowEventsByCat
 
 	return statuses
 }
-
-
-
-
 // getResourceStatusFromEvents determines the overall status of a resource based on its events across all categories
 func getResourceStatusFromEvents(eventsByCategory *dataaccess.WorkflowEventsByCategory) string {
 	if eventsByCategory == nil {
