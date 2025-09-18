@@ -370,14 +370,17 @@ func GetDebugEventsForAllResourcesWithStatus(ctx context.Context, token string, 
 		resourceStatusMap, err := GetResourceStatusFromDescribeWorkflow(ctx, token, serviceID, environmentID, workflowInfo.WorkflowID)
 		if err != nil {
 			// If DescribeWorkflow fails, continue with existing data
-			// Don't fail the entire operation
-			return resourcesData, workflowInfo, nil
+			// Don't fail the entire operation - log the error but continue
+			return resourcesData, workflowInfo, err
 		}
 		
-		// Enhance resource data with status from DescribeWorkflow
-		for i := range resourcesData {
-			if status, exists := resourceStatusMap[resourcesData[i].ResourceID]; exists {
-				resourcesData[i].ResourceStatus = status
+		// Apply the general workflow status to all resources since we don't have per-resource status
+		if generalStatus, exists := resourceStatusMap["__workflow_general_status__"]; exists {
+			for i := range resourcesData {
+				// Only set status if not already set from events analysis
+				if resourcesData[i].ResourceStatus == "" {
+					resourcesData[i].ResourceStatus = generalStatus
+				}
 			}
 		}
 	}
