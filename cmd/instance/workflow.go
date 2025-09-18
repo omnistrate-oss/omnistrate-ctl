@@ -54,22 +54,22 @@ func displayWorkflowResourceDataWithSpinners(ctx context.Context, token, instanc
 		for i, resourceData := range resourcesData {
 			if i < len(resourceSpinners) {
 				// Get status icons for each category
-				bootstrapEventType := getHighestPriorityEventType(resourceData.EventsByCategory.Bootstrap, "bootstrap", &resourceData)
+				bootstrapEventType := getHighestPriorityEventType(resourceData.EventsByCategory.Bootstrap, "bootstrap")
 				bootstrapIcon := getEventStatusIconFromType(bootstrapEventType)
 
-				storageEventType := getHighestPriorityEventType(resourceData.EventsByCategory.Storage, "storage", &resourceData)
+				storageEventType := getHighestPriorityEventType(resourceData.EventsByCategory.Storage, "storage")
 				storageIcon := getEventStatusIconFromType(storageEventType)
 
-				networkEventType := getHighestPriorityEventType(resourceData.EventsByCategory.Network, "network", &resourceData)
+				networkEventType := getHighestPriorityEventType(resourceData.EventsByCategory.Network, "network")
 				networkIcon := getEventStatusIconFromType(networkEventType)
 
-				computeEventType := getHighestPriorityEventType(resourceData.EventsByCategory.Compute, "compute", &resourceData)
+				computeEventType := getHighestPriorityEventType(resourceData.EventsByCategory.Compute, "compute")
 				computeIcon := getEventStatusIconFromType(computeEventType)
 
-				deploymentEventType := getHighestPriorityEventType(resourceData.EventsByCategory.Deployment, "deployment", &resourceData)
+				deploymentEventType := getHighestPriorityEventType(resourceData.EventsByCategory.Deployment, "deployment")
 				deploymentIcon := getEventStatusIconFromType(deploymentEventType)
 
-				monitoringEventType := getHighestPriorityEventType(resourceData.EventsByCategory.Monitoring, "monitoring", &resourceData)
+				monitoringEventType := getHighestPriorityEventType(resourceData.EventsByCategory.Monitoring, "monitoring")
 				monitoringIcon := getEventStatusIconFromType(monitoringEventType)
 
 				// Create dynamic message for this resource
@@ -98,17 +98,20 @@ func displayWorkflowResourceDataWithSpinners(ctx context.Context, token, instanc
 	}
 
 	// Function to complete spinners when deployment is done
-	completeSpinners := func(resourcesData []dataaccess.ResourceWorkflowData, workflowInfo *dataaccess.WorkflowInfo) {
+	completeSpinners := func(resourcesData []dataaccess.ResourceWorkflowData, workflowInfo *dataaccess.WorkflowInfo) bool {
+		hasFailures := false
 		for i := range resourcesData {
 			if i < len(resourceSpinners) {
 				if strings.ToLower(workflowInfo.WorkflowStatus) == "success" {
 					resourceSpinners[i].Spinner.Complete()
 				} else {
 					resourceSpinners[i].Spinner.Error()
+					hasFailures = true
 				}
 			}
 		}
 		sm.Stop()
+		return hasFailures
 	}
 
 	// Function to fetch and display current workflow status for all resources
@@ -141,9 +144,27 @@ func displayWorkflowResourceDataWithSpinners(ctx context.Context, token, instanc
 		// Create or update spinners for each resource
 		createOrUpdateSpinners(resourcesData)
 
+		// Check for resource-level failures even if workflow is still running
+		for _, resourceData := range resourcesData {
+			bootstrapEventType := getHighestPriorityEventType(resourceData.EventsByCategory.Bootstrap, "bootstrap")
+			storageEventType := getHighestPriorityEventType(resourceData.EventsByCategory.Storage, "storage")
+			networkEventType := getHighestPriorityEventType(resourceData.EventsByCategory.Network, "network")
+			computeEventType := getHighestPriorityEventType(resourceData.EventsByCategory.Compute, "compute")
+			deploymentEventType := getHighestPriorityEventType(resourceData.EventsByCategory.Deployment, "deployment")
+			monitoringEventType := getHighestPriorityEventType(resourceData.EventsByCategory.Monitoring, "monitoring")
+
+			if hasFailedEvent(bootstrapEventType, storageEventType, networkEventType, computeEventType, deploymentEventType, monitoringEventType) {
+				sm.Stop()
+				return false, fmt.Errorf("deployment failed for resource %s", resourceData.ResourceName)
+			}
+		}
+
 		// If workflow is complete, complete all spinners and stop
 		if isWorkflowComplete {
-			completeSpinners(resourcesData, workflowInfo)
+			hasFailures := completeSpinners(resourcesData, workflowInfo)
+			if hasFailures || strings.ToLower(workflowInfo.WorkflowStatus) == "failed" {
+				return false, fmt.Errorf("deployment failed with status: %s", workflowInfo.WorkflowStatus)
+			}
 			return true, nil
 		}
 
@@ -157,7 +178,8 @@ func displayWorkflowResourceDataWithSpinners(ctx context.Context, token, instanc
 	for {
 		isComplete, err := displayCurrentStatus()
 		if err != nil {
-			// Handle error but continue polling
+			// If there's an error from displayCurrentStatus, return it
+			return err
 		} else if isComplete {
 			break
 		}
@@ -170,19 +192,11 @@ func displayWorkflowResourceDataWithSpinners(ctx context.Context, token, instanc
 }
 
 // getHighestPriorityEventType checks all events in a category and returns the highest priority event type
-func getHighestPriorityEventType(events []dataaccess.CustomWorkflowEvent, categoryName string, resourceData *dataaccess.ResourceWorkflowData) string {
+func getHighestPriorityEventType(events []dataaccess.CustomWorkflowEvent, categoryName string) string {
 	// Case 1: No events at all - need to determine if step is not started or not applicable
 	if len(events) == 0 {
-		// For now, we'll assume common categories are applicable for most resources
-		// This could be enhanced later with more detailed workflow step information
-		commonCategories := map[string]bool{
-			"bootstrap":  true,
-			"deployment": true,
-			"compute":    true,
-		}
-
-		if commonCategories[categoryName] {
-			return "not_started" // Likely workflow step exists but not started yet
+		if categoryName != "" {
+			return "pending" // Likely workflow step exists but not started yet
 		} else {
 			return "not_applicable" // Less common step, might not apply to this resource
 		}
@@ -231,16 +245,13 @@ func getEventStatusIconFromType(eventType string) string {
 		return "✅"
 	case "WorkflowStepDebug", "WorkflowStepStarted":
 		return "🔄"
-	case "not_started":
-		return "⚪" // White circle for not started
+	case "pending","Pending":
+		return "🟡"
 	case "not_applicable":
-		return "\033[90m➖\033[0m" // Gray colored dash for not applicable
+		return "N/A"
 	default:
-		// Handle unknown event types (starts with "unknown:")
-		if strings.HasPrefix(eventType, "unknown") {
-			return "❓" // Question mark for unknown event types
-		}
-		return "🟡" // Yellow circle for other cases
+		return "🟡"
+
 	}
 }
 
@@ -262,8 +273,8 @@ func hasFailedEvent(eventTypes ...string) bool {
 func allEventsCompleted(eventTypes ...string) bool {
 	hasAtLeastOneEvent := false
 	for _, eventType := range eventTypes {
-		// Skip not_started and not_applicable categories (they don't affect completion status)
-		if eventType == "not_started" || eventType == "not_applicable" || eventType == "" {
+		// Skip pending and not_applicable categories (they don't affect completion status)
+		if eventType == "pending" || eventType == "not_applicable" || eventType == "" {
 			continue
 		}
 
