@@ -331,6 +331,59 @@ type ResourceWorkflowData struct {
 	ResourceKey      string                    `json:"resourceKey"`
 	ResourceName     string                    `json:"resourceName"`
 	EventsByCategory *WorkflowEventsByCategory `json:"eventsByCategory"`
+	ResourceStatus   string                    `json:"resourceStatus,omitempty"` // From DescribeWorkflow API
+}
+
+// GetResourceStatusFromDescribeWorkflow gets resource status information using DescribeWorkflow API
+func GetResourceStatusFromDescribeWorkflow(ctx context.Context, token string, serviceID, environmentID, workflowID string) (map[string]string, error) {
+	// Call DescribeWorkflow API
+	describeResult, err := DescribeWorkflow(ctx, token, serviceID, environmentID, workflowID)
+	if err != nil {
+		return nil, err
+	}
+
+	resourceStatusMap := make(map[string]string)
+	
+	if describeResult != nil {
+		// Get workflow status as fallback
+		workflowStatus := describeResult.Workflow.Status
+		
+		// Check if the workflow has resource information
+		// Since we can't access Resources directly from ServiceWorkflow,
+		// we use the workflow status as a general indicator
+		// This will be enhanced when we get more detailed resource status info
+		resourceStatusMap["__workflow_general_status__"] = workflowStatus
+	}
+	
+	return resourceStatusMap, nil
+}
+
+// GetDebugEventsForAllResourcesWithStatus gets workflow events and resource status for all resources in an instance
+func GetDebugEventsForAllResourcesWithStatus(ctx context.Context, token string, serviceID, environmentID, instanceID string, expectedAction ...string) ([]ResourceWorkflowData, *WorkflowInfo, error) {
+	// First get the basic workflow events data
+	resourcesData, workflowInfo, err := GetDebugEventsForAllResources(ctx, token, serviceID, environmentID, instanceID, expectedAction...)
+	if err != nil {
+		return resourcesData, workflowInfo, err
+	}
+
+	// If we have a workflow ID, get additional resource status from DescribeWorkflow
+	if workflowInfo != nil && workflowInfo.WorkflowID != "" {
+		resourceStatusMap, err := GetResourceStatusFromDescribeWorkflow(ctx, token, serviceID, environmentID, workflowInfo.WorkflowID)
+		if err != nil {
+			// If DescribeWorkflow fails, continue with existing data
+			// Don't fail the entire operation
+			return resourcesData, workflowInfo, nil
+		}
+		
+		// Enhance resource data with status from DescribeWorkflow
+		for i := range resourcesData {
+			if status, exists := resourceStatusMap[resourcesData[i].ResourceID]; exists {
+				resourcesData[i].ResourceStatus = status
+			}
+		}
+	}
+
+	return resourcesData, workflowInfo, nil
 }
 
 // categorizeStepName determines the category for a workflow step name

@@ -164,7 +164,7 @@ func runModify(cmd *cobra.Command, args []string) error {
 		err = displayWorkflowResourceDataWithSpinners(cmd.Context(), token, formattedInstance.InstanceID, "modify")
 		if err != nil {
 			// Handle spinner error if deployment monitoring fails
-			fmt.Printf("❌ %s", err)
+			fmt.Printf("❌ Deployment failed %s\n", err)
 		} else {
 			fmt.Println("✅ Deployment successful")
 		}
