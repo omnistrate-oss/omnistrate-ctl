@@ -10,6 +10,8 @@ import (
 	"sync"
 
 	"github.com/blevesearch/bleve/v2"
+	"github.com/blevesearch/bleve/v2/analysis/analyzer/custom"
+	"github.com/blevesearch/bleve/v2/analysis/tokenizer/regexp"
 	"github.com/blevesearch/bleve/v2/mapping"
 	"github.com/hashicorp/go-retryablehttp"
 	"github.com/omnistrate-oss/omnistrate-ctl/internal/config"
@@ -68,7 +70,7 @@ func PerformDocumentationSearch(query string, limit int) ([]DocumentationResult,
 }
 
 // initializeSearchIndex creates and populates the Bleve search index in memory
-func initializeSearchIndex() error {
+func initializeSearchIndex() (err error) {
 	indexMutex.Lock()
 	defer indexMutex.Unlock()
 
@@ -78,8 +80,10 @@ func initializeSearchIndex() error {
 	}
 
 	// Create new in-memory index
-	indexMapping := createIndexMapping()
-	var err error
+	indexMapping, err := createIndexMapping()
+	if err != nil {
+		return fmt.Errorf("failed to create index mapping: %w", err)
+	}
 	searchIndex, err = bleve.NewMemOnly(indexMapping)
 	if err != nil {
 		return fmt.Errorf("failed to create in-memory search index: %w", err)
@@ -96,31 +100,52 @@ func initializeSearchIndex() error {
 }
 
 // createIndexMapping creates the mapping for the search index
-func createIndexMapping() mapping.IndexMapping {
+func createIndexMapping() (mapping.IndexMapping, error) {
 	// Create a new index mapping
 	indexMapping := bleve.NewIndexMapping()
+
+	customWhitespaceTokenizer := map[string]interface{}{
+		"type":   regexp.Name,
+		"regexp": `[\p{L}\p{N}_-]+`, // Unicode letters, numbers, underscore, hyphen
+	}
+
+	err := indexMapping.AddCustomTokenizer("word_with_hyphen", customWhitespaceTokenizer)
+	if err != nil {
+		return nil, fmt.Errorf("failed to add custom tokenizer: %w", err)
+	}
+
+	// Define custom whitespace analyzer for English language only
+	customWhitespaceAnalyzer := map[string]interface{}{
+		"type":      custom.Name,
+		"tokenizer": "word_with_hyphen",
+		"token_filters": []string{
+			"to_lower", // Convert to lowercase
+			"stop_en",  // Remove English stop words
+		},
+	}
+	// Add the custom analyzer to index mapping
+	err = indexMapping.AddCustomAnalyzer("hyphen_preserving", customWhitespaceAnalyzer)
+	if err != nil {
+		return nil, fmt.Errorf("failed to add custom analyzer: %w", err)
+	}
 
 	// Create field mappings
 	textFieldMapping := bleve.NewTextFieldMapping()
 	textFieldMapping.Store = true
 	textFieldMapping.Index = true
-	textFieldMapping.IncludeTermVectors = true
-
-	keywordFieldMapping := bleve.NewKeywordFieldMapping()
-	keywordFieldMapping.Store = true
-	keywordFieldMapping.Index = true
+	textFieldMapping.IncludeTermVectors = false
+	textFieldMapping.Analyzer = "hyphen_preserving"
 
 	// Create document mapping
 	docMapping := bleve.NewDocumentMapping()
 	docMapping.AddFieldMappingsAt("title", textFieldMapping)
-	docMapping.AddFieldMappingsAt("url", keywordFieldMapping)
 	docMapping.AddFieldMappingsAt("description", textFieldMapping)
 	docMapping.AddFieldMappingsAt("section", textFieldMapping)
 	docMapping.AddFieldMappingsAt("content", textFieldMapping)
 
 	indexMapping.AddDocumentMapping("_default", docMapping)
 
-	return indexMapping
+	return indexMapping, nil
 }
 
 // populateIndex fetches documentation and adds it to the search index

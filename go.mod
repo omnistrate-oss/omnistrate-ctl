@@ -4,6 +4,7 @@ go 1.24.4
 
 require (
 	github.com/atotto/clipboard v0.1.4
+	github.com/blevesearch/bleve v1.0.14
 	github.com/blevesearch/bleve/v2 v2.5.3
 	github.com/cenkalti/backoff/v4 v4.3.0
 	github.com/chelnak/ysmrr v0.6.0
