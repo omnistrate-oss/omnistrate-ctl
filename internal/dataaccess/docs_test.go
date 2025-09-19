@@ -6,92 +6,6 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func TestParseDocumentationContent(t *testing.T) {
-	assert := assert.New(t)
-
-	tests := []struct {
-		name     string
-		input    string
-		expected []DocumentationResult
-	}{
-		{
-			name: "parse basic section with links",
-			input: `## Introduction
-
-- [Introduction](https://docs.omnistrate.com/index.md): Main introduction to Omnistrate
-- [What is Omnistrate](https://docs.omnistrate.com/what-is-omnistrate/index.md): Overview of what Omnistrate is
-- [What you can do](https://docs.omnistrate.com/what-you-can-do/index.md): What you can accomplish with Omnistrate
-- [Cost vs. Benefits](https://docs.omnistrate.com/cost-benefits/index.md): Cost vs benefits analysis
-- [Architecture](https://docs.omnistrate.com/architecture/index.md): Platform architecture overview`,
-			expected: []DocumentationResult{
-				{
-					Title:       "Introduction",
-					URL:         "https://docs.omnistrate.com/",
-					Description: "Main introduction to Omnistrate",
-					Section:     "Introduction",
-				},
-				{
-					Title:       "What is Omnistrate",
-					URL:         "https://docs.omnistrate.com/what-is-omnistrate/",
-					Description: "Overview of what Omnistrate is",
-					Section:     "Introduction",
-				},
-				{
-					Title:       "What you can do",
-					URL:         "https://docs.omnistrate.com/what-you-can-do/",
-					Description: "What you can accomplish with Omnistrate",
-					Section:     "Introduction",
-				},
-				{
-					Title:       "Cost vs. Benefits",
-					URL:         "https://docs.omnistrate.com/cost-benefits/",
-					Description: "Cost vs benefits analysis",
-					Section:     "Introduction",
-				},
-				{
-					Title:       "Architecture",
-					URL:         "https://docs.omnistrate.com/architecture/",
-					Description: "Platform architecture overview",
-					Section:     "Introduction",
-				},
-			},
-		},
-	}
-
-	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-			results, err := parseDocumentationContentForIndexing(test.input)
-
-			if err != nil {
-				assert.NoError(err, "parseDocumentationContentForIndexing() should not return an error")
-				return
-			}
-
-			if len(results) != len(test.expected) {
-				assert.Equal(len(test.expected), len(results), "parseDocumentationContentForIndexing() returned %d results, expected %d", len(results), len(test.expected))
-				return
-			}
-
-			for i, result := range results {
-				expected := test.expected[i]
-				if result.Title != expected.Title {
-					assert.Equal(expected.Title, result.Title, "Result %d: Title mismatch", i)
-				}
-				if result.URL != expected.URL {
-					assert.Equal(expected.URL, result.URL, "Result %d: URL mismatch", i)
-				}
-				if result.Description != expected.Description {
-					assert.Equal(expected.Description, result.Description, "Result %d: Description mismatch", i)
-				}
-				if result.Section != expected.Section {
-					assert.Equal(expected.Section, result.Section, "Result %d: Section mismatch", i)
-				}
-				assert.NotEmpty(result.Content, "Result %d: Content should not be empty", i)
-			}
-		})
-	}
-}
-
 func TestPerformDocumentationSearchWithBleve(t *testing.T) {
 	// Clean up any existing index before test
 	defer func() {
@@ -167,4 +81,182 @@ func TestRefreshSearchIndex(t *testing.T) {
 	}
 
 	t.Logf("RefreshSearchIndex completed successfully, found %d results for 'test'", len(results))
+}
+func TestParseH2Sections(t *testing.T) {
+	assert := assert.New(t)
+
+	tests := []struct {
+		name     string
+		input    string
+		expected []H2Section
+	}{
+		{
+			name:     "empty content",
+			input:    "",
+			expected: []H2Section{},
+		},
+		{
+			name:     "no h2 headings",
+			input:    "This is some content without h2 headings.\nMore content here.",
+			expected: []H2Section{},
+		},
+		{
+			name: "single h2 section",
+			input: `## Introduction
+
+This is the introduction section.
+It has multiple lines of content.`,
+			expected: []H2Section{
+				{
+					Title:   "Introduction",
+					Content: "This is the introduction section.\nIt has multiple lines of content.",
+				},
+			},
+		},
+		{
+			name: "multiple h2 sections",
+			input: `## Getting Started
+
+Welcome to the getting started guide.
+This section covers the basics.
+
+## Configuration
+
+Here we explain configuration options.
+You can configure various settings.
+
+## Advanced Topics
+
+This section covers advanced features.`,
+			expected: []H2Section{
+				{
+					Title:   "Getting Started",
+					Content: "Welcome to the getting started guide.\nThis section covers the basics.",
+				},
+				{
+					Title:   "Configuration",
+					Content: "Here we explain configuration options.\nYou can configure various settings.",
+				},
+				{
+					Title:   "Advanced Topics",
+					Content: "This section covers advanced features.",
+				},
+			},
+		},
+		{
+			name: "h2 with special characters",
+			input: `## API Reference - v2.1
+
+This section documents the API.
+
+## FAQ & Troubleshooting
+
+Common questions and answers.`,
+			expected: []H2Section{
+				{
+					Title:   "API Reference - v2.1",
+					Content: "This section documents the API.",
+				},
+				{
+					Title:   "FAQ & Troubleshooting",
+					Content: "Common questions and answers.",
+				},
+			},
+		},
+		{
+			name: "h2 with mixed heading levels",
+			input: `# Main Title
+
+Some introduction text.
+
+## First Section
+
+Content for first section.
+
+### Subsection
+
+This is a subsection.
+
+## Second Section
+
+Content for second section.
+
+#### Another subsection
+
+More nested content.`,
+			expected: []H2Section{
+				{
+					Title:   "First Section",
+					Content: "Content for first section.\n\n### Subsection\n\nThis is a subsection.",
+				},
+				{
+					Title:   "Second Section",
+					Content: "Content for second section.\n\n#### Another subsection\n\nMore nested content.",
+				},
+			},
+		},
+		{
+			name: "h2 with empty sections",
+			input: `## Empty Section
+
+## Another Section
+
+Content here.
+
+## Final Empty Section`,
+			expected: []H2Section{
+				{
+					Title:   "Another Section",
+					Content: "Content here.",
+				},
+			},
+		},
+		{
+			name: "h2 with code blocks and formatting",
+			input: `## Installation
+
+To install the package:
+
+` + "```bash" + `
+npm install package
+` + "```" + `
+
+## Usage
+
+Here's how to use it:
+
+` + "```javascript" + `
+const pkg = require('package');
+pkg.run();
+` + "```" + `
+
+More usage examples.`,
+			expected: []H2Section{
+				{
+					Title:   "Installation",
+					Content: "To install the package:\n\n```bash\nnpm install package\n```",
+				},
+				{
+					Title:   "Usage",
+					Content: "Here's how to use it:\n\n```javascript\nconst pkg = require('package');\npkg.run();\n```\n\nMore usage examples.",
+				},
+			},
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			results := parseH2Sections(test.input)
+
+			assert.Equal(len(test.expected), len(results), "Number of sections should match")
+
+			for i, result := range results {
+				if i < len(test.expected) {
+					expected := test.expected[i]
+					assert.Equal(expected.Title, result.Title, "Section %d: Title should match", i)
+					assert.Equal(expected.Content, result.Content, "Section %d: Content should match", i)
+				}
+			}
+		})
+	}
 }

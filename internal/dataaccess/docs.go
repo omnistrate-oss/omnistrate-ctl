@@ -6,6 +6,8 @@ import (
 	"io"
 	"net/http"
 	"net/http/httputil"
+	"net/url"
+	stdregexp "regexp"
 	"strings"
 	"sync"
 
@@ -35,6 +37,7 @@ type DocumentationResult struct {
 	URL         string  `json:"url"`
 	Description string  `json:"description"`
 	Section     string  `json:"section"`
+	Subtitle    string  `json:"subtitle,omitempty"`
 	Content     string  `json:"content"`
 	Score       float64 `json:"score,omitempty"`
 }
@@ -46,13 +49,26 @@ type Document struct {
 	URL         string `json:"url"`
 	Description string `json:"description"`
 	Section     string `json:"section"`
+	Subtitle    string `json:"subtitle"`
 	Content     string `json:"content"`
+}
+
+// H2Section represents a section of content under an H2 heading
+type H2Section struct {
+	Title   string
+	Content string
 }
 
 var (
 	searchIndex bleve.Index
 	indexMutex  sync.RWMutex
+	// Use regex to find H2 headings
+	h2Regex *stdregexp.Regexp
 )
+
+func init() {
+	h2Regex = stdregexp.MustCompile(`(?m)^## (.+)$`)
+}
 
 func PerformDocumentationSearch(query string, limit int) ([]DocumentationResult, error) {
 	// Initialize the search index if not already done
@@ -141,6 +157,7 @@ func createIndexMapping() (mapping.IndexMapping, error) {
 	docMapping.AddFieldMappingsAt("title", textFieldMapping)
 	docMapping.AddFieldMappingsAt("description", textFieldMapping)
 	docMapping.AddFieldMappingsAt("section", textFieldMapping)
+	docMapping.AddFieldMappingsAt("subtitle", textFieldMapping)
 	docMapping.AddFieldMappingsAt("content", textFieldMapping)
 
 	indexMapping.AddDocumentMapping("_default", docMapping)
@@ -210,39 +227,57 @@ func parseDocumentationContentForIndexing(body string) ([]Document, error) {
 				title := strings.TrimPrefix(parts[0], "- [")
 
 				// Handle both formats: with and without description
-				var url, description string
+				var docUrl, description string
 				if strings.Contains(parts[1], "): ") {
 					// Format: - [Title](URL): Description
 					urlAndDesc := strings.SplitN(parts[1], "): ", 2)
-					url = urlAndDesc[0]
+					docUrl = urlAndDesc[0]
 					if len(urlAndDesc) == 2 {
 						description = urlAndDesc[1]
 					}
 				} else {
 					// Format: - [Title](URL)
-					url = strings.TrimSuffix(parts[1], ")")
+					docUrl = strings.TrimSuffix(parts[1], ")")
 					description = title // Use title as description if no separate description
 				}
 
 				// Fetch content from the URL
-				content, err := fetchContentFromURL(url)
+				content, err := fetchContentFromURL(docUrl)
 				if err != nil {
-					content = err.Error()
-					log.Warn().Err(err).Str("url", url).Msg("Failed to fetch content for indexing")
-				}
+					log.Warn().Err(err).Str("url", docUrl).Msg("Failed to fetch content for indexing")
+				} else {
+					// Parse H2 sections from the content and create multiple documents
+					h2Sections := parseH2Sections(content)
 
-				// Create a document for indexing
-				doc := Document{
-					ID:          fmt.Sprintf("doc_%d", docID),
-					Title:       title,
-					URL:         strings.TrimSuffix(url, "index.md"), // Remove index.md from URLs
-					Description: description,
-					Section:     currentSection,
-					Content:     content,
+					if len(h2Sections) == 0 {
+						// No H2 sections found, create a single document with all content
+						doc := Document{
+							ID:          fmt.Sprintf("doc_%d", docID),
+							Section:     currentSection,
+							Title:       title,
+							Description: description,
+							URL:         strings.TrimSuffix(docUrl, "index.md"),
+							Content:     content,
+						}
+						documents = append(documents, doc)
+						docID++
+					} else {
+						// Create separate documents for each H2 section
+						for _, h2section := range h2Sections {
+							doc := Document{
+								ID:          fmt.Sprintf("doc_%d", docID),
+								Section:     currentSection,
+								Title:       title,
+								Description: description,
+								URL:         strings.TrimSuffix(docUrl, "index.md") + "#" + url.QueryEscape(h2section.Title),
+								Subtitle:    h2section.Title,
+								Content:     h2section.Content,
+							}
+							documents = append(documents, doc)
+							docID++
+						}
+					}
 				}
-
-				documents = append(documents, doc)
-				docID++
 			}
 		}
 	}
@@ -252,6 +287,52 @@ func parseDocumentationContentForIndexing(body string) ([]Document, error) {
 	}
 
 	return documents, nil
+}
+
+// parseH2Sections parses markdown content and splits it by H2 headings (##)
+func parseH2Sections(content string) []H2Section {
+	var sections []H2Section
+
+	// Find all H2 headings and their positions
+	matches := h2Regex.FindAllStringSubmatchIndex(content, -1)
+
+	if len(matches) == 0 {
+		// No H2 headings found
+		return sections
+	}
+
+	// Process each H2 section
+	for i, match := range matches {
+		// Extract the H2 title (first capture group)
+		titleStart := match[2]
+		titleEnd := match[3]
+		title := strings.TrimSpace(content[titleStart:titleEnd])
+
+		// Determine the content boundaries
+		contentStart := match[1] // End of the H2 line
+		var contentEnd int
+
+		if i+1 < len(matches) {
+			// Content ends at the start of the next H2 heading
+			contentEnd = matches[i+1][0]
+		} else {
+			// This is the last section, content goes to the end
+			contentEnd = len(content)
+		}
+
+		// Extract and clean the section content
+		sectionContent := strings.TrimSpace(content[contentStart:contentEnd])
+
+		// Skip empty sections
+		if len(sectionContent) > 0 {
+			sections = append(sections, H2Section{
+				Title:   title,
+				Content: sectionContent,
+			})
+		}
+	}
+
+	return sections
 }
 
 // searchDocuments performs a search query against the indexed documents
@@ -274,6 +355,10 @@ func searchDocuments(query string, limit int) ([]DocumentationResult, error) {
 	sectionPhraseQuery.SetField("section")
 	sectionPhraseQuery.SetBoost(6.0) // Very high boost for exact phrase in section
 
+	subtitlePhraseQuery := bleve.NewMatchPhraseQuery(query)
+	subtitlePhraseQuery.SetField("subtitle")
+	subtitlePhraseQuery.SetBoost(9.0) // Very high boost for exact phrase in subtitle (H2 titles)
+
 	descriptionPhraseQuery := bleve.NewMatchPhraseQuery(query)
 	descriptionPhraseQuery.SetField("description")
 	descriptionPhraseQuery.SetBoost(4.0) // Good boost for exact phrase in description
@@ -286,6 +371,10 @@ func searchDocuments(query string, limit int) ([]DocumentationResult, error) {
 	titleQuery := bleve.NewMatchQuery(query)
 	titleQuery.SetField("title")
 	titleQuery.SetBoost(5.0) // High boost for title matches
+
+	subtitleQuery := bleve.NewMatchQuery(query)
+	subtitleQuery.SetField("subtitle")
+	subtitleQuery.SetBoost(8.0) // Very high boost for subtitle matches (H2 titles)
 
 	descriptionQuery := bleve.NewMatchQuery(query)
 	descriptionQuery.SetField("description")
@@ -306,11 +395,13 @@ func searchDocuments(query string, limit int) ([]DocumentationResult, error) {
 	// Add phrase queries first (highest priority)
 	combinedQuery.AddShould(titlePhraseQuery)
 	combinedQuery.AddShould(sectionPhraseQuery)
+	combinedQuery.AddShould(subtitlePhraseQuery)
 	combinedQuery.AddShould(descriptionPhraseQuery)
 	combinedQuery.AddShould(contentPhraseQuery)
 
 	// Add individual word queries
 	combinedQuery.AddShould(titleQuery)
+	combinedQuery.AddShould(subtitleQuery)
 	combinedQuery.AddShould(descriptionQuery)
 	combinedQuery.AddShould(contentQuery)
 	combinedQuery.AddShould(sectionQuery)
@@ -320,15 +411,12 @@ func searchDocuments(query string, limit int) ([]DocumentationResult, error) {
 
 	// Create search request
 	searchRequest := bleve.NewSearchRequest(combinedQuery)
-	searchRequest.Fields = []string{"title", "url", "description", "section", "content"}
+	searchRequest.Fields = []string{"title", "url", "description", "section", "subtitle", "content"}
 
 	// Set the size to the requested limit
 	searchRequest.Size = limit
 
-	// Ensure results are sorted by score (highest to lowest) - this is default but explicit
-	searchRequest.SortBy([]string{"-_score"})
-
-	// Ensure results are sorted by score (highest to lowest) - this is default but explicit
+	// Ensure results are sorted by score (highest to lowest) - this is necessary for proper sorting
 	searchRequest.SortBy([]string{"-_score"})
 
 	// Execute search
@@ -339,12 +427,7 @@ func searchDocuments(query string, limit int) ([]DocumentationResult, error) {
 
 	// Convert search results to DocumentationResult, results are already ordered by score
 	var results []DocumentationResult
-	for i, hit := range searchResult.Hits {
-		// Only process up to the limit
-		if i >= limit {
-			break
-		}
-
+	for _, hit := range searchResult.Hits {
 		result := DocumentationResult{
 			Score: hit.Score,
 		}
@@ -361,6 +444,9 @@ func searchDocuments(query string, limit int) ([]DocumentationResult, error) {
 		}
 		if section, ok := hit.Fields["section"].(string); ok {
 			result.Section = section
+		}
+		if subtitle, ok := hit.Fields["subtitle"].(string); ok {
+			result.Subtitle = subtitle
 		}
 		if content, ok := hit.Fields["content"].(string); ok {
 			result.Content = content

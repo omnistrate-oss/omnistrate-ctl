@@ -4,7 +4,7 @@ TAG?=latest
 
 GIT_COMMIT=$(shell git rev-parse HEAD)
 GIT_VERSION=$(shell git describe --tags 2>/dev/null || echo "$(GIT_COMMIT)")
-GIT_UNTRACKEDCHANGES := $(shell git status --porcelain --untracked-files=no | grep -v 'go.sum')
+GIT_UNTRACKEDCHANGES := $(shell git status --porcelain --untracked-files=no | grep -v -E '(go.sum|go.mod)')
 ifneq ($(GIT_UNTRACKEDCHANGES),)
 	GIT_VERSION := $(GIT_VERSION)-dirty
 	GIT_COMMIT := $(GIT_COMMIT)-dirty
