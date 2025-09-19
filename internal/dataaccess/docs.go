@@ -52,6 +52,12 @@ type Document struct {
 	Content     string `json:"content"`
 }
 
+// H2Section represents a section of content under an H2 heading
+type H2Section struct {
+	Title   string
+	Content string
+}
+
 var (
 	searchIndex bleve.Index
 	indexMutex  sync.RWMutex
@@ -276,12 +282,6 @@ func parseDocumentationContentForIndexing(body string) ([]Document, error) {
 	return documents, nil
 }
 
-// H2Section represents a section of content under an H2 heading
-type H2Section struct {
-	Title   string
-	Content string
-}
-
 // parseH2Sections parses markdown content and splits it by H2 headings (##)
 func parseH2Sections(content string) []H2Section {
 	var sections []H2Section
@@ -415,9 +415,6 @@ func searchDocuments(query string, limit int) ([]DocumentationResult, error) {
 	// Ensure results are sorted by score (highest to lowest) - this is default but explicit
 	searchRequest.SortBy([]string{"-_score"})
 
-	// Ensure results are sorted by score (highest to lowest) - this is default but explicit
-	searchRequest.SortBy([]string{"-_score"})
-
 	// Execute search
 	searchResult, err := searchIndex.Search(searchRequest)
 	if err != nil {
@@ -426,12 +423,7 @@ func searchDocuments(query string, limit int) ([]DocumentationResult, error) {
 
 	// Convert search results to DocumentationResult, results are already ordered by score
 	var results []DocumentationResult
-	for i, hit := range searchResult.Hits {
-		// Only process up to the limit
-		if i >= limit {
-			break
-		}
-
+	for _, hit := range searchResult.Hits {
 		result := DocumentationResult{
 			Score: hit.Score,
 		}
