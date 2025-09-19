@@ -697,7 +697,7 @@ func buildDebugEventsNode(resource ResourceInfo) *tview.TreeNode {
 		if len(category.events) > 0 {
 
 			// Show last event summary and get icon/color
-			eventType := getHighestPriorityEventType(category.events, strings.ToLower(category.name), nil)
+			eventType := getHighestPriorityEventType(category.events, strings.ToLower(category.name))
 			categoryIcon, categoryColor := getEventTypeOrStatusColorAndIcon(eventType)
 
 			categoryNode := tview.NewTreeNode(fmt.Sprintf("[%s]%s [white]%s (%d)", categoryColor, categoryIcon, category.name, len(category.events)))
@@ -951,14 +951,14 @@ func handleDebugEventsOverviewSelection(ref map[string]interface{}, rightPanel *
 	for _, category := range categories {
 		if len(category.events) > 0 {
 			// Determine icon and color based on the most recent event type in this category
-			eventType := getHighestPriorityEventType(category.events, strings.ToLower(category.name), nil)
+			eventType := getHighestPriorityEventType(category.events, strings.ToLower(category.name))
 			categoryIcon, categoryColor := getEventTypeOrStatusColorAndIcon(eventType)
 			content.WriteString(fmt.Sprintf("[%s]%s [%s]%s[white] (%d events)\n", categoryColor, categoryIcon, "orange", category.name, len(category.events)))
 
 			// Show last event summary
 			if len(category.events) > 0 {
 				// Get event type color
-				eventType := getHighestPriorityEventType(category.events, strings.ToLower(category.name), nil)
+				eventType := getHighestPriorityEventType(category.events, strings.ToLower(category.name))
 				_, eventTypeColor := getEventTypeOrStatusColorAndIcon(eventType)
 				// Find the event with the matching eventType to get its EventTime
 				eventTime := ""
