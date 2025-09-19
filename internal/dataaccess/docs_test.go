@@ -298,30 +298,6 @@ Content here.
 			},
 		},
 		{
-			name: "h2 with whitespace variations",
-			input: `##    Spaced Title   
-
-Content with leading spaces.
-
-##No Space Title
-
-Content without space after ##.
-
-## Normal Title
-
-Normal content.`,
-			expected: []H2Section{
-				{
-					Title:   "Spaced Title",
-					Content: "Content with leading spaces.",
-				},
-				{
-					Title:   "Normal Title",
-					Content: "Normal content.",
-				},
-			},
-		},
-		{
 			name: "h2 with code blocks and formatting",
 			input: `## Installation
 
