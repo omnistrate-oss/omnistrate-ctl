@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httputil"
+	"net/url"
 	stdregexp "regexp"
 	"strings"
 	"sync"
@@ -226,24 +227,24 @@ func parseDocumentationContentForIndexing(body string) ([]Document, error) {
 				title := strings.TrimPrefix(parts[0], "- [")
 
 				// Handle both formats: with and without description
-				var url, description string
+				var docUrl, description string
 				if strings.Contains(parts[1], "): ") {
 					// Format: - [Title](URL): Description
 					urlAndDesc := strings.SplitN(parts[1], "): ", 2)
-					url = urlAndDesc[0]
+					docUrl = urlAndDesc[0]
 					if len(urlAndDesc) == 2 {
 						description = urlAndDesc[1]
 					}
 				} else {
 					// Format: - [Title](URL)
-					url = strings.TrimSuffix(parts[1], ")")
+					docUrl = strings.TrimSuffix(parts[1], ")")
 					description = title // Use title as description if no separate description
 				}
 
 				// Fetch content from the URL
-				content, err := fetchContentFromURL(url)
+				content, err := fetchContentFromURL(docUrl)
 				if err != nil {
-					log.Warn().Err(err).Str("url", url).Msg("Failed to fetch content for indexing")
+					log.Warn().Err(err).Str("url", docUrl).Msg("Failed to fetch content for indexing")
 				} else {
 					// Parse H2 sections from the content and create multiple documents
 					h2Sections := parseH2Sections(content)
@@ -255,7 +256,7 @@ func parseDocumentationContentForIndexing(body string) ([]Document, error) {
 							Section:     currentSection,
 							Title:       title,
 							Description: description,
-							URL:         strings.TrimSuffix(url, "index.md"),
+							URL:         strings.TrimSuffix(docUrl, "index.md"),
 							Content:     content,
 						}
 						documents = append(documents, doc)
@@ -268,7 +269,7 @@ func parseDocumentationContentForIndexing(body string) ([]Document, error) {
 								Section:     currentSection,
 								Title:       title,
 								Description: description,
-								URL:         strings.TrimSuffix(url, "index.md") + "#" + strings.ReplaceAll(strings.ToLower(h2section.Title), " ", "-"),
+								URL:         strings.TrimSuffix(docUrl, "index.md") + "#" + url.QueryEscape(h2section.Title),
 								Subtitle:    h2section.Title,
 								Content:     h2section.Content,
 							}
