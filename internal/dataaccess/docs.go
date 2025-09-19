@@ -412,7 +412,7 @@ func searchDocuments(query string, limit int) ([]DocumentationResult, error) {
 	// Set the size to the requested limit
 	searchRequest.Size = limit
 
-	// Ensure results are sorted by score (highest to lowest) - this is default but explicit
+	// Ensure results are sorted by score (highest to lowest) - this is necessary for proper sorting
 	searchRequest.SortBy([]string{"-_score"})
 
 	// Execute search
