@@ -61,7 +61,13 @@ type H2Section struct {
 var (
 	searchIndex bleve.Index
 	indexMutex  sync.RWMutex
+	// Use regex to find H2 headings
+	h2Regex *stdregexp.Regexp
 )
+
+func init() {
+	h2Regex = stdregexp.MustCompile(`(?m)^## (.+)$`)
+}
 
 func PerformDocumentationSearch(query string, limit int) ([]DocumentationResult, error) {
 	// Initialize the search index if not already done
@@ -285,9 +291,6 @@ func parseDocumentationContentForIndexing(body string) ([]Document, error) {
 // parseH2Sections parses markdown content and splits it by H2 headings (##)
 func parseH2Sections(content string) []H2Section {
 	var sections []H2Section
-
-	// Use regex to find H2 headings
-	h2Regex := stdregexp.MustCompile(`(?m)^## (.+)$`)
 
 	// Find all H2 headings and their positions
 	matches := h2Regex.FindAllStringSubmatchIndex(content, -1)
