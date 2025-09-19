@@ -350,12 +350,9 @@ func getDynamicCategoryStatuses(eventsByCategory *dataaccess.WorkflowEventsByCat
 		}
 
 		// Track which categories have actual events
-		activeCategoriesFound := false
-		
 		for _, category := range categories {
 			// Check if this category has events
 			if len(category.events) > 0 {
-				activeCategoriesFound = true
 				eventType := getHighestPriorityEventType(category.events, strings.ToLower(category.name))
 				icon := getEventStatusIconFromType(eventType)
 				order := categoryOrder[category.name]
@@ -372,24 +369,6 @@ func getDynamicCategoryStatuses(eventsByCategory *dataaccess.WorkflowEventsByCat
 			}
 		}
 		
-		// If no categories have events yet, show common categories as pending
-		// This handles the case where workflow just started and categories aren't available yet
-		if !activeCategoriesFound {
-			commonCategories := []string{"Bootstrap", "Storage", "Network", "Compute", "Deployment"}
-			for _, categoryName := range commonCategories {
-				order := categoryOrder[categoryName]
-				if order == 0 {
-					order = 999
-				}
-				
-				statuses = append(statuses, CategoryStatus{
-					Name:      categoryName,
-					EventType: "pending",
-					Icon:      getEventStatusIconFromType("pending"),
-					Order:     order,
-				})
-			}
-		}
 	}
 
 	// Sort by order
