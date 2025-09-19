@@ -109,7 +109,10 @@ func createIndexMapping() (mapping.IndexMapping, error) {
 		"regexp": `[\p{L}\p{N}_-]+`, // Unicode letters, numbers, underscore, hyphen
 	}
 
-	indexMapping.AddCustomTokenizer("word_with_hyphen", customWhitespaceTokenizer)
+	err := indexMapping.AddCustomTokenizer("word_with_hyphen", customWhitespaceTokenizer)
+	if err != nil {
+		return nil, fmt.Errorf("failed to add custom tokenizer: %w", err)
+	}
 
 	// Define custom whitespace analyzer for English language only
 	customWhitespaceAnalyzer := map[string]interface{}{
@@ -121,7 +124,7 @@ func createIndexMapping() (mapping.IndexMapping, error) {
 		},
 	}
 	// Add the custom analyzer to index mapping
-	err := indexMapping.AddCustomAnalyzer("hyphen_preserving", customWhitespaceAnalyzer)
+	err = indexMapping.AddCustomAnalyzer("hyphen_preserving", customWhitespaceAnalyzer)
 	if err != nil {
 		return nil, fmt.Errorf("failed to add custom analyzer: %w", err)
 	}
