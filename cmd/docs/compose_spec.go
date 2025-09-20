@@ -10,14 +10,15 @@ import (
 )
 
 const (
-	composeSpecExample = `# List all H3 headers in the compose spec documentation
-omctl docs compose-spec
-
-# Search for a specific tag/section in the compose spec documentation
-omctl docs compose-spec "volumes"
+	composeSpecExample = `# List all H3 headers in the compose spec documentation with JSON output
+omctl docs compose-spec --output json
 
 # Search for a specific tag with JSON output
-omctl docs compose-spec "networks" --output json`
+omctl docs compose-spec "networks" --output json
+
+# Search for specific custom tags with JSON output
+omctl docs compose-spec "x-omnistrate-compute" --output json
+`
 )
 
 var composeSpecCmd = &cobra.Command{
