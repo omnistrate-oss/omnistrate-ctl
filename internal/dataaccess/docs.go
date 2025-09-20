@@ -498,6 +498,11 @@ func refreshSearchIndex() error {
 	return initializeSearchIndex()
 }
 
+// FetchContentFromURL fetches content from a URL and returns it as a string
+func FetchContentFromURL(url string) (string, error) {
+	return fetchContentFromURL(url)
+}
+
 func fetchContentFromURL(url string) (string, error) {
 	// Make HTTP request to fetch the content
 	// retryablehttp gives us automatic retries with exponential backoff.
