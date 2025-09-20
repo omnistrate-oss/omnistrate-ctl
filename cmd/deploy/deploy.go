@@ -2,7 +2,6 @@ package deploy
 
 import (
 	"context"
-	"encoding/base64"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -20,7 +19,6 @@ import (
 	"github.com/compose-spec/compose-go/loader"
 	"github.com/compose-spec/compose-go/types"
 	openapiclientfleet "github.com/omnistrate-oss/omnistrate-sdk-go/fleet"
-	openapiclient "github.com/omnistrate-oss/omnistrate-sdk-go/v1"
 	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
 )
@@ -40,6 +38,18 @@ omctl deploy spec.yaml --release-description "v1.0.0-alpha"
 
 # Deploy with custom subscription name
 omctl deploy spec.yaml --subscription-name "my-custom-subscription"
+
+# Deploy with AWS account ID for BYOA deployment
+omctl deploy spec.yaml --aws-account-id "123456789012"
+
+# Deploy with GCP project for BYOA deployment
+omctl deploy spec.yaml --gcp-project-id "my-project" --gcp-project-number "123456789012"
+
+# Perform a dry-run to validate configuration without deploying
+omctl deploy spec.yaml --dry-run
+
+# Auto-generate spec from repository and deploy
+omctl deploy --product-name "My Repo Service"
 `
 )
 
@@ -57,46 +67,336 @@ func init() {
 	DeployCmd.Flags().String("product-name", "", "Specify a custom service name. If not provided, directory name will be used.")
 	DeployCmd.Flags().String("release-description", "", "Release description for the version")
 	DeployCmd.Flags().String("subscription-name", "", "Subscription name for service subscription")
+	DeployCmd.Flags().Bool("dry-run", false, "Perform validation checks without actually deploying")
+	DeployCmd.Flags().String("aws-account-id", "", "AWS account ID for BYOA or hosted deployment")
+	DeployCmd.Flags().String("gcp-project-id", "", "GCP project ID for BYOA or hosted deployment. Must be used with --gcp-project-number")
+	DeployCmd.Flags().String("gcp-project-number", "", "GCP project number for BYOA or hosted deployment. Must be used with --gcp-project-id")
+	DeployCmd.Flags().String("deployment-type", "", "Deployment type: hosted  or byoa")
 }
 
 func runDeploy(cmd *cobra.Command, args []string) error {
 	defer config.CleanupArgsAndFlags(cmd, &args)
 
+	// Step 0: Validate user is logged in first
+	token, err := common.GetTokenWithLogin()
+	if err != nil {
+		return err
+	}
+
+	// Get cloud provider account flags
+	deploymentType, err := cmd.Flags().GetString("deployment-type")
+	if err != nil {
+		return err
+	}
+
+	awsAccountID, err := cmd.Flags().GetString("aws-account-id")
+	if err != nil {
+		return err
+	}
+
+	gcpProjectID, err := cmd.Flags().GetString("gcp-project-id")
+	if err != nil {
+		return err
+	}
+
+	gcpProjectNumber, err := cmd.Flags().GetString("gcp-project-number")
+	if err != nil {
+		return err
+	}
+
+	fmt.Println("Deployment type:", deploymentType)
+	
+	if deploymentType == "byoa" || deploymentType == "hosted" {
+		if awsAccountID == "" && gcpProjectID == "" {
+			return errors.New("BYOA deployment type requires either --aws-account-id or --gcp-project-id to be specified")
+		}
+		if gcpProjectID != "" && gcpProjectNumber == "" {
+			return errors.New("GCP project number is required with GCP project ID")
+		}
+		if gcpProjectID == "" && gcpProjectNumber != "" {
+			return errors.New("GCP project ID is required with GCP project number")
+		}
+	}
+
+	// Pre-checks: Validate environment and requirements
+	fmt.Println("Running pre-deployment checks...")
+	
 	// Get the spec file path
 	var specFile string
+	var useRepo bool
 	if len(args) > 0 {
 		specFile = args[0]
 	} else {
-		// Try to find a default spec file
-		possibleFiles := []string{"compose.yaml", "compose.yml", "docker-compose.yaml", "docker-compose.yml", "spec.yaml"}
-		for _, file := range possibleFiles {
-			if _, err := os.Stat(file); err == nil {
-				specFile = file
-				break
+		// Look for compose.yaml in current directory first
+		if _, err := os.Stat("compose.yaml"); err == nil {
+			specFile = "compose.yaml"
+		} else {
+			// No spec file found, ask user if they want to auto-generate one
+			fmt.Print("No spec file found, do you want to auto-generate one (Y/N): ")
+			var response string
+			fmt.Scanln(&response)
+			
+			response = strings.ToLower(strings.TrimSpace(response))
+			if response == "y" || response == "yes" {
+				useRepo = true
+				fmt.Println("Using repository-based build...")
+			} else {
+				return errors.New("Run deploy command with [--file=file] [--spec-type=spec-type] arguments")
 			}
 		}
-		if specFile == "" {
-			return errors.New("no spec file provided and no default spec file found (compose.yaml, compose.yml, docker-compose.yaml, docker-compose.yml, spec.yaml)")
+	}
+
+	// Convert to absolute path if using spec file
+	var absSpecFile string
+	var processedData []byte
+	var specType string
+	if !useRepo {
+		absSpecFile, err = filepath.Abs(specFile)
+		if err != nil {
+			return errors.Wrap(err, "failed to get absolute path for spec file")
+		}
+
+		// Check if spec file exists
+		if _, err := os.Stat(absSpecFile); os.IsNotExist(err) {
+			return errors.Errorf("spec file does not exist: %s", absSpecFile)
+		}
+
+		// Read and process spec file for pre-checks
+		fileData, err := os.ReadFile(absSpecFile)
+		if err != nil {
+			return errors.Wrap(err, "failed to read spec file")
+		}
+
+		// Process template expressions recursively
+		processedData, err = processTemplateExpressions(fileData, filepath.Dir(absSpecFile))
+		if err != nil {
+			return errors.Wrap(err, "failed to process template expressions")
+		}
+
+		// Determine spec type
+		specType, err = determineSpecType(processedData)
+		if err != nil {
+			return errors.Wrap(err, "failed to determine spec type")
 		}
 	}
 
-	// Convert to absolute path
-	absSpecFile, err := filepath.Abs(specFile)
+	var cloudProviderAPI string = "aws"
+
+	if awsAccountID != "" {
+		cloudProviderAPI = "aws"
+	} else if gcpProjectID != "" {
+		cloudProviderAPI = "gcp"
+	}
+	// Pre-check 1: Check for linked cloud provider accounts
+	fmt.Print("Checking linked cloud provider accounts... ")
+	accounts, err := dataaccess.ListAccounts(cmd.Context(), token, cloudProviderAPI)
 	if err != nil {
-		return errors.Wrap(err, "failed to get absolute path for spec file")
+		fmt.Println("❌")
+		return fmt.Errorf("failed to check cloud provider accounts: %w", err)
 	}
 
-	// Check if spec file exists
-	if _, err := os.Stat(absSpecFile); os.IsNotExist(err) {
-		return errors.Errorf("spec file does not exist: %s", absSpecFile)
+	if len(accounts.AccountConfigs) == 0 {
+		fmt.Println("❌")
+		return errors.New("no cloud provider accounts linked. Please link at least one cloud provider account using 'omctl account create' before deploying")
 	}
 
-	// Get flags
+	if len(accounts.AccountConfigs) == 1 {
+		// Determine cloud provider from the account
+		var cloudProvider string
+		account := accounts.AccountConfigs[0]
+		if account.AwsAccountID != nil {
+			cloudProvider = "AWS"
+		} else if account.GcpProjectID != nil {
+			cloudProvider = "GCP"
+		} else if account.AzureSubscriptionID != nil {
+			cloudProvider = "Azure"
+		} else {
+			cloudProvider = "Unknown"
+		}
+		fmt.Printf("✅ (1 account found - assuming provider hosted: %s)\n", cloudProvider)
+	} else {
+		fmt.Printf("✅ (%d accounts found)\n", len(accounts.AccountConfigs))
+	}
+
+	// Validate cloud provider account flags for BYOA deployment
+	if deploymentType == "byoa" || deploymentType == "hosted" && (awsAccountID != "" || gcpProjectID != "") {
+		// Check if the specified account IDs match any linked accounts
+		var foundMatchingAccount bool
+		for _, account := range accounts.AccountConfigs {
+			if awsAccountID != "" && account.AwsAccountID != nil && *account.AwsAccountID == awsAccountID {
+				foundMatchingAccount = true
+				break
+			}
+			if gcpProjectID != "" && account.GcpProjectID != nil && *account.GcpProjectID == gcpProjectID {
+				if gcpProjectNumber != "" && account.GcpProjectNumber != nil && *account.GcpProjectNumber == gcpProjectNumber {
+					foundMatchingAccount = true
+					break
+				}
+			}
+		}
+		if !foundMatchingAccount {
+			fmt.Println("❌")
+			if awsAccountID != "" {
+				return fmt.Errorf("AWS account ID %s is not linked to your organization. Please link it using 'omctl account create' first", awsAccountID)
+			}
+			if gcpProjectID != "" {
+				return fmt.Errorf("GCP project %s/%s is not linked to your organization. Please link it using 'omctl account create' first", gcpProjectID, gcpProjectNumber)
+			}
+		}
+	}
+
+	// Pre-check 2: Validate spec file configuration if using spec file
+	if !useRepo {
+		fmt.Print("Validating spec file configuration... ")
+		hasAccountID, tenantAwareResourceCount, err := validateSpecFileConfiguration(processedData, specType)
+		if err != nil {
+			fmt.Println("❌")
+			return fmt.Errorf("spec file validation failed: %w", err)
+		}
+
+		// Check if account ID is required but missing
+		// Account ID is considered available if it's in the spec file OR provided via flags
+		hasAccountIDFromFlags := awsAccountID != "" || gcpProjectID != ""
+		// Assume hosted deployment if we have a single cloud provider account
+		assumeHosted := len(accounts.AccountConfigs) == 1
+		if !assumeHosted && !hasAccountID && !hasAccountIDFromFlags {
+			fmt.Println("❌")
+			return errors.New("multiple cloud provider accounts found but no account ID specified in spec file or flags. Please specify account ID in spec file or use --aws-account-id/--gcp-project-id flags")
+		}
+
+		// Check tenant-aware resource count
+		if tenantAwareResourceCount == 0 {
+			fmt.Println("❌")
+			return errors.New("no tenant-aware resources found in spec file. At least one tenant-aware resource is required for deployment")
+		} else if tenantAwareResourceCount > 1 {
+			fmt.Println("❌")
+			return errors.New("multiple tenant-aware resources found in spec file. Please specify exactly one tenant-aware resource or use --tenant-resource flag")
+		}
+
+		fmt.Println("✅")
+	} else {
+		fmt.Println("Validating repository configuration... ✅ (repository-based deployment)")
+	}
+
+	// Get service name for further validation
 	productName, err := cmd.Flags().GetString("product-name")
 	if err != nil {
 		return err
 	}
 
+	var serviceNameToUse string
+	serviceNameToUse = productName
+	if serviceNameToUse == "" {
+		if useRepo {
+			// Use current directory name for repository-based builds
+			cwd, err := os.Getwd()
+			if err != nil {
+				return err
+			}
+			serviceNameToUse = filepath.Base(cwd)
+		} else {
+			// Use directory name from spec file path
+			serviceNameToUse = filepath.Base(filepath.Dir(absSpecFile))
+		}
+		
+		if serviceNameToUse == "." || serviceNameToUse == "/" || serviceNameToUse == "" {
+			serviceNameToUse = "my-service"
+		}
+	}
+
+	// Pre-check 3: Check if service exists and validate service plan count
+	fmt.Printf("Checking existing service '%s'... ", serviceNameToUse)
+	existingServiceID, err := findExistingService(cmd.Context(), token, serviceNameToUse)
+	if err != nil {
+		fmt.Println("❌")
+		return fmt.Errorf("failed to check existing service: %w", err)
+	}
+
+	if existingServiceID != "" {
+		// Service exists - check service plan count
+		servicePlans, err := getServicePlans(cmd.Context(), token, existingServiceID)
+		if err != nil {
+			fmt.Println("❌")
+			return fmt.Errorf("failed to check service plans: %w", err)
+		}
+
+		if len(servicePlans) > 1 {
+			fmt.Println("❌")
+			return fmt.Errorf("service '%s' has %d service plans. Please specify --service-plan-id when multiple plans exist", serviceNameToUse, len(servicePlans))
+		}
+
+		fmt.Printf("✅ (existing service with %d plan)\n", len(servicePlans))
+
+		// Pre-check 4: Check deployment count if service exists
+		fmt.Print("Checking existing deployments... ")
+		deploymentCount, err := getDeploymentCount(cmd.Context(), token, existingServiceID)
+		if err != nil {
+			fmt.Println("❌")
+			return fmt.Errorf("failed to check deployments: %w", err)
+		}
+
+		if deploymentCount > 1 {
+			fmt.Println("❌")
+			return fmt.Errorf("service '%s' has %d deployments. Please specify --instance-id when multiple deployments exist", serviceNameToUse, deploymentCount)
+		}
+
+		fmt.Printf("✅ (%d deployment)\n", deploymentCount)
+	} else {
+		fmt.Println("✅ (new service)")
+	}
+
+	fmt.Println("✅ All pre-checks passed! Proceeding with deployment...")
+
+	// Get dry-run flag
+	dryRun, err := cmd.Flags().GetBool("dry-run")
+	if err != nil {
+		return err
+	}
+
+	// Additional pre-checks: x-omnistrate-mode-internal tag and required parameters
+	if !useRepo {
+		// // Pre-check 5: Check for x-omnistrate-mode-internal tag
+		// fmt.Print("Checking for x-omnistrate-mode-internal tag... ")
+		// hasInternalTag, err := checkForInternalTag(processedData, specType)
+		// if err != nil {
+		// 	fmt.Println("❌")
+		// 	return fmt.Errorf("failed to check x-omnistrate-mode-internal tag: %w", err)
+		// }
+
+		// if !hasInternalTag {
+		// 	fmt.Println("❌")
+		// 	return errors.New("at least one resource must have the x-omnistrate-mode-internal tag defined")
+		// }
+		// fmt.Println("✅")
+
+		// Pre-check 6: Validate required parameters and prompt for missing values
+		fmt.Print("Validating required parameters... ")
+		// parameterErrors, err := validateAndPromptForRequiredParameters(processedData, specType)
+		// if err != nil {
+		// 	fmt.Println("❌")
+		// 	return fmt.Errorf("failed to validate parameters: %w", err)
+		// }
+
+		// if len(parameterErrors) > 0 {
+		// 	fmt.Println("❌")
+		// 	fmt.Println("Missing required parameters:")
+		// 	for _, paramErr := range parameterErrors {
+		// 		fmt.Printf("  - %s\n", paramErr)
+		// 	}
+		// 	return errors.New("required parameters are missing. Please provide values for all required parameters")
+		// }
+		// fmt.Println("✅")
+	}
+
+	// Dry-run exit point
+	if dryRun {
+		fmt.Println("🔍 Dry-run completed successfully! All validations passed.")
+		fmt.Println("To proceed with actual deployment, run the command without --dry-run flag.")
+		return nil
+	}
+	fmt.Println()
+
+	// Get flags
 	releaseDescription, err := cmd.Flags().GetString("release-description")
 	if err != nil {
 		return err
@@ -110,52 +410,36 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 	sm.Start()
 	defer sm.Stop()
 
-	// Step 0: Validate user is logged in
-	spinner := sm.AddSpinner("Checking if user is logged in")
-	time.Sleep(1 * time.Second)
-	spinner.Complete()
-	sm.Stop()
-
-	token, err := common.GetTokenWithLogin()
-	if err != nil {
-		return err
+	// Step 1: Read and parse the spec file or prepare for repo build (if not already done)
+	spinner := sm.AddSpinner("Reading and parsing spec file")
+	
+	if useRepo {
+		// Repository-based build - no spec file to read
+		spinner.UpdateMessage("Reading and parsing spec file: Using repository-based build")
+		specType = "repository" // We'll handle this as a special case
+	} else {
+		// We already processed the data during pre-checks
+		spinner.UpdateMessage(fmt.Sprintf("Reading and parsing spec file: %s (%s)", filepath.Base(absSpecFile), specType))
 	}
-
-	sm = ysmrr.NewSpinnerManager()
-	sm.Start()
-
-	// Step 1: Read and parse the spec file
-	spinner = sm.AddSpinner("Reading and parsing spec file")
-	fileData, err := os.ReadFile(absSpecFile)
-	if err != nil {
-		utils.HandleSpinnerError(spinner, sm, err)
-		return err
-	}
-
-	// Process template expressions recursively
-	processedData, err := processTemplateExpressions(fileData, filepath.Dir(absSpecFile))
-	if err != nil {
-		utils.HandleSpinnerError(spinner, sm, err)
-		return err
-	}
-
-	// Determine spec type
-	specType, err := determineSpecType(processedData)
-	if err != nil {
-		utils.HandleSpinnerError(spinner, sm, err)
-		return err
-	}
-
-	spinner.UpdateMessage(fmt.Sprintf("Reading and parsing spec file: %s (%s)", filepath.Base(absSpecFile), specType))
 	spinner.Complete()
 
 	// Step 2: Determine service name
 	spinner = sm.AddSpinner("Determining service name")
-	serviceNameToUse := productName
 	if serviceNameToUse == "" {
-		// Use directory name as default
-		serviceNameToUse = filepath.Base(filepath.Dir(absSpecFile))
-		if serviceNameToUse == "." || serviceNameToUse == "/" {
+		if useRepo {
+			// Use current directory name for repository-based builds
+			cwd, err := os.Getwd()
+			if err != nil {
+				utils.HandleSpinnerError(spinner, sm, err)
+				return err
+			}
+			serviceNameToUse = filepath.Base(cwd)
+		} else {
+			// Use directory name from spec file path
+			serviceNameToUse = filepath.Base(filepath.Dir(absSpecFile))
+		}
+		
+		if serviceNameToUse == "." || serviceNameToUse == "/" || serviceNameToUse == "" {
 			serviceNameToUse = "my-service"
 		}
 	}
@@ -171,14 +455,30 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 		releaseDescriptionPtr = &releaseDescription
 	}
 
-	serviceID, devEnvironmentID, devPlanID, undefinedResources, err := buildServiceInDev(
-		cmd.Context(),
-		processedData,
-		token,
-		serviceNameToUse,
-		specType,
-		releaseDescriptionPtr,
-	)
+	var serviceID, devEnvironmentID, devPlanID string
+	var undefinedResources map[string]string
+	
+	if useRepo {
+		serviceID, devEnvironmentID, devPlanID, undefinedResources, err = buildServiceFromRepo(
+			cmd.Context(),
+			token,
+			serviceNameToUse,
+			releaseDescriptionPtr,
+			deploymentType,
+			awsAccountID,
+			gcpProjectID,
+			gcpProjectNumber,
+		)
+	} else {
+		serviceID, devEnvironmentID, devPlanID, undefinedResources, err = buildServiceInDev(
+			cmd.Context(),
+			processedData,
+			token,
+			serviceNameToUse,
+			specType,
+			releaseDescriptionPtr,
+		)
+	}
 	if err != nil {
 		utils.HandleSpinnerError(spinner, sm, err)
 		return err
@@ -303,16 +603,17 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 
 	// Step 8: Create subscription for the production service
 	spinner = sm.AddSpinner("Creating subscription to the production service")
-	
+
 	// Get subscription flags or use defaults
 	subscriptionName, _ := cmd.Flags().GetString("subscription-name")
 	if subscriptionName == "" {
 		subscriptionName = fmt.Sprintf("%s-subscription", serviceNameToUse)
 	}
-	
+
 	// Create subscription if we have production plans
 	var subscriptionID string
 	var isServiceProvider bool
+	var skipSubscriptionFlow bool
 	if hasProductionPlans && prodPlanID != "" {
 		// Get current user ID for subscription
 		user, err := dataaccess.DescribeUser(cmd.Context(), token)
@@ -320,18 +621,23 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 			utils.HandleSpinnerError(spinner, sm, err)
 			return err
 		}
-		
+
 		subscriptionOpts := &dataaccess.CreateSubscriptionOnBehalfOptions{
 			ProductTierID:            prodPlanID,
 			OnBehalfOfCustomerUserID: user.Id,
 		}
-		
+
 		subscriptionResp, err := dataaccess.CreateSubscriptionOnBehalf(cmd.Context(), token, serviceID, prodEnvironmentID, subscriptionOpts)
 		if err != nil {
 			// Check if this is the service provider org error
 			if strings.Contains(err.Error(), "cannot create subscription on behalf of customer user in service provider org") {
 				isServiceProvider = true
 				spinner.UpdateMessage("Creating subscription to the production service: Skipped (service provider org - will create instance directly)")
+				spinner.Complete()
+			} else if subscriptionResp == nil || subscriptionResp.Id == nil {
+				// If error is due to missing subscription ID, skip subscription flow entirely
+				skipSubscriptionFlow = true
+				spinner.UpdateMessage("Creating subscription to the production service: Skipped (no subscription ID required - will create instance directly)")
 				spinner.Complete()
 			} else {
 				utils.HandleSpinnerError(spinner, sm, err)
@@ -345,14 +651,12 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 	} else {
 		spinner.UpdateMessage("Creating subscription to the production service: Skipped (no production plans available)")
 		spinner.Complete()
-	}
-
-	// Step 9: Create or upgrade instance deployment automatically
+	}	// Step 9: Create or upgrade instance deployment automatically
 	var instanceID string
 	var instanceName string
 	
-	// Proceed with instance creation either via subscription or directly for service providers
-	if subscriptionID != "" || isServiceProvider {
+	// Proceed with instance creation either via subscription, directly for service providers, or skip subscription flow
+	if subscriptionID != "" || isServiceProvider || skipSubscriptionFlow {
 		// Generate default instance name from service name
 		instanceName = fmt.Sprintf("%s-instance", serviceNameToUse)
 		
@@ -387,6 +691,7 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 				spinner.UpdateMessage("Checking for existing instances: No existing instances found")
 				spinner.Complete()
 				
+				spinner = sm.AddSpinner(fmt.Sprintf("Creating new instance deployment: %s", instanceName))
 				
 				// Try to create instance with default parameters
 				createdInstanceID, err := createInstanceWithDefaults(cmd.Context(), token, serviceID, prodEnvironmentID, prodPlanID, subscriptionID)
@@ -400,17 +705,19 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 					spinner.Complete()
 				}
 			}
-		} else if isServiceProvider {
+		} else if isServiceProvider || skipSubscriptionFlow {
+			// Service provider direct instance creation (no subscription) or skip subscription flow
+			spinner = sm.AddSpinner(fmt.Sprintf("Creating instance without subscription: %s", instanceName))
 			
-			// Try to create instance without subscription for service provider
+			// Try to create instance without subscription for service provider or when skipping subscription flow
 			createdInstanceID, err := createInstanceWithoutSubscription(cmd.Context(), token, serviceID, prodEnvironmentID, prodPlanID)
 			if err != nil {
-				spinner.UpdateMessage(fmt.Sprintf("Creating instance for service provider: Failed (%s)", err.Error()))
+				spinner.UpdateMessage(fmt.Sprintf("Creating instance without subscription: Failed (%s)", err.Error()))
 				spinner.Complete()
-				fmt.Printf("Error: Failed to create service provider instance: %s\n", err.Error())
+				fmt.Printf("Error: Failed to create instance without subscription: %s\n", err.Error())
 			} else {
 				instanceID = createdInstanceID
-				spinner.UpdateMessage(fmt.Sprintf("Creating instance for service provider: Success (ID: %s)", instanceID))
+				spinner.UpdateMessage(fmt.Sprintf("Creating instance without subscription: Success (ID: %s)", instanceID))
 				spinner.Complete()
 			}
 		}
@@ -457,80 +764,6 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 	fmt.Println()
 
 	return nil
-}
-
-// buildServiceInDev builds a service in DEV environment with release-as-preferred
-func buildServiceInDev(ctx context.Context, fileData []byte, token, name, specType string, releaseDescription *string) (serviceID string, environmentID string, productTierID string, undefinedResources map[string]string, err error) {
-	if name == "" {
-		return "", "", "", make(map[string]string), errors.New("name is required")
-	}
-
-	if specType == "" {
-		return "", "", "", make(map[string]string), errors.New("specType is required")
-	}
-
-	switch specType {
-	case build.ServicePlanSpecType:
-		request := openapiclient.BuildServiceFromServicePlanSpecRequest2{
-			Name:               name,
-			Description:        nil,
-			ServiceLogoURL:     nil,
-			Environment:        nil,
-			EnvironmentType:    nil,
-			FileContent:        base64.StdEncoding.EncodeToString(fileData),
-			Release:            utils.ToPtr(true),
-			ReleaseAsPreferred: utils.ToPtr(true),
-			ReleaseVersionName: releaseDescription,
-			Dryrun:             utils.ToPtr(false),
-		}
-
-		buildRes, err := dataaccess.BuildServiceFromServicePlanSpec(ctx, token, request)
-		if err != nil {
-			return "", "", "", make(map[string]string), err
-		}
-		if buildRes == nil {
-			return "", "", "", make(map[string]string), errors.New("empty response from server")
-		}
-
-		undefinedResources := make(map[string]string)
-		if buildRes.UndefinedResources != nil {
-			undefinedResources = *buildRes.UndefinedResources
-		}
-
-		return buildRes.ServiceID, buildRes.ServiceEnvironmentID, buildRes.ProductTierID, undefinedResources, nil
-
-	case build.DockerComposeSpecType:
-		request := openapiclient.BuildServiceFromComposeSpecRequest2{
-			Name:               name,
-			Description:        nil,
-			ServiceLogoURL:     nil,
-			Environment:        nil,
-			EnvironmentType:    nil,
-			FileContent:        base64.StdEncoding.EncodeToString(fileData),
-			Release:            utils.ToPtr(true),
-			ReleaseAsPreferred: utils.ToPtr(true),
-			ReleaseVersionName: releaseDescription,
-			Dryrun:             utils.ToPtr(false),
-		}
-
-		buildRes, err := dataaccess.BuildServiceFromComposeSpec(ctx, token, request)
-		if err != nil {
-			return "", "", "", make(map[string]string), err
-		}
-		if buildRes == nil {
-			return "", "", "", make(map[string]string), errors.New("empty response from server")
-		}
-
-		undefinedResources = make(map[string]string)
-		if buildRes.UndefinedResources != nil {
-			undefinedResources = *buildRes.UndefinedResources
-		}
-
-		return buildRes.ServiceID, buildRes.ServiceEnvironmentID, buildRes.ProductTierID, undefinedResources, nil
-
-	default:
-		return "", "", "", make(map[string]string), errors.Errorf("unsupported spec type: %s (supported: %s, %s)", specType, build.ServicePlanSpecType, build.DockerComposeSpecType)
-	}
 }
 
 // processTemplateExpressions processes template expressions like {{ $file:path }} recursively
@@ -687,6 +920,7 @@ func createProdEnv(ctx context.Context, token string, serviceID string, devEnvir
 
 	return prodEnvironmentID, nil
 }
+
 
 // createInstanceWithDefaults creates an instance with default parameters for the first resource found
 func createInstanceWithDefaults(ctx context.Context, token, serviceID, environmentID, productTierID, subscriptionID string) (string, error) {
@@ -881,4 +1115,217 @@ func upgradeExistingInstance(ctx context.Context, token, instanceID, serviceID, 
 	}
 
 	return nil
+}
+
+// validateSpecFileConfiguration validates the spec file for account ID and tenant-aware resources
+func validateSpecFileConfiguration(data []byte, specType string) (hasAccountID bool, tenantAwareResourceCount int, err error) {
+	content := string(data)
+	
+	// Check for account ID patterns
+	hasAccountID = strings.Contains(content, "account-id") || 
+		strings.Contains(content, "accountId") || 
+		strings.Contains(content, "account_id") ||
+		strings.Contains(content, "cloudProviderAccountId")
+	
+	// For Docker Compose specs, look for tenant-aware resources
+	if specType == build.DockerComposeSpecType {
+		// Look for x-omnistrate-mode-tenant-aware or similar patterns
+		tenantAwareResourceCount = strings.Count(content, "x-omnistrate-mode-tenant-aware")
+		if tenantAwareResourceCount == 0 {
+			// Also check for customer-facing mode as it implies tenant-aware
+			if strings.Contains(content, "customer-facing") {
+				tenantAwareResourceCount = 1
+			}
+		}
+	} else {
+		// For Service Plan specs, assume tenant-aware if not specified otherwise
+		tenantAwareResourceCount = 1
+	}
+	
+	return hasAccountID, tenantAwareResourceCount, nil
+}
+
+// findExistingService searches for an existing service by name
+func findExistingService(ctx context.Context, token, serviceName string) (string, error) {
+	services, err := dataaccess.ListServices(ctx, token)
+	if err != nil {
+		return "", fmt.Errorf("failed to list services: %w", err)
+	}
+	
+	for _, service := range services.Services {
+		if service.Name == serviceName {
+			return service.Id, nil
+		}
+	}
+	
+	return "", nil // Service not found
+}
+
+// getServicePlans retrieves service plans for a given service
+func getServicePlans(ctx context.Context, token, serviceID string) ([]interface{}, error) {
+	service, err := dataaccess.DescribeService(ctx, token, serviceID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to describe service: %w", err)
+	}
+	
+	var allPlans []interface{}
+	for _, env := range service.ServiceEnvironments {
+		for _, plan := range env.ServicePlans {
+			allPlans = append(allPlans, plan)
+		}
+	}
+	
+	return allPlans, nil
+}
+
+// getDeploymentCount counts the number of deployments for a service
+func getDeploymentCount(ctx context.Context, token, serviceID string) (int, error) {
+	// Search for instances associated with this service
+	searchQuery := fmt.Sprintf("resourceinstance service:%s", serviceID)
+	searchRes, err := dataaccess.SearchInventory(ctx, token, searchQuery)
+	if err != nil {
+		return 0, fmt.Errorf("failed to search for deployments: %w", err)
+	}
+	
+	return len(searchRes.ResourceInstanceResults), nil
+}
+
+// checkForInternalTag checks if at least one resource has the x-omnistrate-mode-internal tag
+func checkForInternalTag(data []byte, specType string) (bool, error) {
+	content := string(data)
+	
+	// Check for x-omnistrate-mode-internal tag in various formats
+	internalTagPatterns := []string{
+		"x-omnistrate-mode-internal",
+		"x-omnistrate-mode: internal",
+		"x-omnistrate-mode: \"internal\"",
+		"x-omnistrate-mode: 'internal'",
+	}
+	
+	for _, pattern := range internalTagPatterns {
+		if strings.Contains(content, pattern) {
+			return true, nil
+		}
+	}
+	
+	return false, nil
+}
+
+// validateAndPromptForRequiredParameters validates required parameters and prompts for missing values
+func validateAndPromptForRequiredParameters(data []byte, specType string) ([]string, error) {
+	var parameterErrors []string
+	
+	if specType == build.DockerComposeSpecType {
+		// Parse the compose spec to check for environment variables without defaults
+		var composeProject *types.Project
+		var err error
+		
+		// Load the compose project from data
+		composeProject, err = loader.LoadWithContext(context.Background(), types.ConfigDetails{
+			WorkingDir: ".",
+			ConfigFiles: []types.ConfigFile{
+				{
+					Content: data,
+				},
+			},
+		})
+		if err != nil {
+			return nil, fmt.Errorf("failed to parse compose spec: %w", err)
+		}
+		
+		// Check all services for environment variables without defaults
+		for serviceName, service := range composeProject.Services {
+			// Check environment variables
+			for _, envVar := range service.Environment {
+				envVarStr := ""
+				if envVar != nil {
+					envVarStr = *envVar
+				}
+				
+				if strings.Contains(envVarStr, "${") && !strings.Contains(envVarStr, ":-") {
+					// This is a required environment variable without a default
+					varName := extractEnvVarName(envVarStr)
+					if varName != "" {
+						// Check if it's set in the environment
+						if os.Getenv(varName) == "" {
+							// Prompt user for the value
+							fmt.Printf("Service '%s' requires environment variable '%s'. Please enter a value: ", serviceName, varName)
+							var value string
+							fmt.Scanln(&value)
+							if value == "" {
+								parameterErrors = append(parameterErrors, fmt.Sprintf("service '%s' requires environment variable '%s'", serviceName, varName))
+							} else {
+								// Set the environment variable for this session
+								os.Setenv(varName, value)
+							}
+						}
+					}
+				}
+			}
+			
+			// Check command and args for template variables
+			if service.Command != nil {
+				for _, cmd := range service.Command {
+					if strings.Contains(cmd, "${") && !strings.Contains(cmd, ":-") {
+						varName := extractEnvVarName(cmd)
+						if varName != "" && os.Getenv(varName) == "" {
+							parameterErrors = append(parameterErrors, fmt.Sprintf("service '%s' command requires variable '%s'", serviceName, varName))
+						}
+					}
+				}
+			}
+		}
+	} else {
+		// For service plan specs, check for template variables in the YAML
+		content := string(data)
+		
+		// Look for template variables like ${VAR} without defaults ${VAR:-default}
+		templateVarRegex := regexp.MustCompile(`\$\{([^}]+)\}`)
+		matches := templateVarRegex.FindAllStringSubmatch(content, -1)
+		
+		for _, match := range matches {
+			if len(match) > 1 {
+				varExpression := match[1]
+				// Skip if it has a default value (contains :-)
+				if strings.Contains(varExpression, ":-") {
+					continue
+				}
+				
+				varName := strings.TrimSpace(varExpression)
+				if os.Getenv(varName) == "" {
+					// Prompt user for the value
+					fmt.Printf("Spec file requires variable '%s'. Please enter a value: ", varName)
+					var value string
+					fmt.Scanln(&value)
+					if value == "" {
+						parameterErrors = append(parameterErrors, fmt.Sprintf("spec file requires variable '%s'", varName))
+					} else {
+						// Set the environment variable for this session
+						os.Setenv(varName, value)
+					}
+				}
+			}
+		}
+	}
+	
+	return parameterErrors, nil
+}
+
+// extractEnvVarName extracts the environment variable name from a template expression
+func extractEnvVarName(envVar string) string {
+	// Handle ${VAR} format
+	if strings.Contains(envVar, "${") && strings.Contains(envVar, "}") {
+		start := strings.Index(envVar, "${") + 2
+		end := strings.Index(envVar[start:], "}")
+		if end > 0 {
+			varExpression := envVar[start : start+end]
+			// Remove default value if present (${VAR:-default})
+			if colonIndex := strings.Index(varExpression, ":"); colonIndex > 0 {
+				return varExpression[:colonIndex]
+			}
+			return varExpression
+		}
+	}
+	
+	return ""
 }
