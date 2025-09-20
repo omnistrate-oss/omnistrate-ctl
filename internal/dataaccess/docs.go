@@ -53,9 +53,16 @@ type Document struct {
 	Content     string `json:"content"`
 }
 
-// H2Section represents a section of content under an H2 heading
-type H2Section struct {
-	Title   string
+// ComposeSpecResult represents a compose spec search result
+type ComposeSpecResult struct {
+	Header  string `json:"header"`
+	Content string `json:"content,omitempty"`
+	URL     string `json:"url"`
+}
+
+// MarkupSection represents a section of content under a markup heading
+type MarkupSection struct {
+	Header  string
 	Content string
 }
 
@@ -271,8 +278,8 @@ func parseDocumentationContentForIndexing(body string) ([]Document, error) {
 						// Create separate documents for each H2 section
 						for _, h2section := range h2Sections {
 							// Also skip H2 sections with "Overview" subtitle
-							if strings.EqualFold(h2section.Title, "Overview") {
-								log.Debug().Str("subtitle", h2section.Title).Msg("Skipping H2 section with 'Overview' title")
+							if strings.EqualFold(h2section.Header, "Overview") {
+								log.Debug().Str("subtitle", h2section.Header).Msg("Skipping H2 section with 'Overview' title")
 								continue
 							}
 
@@ -281,8 +288,8 @@ func parseDocumentationContentForIndexing(body string) ([]Document, error) {
 								Section:     currentSection,
 								Title:       title,
 								Description: description,
-								URL:         strings.TrimSuffix(docUrl, "index.md") + "#" + url.QueryEscape(h2section.Title),
-								Subtitle:    h2section.Title,
+								URL:         strings.TrimSuffix(docUrl, "index.md") + "#" + url.QueryEscape(strings.ReplaceAll(strings.ToLower(h2section.Header), " ", "-")),
+								Subtitle:    h2section.Header,
 								Content:     h2section.Content,
 							}
 							documents = append(documents, doc)
@@ -302,8 +309,8 @@ func parseDocumentationContentForIndexing(body string) ([]Document, error) {
 }
 
 // parseH2Sections parses markdown content and splits it by H2 headings (##)
-func parseH2Sections(content string) []H2Section {
-	var sections []H2Section
+func parseH2Sections(content string) []MarkupSection {
+	var sections []MarkupSection
 
 	// Find all H2 headings and their positions
 	matches := h2Regex.FindAllStringSubmatchIndex(content, -1)
@@ -337,8 +344,8 @@ func parseH2Sections(content string) []H2Section {
 
 		// Skip empty sections
 		if len(sectionContent) > 0 {
-			sections = append(sections, H2Section{
-				Title:   title,
+			sections = append(sections, MarkupSection{
+				Header:  title,
 				Content: sectionContent,
 			})
 		}
@@ -498,9 +505,137 @@ func refreshSearchIndex() error {
 	return initializeSearchIndex()
 }
 
-// FetchContentFromURL fetches content from a URL and returns it as a string
-func FetchContentFromURL(url string) (string, error) {
-	return fetchContentFromURL(url)
+// ParseH3Sections parses markdown content and extracts H3 sections
+func ParseH3Sections(content string) ([]MarkupSection, error) {
+	var sections []MarkupSection
+
+	// Use regex to find H3 headings (### )
+	h3Regex := stdregexp.MustCompile(`(?m)^### (.+)$`)
+	h3Matches := h3Regex.FindAllStringSubmatchIndex(content, -1)
+
+	if len(h3Matches) == 0 {
+		return sections, nil
+	}
+
+	// Also find H2 headings (## ) to use as section boundaries
+	h2Regex := stdregexp.MustCompile(`(?m)^## (.+)$`)
+	h2Matches := h2Regex.FindAllStringSubmatchIndex(content, -1)
+
+	// Process each H3 section
+	for i, match := range h3Matches {
+		// Extract the H3 title (first capture group)
+		titleStart := match[2]
+		titleEnd := match[3]
+		header := strings.TrimSpace(content[titleStart:titleEnd])
+
+		// Determine the content boundaries
+		contentStart := match[1] // End of the H3 line
+		var contentEnd int
+
+		// Find the next section boundary (either H2 or H3)
+		nextBoundary := len(content) // Default to end of content
+
+		// Check for next H3 heading
+		if i+1 < len(h3Matches) {
+			nextH3Start := h3Matches[i+1][0]
+			if nextH3Start < nextBoundary {
+				nextBoundary = nextH3Start
+			}
+		}
+
+		// Check for any H2 headings that come after this H3 but before the next H3
+		for _, h2Match := range h2Matches {
+			h2Start := h2Match[0]
+			if h2Start > contentStart && h2Start < nextBoundary {
+				nextBoundary = h2Start
+			}
+		}
+
+		contentEnd = nextBoundary
+
+		// Extract and clean the section content
+		sectionContent := strings.TrimSpace(content[contentStart:contentEnd])
+
+		// Add the section (even if content is empty)
+		sections = append(sections, MarkupSection{
+			Header:  header,
+			Content: sectionContent,
+		})
+	}
+
+	return sections, nil
+}
+
+// SearchComposeSpecSections retrieves all compose spec tag sections
+func SearchComposeSpecSections(tag string) ([]ComposeSpecResult, error) {
+	// Get the compose spec URL from config
+	composeSpecURL := config.GetComposeSpecUrl()
+
+	// Fetch content from the compose spec documentation
+	content, err := fetchContentFromURL(composeSpecURL)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch compose spec documentation: %w", err)
+	}
+
+	// Parse H3 headers and their content
+	h3Sections, err := ParseH3Sections(content)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse tag information: %w", err)
+	}
+
+	if len(h3Sections) == 0 {
+		return nil, fmt.Errorf("no tag information found in the compose spec documentation")
+	}
+
+	var results []ComposeSpecResult
+
+	if len(tag) > 0 {
+		// Tag provided, filter results
+		lowerTag := strings.ToLower(tag)
+		for _, section := range h3Sections {
+			if strings.Contains(strings.ToLower(section.Header), lowerTag) {
+				results = append(results, ComposeSpecResult{
+					Header:  section.Header,
+					Content: section.Content,
+					URL:     strings.TrimSuffix(composeSpecURL, "index.md") + "#" + url.QueryEscape(strings.ReplaceAll(strings.ToLower(section.Header), " ", "-")),
+				})
+			}
+		}
+		return results, nil
+	}
+
+	// If no matching sections found for the tag, return all sections without content
+	// This allows users to see all available tags
+	for _, section := range h3Sections {
+		results = append(results, ComposeSpecResult{
+			Header: section.Header,
+			URL:    strings.TrimSuffix(composeSpecURL, "index.md") + "#" + url.QueryEscape(strings.ReplaceAll(strings.ToLower(section.Header), " ", "-")),
+		})
+	}
+
+	return results, nil
+}
+
+// GetComposeSpecHeaders returns all H3 headers from the compose spec documentation
+func GetComposeSpecHeaders(composeSpecURL string) ([]string, error) {
+	// Fetch content from the compose spec documentation
+	content, err := fetchContentFromURL(composeSpecURL)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch compose spec documentation: %w", err)
+	}
+
+	// Parse H3 headers and their content
+	h3Sections, err := ParseH3Sections(content)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse H3 sections: %w", err)
+	}
+
+	var headers []string
+	for _, section := range h3Sections {
+		headers = append(headers, section.Header)
+	}
+
+	return headers, nil
 }
 
 func fetchContentFromURL(url string) (string, error) {

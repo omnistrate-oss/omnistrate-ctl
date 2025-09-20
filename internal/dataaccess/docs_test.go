@@ -88,17 +88,17 @@ func TestParseH2Sections(t *testing.T) {
 	tests := []struct {
 		name     string
 		input    string
-		expected []H2Section
+		expected []MarkupSection
 	}{
 		{
 			name:     "empty content",
 			input:    "",
-			expected: []H2Section{},
+			expected: []MarkupSection{},
 		},
 		{
 			name:     "no h2 headings",
 			input:    "This is some content without h2 headings.\nMore content here.",
-			expected: []H2Section{},
+			expected: []MarkupSection{},
 		},
 		{
 			name: "single h2 section",
@@ -106,9 +106,9 @@ func TestParseH2Sections(t *testing.T) {
 
 This is the introduction section.
 It has multiple lines of content.`,
-			expected: []H2Section{
+			expected: []MarkupSection{
 				{
-					Title:   "Introduction",
+					Header:  "Introduction",
 					Content: "This is the introduction section.\nIt has multiple lines of content.",
 				},
 			},
@@ -128,17 +128,17 @@ You can configure various settings.
 ## Advanced Topics
 
 This section covers advanced features.`,
-			expected: []H2Section{
+			expected: []MarkupSection{
 				{
-					Title:   "Getting Started",
+					Header:  "Getting Started",
 					Content: "Welcome to the getting started guide.\nThis section covers the basics.",
 				},
 				{
-					Title:   "Configuration",
+					Header:  "Configuration",
 					Content: "Here we explain configuration options.\nYou can configure various settings.",
 				},
 				{
-					Title:   "Advanced Topics",
+					Header:  "Advanced Topics",
 					Content: "This section covers advanced features.",
 				},
 			},
@@ -152,13 +152,13 @@ This section documents the API.
 ## FAQ & Troubleshooting
 
 Common questions and answers.`,
-			expected: []H2Section{
+			expected: []MarkupSection{
 				{
-					Title:   "API Reference - v2.1",
+					Header:  "API Reference - v2.1",
 					Content: "This section documents the API.",
 				},
 				{
-					Title:   "FAQ & Troubleshooting",
+					Header:  "FAQ & Troubleshooting",
 					Content: "Common questions and answers.",
 				},
 			},
@@ -184,13 +184,13 @@ Content for second section.
 #### Another subsection
 
 More nested content.`,
-			expected: []H2Section{
+			expected: []MarkupSection{
 				{
-					Title:   "First Section",
+					Header:  "First Section",
 					Content: "Content for first section.\n\n### Subsection\n\nThis is a subsection.",
 				},
 				{
-					Title:   "Second Section",
+					Header:  "Second Section",
 					Content: "Content for second section.\n\n#### Another subsection\n\nMore nested content.",
 				},
 			},
@@ -204,9 +204,9 @@ More nested content.`,
 Content here.
 
 ## Final Empty Section`,
-			expected: []H2Section{
+			expected: []MarkupSection{
 				{
-					Title:   "Another Section",
+					Header:  "Another Section",
 					Content: "Content here.",
 				},
 			},
@@ -231,13 +231,13 @@ pkg.run();
 ` + "```" + `
 
 More usage examples.`,
-			expected: []H2Section{
+			expected: []MarkupSection{
 				{
-					Title:   "Installation",
+					Header:  "Installation",
 					Content: "To install the package:\n\n```bash\nnpm install package\n```",
 				},
 				{
-					Title:   "Usage",
+					Header:  "Usage",
 					Content: "Here's how to use it:\n\n```javascript\nconst pkg = require('package');\npkg.run();\n```\n\nMore usage examples.",
 				},
 			},
@@ -253,7 +253,7 @@ More usage examples.`,
 			for i, result := range results {
 				if i < len(test.expected) {
 					expected := test.expected[i]
-					assert.Equal(expected.Title, result.Title, "Section %d: Title should match", i)
+					assert.Equal(expected.Header, result.Header, "Section %d: Header should match", i)
 					assert.Equal(expected.Content, result.Content, "Section %d: Content should match", i)
 				}
 			}

@@ -28,6 +28,10 @@ const (
 	clientTimeout        = "CLIENT_TIMEOUT_IN_SECONDS"
 )
 
+func GetComposeSpecUrl() string {
+	return fmt.Sprintf("https://%s/spec-guides/compose-spec/index.md", GetOmnistrateDocsDomain())
+}
+
 func GetLlmsTxtURL() string {
 	return fmt.Sprintf("https://%s/llms.txt", GetOmnistrateDocsDomain())
 }
