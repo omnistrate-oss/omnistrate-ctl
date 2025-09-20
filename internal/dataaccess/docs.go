@@ -56,8 +56,8 @@ type Document struct {
 // ComposeSpecResult represents a compose spec search result
 type ComposeSpecResult struct {
 	Header  string `json:"header"`
-	Content string `json:"content,omitempty"`
 	URL     string `json:"url"`
+	Content string `json:"content,omitempty"`
 }
 
 // MarkupSection represents a section of content under a markup heading
@@ -69,12 +69,14 @@ type MarkupSection struct {
 var (
 	searchIndex bleve.Index
 	indexMutex  sync.RWMutex
-	// Use regex to find H2 headings
+	// Use regex to find H headings
 	h2Regex *stdregexp.Regexp
+	h3Regex *stdregexp.Regexp
 )
 
 func init() {
 	h2Regex = stdregexp.MustCompile(`(?m)^## (.+)$`)
+	h3Regex = stdregexp.MustCompile(`(?m)^### (.+)$`)
 }
 
 func PerformDocumentationSearch(query string, limit int) ([]DocumentationResult, error) {
@@ -509,8 +511,7 @@ func refreshSearchIndex() error {
 func ParseH3Sections(content string) ([]MarkupSection, error) {
 	var sections []MarkupSection
 
-	// Use regex to find H3 headings (### )
-	h3Regex := stdregexp.MustCompile(`(?m)^### (.+)$`)
+	// Use regex to find H3 headings
 	h3Matches := h3Regex.FindAllStringSubmatchIndex(content, -1)
 
 	if len(h3Matches) == 0 {
@@ -518,7 +519,6 @@ func ParseH3Sections(content string) ([]MarkupSection, error) {
 	}
 
 	// Also find H2 headings (## ) to use as section boundaries
-	h2Regex := stdregexp.MustCompile(`(?m)^## (.+)$`)
 	h2Matches := h2Regex.FindAllStringSubmatchIndex(content, -1)
 
 	// Process each H3 section
