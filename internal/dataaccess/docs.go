@@ -241,6 +241,12 @@ func parseDocumentationContentForIndexing(body string) ([]Document, error) {
 					description = title // Use title as description if no separate description
 				}
 
+				// Skip documents with title "Overview"
+				if strings.EqualFold(title, "Overview") {
+					log.Debug().Str("title", title).Msg("Skipping document with 'Overview' title")
+					continue
+				}
+
 				// Fetch content from the URL
 				content, err := fetchContentFromURL(docUrl)
 				if err != nil {
@@ -264,6 +270,12 @@ func parseDocumentationContentForIndexing(body string) ([]Document, error) {
 					} else {
 						// Create separate documents for each H2 section
 						for _, h2section := range h2Sections {
+							// Also skip H2 sections with "Overview" subtitle
+							if strings.EqualFold(h2section.Title, "Overview") {
+								log.Debug().Str("subtitle", h2section.Title).Msg("Skipping H2 section with 'Overview' title")
+								continue
+							}
+
 							doc := Document{
 								ID:          fmt.Sprintf("doc_%d", docID),
 								Section:     currentSection,
