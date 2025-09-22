@@ -72,6 +72,17 @@ func init() {
 	DeployCmd.Flags().String("gcp-project-id", "", "GCP project ID for BYOA or hosted deployment. Must be used with --gcp-project-number")
 	DeployCmd.Flags().String("gcp-project-number", "", "GCP project number for BYOA or hosted deployment. Must be used with --gcp-project-id")
 	DeployCmd.Flags().String("deployment-type", "", "Deployment type: hosted  or byoa")
+	DeployCmd.Flags().String("service-plan-id", "", "Specify the service plan ID to use when multiple plans exist")
+	
+	
+	// Additional flags from build command
+	DeployCmd.Flags().StringArray("env-var", nil, "Specify environment variables required for running the image. Use the format: --env-var key1=var1 --env-var key2=var2. Only effective when no compose spec exists in the repo.")
+	DeployCmd.Flags().Bool("skip-docker-build", false, "Skip building and pushing the Docker image")
+	DeployCmd.Flags().Bool("skip-service-build", false, "Skip building the service from the compose spec")
+	DeployCmd.Flags().Bool("skip-environment-promotion", false, "Skip creating and promoting to the production environment")
+	DeployCmd.Flags().Bool("skip-saas-portal-init", false, "Skip initializing the SaaS Portal")
+	DeployCmd.Flags().StringArray("platforms", []string{"linux/amd64"}, "Specify the platforms to build for. Use the format: --platforms linux/amd64 --platforms linux/arm64. Default is linux/amd64.")
+	DeployCmd.Flags().Bool("reset-pat", false, "Reset the GitHub Personal Access Token (PAT) for the current user.")
 }
 
 func runDeploy(cmd *cobra.Command, args []string) error {
@@ -104,6 +115,42 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
+	// Get additional build flags
+	envVars, err := cmd.Flags().GetStringArray("env-var")
+	if err != nil {
+		return err
+	}
+
+	skipDockerBuild, err := cmd.Flags().GetBool("skip-docker-build")
+	if err != nil {
+		return err
+	}
+
+	skipServiceBuild, err := cmd.Flags().GetBool("skip-service-build")
+	if err != nil {
+		return err
+	}
+
+	skipEnvironmentPromotion, err := cmd.Flags().GetBool("skip-environment-promotion")
+	if err != nil {
+		return err
+	}
+
+	skipSaasPortalInit, err := cmd.Flags().GetBool("skip-saas-portal-init")
+	if err != nil {
+		return err
+	}
+
+	platforms, err := cmd.Flags().GetStringArray("platforms")
+	if err != nil {
+		return err
+	}
+
+	resetPAT, err := cmd.Flags().GetBool("reset-pat")
+	if err != nil {
+		return err
+	}
+
 	fmt.Println("Deployment type:", deploymentType)
 	
 	if deploymentType == "byoa" || deploymentType == "hosted" {
@@ -121,7 +168,7 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 	// Pre-checks: Validate environment and requirements
 	fmt.Println("Running pre-deployment checks...")
 	
-	// Get the spec file path
+	// Get the spec file path - follow the same flow as build_from_repo.go
 	var specFile string
 	var useRepo bool
 	if len(args) > 0 {
@@ -131,15 +178,26 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 		if _, err := os.Stat("compose.yaml"); err == nil {
 			specFile = "compose.yaml"
 		} else {
-			// No spec file found, ask user if they want to auto-generate one
+			// No spec file found - ask user if they want to auto-generate one
 			fmt.Print("No spec file found, do you want to auto-generate one (Y/N): ")
 			var response string
 			fmt.Scanln(&response)
 			
 			response = strings.ToLower(strings.TrimSpace(response))
 			if response == "y" || response == "yes" {
-				useRepo = true
-				fmt.Println("Using repository-based build...")
+				// Check if we're in a git repository for auto-generation
+				cwd, err := os.Getwd()
+				if err != nil {
+					return errors.Wrap(err, "failed to get current working directory")
+				}
+				
+				if _, err := os.Stat(filepath.Join(cwd, ".git")); err == nil {
+					// We're in a git repository - use repository-based build
+					useRepo = true
+					fmt.Println("Using repository-based build...")
+				} else {
+					return errors.New("auto-generation requires a git repository. Please initialize git repository or provide a spec file")
+				}
 			} else {
 				return errors.New("Run deploy command with [--file=file] [--spec-type=spec-type] arguments")
 			}
@@ -275,6 +333,17 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 
 		fmt.Println("✅")
 	} else {
+		// For repository-based builds, check if account ID is required for multiple accounts
+		hasAccountIDFromFlags := awsAccountID != "" || gcpProjectID != ""
+		assumeHosted := len(accounts.AccountConfigs) == 1
+
+
+		if !assumeHosted && !hasAccountIDFromFlags && (deploymentType == "byoa" || deploymentType == "hosted") {
+			fmt.Print("Validating repository configuration... ")
+			fmt.Println("❌")
+			return errors.New("multiple cloud provider accounts found but no account ID specified. Please use --aws-account-id/--gcp-project-id flags to specify which account to use")
+		}
+		
 		fmt.Println("Validating repository configuration... ✅ (repository-based deployment)")
 	}
 
@@ -319,28 +388,45 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 			fmt.Println("❌")
 			return fmt.Errorf("failed to check service plans: %w", err)
 		}
-
-		if len(servicePlans) > 1 {
-			fmt.Println("❌")
-			return fmt.Errorf("service '%s' has %d service plans. Please specify --service-plan-id when multiple plans exist", serviceNameToUse, len(servicePlans))
+   		// Only validate --service-plan-id if provided, do not require it
+		servicePlanID, _ := cmd.Flags().GetString("service-plan-id")
+		
+		if servicePlanID != "" {
+			var found bool
+			for _, plan := range servicePlans {
+				// Extract ProductTierID using reflection since we don't know the exact type
+				if planValue := fmt.Sprintf("%+v", plan); strings.Contains(planValue, servicePlanID) {
+					found = true
+					break
+				}
+			}
+			if !found {
+				fmt.Println("❌")
+				return fmt.Errorf("service plan ID '%s' not found for service '%s'", servicePlanID, serviceNameToUse)
+			}
+		}else {
+			if len(servicePlans) > 1 {
+				fmt.Println("❌")
+				return fmt.Errorf("service '%s' has %d service plans. Please specify --service-plan-id when multiple plans exist", serviceNameToUse, len(servicePlans))
+			}
 		}
-
+		
 		fmt.Printf("✅ (existing service with %d plan)\n", len(servicePlans))
 
-		// Pre-check 4: Check deployment count if service exists
-		fmt.Print("Checking existing deployments... ")
-		deploymentCount, err := getDeploymentCount(cmd.Context(), token, existingServiceID)
-		if err != nil {
-			fmt.Println("❌")
-			return fmt.Errorf("failed to check deployments: %w", err)
-		}
+		// // Pre-check 4: Check deployment count if service exists
+		// fmt.Print("Checking existing deployments... ")
+		// deploymentCount, err := getDeploymentCount(cmd.Context(), token, existingServiceID)
+		// if err != nil {
+		// 	fmt.Println("❌")
+		// 	return fmt.Errorf("failed to check deployments: %w", err)
+		// }
 
-		if deploymentCount > 1 {
-			fmt.Println("❌")
-			return fmt.Errorf("service '%s' has %d deployments. Please specify --instance-id when multiple deployments exist", serviceNameToUse, deploymentCount)
-		}
+		// if deploymentCount > 1 {
+		// 	fmt.Println("❌")
+		// 	return fmt.Errorf("service '%s' has %d deployments. Please specify --instance-id when multiple deployments exist", serviceNameToUse, deploymentCount)
+		// }
 
-		fmt.Printf("✅ (%d deployment)\n", deploymentCount)
+		// fmt.Printf("✅ (%d deployment)\n", deploymentCount)
 	} else {
 		fmt.Println("✅ (new service)")
 	}
@@ -455,9 +541,11 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 		releaseDescriptionPtr = &releaseDescription
 	}
 
+
 	var serviceID, devEnvironmentID, devPlanID string
 	var undefinedResources map[string]string
-	
+
+
 	if useRepo {
 		serviceID, devEnvironmentID, devPlanID, undefinedResources, err = buildServiceFromRepo(
 			cmd.Context(),
@@ -468,8 +556,18 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 			awsAccountID,
 			gcpProjectID,
 			gcpProjectNumber,
+			envVars,
+			skipDockerBuild,
+			skipServiceBuild,
+			skipEnvironmentPromotion,
+			skipSaasPortalInit,
+			dryRun,
+			platforms,
+			resetPAT,
 		)
+	
 	} else {
+		
 		serviceID, devEnvironmentID, devPlanID, undefinedResources, err = buildServiceInDev(
 			cmd.Context(),
 			processedData,
@@ -478,12 +576,12 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 			specType,
 			releaseDescriptionPtr,
 		)
+		
 	}
 	if err != nil {
-		utils.HandleSpinnerError(spinner, sm, err)
-		return err
+			utils.HandleSpinnerError(spinner, sm, err)
+			return err
 	}
-
 	spinner.UpdateMessage(fmt.Sprintf("Building service in DEV environment: built service %s (ID: %s)", serviceNameToUse, serviceID))
 	spinner.Complete()
 
@@ -499,8 +597,22 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 		sm.Start()
 	}
 
+	// Execute post-service-build deployment workflow
+	err = executeDeploymentWorkflow(cmd, sm, token, serviceID, devEnvironmentID, devPlanID, serviceNameToUse)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// executeDeploymentWorkflow handles the complete post-service-build deployment workflow
+// This function is reusable for both deploy and build_simple commands
+func executeDeploymentWorkflow(cmd *cobra.Command, sm ysmrr.SpinnerManager, token, serviceID, devEnvironmentID, devPlanID, serviceName string) error {
+	const defaultProdEnvName = "Production"
+
 	// Step 4: Check if production environment exists
-	spinner = sm.AddSpinner("Checking if the production environment is set up")
+	spinner := sm.AddSpinner("Checking if the production environment is set up")
 	time.Sleep(1 * time.Second) // Add a delay to show the spinner
 	prodEnvironmentID, err := checkIfProdEnvExists(cmd.Context(), token, serviceID)
 	if err != nil {
@@ -551,22 +663,42 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 	var hasProductionPlans bool
 	var prodPlanID string
 	
+	// Check if user provided a specific service plan ID
+	userProvidedPlanID, _ := cmd.Flags().GetString("service-plan-id")
+	
 	for _, env := range service.ServiceEnvironments {
 		if env.Id == prodEnvironmentID {
 			if len(env.ServicePlans) > 0 {
 				hasProductionPlans = true
-				// Get dev product tier details to match with production plan
-				devProductTier, err := dataaccess.DescribeProductTier(cmd.Context(), token, serviceID, devPlanID)
-				if err != nil {
-					utils.HandleSpinnerError(spinner, sm, err)
-					return err
-				}
 				
-				// Find the production plan with the same name as the dev plan
-				for _, plan := range env.ServicePlans {
-					if plan.Name == devProductTier.Name {
-						prodPlanID = plan.ProductTierID
+				if userProvidedPlanID != "" {
+					// Use the user-provided service plan ID
+					for _, plan := range env.ServicePlans {
+						if plan.ProductTierID == userProvidedPlanID {
+							prodPlanID = plan.ProductTierID
+							break
+						}
+					}
+					if prodPlanID == "" {
+						spinner.UpdateMessage("Setting service plan as preferred in production: Skipped (provided plan ID not found in production)")
+						spinner.Complete()
+						fmt.Printf("Warning: Provided service plan ID '%s' not found in production environment.\n\n", userProvidedPlanID)
 						break
+					}
+				} else {
+					// Get dev product tier details to match with production plan
+					devProductTier, err := dataaccess.DescribeProductTier(cmd.Context(), token, serviceID, devPlanID)
+					if err != nil {
+						utils.HandleSpinnerError(spinner, sm, err)
+						return err
+					}
+					
+					// Find the production plan with the same name as the dev plan
+					for _, plan := range env.ServicePlans {
+						if plan.Name == devProductTier.Name {
+							prodPlanID = plan.ProductTierID
+							break
+						}
 					}
 				}
 			}
@@ -607,7 +739,7 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 	// Get subscription flags or use defaults
 	subscriptionName, _ := cmd.Flags().GetString("subscription-name")
 	if subscriptionName == "" {
-		subscriptionName = fmt.Sprintf("%s-subscription", serviceNameToUse)
+		subscriptionName = fmt.Sprintf("%s-subscription", serviceName)
 	}
 
 	// Create subscription if we have production plans
@@ -651,74 +783,91 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 	} else {
 		spinner.UpdateMessage("Creating subscription to the production service: Skipped (no production plans available)")
 		spinner.Complete()
-	}	// Step 9: Create or upgrade instance deployment automatically
+	}
+
+	// Step 9: Create or upgrade instance deployment automatically
 	var instanceID string
 	var instanceName string
 	
-	// Proceed with instance creation either via subscription, directly for service providers, or skip subscription flow
+	// Unified instance creation/upgrade logic for subscription, service provider, or skip subscription flow
 	if subscriptionID != "" || isServiceProvider || skipSubscriptionFlow {
-		// Generate default instance name from service name
-		instanceName = fmt.Sprintf("%s-instance", serviceNameToUse)
-		
-		if subscriptionID != "" {
-			// Normal subscription-based flow
-			spinner = sm.AddSpinner("Checking for existing instances")
-			
-			// Check if instance already exists for this subscription
-			existingInstanceID, err := findExistingInstance(cmd.Context(), token, subscriptionID)
-			if err != nil {
-				spinner.UpdateMessage("Checking for existing instances: Failed")
+		instanceName = fmt.Sprintf("%s-instance", serviceName)
+		var (
+			existingInstanceID string
+			err error
+		)
+
+		var useSubscription = subscriptionID != ""
+		spinnerMsg := "Checking for existing instances"
+		if !useSubscription {
+			spinnerMsg = "Checking for existing instances without subscription"
+		}
+		spinner = sm.AddSpinner(spinnerMsg)
+
+		if userProvidedPlanID != "" {
+			existingInstanceID, err = listInstances(cmd.Context(), token, serviceID, prodEnvironmentID, userProvidedPlanID, "", subscriptionID)
+		} else {
+			existingInstanceID, err = listInstances(cmd.Context(), token, serviceID, prodEnvironmentID, "", "", subscriptionID)
+		}
+
+		if err != nil {
+			spinner.UpdateMessage(spinnerMsg + ": Failed")
+			spinner.Complete()
+			fmt.Printf("Warning: Failed to check for existing instances: %s\n", err.Error())
+			existingInstanceID = "" // Reset to create new instance
+		}
+
+		fmt.Printf("Note: Instance creation/upgrade is automatic. You can also manage instances using 'omctl instance' commands.\n", existingInstanceID)
+
+		if existingInstanceID != "" {
+			foundMsg := spinnerMsg + ": Found existing instance"
+			spinner.UpdateMessage(foundMsg)
+			spinner.Complete()
+
+			spinner = sm.AddSpinner(fmt.Sprintf("Upgrading existing instance: %s", existingInstanceID))
+			upgradeErr := upgradeExistingInstance(cmd.Context(), token, existingInstanceID, serviceID, prodPlanID)
+			if upgradeErr != nil {
+				spinner.UpdateMessage(fmt.Sprintf("Upgrading existing instance: Failed (%s)", upgradeErr.Error()))
 				spinner.Complete()
-				fmt.Printf("Warning: Failed to check for existing instances: %s\n", err.Error())
-			} else if existingInstanceID != "" {
-				// Instance exists - upgrade it
-				spinner.UpdateMessage("Checking for existing instances: Found existing instance")
-				spinner.Complete()
-				
-				spinner = sm.AddSpinner(fmt.Sprintf("Upgrading existing instance: %s", existingInstanceID))
-				upgradeErr := upgradeExistingInstance(cmd.Context(), token, existingInstanceID, serviceID, prodPlanID)
-				if upgradeErr != nil {
-					spinner.UpdateMessage(fmt.Sprintf("Upgrading existing instance: Failed (%s)", upgradeErr.Error()))
-					spinner.Complete()
-					fmt.Printf("Warning: Instance upgrade failed: %s\n", upgradeErr.Error())
-				} else {
-					instanceID = existingInstanceID
-					spinner.UpdateMessage(fmt.Sprintf("Upgrading existing instance: Success (ID: %s)", instanceID))
-					spinner.Complete()
-				}
+				fmt.Printf("Warning: Instance upgrade failed: %s\n", upgradeErr.Error())
 			} else {
-				// No instance exists - create new one
-				spinner.UpdateMessage("Checking for existing instances: No existing instances found")
+				instanceID = existingInstanceID
+				spinner.UpdateMessage(fmt.Sprintf("Upgrading existing instance: Success (ID: %s)", instanceID))
 				spinner.Complete()
-				
-				spinner = sm.AddSpinner(fmt.Sprintf("Creating new instance deployment: %s", instanceName))
-				
-				// Try to create instance with default parameters
+			}
+		} else {
+			noFoundMsg := spinnerMsg + ": No existing instances found"
+			spinner.UpdateMessage(noFoundMsg)
+			spinner.Complete()
+
+			createMsg := "Creating new instance deployment: " + instanceName
+			if !useSubscription {
+				createMsg = "Creating instance without subscription: " + instanceName
+			}
+			spinner = sm.AddSpinner(createMsg)
+
+			if useSubscription {
 				createdInstanceID, err := createInstanceWithDefaults(cmd.Context(), token, serviceID, prodEnvironmentID, prodPlanID, subscriptionID)
 				if err != nil {
-					spinner.UpdateMessage(fmt.Sprintf("Creating new instance deployment: Failed (%s)", err.Error()))
+					spinner.UpdateMessage(fmt.Sprintf("%s: Failed (%s)", createMsg, err.Error()))
 					spinner.Complete()
 					fmt.Printf("Error: Failed to create instance: %s\n", err.Error())
 				} else {
 					instanceID = createdInstanceID
-					spinner.UpdateMessage(fmt.Sprintf("Creating new instance deployment: Success (ID: %s)", instanceID))
+					spinner.UpdateMessage(fmt.Sprintf("%s: Success (ID: %s)", createMsg, instanceID))
 					spinner.Complete()
 				}
-			}
-		} else if isServiceProvider || skipSubscriptionFlow {
-			// Service provider direct instance creation (no subscription) or skip subscription flow
-			spinner = sm.AddSpinner(fmt.Sprintf("Creating instance without subscription: %s", instanceName))
-			
-			// Try to create instance without subscription for service provider or when skipping subscription flow
-			createdInstanceID, err := createInstanceWithoutSubscription(cmd.Context(), token, serviceID, prodEnvironmentID, prodPlanID)
-			if err != nil {
-				spinner.UpdateMessage(fmt.Sprintf("Creating instance without subscription: Failed (%s)", err.Error()))
-				spinner.Complete()
-				fmt.Printf("Error: Failed to create instance without subscription: %s\n", err.Error())
 			} else {
-				instanceID = createdInstanceID
-				spinner.UpdateMessage(fmt.Sprintf("Creating instance without subscription: Success (ID: %s)", instanceID))
-				spinner.Complete()
+				createdInstanceID, err := createInstanceWithoutSubscription(cmd.Context(), token, serviceID, prodEnvironmentID, prodPlanID)
+				if err != nil {
+					spinner.UpdateMessage(fmt.Sprintf("%s: Failed (%s)", createMsg, err.Error()))
+					spinner.Complete()
+					fmt.Printf("Error: Failed to create instance without subscription: %s\n", err.Error())
+				} else {
+					instanceID = createdInstanceID
+					spinner.UpdateMessage(fmt.Sprintf("%s: Success (ID: %s)", createMsg, instanceID))
+					spinner.Complete()
+				}
 			}
 		}
 	} else {
@@ -735,7 +884,7 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 	// Success message
 	fmt.Println()
 	fmt.Println("🎉 Deployment completed successfully!")
-	fmt.Printf("   Service: %s (ID: %s)\n", serviceNameToUse, serviceID)
+	fmt.Printf("   Service: %s (ID: %s)\n", serviceName, serviceID)
 	fmt.Printf("   Production Environment: %s (ID: %s)\n", defaultProdEnvName, prodEnvironmentID)
 	if subscriptionID != "" {
 		fmt.Printf("   Subscription: %s (ID: %s)\n", subscriptionName, subscriptionID)
@@ -762,6 +911,114 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 		fmt.Println("4. Set up custom domains and SSL certificates if required")
 	}
 	fmt.Println()
+
+	return nil
+}
+
+// executeDeploymentWorkflowBasic handles the basic post-service-build deployment workflow
+// This is a simplified version that only handles environment promotion and service plan setting
+// without subscription and instance creation (for use in build_from_repo.go)
+func executeDeploymentWorkflowBasic(cmd *cobra.Command, sm ysmrr.SpinnerManager, token, serviceID, devEnvironmentID, devPlanID, serviceName string) error {
+	const defaultProdEnvName = "Production"
+
+	// Step 1: Check if production environment exists
+	spinner := sm.AddSpinner("Checking if the production environment is set up")
+	time.Sleep(1 * time.Second) // Add a delay to show the spinner
+	prodEnvironmentID, err := checkIfProdEnvExists(cmd.Context(), token, serviceID)
+	if err != nil {
+		utils.HandleSpinnerError(spinner, sm, err)
+		return err
+	}
+	
+	yesOrNo := "No"
+	if prodEnvironmentID != "" {
+		yesOrNo = "Yes"
+	}
+	spinner.UpdateMessage(fmt.Sprintf("Checking if the production environment is set up: %s", yesOrNo))
+	spinner.Complete()
+
+	// Step 2: Create production environment if it doesn't exist
+	if prodEnvironmentID == "" {
+		spinner = sm.AddSpinner("Creating a production environment")
+		prodEnvironmentID, err = createProdEnv(cmd.Context(), token, serviceID, devEnvironmentID)
+		if err != nil {
+			utils.HandleSpinnerError(spinner, sm, err)
+			return err
+		}
+		spinner.UpdateMessage(fmt.Sprintf("Creating a production environment: created environment %s (environment ID: %s)", defaultProdEnvName, prodEnvironmentID))
+		spinner.Complete()
+	}
+
+	// Step 3: Promote the service to the production environment
+	spinner = sm.AddSpinner(fmt.Sprintf("Promoting the service to the %s environment", defaultProdEnvName))
+	err = dataaccess.PromoteServiceEnvironment(cmd.Context(), token, serviceID, devEnvironmentID)
+	if err != nil {
+		utils.PrintError(err)
+		return err
+	}
+	spinner.UpdateMessage("Promoting the service to the production environment: Success")
+	spinner.Complete()
+
+	// Step 4: Set service plan as preferred in production
+	spinner = sm.AddSpinner("Setting service plan as preferred in production")
+	
+	// Get service details to check production plans
+	service, err := dataaccess.DescribeService(cmd.Context(), token, serviceID)
+	if err != nil {
+		utils.HandleSpinnerError(spinner, sm, err)
+		return err
+	}
+	
+	// Find the production environment and check if it has service plans
+	var hasProductionPlans bool
+	var prodPlanID string
+	
+	for _, env := range service.ServiceEnvironments {
+		if env.Id == prodEnvironmentID {
+			if len(env.ServicePlans) > 0 {
+				hasProductionPlans = true
+				// Get dev product tier details to match with production plan
+				devProductTier, err := dataaccess.DescribeProductTier(cmd.Context(), token, serviceID, devPlanID)
+				if err != nil {
+					utils.HandleSpinnerError(spinner, sm, err)
+					return err
+				}
+				
+				// Find the production plan with the same name as the dev plan
+				for _, plan := range env.ServicePlans {
+					if plan.Name == devProductTier.Name {
+						prodPlanID = plan.ProductTierID
+						break
+					}
+				}
+			}
+			break
+		}
+	}
+
+	if !hasProductionPlans {
+		spinner.UpdateMessage("Setting service plan as preferred in production: Skipped (no plans available - promotion required)")
+		spinner.Complete()
+	} else if prodPlanID == "" {
+		spinner.UpdateMessage("Setting service plan as preferred in production: Skipped (matching plan not found)")
+		spinner.Complete()
+	} else {
+		// Find the latest version of the production plan
+		targetVersion, err := dataaccess.FindLatestVersion(cmd.Context(), token, serviceID, prodPlanID)
+		if err != nil {
+			utils.HandleSpinnerError(spinner, sm, err)
+			return err
+		}
+
+		// Set as preferred
+		_, err = dataaccess.SetDefaultServicePlan(cmd.Context(), token, serviceID, prodPlanID, targetVersion)
+		if err != nil {
+			utils.HandleSpinnerError(spinner, sm, err)
+			return err
+		}
+		spinner.UpdateMessage("Setting service plan as preferred in production: Success")
+		spinner.Complete()
+	}
 
 	return nil
 }
@@ -1063,25 +1320,69 @@ func createInstanceWithoutSubscription(ctx context.Context, token, serviceID, en
 	return *instance.Id, nil
 }
 
-// findExistingInstance searches for existing instances in the subscription
-func findExistingInstance(ctx context.Context, token, subscriptionID string) (string, error) {
-	// Search for instances associated with this subscription
-	searchQuery := fmt.Sprintf("resourceinstance subscription:%s", subscriptionID)
-	searchRes, err := dataaccess.SearchInventory(ctx, token, searchQuery)
+
+
+
+
+// listInstances is a helper function for backward compatibility
+func listInstances(ctx context.Context, token, serviceID, environmentID, servicePlanID, instanceID, subscriptionID string) (string, error) {
+	res, err := dataaccess.ListResourceInstance(ctx, token, serviceID, environmentID)
 	if err != nil {
 		return "", fmt.Errorf("failed to search for instances: %w", err)
 	}
 
-	// Return the first instance found
-	if len(searchRes.ResourceInstanceResults) > 0 {
-		return searchRes.ResourceInstanceResults[0].Id, nil
-	}
+	   fmt.Printf("Total instances found: %d\n", len(res.ResourceInstances))
+	   exitInstanceID := ""
+	   err = nil
+	   for _, instance := range res.ResourceInstances {
+		   var idStr, statusStr string
+		   if instance.ConsumptionResourceInstanceResult.Id != nil {
+			   idStr = *instance.ConsumptionResourceInstanceResult.Id
+		   } else {
+			   idStr = "<nil>"
+		   }
+		   if instance.ConsumptionResourceInstanceResult.Status != nil {
+			   statusStr = *instance.ConsumptionResourceInstanceResult.Status
+		   } else {
+			   statusStr = "<nil>"
+		   }
+		   fmt.Printf(" - Instance ID: %s | Subscription ID: %s | Service Plan ID: %s | Status: %s\n",
+			   idStr,
+			   instance.SubscriptionId,
+			   instance.ProductTierId,
+			   statusStr,
+		   )
 
-	return "", nil // No instance found
+		   instanceCount := 0
+
+
+		   // Match based on provided filters
+		   // Priority: instanceID > subscriptionID > servicePlanID
+		   if exitInstanceID == "" && instanceID != "" && idStr != "" && idStr == instanceID {
+			   exitInstanceID = idStr
+		   } else if exitInstanceID == "" && subscriptionID != "" && instance.SubscriptionId != "" && instance.SubscriptionId == subscriptionID {
+			   if idStr!= "" {
+				   exitInstanceID = idStr
+			   }
+		   } else if exitInstanceID == "" && servicePlanID != "" && instance.ProductTierId == servicePlanID {
+			   if idStr!= "" {
+				   exitInstanceID = idStr
+			   }
+			   instanceCount++
+			   
+		   }
+		   // If multiple instances match servicePlanID, return error to specify instanceID
+			   if instanceCount > 1 {
+				   err = fmt.Errorf("multiple instances found for service plan ID %s - please specify instance ID to select the correct one", servicePlanID)
+			   }
+	}
+	return exitInstanceID, err
 }
+
 
 // upgradeExistingInstance upgrades an existing instance to the latest version
 func upgradeExistingInstance(ctx context.Context, token, instanceID, serviceID, productTierID string) error {
+	fmt.Printf("Upgrading instance %s to the latest version %s of service plan %s\n", instanceID, serviceID, productTierID)
 	// Get the latest version
 	latestVersion, err := dataaccess.FindLatestVersion(ctx, token, serviceID, productTierID)
 	if err != nil {
@@ -1179,15 +1480,14 @@ func getServicePlans(ctx context.Context, token, serviceID string) ([]interface{
 }
 
 // getDeploymentCount counts the number of deployments for a service
-func getDeploymentCount(ctx context.Context, token, serviceID string) (int, error) {
+func getDeploymentCount(ctx context.Context, token, serviceID, environmentID string) (int, error) {
 	// Search for instances associated with this service
-	searchQuery := fmt.Sprintf("resourceinstance service:%s", serviceID)
-	searchRes, err := dataaccess.SearchInventory(ctx, token, searchQuery)
+	res, err := dataaccess.ListResourceInstance(ctx, token, serviceID, environmentID)
 	if err != nil {
 		return 0, fmt.Errorf("failed to search for deployments: %w", err)
 	}
 	
-	return len(searchRes.ResourceInstanceResults), nil
+	return len(res.ResourceInstances), nil
 }
 
 // checkForInternalTag checks if at least one resource has the x-omnistrate-mode-internal tag
