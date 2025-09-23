@@ -541,7 +541,6 @@ func cleanupSearchIndex() error {
 // refreshSearchIndex rebuilds the search index with fresh data
 func refreshSearchIndex() error {
 	indexMutex.Lock()
-	defer indexMutex.Unlock()
 
 	// Close existing index
 	if searchIndex != nil {
