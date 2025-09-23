@@ -568,7 +568,7 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 	
 	} else {
 		
-		serviceID, devEnvironmentID, devPlanID, undefinedResources, err = buildServiceInDev(
+		serviceID, devEnvironmentID, devPlanID, undefinedResources, err = buildServiceSpec(
 			cmd.Context(),
 			processedData,
 			token,
@@ -915,113 +915,6 @@ func executeDeploymentWorkflow(cmd *cobra.Command, sm ysmrr.SpinnerManager, toke
 	return nil
 }
 
-// executeDeploymentWorkflowBasic handles the basic post-service-build deployment workflow
-// This is a simplified version that only handles environment promotion and service plan setting
-// without subscription and instance creation (for use in build_from_repo.go)
-func executeDeploymentWorkflowBasic(cmd *cobra.Command, sm ysmrr.SpinnerManager, token, serviceID, devEnvironmentID, devPlanID, serviceName string) error {
-	const defaultProdEnvName = "Production"
-
-	// Step 1: Check if production environment exists
-	spinner := sm.AddSpinner("Checking if the production environment is set up")
-	time.Sleep(1 * time.Second) // Add a delay to show the spinner
-	prodEnvironmentID, err := checkIfProdEnvExists(cmd.Context(), token, serviceID)
-	if err != nil {
-		utils.HandleSpinnerError(spinner, sm, err)
-		return err
-	}
-	
-	yesOrNo := "No"
-	if prodEnvironmentID != "" {
-		yesOrNo = "Yes"
-	}
-	spinner.UpdateMessage(fmt.Sprintf("Checking if the production environment is set up: %s", yesOrNo))
-	spinner.Complete()
-
-	// Step 2: Create production environment if it doesn't exist
-	if prodEnvironmentID == "" {
-		spinner = sm.AddSpinner("Creating a production environment")
-		prodEnvironmentID, err = createProdEnv(cmd.Context(), token, serviceID, devEnvironmentID)
-		if err != nil {
-			utils.HandleSpinnerError(spinner, sm, err)
-			return err
-		}
-		spinner.UpdateMessage(fmt.Sprintf("Creating a production environment: created environment %s (environment ID: %s)", defaultProdEnvName, prodEnvironmentID))
-		spinner.Complete()
-	}
-
-	// Step 3: Promote the service to the production environment
-	spinner = sm.AddSpinner(fmt.Sprintf("Promoting the service to the %s environment", defaultProdEnvName))
-	err = dataaccess.PromoteServiceEnvironment(cmd.Context(), token, serviceID, devEnvironmentID)
-	if err != nil {
-		utils.PrintError(err)
-		return err
-	}
-	spinner.UpdateMessage("Promoting the service to the production environment: Success")
-	spinner.Complete()
-
-	// Step 4: Set service plan as preferred in production
-	spinner = sm.AddSpinner("Setting service plan as preferred in production")
-	
-	// Get service details to check production plans
-	service, err := dataaccess.DescribeService(cmd.Context(), token, serviceID)
-	if err != nil {
-		utils.HandleSpinnerError(spinner, sm, err)
-		return err
-	}
-	
-	// Find the production environment and check if it has service plans
-	var hasProductionPlans bool
-	var prodPlanID string
-	
-	for _, env := range service.ServiceEnvironments {
-		if env.Id == prodEnvironmentID {
-			if len(env.ServicePlans) > 0 {
-				hasProductionPlans = true
-				// Get dev product tier details to match with production plan
-				devProductTier, err := dataaccess.DescribeProductTier(cmd.Context(), token, serviceID, devPlanID)
-				if err != nil {
-					utils.HandleSpinnerError(spinner, sm, err)
-					return err
-				}
-				
-				// Find the production plan with the same name as the dev plan
-				for _, plan := range env.ServicePlans {
-					if plan.Name == devProductTier.Name {
-						prodPlanID = plan.ProductTierID
-						break
-					}
-				}
-			}
-			break
-		}
-	}
-
-	if !hasProductionPlans {
-		spinner.UpdateMessage("Setting service plan as preferred in production: Skipped (no plans available - promotion required)")
-		spinner.Complete()
-	} else if prodPlanID == "" {
-		spinner.UpdateMessage("Setting service plan as preferred in production: Skipped (matching plan not found)")
-		spinner.Complete()
-	} else {
-		// Find the latest version of the production plan
-		targetVersion, err := dataaccess.FindLatestVersion(cmd.Context(), token, serviceID, prodPlanID)
-		if err != nil {
-			utils.HandleSpinnerError(spinner, sm, err)
-			return err
-		}
-
-		// Set as preferred
-		_, err = dataaccess.SetDefaultServicePlan(cmd.Context(), token, serviceID, prodPlanID, targetVersion)
-		if err != nil {
-			utils.HandleSpinnerError(spinner, sm, err)
-			return err
-		}
-		spinner.UpdateMessage("Setting service plan as preferred in production: Success")
-		spinner.Complete()
-	}
-
-	return nil
-}
 
 // processTemplateExpressions processes template expressions like {{ $file:path }} recursively
 func processTemplateExpressions(data []byte, baseDir string) ([]byte, error) {
