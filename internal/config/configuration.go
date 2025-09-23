@@ -3,6 +3,7 @@ package config
 import (
 	_ "embed"
 	"fmt"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -48,6 +49,12 @@ func GetToken() (string, error) {
 	}
 
 	return authConfig.Token, nil
+}
+
+func GetSearchIndexPath() string {
+	path := ConfigDir()
+	name := GetEnv("OMNISTRATE_SEARCH_INDEX_NAME", "search_index.bleve")
+	return filepath.Join(path, name)
 }
 
 // GetHost returns the host of the Omnistrate server

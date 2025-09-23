@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httputil"
 	"net/url"
+	"os"
 	stdregexp "regexp"
 	"strings"
 	"sync"
@@ -104,12 +105,15 @@ func initializeSearchIndex() (err error) {
 		return nil
 	}
 
+	// Get the search index path from config
+	searchIndexPath := config.GetSearchIndexPath()
+
 	// Create new in-memory index
 	indexMapping, err := createIndexMapping()
 	if err != nil {
 		return fmt.Errorf("failed to create index mapping: %w", err)
 	}
-	searchIndex, err = bleve.NewMemOnly(indexMapping)
+	searchIndex, err = bleve.New(searchIndexPath, indexMapping)
 	if err != nil {
 		return fmt.Errorf("failed to create in-memory search index: %w", err)
 	}
@@ -485,12 +489,19 @@ func cleanupSearchIndex() error {
 	indexMutex.Lock()
 	defer indexMutex.Unlock()
 
+	searchIndexPath := config.GetSearchIndexPath()
+
 	if searchIndex != nil {
 		if err := searchIndex.Close(); err != nil {
 			log.Warn().Err(err).Msg("Failed to close search index")
 		}
 		searchIndex = nil
 		log.Debug().Msg("Closed in-memory search index")
+	}
+
+	// Also remove the index files on disk
+	if err := os.RemoveAll(searchIndexPath); err != nil {
+		log.Warn().Err(err).Str("path", searchIndexPath).Msg("Failed to remove search index files")
 	}
 
 	return nil
