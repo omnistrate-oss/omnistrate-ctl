@@ -21,6 +21,8 @@ import (
 	openapiclientfleet "github.com/omnistrate-oss/omnistrate-sdk-go/fleet"
 	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
+
+	instancecmd "github.com/omnistrate-oss/omnistrate-ctl/cmd/instance"
 )
 
 const (
@@ -74,7 +76,7 @@ func init() {
 	DeployCmd.Flags().String("deployment-type", "", "Deployment type: hosted  or byoa")
 	DeployCmd.Flags().String("service-plan-id", "", "Specify the service plan ID to use when multiple plans exist")
 	DeployCmd.Flags().StringP("spec-type", "s", DockerComposeSpecType, "Spec type")
-	
+	DeployCmd.Flags().Bool("wait", false, "Wait for deployment to complete before returning.")
 	// Additional flags from build command
 	DeployCmd.Flags().StringArray("env-var", nil, "Specify environment variables required for running the image. Use the format: --env-var key1=var1 --env-var key2=var2. Only effective when no compose spec exists in the repo.")
 	DeployCmd.Flags().Bool("skip-docker-build", false, "Skip building and pushing the Docker image")
@@ -84,6 +86,8 @@ func init() {
 	DeployCmd.Flags().StringArray("platforms", []string{"linux/amd64"}, "Specify the platforms to build for. Use the format: --platforms linux/amd64 --platforms linux/arm64. Default is linux/amd64.")
 	DeployCmd.Flags().Bool("reset-pat", false, "Reset the GitHub Personal Access Token (PAT) for the current user.")
 }
+
+var waitFlag bool
 
 func runDeploy(cmd *cobra.Command, args []string) error {
 	defer config.CleanupArgsAndFlags(cmd, &args)
@@ -151,7 +155,6 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	fmt.Println("Deployment type:", deploymentType)
 	
 	if deploymentType == "byoa" || deploymentType == "hosted" {
 		if awsAccountID == "" && gcpProjectID == "" {
@@ -230,7 +233,6 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 
 		// Process template expressions recursively
 		processedData, err = processTemplateExpressions(fileData, filepath.Dir(absSpecFile))
-		fmt.Println("process data",string(processedData))
 		if err != nil {
 			return errors.Wrap(err, "failed to process template expressions")
 		}
@@ -248,14 +250,11 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 		       }
 	       } else {
 		       specType, err = determineSpecType(processedData)
-			   fmt.Println("Determined spec type:", specType)
 		       if err != nil {
 			       return errors.Wrap(err, "failed to determine spec type")
 		       }
 	       }
 	}
-
-	fmt.Println("Spec type:", specType)
 
 	var cloudProviderAPI string = "aws"
 
@@ -381,7 +380,6 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 		       // Try to extract 'name' from the YAML spec
 		       nameRegex := regexp.MustCompile(`(?m)^name:\s*"?([a-zA-Z0-9_-]+)"?`)
 		       matches := nameRegex.FindSubmatch(processedData)
-			   fmt.Println("matches",string(matches[1]))
 		       if len(matches) > 1 {
 			       serviceNameToUse = string(matches[1])
 		       }
@@ -464,11 +462,16 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 
 	fmt.Println("✅ All pre-checks passed! Proceeding with deployment...")
 
-	// Get dry-run flag
-	dryRun, err := cmd.Flags().GetBool("dry-run")
-	if err != nil {
-		return err
-	}
+
+       // Get dry-run and wait flags
+       dryRun, err := cmd.Flags().GetBool("dry-run")
+       if err != nil {
+	       return err
+       }
+       waitFlag, err = cmd.Flags().GetBool("wait")
+       if err != nil {
+	       return err
+       }
 
 	// Additional pre-checks: x-omnistrate-mode-internal tag and required parameters
 	if !useRepo {
@@ -848,7 +851,7 @@ func executeDeploymentWorkflow(cmd *cobra.Command, sm ysmrr.SpinnerManager, toke
 			existingInstanceID = "" // Reset to create new instance
 		}
 
-		fmt.Printf("Note: Instance creation/upgrade is automatic. You can also manage instances using 'omctl instance' commands.\n", existingInstanceID)
+		fmt.Printf("Note: Instance creation/upgrade is automatic.\n", existingInstanceID)
 
 		if existingInstanceID != "" {
 			foundMsg := spinnerMsg + ": Found existing instance"
@@ -876,74 +879,69 @@ func executeDeploymentWorkflow(cmd *cobra.Command, sm ysmrr.SpinnerManager, toke
 				createMsg = "Creating instance without subscription: " + instanceName
 			}
 			spinner = sm.AddSpinner(createMsg)
-
+			createdInstanceID, err := "", error(nil)
 			if useSubscription {
-				createdInstanceID, err := createInstanceWithDefaults(cmd.Context(), token, serviceID, prodEnvironmentID, prodPlanID, subscriptionID)
-				if err != nil {
-					spinner.UpdateMessage(fmt.Sprintf("%s: Failed (%s)", createMsg, err.Error()))
-					spinner.Complete()
-					fmt.Printf("Error: Failed to create instance: %s\n", err.Error())
-				} else {
-					instanceID = createdInstanceID
-					spinner.UpdateMessage(fmt.Sprintf("%s: Success (ID: %s)", createMsg, instanceID))
-					spinner.Complete()
-				}
-			} else {
-				createdInstanceID, err := createInstanceWithoutSubscription(cmd.Context(), token, serviceID, prodEnvironmentID, prodPlanID)
-				if err != nil {
-					spinner.UpdateMessage(fmt.Sprintf("%s: Failed (%s)", createMsg, err.Error()))
-					spinner.Complete()
-					fmt.Printf("Error: Failed to create instance without subscription: %s\n", err.Error())
-				} else {
-					instanceID = createdInstanceID
-					spinner.UpdateMessage(fmt.Sprintf("%s: Success (ID: %s)", createMsg, instanceID))
-					spinner.Complete()
-				}
-			}
+				   createdInstanceID, err = createInstanceUnified(cmd.Context(), token, serviceID, prodEnvironmentID, prodPlanID, utils.ToPtr(subscriptionID))
+				   instanceID = createdInstanceID  
+				   if err != nil {
+					   spinner.UpdateMessage(fmt.Sprintf("%s: Failed (%s)", createMsg, err.Error()))
+					   spinner.Complete()
+					   fmt.Printf("Error: Failed to create instance: %s\n", err.Error())
+				   } else {
+					   spinner.UpdateMessage(fmt.Sprintf("%s: Success (ID: %s)", createMsg, instanceID))
+					   spinner.Complete()
+				   }
+		} else {
+			   createdInstanceID, err = createInstanceUnified(cmd.Context(), token, serviceID, prodEnvironmentID, prodPlanID, nil)
+			   instanceID = createdInstanceID 
+			   if err != nil {
+				   spinner.UpdateMessage(fmt.Sprintf("%s: Failed (%s)", createMsg, err.Error()))
+				   spinner.Complete()
+				   fmt.Printf("Error: Failed to create instance without subscription: %s\n", err.Error())
+			   } else {
+				   spinner.UpdateMessage(fmt.Sprintf("%s: Success (ID: %s)", createMsg, instanceID))
+				   spinner.Complete()
+			   }
 		}
-	} else {
-		fmt.Println("Warning: No subscription created and not a service provider org - instance creation skipped")
 	}
+} else {
+	fmt.Println("Warning: No subscription created and not a service provider org - instance creation skipped")
+}
 
-	// Step 10: Success message - completed deployment
-	spinner = sm.AddSpinner("Deployment workflow completed")
-	spinner.UpdateMessage("Deployment workflow completed: Service built, promoted, and ready for instances")
-	spinner.Complete()
+       // Step 10: Success message - completed deployment
+       spinner = sm.AddSpinner("Deployment workflow completed")
+       spinner.UpdateMessage("Deployment workflow completed: Service built, promoted, and ready for instances")
+       spinner.Complete()
 
-	sm.Stop()
+       sm.Stop()
 
-	// Success message
-	fmt.Println()
-	fmt.Println("🎉 Deployment completed successfully!")
-	fmt.Printf("   Service: %s (ID: %s)\n", serviceName, serviceID)
-	fmt.Printf("   Production Environment: %s (ID: %s)\n", defaultProdEnvName, prodEnvironmentID)
-	if subscriptionID != "" {
-		fmt.Printf("   Subscription: %s (ID: %s)\n", subscriptionName, subscriptionID)
-	} else if isServiceProvider {
-		fmt.Printf("   Organization: Service Provider (direct instance deployment)\n")
-	}
-	if instanceID != "" {
-		fmt.Printf("   Instance: %s (ID: %s)\n", instanceName, instanceID)
-	}
-	fmt.Println()
-	fmt.Println("Next steps:")
-	if instanceID != "" {
-		fmt.Println("1. Monitor your instance deployment status")
-		fmt.Println("2. Configure monitoring and alerting for your instances")
-		fmt.Println("3. Set up custom domains and SSL certificates if required")
-	} else if subscriptionID != "" {
-		fmt.Println("1. Create instance deployments using: omctl instance create")
-		fmt.Println("2. Configure monitoring and alerting for your instances")
-		fmt.Println("3. Set up custom domains and SSL certificates if required")
-	} else {
-		fmt.Println("1. Subscribe to your service in the Omnistrate UI")
-		fmt.Println("2. Create instance deployments as needed")
-		fmt.Println("3. Configure monitoring and alerting for your instances")
-		fmt.Println("4. Set up custom domains and SSL certificates if required")
-	}
-	fmt.Println()
+       // Success message
+       fmt.Println()
+       fmt.Println("🎉 Deployment completed successfully!")
+       fmt.Printf("   Service: %s (ID: %s)\n", serviceName, serviceID)
+       fmt.Printf("   Production Environment: %s (ID: %s)\n", defaultProdEnvName, prodEnvironmentID)
+       if subscriptionID != "" {
+	       fmt.Printf("   Subscription: %s (ID: %s)\n", subscriptionName, subscriptionID)
+       } else if isServiceProvider {
+	       fmt.Printf("   Organization: Service Provider (direct instance deployment)\n")
+       }
+       if instanceID != "" {
+	       fmt.Printf("   Instance: %s (ID: %s)\n", instanceName, instanceID)
+       }
+       fmt.Println()
+       
+       // Optionally display workflow progress if desired (if you want to keep this logic, pass cmd/context as needed)
+       if waitFlag && instanceID != "" {
+	       fmt.Println("🔄 Deployment progress...")
+	       err = instancecmd.DisplayWorkflowResourceDataWithSpinners(cmd.Context(), token, instanceID, "create")
+	       if err != nil {
+		       fmt.Printf("❌ Deployment failed-- %s\n", err)
+	       } else {
+		       fmt.Println("✅ Deployment successful")
+	       }
+       }
 
-	return nil
+       return nil
 }
 
 
@@ -1103,8 +1101,10 @@ func createProdEnv(ctx context.Context, token string, serviceID string, devEnvir
 }
 
 
-// createInstanceWithDefaults creates an instance with default parameters for the first resource found
-func createInstanceWithDefaults(ctx context.Context, token, serviceID, environmentID, productTierID, subscriptionID string) (string, error) {
+
+// createInstanceUnified creates an instance with or without subscription, removing duplicate code
+// waitFlag is set from the deploy command flag
+func createInstanceUnified(ctx context.Context, token, serviceID, environmentID, productTierID string, subscriptionID *string) (string, error) {
 	// Get the latest version
 	version, err := dataaccess.FindLatestVersion(ctx, token, serviceID, productTierID)
 	if err != nil {
@@ -1133,10 +1133,7 @@ func createInstanceWithDefaults(ctx context.Context, token, serviceID, environme
 	resourceKey := resourceEntity.UrlKey
 
 	// Create default parameters with common sensible defaults
-	// Using minimal defaults to reduce validation errors
-	defaultParams := map[string]interface{}{
-	
-	}
+	defaultParams := map[string]interface{}{}
 
 	// Try to use default cloud provider and region (AWS us-east-1 as fallback)
 	cloudProvider := "aws"
@@ -1149,7 +1146,9 @@ func createInstanceWithDefaults(ctx context.Context, token, serviceID, environme
 		Region:             &region,
 		RequestParams:      defaultParams,
 		NetworkType:        nil,
-		SubscriptionId:     utils.ToPtr(subscriptionID),
+	}
+	if subscriptionID != nil {
+		request.SubscriptionId = subscriptionID
 	}
 
 	// Create the instance
@@ -1169,78 +1168,7 @@ func createInstanceWithDefaults(ctx context.Context, token, serviceID, environme
 	if instance == nil || instance.Id == nil {
 		return "", fmt.Errorf("instance creation returned empty result")
 	}
-
-	return *instance.Id, nil
-}
-
-// createInstanceWithoutSubscription creates an instance directly for service provider orgs (without subscription)
-func createInstanceWithoutSubscription(ctx context.Context, token, serviceID, environmentID, productTierID string) (string, error) {
-	// Get the latest version
-	version, err := dataaccess.FindLatestVersion(ctx, token, serviceID, productTierID)
-	if err != nil {
-		return "", fmt.Errorf("failed to find latest version: %w", err)
-	}
-
-	// Describe service offering
-	res, err := dataaccess.DescribeServiceOffering(ctx, token, serviceID, productTierID, version)
-	if err != nil {
-		return "", fmt.Errorf("failed to describe service offering: %w", err)
-	}
-
-	if len(res.ConsumptionDescribeServiceOfferingResult.Offerings) == 0 {
-		return "", fmt.Errorf("no service offerings found")
-	}
-
-	offering := res.ConsumptionDescribeServiceOfferingResult.Offerings[0]
-
-	// Find the first resource with parameters
-	if len(offering.ResourceParameters) == 0 {
-		return "", fmt.Errorf("no resources found in service offering")
-	}
-
-	// Use the first resource
-	resourceEntity := offering.ResourceParameters[0]
-	resourceKey := resourceEntity.UrlKey
-
-	// Create default parameters with common sensible defaults
-	// Using the same approach as instance/create.go but with more minimal defaults
-	defaultParams := map[string]interface{}{
-		
-	}
-
-	// Try to use default cloud provider and region (AWS us-east-1 as fallback)
-	cloudProvider := "aws"
-	region := "ap-south-1"
-
-	// Create the instance request WITHOUT subscription ID (for service provider orgs)
-	// Following the same pattern as instance/create.go
-	request := openapiclientfleet.FleetCreateResourceInstanceRequest2{
-		ProductTierVersion: &version,
-		CloudProvider:      &cloudProvider,
-		Region:             &region,
-		RequestParams:      defaultParams,
-		NetworkType:        nil,
-		// Note: No SubscriptionId for service provider direct instance creation
-	}
-
-	// Create the instance
-	instance, err := dataaccess.CreateResourceInstance(ctx, token,
-		res.ConsumptionDescribeServiceOfferingResult.ServiceProviderId,
-		res.ConsumptionDescribeServiceOfferingResult.ServiceURLKey,
-		offering.ServiceAPIVersion,
-		offering.ServiceEnvironmentURLKey,
-		offering.ServiceModelURLKey,
-		offering.ProductTierURLKey,
-		resourceKey,
-		request)
-	if err != nil {
-		return "", fmt.Errorf("failed to create resource instance: %w", err)
-	}
-
-	if instance == nil || instance.Id == nil {
-		return "", fmt.Errorf("instance creation returned empty result")
-	}
-
+	
 	return *instance.Id, nil
 }
 
