@@ -11,6 +11,7 @@ import (
 	stdregexp "regexp"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/blevesearch/bleve/v2"
 	"github.com/blevesearch/bleve/v2/analysis/analyzer/custom"
@@ -68,8 +69,10 @@ type MarkupSection struct {
 }
 
 var (
-	searchIndex bleve.Index
-	indexMutex  sync.RWMutex
+	searchIndex    bleve.Index
+	indexMutex     sync.RWMutex
+	indexCreatedAt time.Time
+	indexCacheTTL  = 5 * time.Minute // 5-minute cache TTL
 	// Use regex to find H headings
 	h2Regex *stdregexp.Regexp
 	h3Regex *stdregexp.Regexp
@@ -95,34 +98,69 @@ func PerformDocumentationSearch(query string, limit int) ([]DocumentationResult,
 	return results, nil
 }
 
-// initializeSearchIndex creates and populates the Bleve search index in memory
+// initializeSearchIndex creates and populates the Bleve search index with caching
 func initializeSearchIndex() (err error) {
 	indexMutex.Lock()
 	defer indexMutex.Unlock()
 
-	// If index is already initialized, return
-	if searchIndex != nil {
+	// Check if we have a valid cached index
+	if searchIndex != nil && isIndexCacheValid() {
+		log.Debug().Msg("Using cached search index")
 		return nil
+	}
+
+	// Clean up existing index if it exists
+	if searchIndex != nil {
+		if err := searchIndex.Close(); err != nil {
+			log.Warn().Err(err).Msg("Failed to close existing search index")
+		}
+		searchIndex = nil
 	}
 
 	// Get the search index path from config
 	searchIndexPath := config.GetSearchIndexPath()
 
-	// Create new in-memory index
+	// Try to open existing index from disk
+	if existingIndex, err := bleve.Open(searchIndexPath); err == nil {
+		// Check if the existing index is still valid (within cache TTL)
+		if isPersistedIndexValid() {
+			searchIndex = existingIndex
+			indexCreatedAt = getPersistedIndexTimestamp()
+			log.Debug().Msg("Loaded existing search index from disk")
+			return nil
+		}
+		// Close the outdated index
+		existingIndex.Close()
+		log.Debug().Msg("Existing index is outdated, will rebuild")
+	}
+
+	// Remove old index files
+	if err := os.RemoveAll(searchIndexPath); err != nil {
+		log.Warn().Err(err).Str("path", searchIndexPath).Msg("Failed to remove old search index files")
+	}
+
+	// Create new index
 	indexMapping, err := createIndexMapping()
 	if err != nil {
 		return fmt.Errorf("failed to create index mapping: %w", err)
 	}
+
 	searchIndex, err = bleve.New(searchIndexPath, indexMapping)
 	if err != nil {
-		return fmt.Errorf("failed to create in-memory search index: %w", err)
+		return fmt.Errorf("failed to create search index: %w", err)
 	}
 
-	log.Debug().Msg("Created new in-memory search index")
+	log.Debug().Msg("Created new search index")
 
 	// Populate the index with documentation
 	if err := populateIndex(); err != nil {
 		return fmt.Errorf("failed to populate search index: %w", err)
+	}
+
+	// Update the creation timestamp and persist it
+	indexCreatedAt = time.Now().UTC()
+	if err := persistIndexTimestamp(indexCreatedAt); err != nil {
+		log.Warn().Err(err).Msg("Failed to persist index timestamp")
 	}
 
 	return nil
@@ -484,24 +522,17 @@ func searchDocuments(query string, limit int) ([]DocumentationResult, error) {
 	return results, nil
 }
 
-// CleanupSearchIndex closes the in-memory search index
+// cleanupSearchIndex closes the search index but preserves files on disk for caching
 func cleanupSearchIndex() error {
 	indexMutex.Lock()
 	defer indexMutex.Unlock()
-
-	searchIndexPath := config.GetSearchIndexPath()
 
 	if searchIndex != nil {
 		if err := searchIndex.Close(); err != nil {
 			log.Warn().Err(err).Msg("Failed to close search index")
 		}
 		searchIndex = nil
-		log.Debug().Msg("Closed in-memory search index")
-	}
-
-	// Also remove the index files on disk
-	if err := os.RemoveAll(searchIndexPath); err != nil {
-		log.Warn().Err(err).Str("path", searchIndexPath).Msg("Failed to remove search index files")
+		log.Debug().Msg("Closed search index")
 	}
 
 	return nil
@@ -509,12 +540,25 @@ func cleanupSearchIndex() error {
 
 // refreshSearchIndex rebuilds the search index with fresh data
 func refreshSearchIndex() error {
-	// Clean up existing index
-	if err := cleanupSearchIndex(); err != nil {
-		return fmt.Errorf("failed to cleanup existing index: %w", err)
+	indexMutex.Lock()
+	defer indexMutex.Unlock()
+
+	// Close existing index
+	if searchIndex != nil {
+		if err := searchIndex.Close(); err != nil {
+			log.Warn().Err(err).Msg("Failed to close existing search index")
+		}
+		searchIndex = nil
 	}
 
-	// Reinitialize the index
+	// Remove old index files to force rebuild
+	searchIndexPath := config.GetSearchIndexPath()
+	if err := os.RemoveAll(searchIndexPath); err != nil {
+		log.Warn().Err(err).Str("path", searchIndexPath).Msg("Failed to remove search index files")
+	}
+
+	// Reset the mutex lock and reinitialize
+	indexMutex.Unlock()
 	return initializeSearchIndex()
 }
 
@@ -705,4 +749,50 @@ func fetchContentFromURL(url string) (string, error) {
 	}
 
 	return string(bodyBytes), nil
+}
+
+// isIndexCacheValid checks if the in-memory index is still valid based on TTL
+func isIndexCacheValid() bool {
+	return time.Since(indexCreatedAt) < indexCacheTTL
+}
+
+// isPersistedIndexValid checks if the persisted index is still valid based on TTL
+func isPersistedIndexValid() bool {
+	timestamp := getPersistedIndexTimestamp()
+	if timestamp.IsZero() {
+		return false
+	}
+	return time.Since(timestamp) < indexCacheTTL
+}
+
+// getPersistedIndexTimestamp retrieves the timestamp when the index was created
+func getPersistedIndexTimestamp() time.Time {
+	timestampFile := config.GetSearchTimestampFilePath()
+	data, err := os.ReadFile(timestampFile)
+	if err != nil {
+		log.Debug().Err(err).Str("file", timestampFile).Msg("Failed to read timestamp file")
+		return time.Time{}
+	}
+
+	timestamp, err := time.Parse(time.RFC3339, strings.TrimSpace(string(data)))
+	if err != nil {
+		log.Debug().Err(err).Str("data", string(data)).Msg("Failed to parse timestamp")
+		return time.Time{}
+	}
+
+	return timestamp
+}
+
+// persistIndexTimestamp saves the timestamp when the index was created
+func persistIndexTimestamp(timestamp time.Time) error {
+	timestampFile := config.GetSearchTimestampFilePath()
+	data := timestamp.UTC().Format(time.RFC3339)
+
+	err := os.WriteFile(timestampFile, []byte(data), 0600)
+	if err != nil {
+		return fmt.Errorf("failed to write timestamp file: %w", err)
+	}
+
+	log.Debug().Str("file", timestampFile).Time("timestamp", timestamp).Msg("Persisted index timestamp")
+	return nil
 }

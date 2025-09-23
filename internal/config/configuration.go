@@ -51,10 +51,26 @@ func GetToken() (string, error) {
 	return authConfig.Token, nil
 }
 
+// GetSearchTimestampFilePath returns the path to the timestamp file used to track the last update time of the search index
+func GetSearchTimestampFilePath() string {
+	indexDir := GetSearchIndexDir()
+	indexName := GetSearchIndexName()
+	timestampFileName := indexName + ".timestamp"
+	return filepath.Join(indexDir, timestampFileName)
+}
+
 func GetSearchIndexPath() string {
-	path := ConfigDir()
-	name := GetEnv("OMNISTRATE_SEARCH_INDEX_NAME", "search_index.bleve")
-	return filepath.Join(path, name)
+	return filepath.Join(GetSearchIndexDir(), GetSearchIndexName())
+}
+
+// GetSearchIndexDir returns the directory where search index files are stored
+func GetSearchIndexDir() string {
+	return GetEnv("OMNISTRATE_SEARCH_INDEX_DIR", filepath.Join(ConfigDir(), "search"))
+}
+
+// GetSearchIndexName returns the name of the search index file
+func GetSearchIndexName() string {
+	return GetEnv("OMNISTRATE_SEARCH_INDEX_NAME", "search_index.bleve")
 }
 
 // GetHost returns the host of the Omnistrate server
