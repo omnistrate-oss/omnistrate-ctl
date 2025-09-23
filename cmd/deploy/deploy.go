@@ -73,7 +73,7 @@ func init() {
 	DeployCmd.Flags().String("gcp-project-number", "", "GCP project number for BYOA or hosted deployment. Must be used with --gcp-project-id")
 	DeployCmd.Flags().String("deployment-type", "", "Deployment type: hosted  or byoa")
 	DeployCmd.Flags().String("service-plan-id", "", "Specify the service plan ID to use when multiple plans exist")
-	
+	DeployCmd.Flags().StringP("spec-type", "s", DockerComposeSpecType, "Spec type")
 	
 	// Additional flags from build command
 	DeployCmd.Flags().StringArray("env-var", nil, "Specify environment variables required for running the image. Use the format: --env-var key1=var1 --env-var key2=var2. Only effective when no compose spec exists in the repo.")
@@ -204,6 +204,9 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 		}
 	}
 
+       // Check if spec-type was explicitly provided
+       specTypeExplicit := cmd.Flags().Changed("spec-type")
+
 	// Convert to absolute path if using spec file
 	var absSpecFile string
 	var processedData []byte
@@ -227,16 +230,32 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 
 		// Process template expressions recursively
 		processedData, err = processTemplateExpressions(fileData, filepath.Dir(absSpecFile))
+		fmt.Println("process data",string(processedData))
 		if err != nil {
 			return errors.Wrap(err, "failed to process template expressions")
 		}
 
-		// Determine spec type
-		specType, err = determineSpecType(processedData)
-		if err != nil {
-			return errors.Wrap(err, "failed to determine spec type")
-		}
+	       // Determine spec type
+	       if !specTypeExplicit {
+		       // If the file is named compose.yaml or docker-compose.yaml, default to DockerComposeSpecType
+		       baseName := filepath.Base(absSpecFile)
+		       if baseName == "compose.yaml" || baseName == "docker-compose.yaml" {
+			       specType = build.DockerComposeSpecType // Use the correct constant value
+		       } else {
+				
+			       // If not, require the user to provide --spec-type flag
+			       return errors.New("Please provide the --spec-type flag (docker-compose or service-plan) when using a custom spec file name.")
+		       }
+	       } else {
+		       specType, err = determineSpecType(processedData)
+			   fmt.Println("Determined spec type:", specType)
+		       if err != nil {
+			       return errors.Wrap(err, "failed to determine spec type")
+		       }
+	       }
 	}
+
+	fmt.Println("Spec type:", specType)
 
 	var cloudProviderAPI string = "aws"
 
@@ -312,6 +331,7 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 			return fmt.Errorf("spec file validation failed: %w", err)
 		}
 
+		if(deploymentType == "byoa" || deploymentType == "hosted"){
 		// Check if account ID is required but missing
 		// Account ID is considered available if it's in the spec file OR provided via flags
 		hasAccountIDFromFlags := awsAccountID != "" || gcpProjectID != ""
@@ -321,6 +341,7 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 			fmt.Println("❌")
 			return errors.New("multiple cloud provider accounts found but no account ID specified in spec file or flags. Please specify account ID in spec file or use --aws-account-id/--gcp-project-id flags")
 		}
+	}
 
 		// Check tenant-aware resource count
 		if tenantAwareResourceCount == 0 {
@@ -353,25 +374,35 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	var serviceNameToUse string
-	serviceNameToUse = productName
-	if serviceNameToUse == "" {
-		if useRepo {
-			// Use current directory name for repository-based builds
-			cwd, err := os.Getwd()
-			if err != nil {
-				return err
-			}
-			serviceNameToUse = filepath.Base(cwd)
-		} else {
-			// Use directory name from spec file path
-			serviceNameToUse = filepath.Base(filepath.Dir(absSpecFile))
-		}
-		
-		if serviceNameToUse == "." || serviceNameToUse == "/" || serviceNameToUse == "" {
-			serviceNameToUse = "my-service"
-		}
-	}
+       var serviceNameToUse string
+       serviceNameToUse = productName
+       if serviceNameToUse == "" {
+	       if !useRepo && len(processedData) > 0 {
+		       // Try to extract 'name' from the YAML spec
+		       nameRegex := regexp.MustCompile(`(?m)^name:\s*"?([a-zA-Z0-9_-]+)"?`)
+		       matches := nameRegex.FindSubmatch(processedData)
+			   fmt.Println("matches",string(matches[1]))
+		       if len(matches) > 1 {
+			       serviceNameToUse = string(matches[1])
+		       }
+	       }
+	       if serviceNameToUse == "" {
+		       if useRepo {
+			       // Use current directory name for repository-based builds
+			       cwd, err := os.Getwd()
+			       if err != nil {
+				       return err
+			       }
+			       serviceNameToUse = filepath.Base(cwd)
+		       } else {
+			       // Use directory name from spec file path
+			       serviceNameToUse = filepath.Base(filepath.Dir(absSpecFile))
+		       }
+		       if serviceNameToUse == "." || serviceNameToUse == "/" || serviceNameToUse == "" {
+			       serviceNameToUse = "my-service"
+		       }
+	       }
+       }
 
 	// Pre-check 3: Check if service exists and validate service plan count
 	fmt.Printf("Checking existing service '%s'... ", serviceNameToUse)
@@ -1323,14 +1354,12 @@ func validateSpecFileConfiguration(data []byte, specType string) (hasAccountID b
 	
 	// For Docker Compose specs, look for tenant-aware resources
 	if specType == build.DockerComposeSpecType {
-		// Look for x-omnistrate-mode-tenant-aware or similar patterns
-		tenantAwareResourceCount = strings.Count(content, "x-omnistrate-mode-tenant-aware")
-		if tenantAwareResourceCount == 0 {
-			// Also check for customer-facing mode as it implies tenant-aware
-			if strings.Contains(content, "customer-facing") {
-				tenantAwareResourceCount = 1
-			}
-		}
+		// Only count x-omnistrate-mode-internal if not explicitly set to false
+		// Match lines like: x-omnistrate-mode-internal: true OR just x-omnistrate-mode-internal (without : false)
+		tenantAwareRegex := regexp.MustCompile(`(?m)^\s*x-omnistrate-mode-internal\s*:\s*(false|False|FALSE)\s*$`)
+		matches := tenantAwareRegex.FindAllString(content, -1)
+		tenantAwareResourceCount = len(matches)
+
 	} else {
 		// For Service Plan specs, assume tenant-aware if not specified otherwise
 		tenantAwareResourceCount = 1

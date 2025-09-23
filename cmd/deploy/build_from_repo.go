@@ -511,11 +511,22 @@ func buildServiceFromRepo(ctx context.Context, token, name string, releaseDescri
 
 
 			// Generate compose spec from image
-			imageRef := "postgres:16"
-			fmt.Printf("DEBUG: image reference used for compose spec generation: %q\n", imageRef)
+			// imageRef := "postgres:16"
+			// fmt.Printf("DEBUG: image reference used for compose spec generation: %q\n", imageRef)
+			// generateComposeSpecRequest := openapiclient.GenerateComposeSpecFromContainerImageRequest2{
+			// 	ImageRegistry:        "docker.io",
+			// 	Image:                imageRef,
+			// 	Username:             nil,
+			// 	Password:             nil,
+			// 	EnvironmentVariables: formattedEnvVars,
+			// }
+
+
+
+				// Generate compose spec from image
 			generateComposeSpecRequest := openapiclient.GenerateComposeSpecFromContainerImageRequest2{
-				ImageRegistry:        "docker.io",
-				Image:                imageRef,
+				ImageRegistry:        "ghcr.io",
+				Image:                "https://github.com/porsager/postgres",
 				Username:             nil,
 				Password:             nil,
 				EnvironmentVariables: formattedEnvVars,
@@ -1059,22 +1070,6 @@ func listFiles(dir string) (files []string, err error) {
 	return
 }
 
-
-func checkIfSaaSPortalReady(serviceEnvironment *openapiclient.DescribeServiceEnvironmentResult) bool {
-	if serviceEnvironment.SaasPortalUrl != nil && serviceEnvironment.SaasPortalStatus != nil && *serviceEnvironment.SaasPortalStatus == "RUNNING" {
-		return true
-	}
-
-	return false
-}
-
-func getSaaSPortalURL(serviceEnvironment *openapiclient.DescribeServiceEnvironmentResult, serviceID, environmentID string) string {
-	if serviceEnvironment.SaasPortalUrl != nil {
-		return fmt.Sprintf("https://"+*serviceEnvironment.SaasPortalUrl+"/service-plans?serviceId=%s&environmentId=%s", serviceID, environmentID)
-	}
-
-	return ""
-}
 
 func getOrCreatePAT(sm ysmrr.SpinnerManager, resetPAT bool) (newSm ysmrr.SpinnerManager, pat string, err error) {
 	newSm = sm
