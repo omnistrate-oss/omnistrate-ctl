@@ -123,7 +123,7 @@ jobs:
           ENABLE_SMOKE_TEST: true
           TEST_EMAIL: ${{ secrets.SMOKE_TEST_EMAIL }}
           TEST_PASSWORD: ${{ secrets.SMOKE_TEST_PASSWORD}}
-          OMNISTRATE_ROOT_DOMAIN: ${{ env.OMNISTRATE_ROOT_DOMAIN}}
+          OMNISTRATE_ROOT_DOMAIN: ${{ vars.OMNISTRATE_ROOT_DOMAIN}}
           OMNISTRATE_LOG_LEVEL: debug
           OMNISTRATE_DRY_RUN: true
         run: gotestsum --format github-actions -- ./test/smoke_test/${{ matrix.test-group }} -timeout 1800s -p 1 -p 1 -v
