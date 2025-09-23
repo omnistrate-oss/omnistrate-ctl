@@ -12,8 +12,10 @@ import (
 	"github.com/pkg/errors"
 )
 
+const defaultInstanceDeploymentTimeoutMinutes = "15"
+
 func WaitForInstanceToReachStatus(ctx context.Context, instanceID string, status instance.InstanceStatusType) error {
-	timeout := time.Duration(config.GetEnvAsInteger("OMNISTRATECTL_INSTANCE_DEPLOYMENT_TIMEOUT_MINUTES", "15")) * time.Minute
+	timeout := time.Duration(config.GetEnvAsInteger("OMNISTRATECTL_INSTANCE_DEPLOYMENT_TIMEOUT_MINUTES", defaultInstanceDeploymentTimeoutMinutes)) * time.Minute
 	b := &backoff.ExponentialBackOff{
 		InitialInterval:     10 * time.Second,
 		RandomizationFactor: backoff.DefaultRandomizationFactor,
