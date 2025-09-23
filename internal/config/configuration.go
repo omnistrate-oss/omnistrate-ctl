@@ -51,6 +51,11 @@ func GetToken() (string, error) {
 	return authConfig.Token, nil
 }
 
+func GetIndexCacheTTL() time.Duration {
+	ttlInSeconds := GetEnvAsInteger("OMNISTRATE_INDEX_CACHE_TTL", "3600")
+	return time.Duration(ttlInSeconds) * time.Second
+}
+
 // GetSearchTimestampFilePath returns the path to the timestamp file used to track the last update time of the search index
 func GetSearchTimestampFilePath() string {
 	indexDir := GetSearchIndexDir()

@@ -72,7 +72,6 @@ var (
 	searchIndex    bleve.Index
 	indexMutex     sync.RWMutex
 	indexCreatedAt time.Time
-	indexCacheTTL  = 5 * time.Minute // 5-minute cache TTL
 	// Use regex to find H headings
 	h2Regex *stdregexp.Regexp
 	h3Regex *stdregexp.Regexp
@@ -752,6 +751,11 @@ func fetchContentFromURL(url string) (string, error) {
 
 // isIndexCacheValid checks if the in-memory index is still valid based on TTL
 func isIndexCacheValid() bool {
+	indexCacheTTL := config.GetIndexCacheTTL()
+	if indexCacheTTL <= 0 {
+		// No caching, always rebuild
+		return false
+	}
 	return time.Since(indexCreatedAt) < indexCacheTTL
 }
 
@@ -759,6 +763,11 @@ func isIndexCacheValid() bool {
 func isPersistedIndexValid() bool {
 	timestamp := getPersistedIndexTimestamp()
 	if timestamp.IsZero() {
+		return false
+	}
+	indexCacheTTL := config.GetIndexCacheTTL()
+	if indexCacheTTL <= 0 {
+		// No caching, always rebuild
 		return false
 	}
 	return time.Since(timestamp) < indexCacheTTL
