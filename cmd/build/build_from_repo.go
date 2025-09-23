@@ -78,9 +78,11 @@ var BuildFromRepoCmd = &cobra.Command{
 func init() {
 	BuildFromRepoCmd.Flags().StringArray("env-var", nil, "Specify environment variables required for running the image. Effective only when the compose.yaml is absent. Use the format: --env-var key1=var1 --env-var key2=var2. Only effective when no compose spec exists in the repo.")
 	BuildFromRepoCmd.Flags().String("deployment-type", "", "Set the deployment type. Options: 'hosted' or 'byoa' (Bring Your Own Account). Only effective when no compose spec exists in the repo.")
-	BuildFromRepoCmd.Flags().String("aws-account-id", "", "AWS account ID. Must be used with --deployment-type")
-	BuildFromRepoCmd.Flags().String("gcp-project-id", "", "GCP project ID. Must be used with --gcp-project-number and --deployment-type")
-	BuildFromRepoCmd.Flags().String("gcp-project-number", "", "GCP project number. Must be used with --gcp-project-id and --deployment-type")
+		BuildFromRepoCmd.Flags().String("aws-account-id", "", "AWS account ID. Must be used with --deployment-type")
+		BuildFromRepoCmd.Flags().String("gcp-project-id", "", "GCP project ID. Must be used with --gcp-project-number and --deployment-type")
+		BuildFromRepoCmd.Flags().String("gcp-project-number", "", "GCP project number. Must be used with --gcp-project-id and --deployment-type")
+		BuildFromRepoCmd.Flags().String("azure-subscription-id", "", "Azure Subscription ID. Must be used with --deployment-type")
+		BuildFromRepoCmd.Flags().String("azure-tenant-id", "", "Azure Tenant ID. Must be used with --deployment-type")
 	BuildFromRepoCmd.Flags().Bool("reset-pat", false, "Reset the GitHub Personal Access Token (PAT) for the current user.")
 	BuildFromRepoCmd.Flags().StringP("output", "o", "text", "Output format. Only text is supported")
 	BuildFromRepoCmd.Flags().StringP("file", "f", ComposeFileName, "Specify the compose file to read and write to")
@@ -121,31 +123,41 @@ func init() {
 
 func runBuildFromRepo(cmd *cobra.Command, args []string) error {
 	defer config.CleanupArgsAndFlags(cmd, &args)
-	// Retrieve the flags
-	envVars, err := cmd.Flags().GetStringArray("env-var")
-	if err != nil {
-		return err
-	}
 
-	deploymentType, err := cmd.Flags().GetString("deployment-type")
-	if err != nil {
-		return err
-	}
+	   // Retrieve the flags
+	   envVars, err := cmd.Flags().GetStringArray("env-var")
+	   if err != nil {
+		   return err
+	   }
 
-	awsAccountID, err := cmd.Flags().GetString("aws-account-id")
-	if err != nil {
-		return err
-	}
+	   deploymentType, err := cmd.Flags().GetString("deployment-type")
+	   if err != nil {
+		   return err
+	   }
 
-	gcpProjectID, err := cmd.Flags().GetString("gcp-project-id")
-	if err != nil {
-		return err
-	}
+	   awsAccountID, err := cmd.Flags().GetString("aws-account-id")
+	   if err != nil {
+		   return err
+	   }
 
-	gcpProjectNumber, err := cmd.Flags().GetString("gcp-project-number")
-	if err != nil {
-		return err
-	}
+	   gcpProjectID, err := cmd.Flags().GetString("gcp-project-id")
+	   if err != nil {
+		   return err
+	   }
+
+	   gcpProjectNumber, err := cmd.Flags().GetString("gcp-project-number")
+	   if err != nil {
+		   return err
+	   }
+
+	   azureSubscriptionID, err := cmd.Flags().GetString("azure-subscription-id")
+	   if err != nil {
+		   return err
+	   }
+	   azureTenantID, err := cmd.Flags().GetString("azure-tenant-id")
+	   if err != nil {
+		   return err
+	   }
 
 	resetPAT, err := cmd.Flags().GetBool("reset-pat")
 	if err != nil {
@@ -804,27 +816,33 @@ func runBuildFromRepo(cmd *cobra.Command, args []string) error {
 				fileData = append(fileData, []byte("    byoaDeployment:\n")...)
 			}
 
-			if deploymentType != "" {
-				if awsAccountID != "" {
-					fileData = append(fileData, []byte(fmt.Sprintf("      AwsAccountId: '%s'\n", awsAccountID))...)
-					awsBootstrapRoleAccountARN := fmt.Sprintf("arn:aws:iam::%s:role/omnistrate-bootstrap-role", awsAccountID)
-					fileData = append(fileData, []byte(fmt.Sprintf("      AwsBootstrapRoleAccountArn: '%s'\n", awsBootstrapRoleAccountARN))...)
-				}
-				if gcpProjectID != "" {
-					fileData = append(fileData, []byte(fmt.Sprintf("      GcpProjectId: '%s'\n", gcpProjectID))...)
-					fileData = append(fileData, []byte(fmt.Sprintf("      GcpProjectNumber: '%s'\n", gcpProjectNumber))...)
+			   if deploymentType != "" {
+				   if awsAccountID != "" {
+					   fileData = append(fileData, []byte(fmt.Sprintf("      AwsAccountId: '%s'\n", awsAccountID))...)
+					   awsBootstrapRoleAccountARN := fmt.Sprintf("arn:aws:iam::%s:role/omnistrate-bootstrap-role", awsAccountID)
+					   fileData = append(fileData, []byte(fmt.Sprintf("      AwsBootstrapRoleAccountArn: '%s'\n", awsBootstrapRoleAccountARN))...)
+				   }
+				   if gcpProjectID != "" {
+					   fileData = append(fileData, []byte(fmt.Sprintf("      GcpProjectId: '%s'\n", gcpProjectID))...)
+					   fileData = append(fileData, []byte(fmt.Sprintf("      GcpProjectNumber: '%s'\n", gcpProjectNumber))...)
 
-					// Get organization id
-					user, err := dataaccess.DescribeUser(cmd.Context(), token)
-					if err != nil {
-						utils.HandleSpinnerError(spinner, sm, err)
-						return err
-					}
+					   // Get organization id
+					   user, err := dataaccess.DescribeUser(cmd.Context(), token)
+					   if err != nil {
+						   utils.HandleSpinnerError(spinner, sm, err)
+						   return err
+					   }
 
-					gcpServiceAccountEmail := fmt.Sprintf("bootstrap-%s@%s.iam.gserviceaccount.com", *user.OrgId, gcpProjectID)
-					fileData = append(fileData, []byte(fmt.Sprintf("      GcpServiceAccountEmail: '%s'\n", gcpServiceAccountEmail))...)
-				}
-			}
+					   gcpServiceAccountEmail := fmt.Sprintf("bootstrap-%s@%s.iam.gserviceaccount.com", *user.OrgId, gcpProjectID)
+					   fileData = append(fileData, []byte(fmt.Sprintf("      GcpServiceAccountEmail: '%s'\n", gcpServiceAccountEmail))...)
+				   }
+				   if azureSubscriptionID != "" {
+					   fileData = append(fileData, []byte(fmt.Sprintf("      AzureSubscriptionId: '%s'\n", azureSubscriptionID))...)
+				   }
+				   if azureTenantID != "" {
+					   fileData = append(fileData, []byte(fmt.Sprintf("      AzureTenantId: '%s'\n", azureTenantID))...)
+				   }
+			   }
 
 			// Write the compose spec to a file
 			err = os.WriteFile(file, fileData, 0600)
@@ -846,27 +864,33 @@ func runBuildFromRepo(cmd *cobra.Command, args []string) error {
 					fileData = append(fileData, []byte("    byoaDeployment:\n")...)
 				}
 
-				if deploymentType != "" {
-					if awsAccountID != "" {
-						fileData = append(fileData, []byte(fmt.Sprintf("      AwsAccountId: '%s'\n", awsAccountID))...)
-						awsBootstrapRoleAccountARN := fmt.Sprintf("arn:aws:iam::%s:role/omnistrate-bootstrap-role", awsAccountID)
-						fileData = append(fileData, []byte(fmt.Sprintf("      AwsBootstrapRoleAccountArn: '%s'\n", awsBootstrapRoleAccountARN))...)
-					}
-					if gcpProjectID != "" {
-						fileData = append(fileData, []byte(fmt.Sprintf("      GcpProjectId: '%s'\n", gcpProjectID))...)
-						fileData = append(fileData, []byte(fmt.Sprintf("      GcpProjectNumber: '%s'\n", gcpProjectNumber))...)
+				   if deploymentType != "" {
+					   if awsAccountID != "" {
+						   fileData = append(fileData, []byte(fmt.Sprintf("      AwsAccountId: '%s'\n", awsAccountID))...)
+						   awsBootstrapRoleAccountARN := fmt.Sprintf("arn:aws:iam::%s:role/omnistrate-bootstrap-role", awsAccountID)
+						   fileData = append(fileData, []byte(fmt.Sprintf("      AwsBootstrapRoleAccountArn: '%s'\n", awsBootstrapRoleAccountARN))...)
+					   }
+					   if gcpProjectID != "" {
+						   fileData = append(fileData, []byte(fmt.Sprintf("      GcpProjectId: '%s'\n", gcpProjectID))...)
+						   fileData = append(fileData, []byte(fmt.Sprintf("      GcpProjectNumber: '%s'\n", gcpProjectNumber))...)
 
-						// Get organization id
-						user, err := dataaccess.DescribeUser(cmd.Context(), token)
-						if err != nil {
-							utils.HandleSpinnerError(spinner, sm, err)
-							return err
-						}
+						   // Get organization id
+						   user, err := dataaccess.DescribeUser(cmd.Context(), token)
+						   if err != nil {
+							   utils.HandleSpinnerError(spinner, sm, err)
+							   return err
+						   }
 
-						gcpServiceAccountEmail := fmt.Sprintf("bootstrap-%s@%s.iam.gserviceaccount.com", *user.OrgId, gcpProjectID)
-						fileData = append(fileData, []byte(fmt.Sprintf("      GcpServiceAccountEmail: '%s'\n", gcpServiceAccountEmail))...)
-					}
-				}
+						   gcpServiceAccountEmail := fmt.Sprintf("bootstrap-%s@%s.iam.gserviceaccount.com", *user.OrgId, gcpProjectID)
+						   fileData = append(fileData, []byte(fmt.Sprintf("      GcpServiceAccountEmail: '%s'\n", gcpServiceAccountEmail))...)
+					   }
+					   if azureSubscriptionID != "" {
+						   fileData = append(fileData, []byte(fmt.Sprintf("      AzureSubscriptionId: '%s'\n", azureSubscriptionID))...)
+					   }
+					   if azureTenantID != "" {
+						   fileData = append(fileData, []byte(fmt.Sprintf("      AzureTenantId: '%s'\n", azureTenantID))...)
+					   }
+				   }
 			}
 
 			// Append the image registry attributes to the compose spec if it doesn't exist
@@ -1158,58 +1182,74 @@ x-omnistrate-image-registry-attributes:
 	println()
 
 	// Check if the cloud provider account(s) are verified
-	awsAccountUnverified := false
-	gcpAccountUnverified := false
-	var unverifiedAwsAccountConfigID, unverifiedGcpAccountConfigID string
-	if awsAccountID != "" || gcpProjectID != "" {
-		accounts, err := dataaccess.ListAccounts(cmd.Context(), token, "all")
-		if err != nil {
-			utils.HandleSpinnerError(spinner, sm, err)
-			return err
-		}
+	   awsAccountUnverified := false
+	   gcpAccountUnverified := false
+	   azureAccountUnverified := false
+	   var unverifiedAwsAccountConfigID, unverifiedGcpAccountConfigID, unverifiedAzureAccountConfigID string
+	   if awsAccountID != "" || gcpProjectID != "" || azureSubscriptionID != "" {
+		   accounts, err := dataaccess.ListAccounts(cmd.Context(), token, "all")
+		   if err != nil {
+			   utils.HandleSpinnerError(spinner, sm, err)
+			   return err
+		   }
 
-		for _, account := range accounts.AccountConfigs {
-			if account.Status == model.Verifying.String() && account.AwsAccountID != nil && *account.AwsAccountID == awsAccountID {
-				awsAccountUnverified = true
-				unverifiedAwsAccountConfigID = account.Id
-			}
+		   for _, account := range accounts.AccountConfigs {
+			   if account.Status == model.Verifying.String() && account.AwsAccountID != nil && *account.AwsAccountID == awsAccountID {
+				   awsAccountUnverified = true
+				   unverifiedAwsAccountConfigID = account.Id
+			   }
 
-			if account.Status == model.Verifying.String() && account.GcpProjectID != nil && *account.GcpProjectID == gcpProjectID && account.GcpProjectNumber != nil && *account.GcpProjectNumber == gcpProjectNumber {
-				gcpAccountUnverified = true
-				unverifiedGcpAccountConfigID = account.Id
-			}
-		}
-	}
+			   if account.Status == model.Verifying.String() && account.GcpProjectID != nil && *account.GcpProjectID == gcpProjectID && account.GcpProjectNumber != nil && *account.GcpProjectNumber == gcpProjectNumber {
+				   gcpAccountUnverified = true
+				   unverifiedGcpAccountConfigID = account.Id
+			   }
+
+			   if account.Status == model.Verifying.String() && account.AzureSubscriptionID != nil && *account.AzureSubscriptionID == azureSubscriptionID && account.AzureTenantID != nil && *account.AzureTenantID == azureTenantID {
+				   azureAccountUnverified = true
+				   unverifiedAzureAccountConfigID = account.Id
+			   }
+		   }
+	   }
 
 	urlMsg := color.New(color.FgCyan).SprintFunc()
-	if awsAccountUnverified || gcpAccountUnverified {
-		fmt.Println("Next steps:")
-		fmt.Printf("1.")
-		if awsAccountUnverified {
-			account, err := dataaccess.DescribeAccount(cmd.Context(), token, unverifiedAwsAccountConfigID)
-			if err != nil {
-				utils.PrintError(err)
-				return err
-			}
-			fmt.Printf(" Verify your cloud provider account %s following the instructions below:\n", account.Name)
-			fmt.Printf("  - For CloudFormation users: Please create your CloudFormation Stack using the provided template at %s. Watch the CloudFormation guide at %s for help.\n", urlMsg(*account.AwsCloudFormationTemplateURL), urlMsg(dataaccess.AwsCloudFormationGuideURL))
-			fmt.Printf("  - For Terraform users: Execute the Terraform scripts available at %s, by using the Account Config Identity ID below. For guidance our Terraform instructional video is at %s.\n", urlMsg(dataaccess.AwsGcpTerraformScriptsURL), urlMsg(dataaccess.AwsGcpTerraformGuideURL))
-		}
+	   if awsAccountUnverified || gcpAccountUnverified || azureAccountUnverified {
+		   fmt.Println("Next steps:")
+		   fmt.Printf("1.")
+		   if awsAccountUnverified {
+			   account, err := dataaccess.DescribeAccount(cmd.Context(), token, unverifiedAwsAccountConfigID)
+			   if err != nil {
+				   utils.PrintError(err)
+				   return err
+			   }
+			   fmt.Printf(" Verify your cloud provider account %s following the instructions below:\n", account.Name)
+			   fmt.Printf("  - For CloudFormation users: Please create your CloudFormation Stack using the provided template at %s. Watch the CloudFormation guide at %s for help.\n", urlMsg(*account.AwsCloudFormationTemplateURL), urlMsg(dataaccess.AwsCloudFormationGuideURL))
+			   fmt.Printf("  - For Terraform users: Execute the Terraform scripts available at %s, by using the Account Config Identity ID below. For guidance our Terraform instructional video is at %s.\n", urlMsg(dataaccess.AwsGcpTerraformScriptsURL), urlMsg(dataaccess.AwsGcpTerraformGuideURL))
+		   }
 
-		if gcpAccountUnverified {
-			account, err := dataaccess.DescribeAccount(cmd.Context(), token, unverifiedGcpAccountConfigID)
-			if err != nil {
-				utils.PrintError(err)
-				return err
-			}
-			fmt.Printf(" Verify your cloud provider account %s following the instructions below:\n", account.Name)
-			fmt.Printf("  - Execute the Terraform scripts available at %s, by using the Account Config Identity ID below. For guidance our Terraform instructional video is at %s.\n", urlMsg(dataaccess.AwsGcpTerraformScriptsURL), urlMsg(dataaccess.AwsGcpTerraformGuideURL))
-		}
+		   if gcpAccountUnverified {
+			   account, err := dataaccess.DescribeAccount(cmd.Context(), token, unverifiedGcpAccountConfigID)
+			   if err != nil {
+				   utils.PrintError(err)
+				   return err
+			   }
+			   fmt.Printf(" Verify your cloud provider account %s following the instructions below:\n", account.Name)
+			   fmt.Printf("  - Execute the Terraform scripts available at %s, by using the Account Config Identity ID below. For guidance our Terraform instructional video is at %s.\n", urlMsg(dataaccess.AwsGcpTerraformScriptsURL), urlMsg(dataaccess.AwsGcpTerraformGuideURL))
+		   }
 
-		fmt.Printf("2. After account verified, play around with the SaaS Portal! Subscribe to your service and create instance deployments.\n")
-		fmt.Printf("3. A compose spec has been generated from the Docker image. You can customize it further by editing the %s file. Refer to the documentation %s for more information.\n", filepath.Base(file), urlMsg("https://docs.omnistrate.com/getting-started/compose-spec/"))
-		fmt.Printf("4. Push any changes to the repository and automatically update the service by running 'omctl build-from-repo' again.\n")
-	} else {
+		   if azureAccountUnverified {
+			   account, err := dataaccess.DescribeAccount(cmd.Context(), token, unverifiedAzureAccountConfigID)
+			   if err != nil {
+				   utils.PrintError(err)
+				   return err
+			   }
+			   fmt.Printf(" Verify your Azure account %s following the instructions below:\n", account.Name)
+			   fmt.Printf("  - Please follow the Azure onboarding guide at %s.\n", urlMsg("https://docs.omnistrate.com/getting-started/azure-onboarding/"))
+		   }
+
+		   fmt.Printf("2. After account verified, play around with the SaaS Portal! Subscribe to your service and create instance deployments.\n")
+		   fmt.Printf("3. A compose spec has been generated from the Docker image. You can customize it further by editing the %s file. Refer to the documentation %s for more information.\n", filepath.Base(file), urlMsg("https://docs.omnistrate.com/getting-started/compose-spec/"))
+		   fmt.Printf("4. Push any changes to the repository and automatically update the service by running 'omctl build-from-repo' again.\n")
+	   } else {
 		fmt.Println("Next steps:")
 		fmt.Printf("1. Play around with the SaaS Portal! Subscribe to your service and create instance deployments.\n")
 		fmt.Printf("2. A compose spec has been generated from the Docker image. You can customize it further by editing the %s file. Refer to the documentation %s for more information.\n", filepath.Base(file), urlMsg("https://docs.omnistrate.com/getting-started/compose-spec/"))
