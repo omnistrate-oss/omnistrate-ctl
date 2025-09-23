@@ -41,10 +41,8 @@ jobs:
             "domain/...",
             "environment/...",
             "helm/...",
-            "instance/...",
             "service/...",
             "serviceplan/...",
-            "upgrade/...",
             "customnetwork/...",
             "servicesorchestration/...",
           ]
@@ -75,7 +73,58 @@ jobs:
           ENABLE_SMOKE_TEST: true
           TEST_EMAIL: ${{ secrets.SMOKE_TEST_EMAIL }}
           TEST_PASSWORD: ${{ secrets.SMOKE_TEST_PASSWORD}}
-          OMNISTRATE_ROOT_DOMAIN: ${{ vars.OMNISTRATE_ROOT_DOMAIN}}
+          OMNISTRATE_ROOT_DOMAIN: ${{ env.OMNISTRATE_ROOT_DOMAIN}}
           OMNISTRATE_LOG_LEVEL: debug
           OMNISTRATE_DRY_RUN: true
         run: gotestsum --format github-actions -- ./test/smoke_test/${{ matrix.test-group }} -timeout 1800s -p 1 -p 1 -v
+
+  smoke-tests-with-provisioning:
+    environment: ${{ inputs.environment }}
+    if: github.event_name != 'push' && contains(inputs.environment, 'Dev')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    concurrency:
+      group: ${{ github.workflow }}-${{ inputs.environment }}-${{ matrix.test-group }}
+      cancel-in-progress: true
+
+    strategy:
+      fail-fast: false
+      matrix:
+        test-group:
+          [
+            "instance/...",
+            "upgrade/...",
+          ]
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      - name: Set up go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: "go.mod"
+          cache-dependency-path: "**/go.sum"
+
+      - name: Get dependencies
+        timeout-minutes: 10
+        run: |
+          make tidy
+
+      - name: Gotestsum installer
+        uses: autero1/action-gotestsum@v2.0.0
+        with:
+          gotestsum_version: 1.11.0
+
+      - name: Smoke test ${{ matrix.test-group }}
+        timeout-minutes: 30
+        env:
+          ENABLE_SMOKE_TEST: true
+          TEST_EMAIL: ${{ secrets.SMOKE_TEST_EMAIL }}
+          TEST_PASSWORD: ${{ secrets.SMOKE_TEST_PASSWORD}}
+          OMNISTRATE_ROOT_DOMAIN: ${{ env.OMNISTRATE_ROOT_DOMAIN}}
+          OMNISTRATE_LOG_LEVEL: debug
+          OMNISTRATE_DRY_RUN: true
+        run: gotestsum --format github-actions -- ./test/smoke_test/${{ matrix.test-group }} -timeout 1800s -p 1 -p 1 -v
+

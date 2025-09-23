@@ -2,15 +2,18 @@ package testutils
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"github.com/cenkalti/backoff/v4"
 	"github.com/omnistrate-oss/omnistrate-ctl/cmd"
 	"github.com/omnistrate-oss/omnistrate-ctl/cmd/instance"
+	"github.com/omnistrate-oss/omnistrate-ctl/internal/config"
 	"github.com/pkg/errors"
 )
 
-func WaitForInstanceToReachStatus(ctx context.Context, instanceID string, status instance.InstanceStatusType, timeout time.Duration) error {
+func WaitForInstanceToReachStatus(ctx context.Context, instanceID string, status instance.InstanceStatusType) error {
+	timeout := time.Duration(config.GetEnvAsInteger("OMNISTRATECTL_INSTANCE_DEPLOYMENT_TIMEOUT_MINUTES", "15")) * time.Minute
 	b := &backoff.ExponentialBackOff{
 		InitialInterval:     10 * time.Second,
 		RandomizationFactor: backoff.DefaultRandomizationFactor,
@@ -47,5 +50,5 @@ func WaitForInstanceToReachStatus(ctx context.Context, instanceID string, status
 		}
 	}
 
-	return errors.New("instance did not reach the expected status")
+	return fmt.Errorf("instance did not reach the expected status %s within the timeout period of %s", status, timeout)
 }
