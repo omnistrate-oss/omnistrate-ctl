@@ -540,6 +540,7 @@ func cleanupSearchIndex() error {
 // refreshSearchIndex rebuilds the search index with fresh data
 func refreshSearchIndex() error {
 	indexMutex.Lock()
+	defer indexMutex.Unlock()
 
 	// Close existing index
 	if searchIndex != nil {
@@ -555,9 +556,8 @@ func refreshSearchIndex() error {
 		log.Warn().Err(err).Str("path", searchIndexPath).Msg("Failed to remove search index files")
 	}
 
-	// Reset the mutex lock and reinitialize
-	indexMutex.Unlock()
-	return initializeSearchIndex()
+	// next search will reinitialize the index
+	return nil
 }
 
 // ParseH3Sections parses markdown content and extracts H3 sections
