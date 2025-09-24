@@ -10,6 +10,8 @@ import (
 	"strings"
 	"time"
 
+	"gopkg.in/yaml.v3"
+
 	"github.com/omnistrate-oss/omnistrate-ctl/cmd/build"
 	"github.com/omnistrate-oss/omnistrate-ctl/cmd/common"
 	"github.com/omnistrate-oss/omnistrate-ctl/internal/config"
@@ -72,8 +74,10 @@ func init() {
 	DeployCmd.Flags().String("subscription-name", "", "Subscription name for service subscription")
 	DeployCmd.Flags().Bool("dry-run", false, "Perform validation checks without actually deploying")
 	DeployCmd.Flags().String("aws-account-id", "", "AWS account ID for BYOA or hosted deployment")
+	DeployCmd.Flags().String("aws-bootstrap-role-arn", "", "AWS bootstrap role ARN for BYOA or hosted deployment")
 	DeployCmd.Flags().String("gcp-project-id", "", "GCP project ID for BYOA or hosted deployment. Must be used with --gcp-project-number")
 	DeployCmd.Flags().String("gcp-project-number", "", "GCP project number for BYOA or hosted deployment. Must be used with --gcp-project-id")
+	DeployCmd.Flags().String("gcp-service-account-email", "", "GCP service account email for BYOA or hosted deployment")
 	DeployCmd.Flags().String("azure-subscription-id", "", "Azure subscription ID for BYOA or hosted deployment")
 	DeployCmd.Flags().String("azure-tenant-id", "", "Azure tenant ID for BYOA or hosted deployment")
 	DeployCmd.Flags().String("deployment-type", "", "Deployment type: hosted  or byoa")
@@ -94,6 +98,15 @@ func init() {
 var waitFlag bool
 
 func runDeploy(cmd *cobra.Command, args []string) error {
+	// Extract additional cloud provider flags for YAML creation
+	awsBootstrapRoleARN, err := cmd.Flags().GetString("aws-bootstrap-role-arn")
+	if err != nil {
+		return err
+	}
+	gcpServiceAccountEmail, err := cmd.Flags().GetString("gcp-service-account-email")
+	if err != nil {
+		return err
+	}
 	// Get Azure account flags
 	azureSubscriptionID, err := cmd.Flags().GetString("azure-subscription-id")
 	if err != nil {
@@ -266,17 +279,45 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 		       baseName := filepath.Base(absSpecFile)
 		       if baseName == "compose.yaml" || baseName == "docker-compose.yaml" {
 			       specType = build.DockerComposeSpecType // Use the correct constant value
+				  
 		       } else {
 				
 			       // If not, require the user to provide --spec-type flag
 			       return errors.New("Please provide the --spec-type flag (docker-compose or service-plan) when using a custom spec file name.")
 		       }
+			  
 	       } else {
 		       specType, err = determineSpecType(processedData)
 		       if err != nil {
 			       return errors.Wrap(err, "failed to determine spec type")
 		       }
 	       }
+				   var yamlMap map[string]interface{}
+				   if awsAccountID != "" || gcpProjectID != "" || azureSubscriptionID != "" {
+					   // Use createDeploymentYAML to generate a YAML map, then marshal to []byte for processedData
+					   yamlMap = createDeploymentYAML(
+						   deploymentType, // modelType
+						   specType,       // creationMethod (may need to adjust if you have a separate creationMethod variable)
+						   awsAccountID,
+						   awsBootstrapRoleARN,
+						   gcpProjectID,
+						   gcpProjectNumber,
+						   gcpServiceAccountEmail,
+						   azureSubscriptionID,
+						   azureTenantID,
+					   )
+					   yamlBytes, err := yaml.Marshal(yamlMap)
+					   if err != nil {
+						   return errors.Wrap(err, "failed to marshal deployment YAML")
+					   }
+					   // If processedData already has content, append yamlBytes to it with a separator
+					   if len(processedData) > 0 {
+						   processedData = append(processedData, []byte("\n---\n")...)
+						   processedData = append(processedData, yamlBytes...)
+					   } else {
+						   processedData = yamlBytes
+					   }
+				   }
 	}
 
        var cloudProviderAPI string = "aws"
@@ -288,7 +329,7 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 	       cloudProviderAPI = "azure"
        }
 	// Pre-check 1: Check for linked cloud provider accounts
-	fmt.Print("Checking linked cloud provider accounts... ")
+	fmt.Print("Checking linked cloud provider accounts... ", cloudProviderAPI, gcpProjectID, azureSubscriptionID)
 	accounts, err := dataaccess.ListAccounts(cmd.Context(), token, cloudProviderAPI)
 	if err != nil {
 		fmt.Println("❌")
@@ -356,8 +397,8 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 
 	// Pre-check 2: Validate spec file configuration if using spec file
 	if !useRepo {
-		fmt.Print("Validating spec file configuration... ")
-		hasAccountID, tenantAwareResourceCount, err := validateSpecFileConfiguration(processedData, specType)
+		fmt.Print("Validating spec file configuration... ", processedData)
+		tenantAwareResourceCount, err := validateSpecFileConfiguration(processedData, specType)
 		if err != nil {
 			fmt.Println("❌")
 			return fmt.Errorf("spec file validation failed: %w", err)
@@ -369,7 +410,7 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 		hasAccountIDFromFlags := awsAccountID != "" || gcpProjectID != ""
 		// Assume hosted deployment if we have a single cloud provider account
 		assumeHosted := len(accounts.AccountConfigs) == 1
-		if !assumeHosted && !hasAccountID && !hasAccountIDFromFlags {
+		if !assumeHosted && !hasAccountIDFromFlags {
 			fmt.Println("❌")
 			return errors.New("multiple cloud provider accounts found but no account ID specified in spec file or flags. Please specify account ID in spec file or use --aws-account-id/--gcp-project-id flags")
 		}
@@ -1275,16 +1316,9 @@ func upgradeExistingInstance(ctx context.Context, token, instanceID, serviceID, 
 	return nil
 }
 
-// validateSpecFileConfiguration validates the spec file for account ID and tenant-aware resources
-func validateSpecFileConfiguration(data []byte, specType string) (hasAccountID bool, tenantAwareResourceCount int, err error) {
+// validateSpecFileConfiguration validates the spec file for  tenant-aware resources
+func validateSpecFileConfiguration(data []byte, specType string) (tenantAwareResourceCount int, err error) {
 	content := string(data)
-	
-	// Check for account ID patterns
-	hasAccountID = strings.Contains(content, "account-id") || 
-		strings.Contains(content, "accountId") || 
-		strings.Contains(content, "account_id") ||
-		strings.Contains(content, "cloudProviderAccountId")
-	
 	// For Docker Compose specs, look for tenant-aware resources
 	if specType == build.DockerComposeSpecType {
 		// Only count x-omnistrate-mode-internal if not explicitly set to false
@@ -1298,7 +1332,7 @@ func validateSpecFileConfiguration(data []byte, specType string) (hasAccountID b
 		tenantAwareResourceCount = 1
 	}
 	
-	return hasAccountID, tenantAwareResourceCount, nil
+	return  tenantAwareResourceCount, nil
 }
 
 // findExistingService searches for an existing service by name
@@ -1575,3 +1609,106 @@ func extractEnvVarName(envVar string) string {
 	
 	return ""
 }
+
+// createDeploymentYAML generates a YAML document for deployment based on modelType, creationMethod, and cloud account flags
+// Returns a map[string]interface{} representing the YAML structure
+func createDeploymentYAML(
+	deploymentType string,
+	specType string,
+	awsAccountID string,
+	awsBootstrapRoleARN string,
+	gcpProjectID string,
+	gcpProjectNumber string,
+	gcpServiceAccountEmail string,
+	azureSubscriptionID string,
+	azureTenantID string,
+) map[string]interface{} {
+       yamlDoc := make(map[string]interface{})
+
+	if awsBootstrapRoleARN == "" && awsAccountID != "" {
+		// Default role ARN if not provided
+		awsBootstrapRoleARN = fmt.Sprintf("arn:aws:iam::%s:role/OmnistrateBootstrapRole", awsAccountID)
+	}
+
+	if gcpServiceAccountEmail == "" && gcpProjectID != "" {
+		// Default service account email if not provided
+		gcpServiceAccountEmail = fmt.Sprintf("omnistrate-bootstrap@%s.iam.gserviceaccount.com", gcpProjectID)
+	}
+
+	// Clear out any existing deployment or account sections to avoid duplication
+	delete(yamlDoc, "deployment")
+	delete(yamlDoc, "x-omnistrate-byoa")
+	delete(yamlDoc, "x-omnistrate-my-account")
+
+	       // Build the deployment section based on deploymentType and specType
+
+	       if deploymentType == "byoa" {
+		       if specType != "DockerCompose"  {
+			       yamlDoc["deployment"] = map[string]interface{}{
+				       "byoaDeployment": map[string]interface{}{
+					       "AwsAccountId": awsAccountID,
+					       "AwsBootstrapRoleAccountArn": awsBootstrapRoleARN,
+				       },
+			       }
+		       } else {
+			       yamlDoc["x-omnistrate-byoa"] = map[string]interface{}{
+				       "AwsAccountId": awsAccountID,
+				       "AwsBootstrapRoleAccountArn": awsBootstrapRoleARN,
+			       }
+		       }
+	       } else if deploymentType == "hosted" {
+		       if specType != "DockerCompose" {
+			       hostedDeployment := make(map[string]interface{})
+			       if awsAccountID != "" {
+				       hostedDeployment["AwsAccountId"] = awsAccountID
+				       if awsBootstrapRoleARN != "" {
+					       hostedDeployment["AwsBootstrapRoleAccountArn"] = awsBootstrapRoleARN
+				       }
+			       }
+			       if gcpProjectID != "" {
+				       hostedDeployment["GcpProjectId"] = gcpProjectID
+				       if gcpProjectNumber != "" {
+					       hostedDeployment["GcpProjectNumber"] = gcpProjectNumber
+				       }
+				       if gcpServiceAccountEmail != "" {
+					       hostedDeployment["GcpServiceAccountEmail"] = gcpServiceAccountEmail
+				       }
+			       }
+			       if azureSubscriptionID != "" {
+				       hostedDeployment["AzureSubscriptionID"] = azureSubscriptionID
+				       if azureTenantID != "" {
+					       hostedDeployment["AzureTenantID"] = azureTenantID
+				       }
+			       }
+			       yamlDoc["deployment"] = map[string]interface{}{
+				       "hostedDeployment": hostedDeployment,
+			       }
+		       } else {
+			       myAccount := make(map[string]interface{})
+			       if awsAccountID != "" {
+				       myAccount["AwsAccountId"] = awsAccountID
+				       if awsBootstrapRoleARN != "" {
+					       myAccount["AwsBootstrapRoleAccountArn"] = awsBootstrapRoleARN
+				       }
+			       }
+			       if gcpProjectID != "" {
+				       myAccount["GcpProjectId"] = gcpProjectID
+				       if gcpProjectNumber != "" {
+					       myAccount["GcpProjectNumber"] = gcpProjectNumber
+				       }
+				       if gcpServiceAccountEmail != "" {
+					       myAccount["GcpServiceAccountEmail"] = gcpServiceAccountEmail
+				       }
+			       }
+			       if azureSubscriptionID != "" {
+				       myAccount["AzureSubscriptionID"] = azureSubscriptionID
+				       if azureTenantID != "" {
+					       myAccount["AzureTenantID"] = azureTenantID
+				       }
+			       }
+			       yamlDoc["x-omnistrate-my-account"] = myAccount
+		       }
+			}
+	   return yamlDoc
+}
+
