@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"reflect"
 	"regexp"
 	"strings"
 	"time"
@@ -77,6 +78,7 @@ func init() {
 	DeployCmd.Flags().String("service-plan-id", "", "Specify the service plan ID to use when multiple plans exist")
 	DeployCmd.Flags().StringP("spec-type", "s", DockerComposeSpecType, "Spec type")
 	DeployCmd.Flags().Bool("wait", false, "Wait for deployment to complete before returning.")
+	DeployCmd.Flags().String("instance-id", "", "Specify the instance ID to use when multiple deployments exist.")
 	// Additional flags from build command
 	DeployCmd.Flags().StringArray("env-var", nil, "Specify environment variables required for running the image. Use the format: --env-var key1=var1 --env-var key2=var2. Only effective when no compose spec exists in the repo.")
 	DeployCmd.Flags().Bool("skip-docker-build", false, "Skip building and pushing the Docker image")
@@ -209,6 +211,12 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 
        // Check if spec-type was explicitly provided
        specTypeExplicit := cmd.Flags().Changed("spec-type")
+
+       // Get instance-id flag value
+       instanceID, err := cmd.Flags().GetString("instance-id")
+       if err != nil {
+	       return err
+       }
 
 	// Convert to absolute path if using spec file
 	var absSpecFile string
@@ -404,7 +412,7 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 
 	// Pre-check 3: Check if service exists and validate service plan count
 	fmt.Printf("Checking existing service '%s'... ", serviceNameToUse)
-	existingServiceID, err := findExistingService(cmd.Context(), token, serviceNameToUse)
+	existingServiceID, envs, err := findExistingService(cmd.Context(), token, serviceNameToUse)
 	if err != nil {
 		fmt.Println("❌")
 		return fmt.Errorf("failed to check existing service: %w", err)
@@ -412,7 +420,7 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 
 	if existingServiceID != "" {
 		// Service exists - check service plan count
-		servicePlans, err := getServicePlans(cmd.Context(), token, existingServiceID)
+		servicePlans, err := getServicePlans(cmd.Context(), token, envs)
 		if err != nil {
 			fmt.Println("❌")
 			return fmt.Errorf("failed to check service plans: %w", err)
@@ -442,20 +450,20 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 		
 		fmt.Printf("✅ (existing service with %d plan)\n", len(servicePlans))
 
-		// // Pre-check 4: Check deployment count if service exists
-		// fmt.Print("Checking existing deployments... ")
-		// deploymentCount, err := getDeploymentCount(cmd.Context(), token, existingServiceID)
-		// if err != nil {
-		// 	fmt.Println("❌")
-		// 	return fmt.Errorf("failed to check deployments: %w", err)
-		// }
+		// Pre-check 4: Check deployment count if service exists
+		fmt.Print("Checking existing deployments... ")
+		deploymentCount, err := getDeploymentCount(cmd.Context(), token, existingServiceID, envs, instanceID)
+		if err != nil {
+			fmt.Println("❌")
+			return fmt.Errorf("failed to check deployments: %w", err)
+		}
 
-		// if deploymentCount > 1 {
-		// 	fmt.Println("❌")
-		// 	return fmt.Errorf("service '%s' has %d deployments. Please specify --instance-id when multiple deployments exist", serviceNameToUse, deploymentCount)
-		// }
+		if deploymentCount > 1 {
+			fmt.Println("❌")
+			return fmt.Errorf("service '%s' has %d deployments. Please specify --instance-id when multiple deployments exist", serviceNameToUse, deploymentCount)
+		}
 
-		// fmt.Printf("✅ (%d deployment)\n", deploymentCount)
+		fmt.Printf("✅ (%d deployment)\n", deploymentCount)
 	} else {
 		fmt.Println("✅ (new service)")
 	}
@@ -632,7 +640,7 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 	}
 
 	// Execute post-service-build deployment workflow
-	err = executeDeploymentWorkflow(cmd, sm, token, serviceID, devEnvironmentID, devPlanID, serviceNameToUse)
+	err = executeDeploymentWorkflow(cmd, sm, token, serviceID, devEnvironmentID, devPlanID, serviceNameToUse, instanceID)
 	if err != nil {
 		return err
 	}
@@ -642,7 +650,7 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 
 // executeDeploymentWorkflow handles the complete post-service-build deployment workflow
 // This function is reusable for both deploy and build_simple commands
-func executeDeploymentWorkflow(cmd *cobra.Command, sm ysmrr.SpinnerManager, token, serviceID, devEnvironmentID, devPlanID, serviceName string) error {
+func executeDeploymentWorkflow(cmd *cobra.Command, sm ysmrr.SpinnerManager, token, serviceID, devEnvironmentID, devPlanID, serviceName, instanceID string) error {
 	const defaultProdEnvName = "Production"
 
 	// Step 4: Check if production environment exists
@@ -820,12 +828,11 @@ func executeDeploymentWorkflow(cmd *cobra.Command, sm ysmrr.SpinnerManager, toke
 	}
 
 	// Step 9: Create or upgrade instance deployment automatically
-	var instanceID string
-	var instanceName string
+	var finalInstanceID string
+	var instanceActionType string = "create"
 	
 	// Unified instance creation/upgrade logic for subscription, service provider, or skip subscription flow
 	if subscriptionID != "" || isServiceProvider || skipSubscriptionFlow {
-		instanceName = fmt.Sprintf("%s-instance", serviceName)
 		var (
 			existingInstanceID string
 			err error
@@ -838,12 +845,7 @@ func executeDeploymentWorkflow(cmd *cobra.Command, sm ysmrr.SpinnerManager, toke
 		}
 		spinner = sm.AddSpinner(spinnerMsg)
 
-		if userProvidedPlanID != "" {
-			existingInstanceID, err = listInstances(cmd.Context(), token, serviceID, prodEnvironmentID, userProvidedPlanID, "", subscriptionID)
-		} else {
-			existingInstanceID, err = listInstances(cmd.Context(), token, serviceID, prodEnvironmentID, "", "", subscriptionID)
-		}
-
+		existingInstanceID, err = listInstances(cmd.Context(), token, serviceID, prodEnvironmentID, userProvidedPlanID, instanceID, subscriptionID)
 		if err != nil {
 			spinner.UpdateMessage(spinnerMsg + ": Failed")
 			spinner.Complete()
@@ -865,44 +867,38 @@ func executeDeploymentWorkflow(cmd *cobra.Command, sm ysmrr.SpinnerManager, toke
 				spinner.Complete()
 				fmt.Printf("Warning: Instance upgrade failed: %s\n", upgradeErr.Error())
 			} else {
-				instanceID = existingInstanceID
-				spinner.UpdateMessage(fmt.Sprintf("Upgrading existing instance: Success (ID: %s)", instanceID))
+				finalInstanceID = existingInstanceID
+				spinner.UpdateMessage(fmt.Sprintf("Upgrading existing instance: Success (ID: %s)", finalInstanceID))
 				spinner.Complete()
 			}
+			instanceActionType = "upgrade"
 		} else {
 			noFoundMsg := spinnerMsg + ": No existing instances found"
 			spinner.UpdateMessage(noFoundMsg)
 			spinner.Complete()
 
-			createMsg := "Creating new instance deployment: " + instanceName
+			createMsg := "Creating new instance deployment"
 			if !useSubscription {
-				createMsg = "Creating instance without subscription: " + instanceName
+				createMsg = "Creating instance without subscription"
 			}
 			spinner = sm.AddSpinner(createMsg)
 			createdInstanceID, err := "", error(nil)
-			if useSubscription {
-				   createdInstanceID, err = createInstanceUnified(cmd.Context(), token, serviceID, prodEnvironmentID, prodPlanID, utils.ToPtr(subscriptionID))
-				   instanceID = createdInstanceID  
-				   if err != nil {
-					   spinner.UpdateMessage(fmt.Sprintf("%s: Failed (%s)", createMsg, err.Error()))
-					   spinner.Complete()
-					   fmt.Printf("Error: Failed to create instance: %s\n", err.Error())
-				   } else {
-					   spinner.UpdateMessage(fmt.Sprintf("%s: Success (ID: %s)", createMsg, instanceID))
-					   spinner.Complete()
-				   }
-		} else {
-			   createdInstanceID, err = createInstanceUnified(cmd.Context(), token, serviceID, prodEnvironmentID, prodPlanID, nil)
-			   instanceID = createdInstanceID 
-			   if err != nil {
-				   spinner.UpdateMessage(fmt.Sprintf("%s: Failed (%s)", createMsg, err.Error()))
-				   spinner.Complete()
-				   fmt.Printf("Error: Failed to create instance without subscription: %s\n", err.Error())
-			   } else {
-				   spinner.UpdateMessage(fmt.Sprintf("%s: Success (ID: %s)", createMsg, instanceID))
-				   spinner.Complete()
-			   }
-		}
+			createdInstanceID, err = createInstanceUnified(cmd.Context(), token, serviceID, prodEnvironmentID, prodPlanID, utils.ToPtr(subscriptionID))
+			finalInstanceID = createdInstanceID  
+			if err != nil {
+				spinner.UpdateMessage(fmt.Sprintf("%s: Failed (%s)", createMsg, err.Error()))
+				spinner.Complete()
+				if useSubscription {
+				fmt.Printf("Error: Failed to create instance: %s\n", err.Error())
+				}else{
+					fmt.Printf("Error: Failed to create instance without subscription: %s\n", err.Error())
+				}
+
+			} else {
+				spinner.UpdateMessage(fmt.Sprintf("%s: Success (ID: %s)", createMsg, finalInstanceID))
+				spinner.Complete()
+			}
+	
 	}
 } else {
 	fmt.Println("Warning: No subscription created and not a service provider org - instance creation skipped")
@@ -915,33 +911,33 @@ func executeDeploymentWorkflow(cmd *cobra.Command, sm ysmrr.SpinnerManager, toke
 
        sm.Stop()
 
-       // Success message
-       fmt.Println()
-       fmt.Println("🎉 Deployment completed successfully!")
-       fmt.Printf("   Service: %s (ID: %s)\n", serviceName, serviceID)
-       fmt.Printf("   Production Environment: %s (ID: %s)\n", defaultProdEnvName, prodEnvironmentID)
-       if subscriptionID != "" {
-	       fmt.Printf("   Subscription: %s (ID: %s)\n", subscriptionName, subscriptionID)
-       } else if isServiceProvider {
-	       fmt.Printf("   Organization: Service Provider (direct instance deployment)\n")
-       }
-       if instanceID != "" {
-	       fmt.Printf("   Instance: %s (ID: %s)\n", instanceName, instanceID)
-       }
-       fmt.Println()
-       
-       // Optionally display workflow progress if desired (if you want to keep this logic, pass cmd/context as needed)
-       if waitFlag && instanceID != "" {
-	       fmt.Println("🔄 Deployment progress...")
-	       err = instancecmd.DisplayWorkflowResourceDataWithSpinners(cmd.Context(), token, instanceID, "create")
-	       if err != nil {
-		       fmt.Printf("❌ Deployment failed-- %s\n", err)
-	       } else {
-		       fmt.Println("✅ Deployment successful")
-	       }
-       }
+	   // Success message
+	   fmt.Println()
+	   fmt.Println("🎉 Deployment completed successfully!")
+	   fmt.Printf("   Service: %s (ID: %s)\n", serviceName, serviceID)
+	   fmt.Printf("   Production Environment: %s (ID: %s)\n", defaultProdEnvName, prodEnvironmentID)
+	   if subscriptionID != "" {
+		   fmt.Printf("   Subscription: %s (ID: %s)\n", subscriptionName, subscriptionID)
+	   } else if isServiceProvider {
+		   fmt.Printf("   Organization: Service Provider (direct instance deployment)\n")
+	   }
+	   if finalInstanceID != "" {
+		   fmt.Printf("   Instance: %s (ID: %s)\n", instanceActionType, finalInstanceID)
+	   }
+	   fmt.Println()
+	   
+	   // Optionally display workflow progress if desired (if you want to keep this logic, pass cmd/context as needed)
+	   if waitFlag && finalInstanceID != "" {
+		   fmt.Println("🔄 Deployment progress...")
+		   err = instancecmd.DisplayWorkflowResourceDataWithSpinners(cmd.Context(), token, finalInstanceID, instanceActionType)
+		   if err != nil {
+			   fmt.Printf("❌ Deployment failed-- %s\n", err)
+		   } else {
+			   fmt.Println("✅ Deployment successful")
+		   }
+	   }
 
-       return nil
+	   return nil
 }
 
 
@@ -1187,24 +1183,13 @@ func listInstances(ctx context.Context, token, serviceID, environmentID, service
 	   exitInstanceID := ""
 	   err = nil
 	   for _, instance := range res.ResourceInstances {
-		   var idStr, statusStr string
+		   var idStr string
 		   if instance.ConsumptionResourceInstanceResult.Id != nil {
 			   idStr = *instance.ConsumptionResourceInstanceResult.Id
 		   } else {
 			   idStr = "<nil>"
 		   }
-		   if instance.ConsumptionResourceInstanceResult.Status != nil {
-			   statusStr = *instance.ConsumptionResourceInstanceResult.Status
-		   } else {
-			   statusStr = "<nil>"
-		   }
-		   fmt.Printf(" - Instance ID: %s | Subscription ID: %s | Service Plan ID: %s | Status: %s\n",
-			   idStr,
-			   instance.SubscriptionId,
-			   instance.ProductTierId,
-			   statusStr,
-		   )
-
+		  
 		   instanceCount := 0
 
 
@@ -1297,48 +1282,136 @@ func validateSpecFileConfiguration(data []byte, specType string) (hasAccountID b
 }
 
 // findExistingService searches for an existing service by name
-func findExistingService(ctx context.Context, token, serviceName string) (string, error) {
+func findExistingService(ctx context.Context, token, serviceName string) (string, map[string]interface{}, error) {
 	services, err := dataaccess.ListServices(ctx, token)
 	if err != nil {
-		return "", fmt.Errorf("failed to list services: %w", err)
+		return "", nil, fmt.Errorf("failed to list services: %w", err)
 	}
-	
+
 	for _, service := range services.Services {
 		if service.Name == serviceName {
-			return service.Id, nil
+			// Build map with keys like "DEV", "PROD", etc. mapping to the full ServiceEnvironment object
+			envs := make(map[string]interface{})
+			for _, env := range service.ServiceEnvironments {
+				if env.Type != nil && *env.Type != "" {
+					envs[*env.Type] = env
+				}
+			}
+			return service.Id, envs, nil
 		}
 	}
-	
-	return "", nil // Service not found
+
+	return "", nil, nil // Service not found
 }
 
 // getServicePlans retrieves service plans for a given service
-func getServicePlans(ctx context.Context, token, serviceID string) ([]interface{}, error) {
-	service, err := dataaccess.DescribeService(ctx, token, serviceID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to describe service: %w", err)
+func getServicePlans(ctx context.Context, token string, envs map[string]interface{}) ([]interface{}, error) {
+	env := envs["DEV"]
+	if env == nil {
+		env = envs["dev"]
 	}
-	
-	var allPlans []interface{}
-	for _, env := range service.ServiceEnvironments {
-		for _, plan := range env.ServicePlans {
-			allPlans = append(allPlans, plan)
+	if env != nil {
+		// Try to cast env to a struct that has ServicePlans field
+		// The type is likely dataaccess.ServiceEnvironment or similar
+		// Use reflection as a fallback if type is not known
+		switch e := env.(type) {
+		case map[string]interface{}:
+			// If ServicePlans is present as a key
+			if plans, ok := e["ServicePlans"]; ok {
+				if plansSlice, ok := plans.([]interface{}); ok {
+					return plansSlice, nil
+				}
+			}
+		default:
+			// Try reflection
+			// If env is a struct with ServicePlans field
+			// Use reflection to get the field
+			// Import "reflect" at the top if not already imported
+			val := reflect.ValueOf(env)
+			if val.Kind() == reflect.Ptr {
+				val = val.Elem()
+			}
+			if val.Kind() == reflect.Struct {
+				field := val.FieldByName("ServicePlans")
+				if field.IsValid() && field.CanInterface() {
+					if plansSlice, ok := field.Interface().([]interface{}); ok {
+						return plansSlice, nil
+					}
+				}
+			}
 		}
+		return nil, fmt.Errorf("could not extract ServicePlans from environment")
 	}
-	
-	return allPlans, nil
+	return nil, fmt.Errorf("no DEV environment found for service")
 }
 
 // getDeploymentCount counts the number of deployments for a service
-func getDeploymentCount(ctx context.Context, token, serviceID, environmentID string) (int, error) {
+func getDeploymentCount(ctx context.Context, token, serviceID string, envs map[string]interface{}, instanceID string) (int, error) {
+	var envObj interface{}
+	var ok bool
+
+	envObj, ok = envs["PROD"]
+	if !ok {
+		envObj, ok = envs["prod"]
+	}
+	if !ok {
+		return 0, fmt.Errorf("no PROD environment found for service")
+	}
+
+	// Extract environment ID
+	var environmentID string
+	switch env := envObj.(type) {
+	case map[string]interface{}:
+		if id, exists := env["Id"]; exists {
+			if idStr, ok := id.(string); ok {
+				environmentID = idStr
+			} else {
+				return 0, fmt.Errorf("environment ID is not a string")
+			}
+		} else {
+			return 0, fmt.Errorf("environment does not contain 'Id' field")
+		}
+	default:
+		// Try reflection for struct types
+		val := reflect.ValueOf(envObj)
+		if val.Kind() == reflect.Ptr {
+			val = val.Elem()
+		}
+		if val.Kind() == reflect.Struct {
+			field := val.FieldByName("Id")
+			if field.IsValid() && field.CanInterface() {
+				if idStr, ok := field.Interface().(string); ok {
+					environmentID = idStr
+				} else {
+					return 0, fmt.Errorf("environment ID is not a string")
+				}
+			} else {
+				return 0, fmt.Errorf("environment struct does not contain 'Id' field")
+			}
+		} else {
+			return 0, fmt.Errorf("unsupported environment type for extracting ID")
+		}
+	}
+
 	// Search for instances associated with this service
 	res, err := dataaccess.ListResourceInstance(ctx, token, serviceID, environmentID)
 	if err != nil {
 		return 0, fmt.Errorf("failed to search for deployments: %w", err)
 	}
+
+	if instanceID != ""{
+		for _, instance := range res.ResourceInstances {
+			if instance.ConsumptionResourceInstanceResult.Id != nil && *instance.ConsumptionResourceInstanceResult.Id == instanceID {
+				return 1, nil
+			}
+		}
+		return 0, fmt.Errorf("Instance Id not match for prod environment: %w", err)
+	}
 	
 	return len(res.ResourceInstances), nil
 }
+
+
 
 // checkForInternalTag checks if at least one resource has the x-omnistrate-mode-internal tag
 func checkForInternalTag(data []byte, specType string) (bool, error) {
