@@ -436,7 +436,7 @@ func runDeploy(cmd *cobra.Command, args []string) error {
        }
 
 	// Pre-check 3: Check if service exists and validate service plan count
-	fmt.Printf("Checking existing service '%s'... ", serviceNameToUse)
+	fmt.Println("Checking existing service... ", serviceNameToUse)
 	existingServiceID, envs, err := findExistingService(cmd.Context(), token, serviceNameToUse)
 	if err != nil {
 		fmt.Println("❌")
@@ -473,7 +473,6 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 			}
 		}
 		
-		fmt.Printf("✅ (existing service with %d plan)\n", len(servicePlans))
 
 		// Pre-check 4: Check deployment count if service exists
 		fmt.Print("Checking existing deployments... ")
@@ -814,7 +813,6 @@ func executeDeploymentWorkflow(cmd *cobra.Command, sm ysmrr.SpinnerManager, toke
 	// Create subscription if we have production plans
 	var subscriptionID string
 	var isServiceProvider bool
-	var skipSubscriptionFlow bool
 	if hasProductionPlans && prodPlanID != "" {
 		// Get current user ID for subscription
 		user, err := dataaccess.DescribeUser(cmd.Context(), token)
@@ -832,12 +830,10 @@ func executeDeploymentWorkflow(cmd *cobra.Command, sm ysmrr.SpinnerManager, toke
 		if err != nil {
 			// Check if this is the service provider org error
 			if strings.Contains(err.Error(), "cannot create subscription on behalf of customer user in service provider org") {
-				isServiceProvider = true
 				spinner.UpdateMessage("Creating subscription to the production service: Skipped (service provider org - will create instance directly)")
 				spinner.Complete()
 			} else if subscriptionResp == nil || subscriptionResp.Id == nil {
 				// If error is due to missing subscription ID, skip subscription flow entirely
-				skipSubscriptionFlow = true
 				spinner.UpdateMessage("Creating subscription to the production service: Skipped (no subscription ID required - will create instance directly)")
 				spinner.Complete()
 			} else {
@@ -857,79 +853,74 @@ func executeDeploymentWorkflow(cmd *cobra.Command, sm ysmrr.SpinnerManager, toke
 	// Step 9: Create or upgrade instance deployment automatically
 	var finalInstanceID string
 	var instanceActionType string = "create"
-	
-	// Unified instance creation/upgrade logic for subscription, service provider, or skip subscription flow
-	if subscriptionID != "" || isServiceProvider || skipSubscriptionFlow {
-		var (
-			existingInstanceID string
-			err error
-		)
 
-		var useSubscription = subscriptionID != ""
-		spinnerMsg := "Checking for existing instances"
-		if !useSubscription {
+	var existingInstanceID string
+
+	var useSubscription = subscriptionID != ""
+	spinnerMsg := "Checking for existing instances"
+	if !useSubscription {
 			spinnerMsg = "Checking for existing instances without subscription"
 		}
-		spinner = sm.AddSpinner(spinnerMsg)
+	spinner = sm.AddSpinner(spinnerMsg)
 
-		existingInstanceID, err = listInstances(cmd.Context(), token, serviceID, prodEnvironmentID, userProvidedPlanID, instanceID, subscriptionID)
-		if err != nil {
-			spinner.UpdateMessage(spinnerMsg + ": Failed")
-			spinner.Complete()
-			fmt.Printf("Warning: Failed to check for existing instances: %s\n", err.Error())
-			existingInstanceID = "" // Reset to create new instance
-		}
-
-		fmt.Printf("Note: Instance creation/upgrade is automatic.\n", existingInstanceID)
-
-		if existingInstanceID != "" {
-			foundMsg := spinnerMsg + ": Found existing instance"
-			spinner.UpdateMessage(foundMsg)
-			spinner.Complete()
-
-			spinner = sm.AddSpinner(fmt.Sprintf("Upgrading existing instance: %s", existingInstanceID))
-			upgradeErr := upgradeExistingInstance(cmd.Context(), token, existingInstanceID, serviceID, prodPlanID)
-			if upgradeErr != nil {
-				spinner.UpdateMessage(fmt.Sprintf("Upgrading existing instance: Failed (%s)", upgradeErr.Error()))
-				spinner.Complete()
-				fmt.Printf("Warning: Instance upgrade failed: %s\n", upgradeErr.Error())
-			} else {
-				finalInstanceID = existingInstanceID
-				spinner.UpdateMessage(fmt.Sprintf("Upgrading existing instance: Success (ID: %s)", finalInstanceID))
-				spinner.Complete()
-			}
-			instanceActionType = "upgrade"
-		} else {
-			noFoundMsg := spinnerMsg + ": No existing instances found"
-			spinner.UpdateMessage(noFoundMsg)
-			spinner.Complete()
-
-			createMsg := "Creating new instance deployment"
-			if !useSubscription {
-				createMsg = "Creating instance without subscription"
-			}
-			spinner = sm.AddSpinner(createMsg)
-			createdInstanceID, err := "", error(nil)
-			createdInstanceID, err = createInstanceUnified(cmd.Context(), token, serviceID, prodEnvironmentID, prodPlanID, utils.ToPtr(subscriptionID))
-			finalInstanceID = createdInstanceID  
-			if err != nil {
-				spinner.UpdateMessage(fmt.Sprintf("%s: Failed (%s)", createMsg, err.Error()))
-				spinner.Complete()
-				if useSubscription {
-				fmt.Printf("Error: Failed to create instance: %s\n", err.Error())
-				}else{
-					fmt.Printf("Error: Failed to create instance without subscription: %s\n", err.Error())
-				}
-
-			} else {
-				spinner.UpdateMessage(fmt.Sprintf("%s: Success (ID: %s)", createMsg, finalInstanceID))
-				spinner.Complete()
-			}
-	
+	existingInstanceID, err = listInstances(cmd.Context(), token, serviceID, prodEnvironmentID, prodPlanID, instanceID, subscriptionID)
+	if err != nil {
+		spinner.UpdateMessage(spinnerMsg + ": Failed")
+		spinner.Complete()
+		fmt.Printf("Warning: Failed to check for existing instances: %s\n", err.Error())
+		existingInstanceID = "" // Reset to create new instance
 	}
-} else {
-	fmt.Println("Warning: No subscription created and not a service provider org - instance creation skipped")
-}
+
+	fmt.Printf("Note: Instance creation/upgrade is automatic.\n", existingInstanceID)
+
+	if existingInstanceID != "" {
+		foundMsg := spinnerMsg + ": Found existing instance"
+		spinner.UpdateMessage(foundMsg)
+		spinner.Complete()
+
+		spinner = sm.AddSpinner(fmt.Sprintf("Upgrading existing instance: %s", existingInstanceID))
+		upgradeErr := upgradeExistingInstance(cmd.Context(), token, existingInstanceID, serviceID, prodPlanID)
+		instanceActionType = "upgrade"
+		if upgradeErr != nil {
+			spinner.UpdateMessage(fmt.Sprintf("Upgrading existing instance: Failed (%s)", upgradeErr.Error()))
+			spinner.Complete()
+			fmt.Printf("Warning: Instance upgrade failed: %s\n", upgradeErr.Error())
+		} else {
+			finalInstanceID = existingInstanceID
+			spinner.UpdateMessage(fmt.Sprintf("Upgrading existing instance: Success (ID: %s)", finalInstanceID))
+			spinner.Complete()
+		}
+		
+	} else {
+		noFoundMsg := spinnerMsg + ": No existing instances found"
+		spinner.UpdateMessage(noFoundMsg)
+		spinner.Complete()
+
+		createMsg := "Creating new instance deployment"
+		if !useSubscription {
+			createMsg = "Creating instance without subscription"
+		}
+		spinner = sm.AddSpinner(createMsg)
+		createdInstanceID, err := "", error(nil)
+		createdInstanceID, err = createInstanceUnified(cmd.Context(), token, serviceID, prodEnvironmentID, prodPlanID, utils.ToPtr(subscriptionID))
+		finalInstanceID = createdInstanceID  
+		instanceActionType = "create"
+		if err != nil {
+			spinner.UpdateMessage(fmt.Sprintf("%s: Failed (%s)", createMsg, err.Error()))
+			spinner.Complete()
+			if useSubscription {
+			fmt.Printf("Error: Failed to create instance: %s\n", err.Error())
+			}else{
+				fmt.Printf("Error: Failed to create instance without subscription: %s\n", err.Error())
+			}
+
+		} else {
+			spinner.UpdateMessage(fmt.Sprintf("%s: Success (ID: %s)", createMsg, finalInstanceID))
+			spinner.Complete()
+		}
+	}
+
+
 
        // Step 10: Success message - completed deployment
        spinner = sm.AddSpinner("Deployment workflow completed")
@@ -963,7 +954,6 @@ func executeDeploymentWorkflow(cmd *cobra.Command, sm ysmrr.SpinnerManager, toke
 			   fmt.Println("✅ Deployment successful")
 		   }
 	   }
-
 	   return nil
 }
 
@@ -1170,7 +1160,7 @@ func createInstanceUnified(ctx context.Context, token, serviceID, environmentID,
 		RequestParams:      defaultParams,
 		NetworkType:        nil,
 	}
-	if subscriptionID != nil {
+	if subscriptionID != nil && *subscriptionID != "" {
 		request.SubscriptionId = subscriptionID
 	}
 
@@ -1206,39 +1196,43 @@ func listInstances(ctx context.Context, token, serviceID, environmentID, service
 		return "", fmt.Errorf("failed to search for instances: %w", err)
 	}
 
-	   fmt.Printf("Total instances found: %d\n", len(res.ResourceInstances))
-	   exitInstanceID := ""
-	   err = nil
-	   for _, instance := range res.ResourceInstances {
-		   var idStr string
-		   if instance.ConsumptionResourceInstanceResult.Id != nil {
-			   idStr = *instance.ConsumptionResourceInstanceResult.Id
-		   } else {
-			   idStr = "<nil>"
-		   }
-		  
-		   instanceCount := 0
+	fmt.Printf("Total instances found: %d\n", len(res.ResourceInstances))
+	exitInstanceID := ""
+	err = nil
+	for _, instance := range res.ResourceInstances {
+		var idStr string
+		if instance.ConsumptionResourceInstanceResult.Id != nil {
+			idStr = *instance.ConsumptionResourceInstanceResult.Id
+		} else {
+			idStr = "<nil>"
+		}
+		
+		instanceCount := 0
 
 
-		   // Match based on provided filters
-		   // Priority: instanceID > subscriptionID > servicePlanID
-		   if exitInstanceID == "" && instanceID != "" && idStr != "" && idStr == instanceID {
-			   exitInstanceID = idStr
-		   } else if exitInstanceID == "" && subscriptionID != "" && instance.SubscriptionId != "" && instance.SubscriptionId == subscriptionID {
-			   if idStr!= "" {
-				   exitInstanceID = idStr
-			   }
-		   } else if exitInstanceID == "" && servicePlanID != "" && instance.ProductTierId == servicePlanID {
-			   if idStr!= "" {
-				   exitInstanceID = idStr
-			   }
-			   instanceCount++
-			   
-		   }
-		   // If multiple instances match servicePlanID, return error to specify instanceID
-			   if instanceCount > 1 {
-				   err = fmt.Errorf("multiple instances found for service plan ID %s - please specify instance ID to select the correct one", servicePlanID)
-			   }
+		// Match based on provided filters
+		// Priority: instanceID > subscriptionID > servicePlanID
+		if exitInstanceID == "" && instanceID != "" && idStr != "" && idStr == instanceID {
+			exitInstanceID = idStr
+			instanceCount++
+		} else if exitInstanceID == "" && subscriptionID != "" && instance.SubscriptionId != "" && instance.SubscriptionId == subscriptionID {
+			if idStr!= "" {
+				exitInstanceID = idStr
+			}
+			instanceCount++
+			fmt.Println("instance.SubscriptionId :",instance.SubscriptionId, subscriptionID,idStr)
+		} else if exitInstanceID == "" && servicePlanID != "" && instance.ProductTierId == servicePlanID {
+			if idStr!= "" {
+				exitInstanceID = idStr
+			}
+			fmt.Println("instance.SubscriptionId :",instance.ProductTierId,servicePlanID,idStr)
+			instanceCount++
+			
+	}
+	// If multiple instances match servicePlanID, return error to specify instanceID
+		if instanceCount > 1 {
+			err = fmt.Errorf("multiple instances found for service plan ID %s - please specify instance ID to select the correct one", servicePlanID)
+		}
 	}
 	return exitInstanceID, err
 }
@@ -1246,7 +1240,6 @@ func listInstances(ctx context.Context, token, serviceID, environmentID, service
 
 // upgradeExistingInstance upgrades an existing instance to the latest version
 func upgradeExistingInstance(ctx context.Context, token, instanceID, serviceID, productTierID string) error {
-	fmt.Printf("Upgrading instance %s to the latest version %s of service plan %s\n", instanceID, serviceID, productTierID)
 	// Get the latest version
 	latestVersion, err := dataaccess.FindLatestVersion(ctx, token, serviceID, productTierID)
 	if err != nil {
@@ -1337,39 +1330,42 @@ func getServicePlans(ctx context.Context, token string, envs map[string]interfac
 	if env == nil {
 		env = envs["dev"]
 	}
-	if env != nil {
-		// Try to cast env to a struct that has ServicePlans field
-		// The type is likely dataaccess.ServiceEnvironment or similar
-		// Use reflection as a fallback if type is not known
-		switch e := env.(type) {
-		case map[string]interface{}:
-			// If ServicePlans is present as a key
-			if plans, ok := e["ServicePlans"]; ok {
-				if plansSlice, ok := plans.([]interface{}); ok {
-					return plansSlice, nil
-				}
+	if env == nil {
+		return nil, fmt.Errorf("no DEV environment found for service")
+	}
+
+	// Use reflection to handle both struct and pointer-to-struct
+	val := reflect.ValueOf(env)
+	if val.Kind() == reflect.Ptr {
+		val = val.Elem()
+	}
+	if val.Kind() == reflect.Struct {
+		field := val.FieldByName("ServicePlans")
+		if field.IsValid() && field.CanInterface() {
+			plansVal := field
+			if plansVal.Kind() == reflect.Ptr {
+				plansVal = plansVal.Elem()
 			}
-		default:
-			// Try reflection
-			// If env is a struct with ServicePlans field
-			// Use reflection to get the field
-			// Import "reflect" at the top if not already imported
-			val := reflect.ValueOf(env)
-			if val.Kind() == reflect.Ptr {
-				val = val.Elem()
-			}
-			if val.Kind() == reflect.Struct {
-				field := val.FieldByName("ServicePlans")
-				if field.IsValid() && field.CanInterface() {
-					if plansSlice, ok := field.Interface().([]interface{}); ok {
-						return plansSlice, nil
-					}
+			if plansVal.Kind() == reflect.Slice {
+				var allPlans []interface{}
+				for i := 0; i < plansVal.Len(); i++ {
+					allPlans = append(allPlans, plansVal.Index(i).Interface())
 				}
+				return allPlans, nil
 			}
 		}
-		return nil, fmt.Errorf("could not extract ServicePlans from environment")
+	} else if val.Kind() == reflect.Map {
+		// If ServicePlans is present as a key in a map
+		plansVal := val.MapIndex(reflect.ValueOf("ServicePlans"))
+		if plansVal.IsValid() && plansVal.Kind() == reflect.Slice {
+			var allPlans []interface{}
+			for i := 0; i < plansVal.Len(); i++ {
+				allPlans = append(allPlans, plansVal.Index(i).Interface())
+			}
+			return allPlans, nil
+		}
 	}
-	return nil, fmt.Errorf("no DEV environment found for service")
+	return nil, fmt.Errorf("could not extract ServicePlans from environment")
 }
 
 // getDeploymentCount counts the number of deployments for a service
