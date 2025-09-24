@@ -37,7 +37,7 @@ const (
 )
 
 // buildServiceFromRepo builds a service from repository using the same logic as build-from-repo command
-func buildServiceFromRepo(ctx context.Context, token, name string, releaseDescription *string, deploymentType, awsAccountID, gcpProjectID, gcpProjectNumber string, envVars []string, skipDockerBuild, skipServiceBuild, skipEnvironmentPromotion, skipSaasPortalInit bool, dryRun bool, platforms []string, resetPAT bool) (serviceID string, environmentID string, productTierID string, undefinedResources map[string]string, err error) {
+func buildServiceFromRepo(ctx context.Context, token, name string, releaseDescription *string, deploymentType, awsAccountID, gcpProjectID, gcpProjectNumber, azureSubscriptionID, azureTenantID string, envVars []string, skipDockerBuild, skipServiceBuild, skipEnvironmentPromotion, skipSaasPortalInit bool, dryRun bool, platforms []string, resetPAT bool) (serviceID string, environmentID string, productTierID string, undefinedResources map[string]string, err error) {
 	if name == "" {
 		return "", "", "", make(map[string]string), errors.New("name is required")
 	}
@@ -583,6 +583,10 @@ func buildServiceFromRepo(ctx context.Context, token, name string, releaseDescri
 					gcpServiceAccountEmail := fmt.Sprintf("bootstrap-%s@%s.iam.gserviceaccount.com", *user.OrgId, gcpProjectID)
 					fileData = append(fileData, []byte(fmt.Sprintf("      GcpServiceAccountEmail: '%s'\n", gcpServiceAccountEmail))...)
 				}
+				if azureSubscriptionID != ""{
+					fileData = append(fileData, []byte(fmt.Sprintf("      AzureSubscriptionId: '%s'\n", azureSubscriptionID))...)
+					fileData = append(fileData, []byte(fmt.Sprintf("      AzureTenantId: '%s'\n", azureTenantID))...)
+				}
 			}
 
 			// Write the compose spec to a file
@@ -625,6 +629,10 @@ func buildServiceFromRepo(ctx context.Context, token, name string, releaseDescri
 						gcpServiceAccountEmail := fmt.Sprintf("bootstrap-%s@%s.iam.gserviceaccount.com", *user.OrgId, gcpProjectID)
 						fileData = append(fileData, []byte(fmt.Sprintf("      GcpServiceAccountEmail: '%s'\n", gcpServiceAccountEmail))...)
 					}
+					if azureSubscriptionID != ""{
+					fileData = append(fileData, []byte(fmt.Sprintf("      AzureSubscriptionId: '%s'\n", azureSubscriptionID))...)
+					fileData = append(fileData, []byte(fmt.Sprintf("      AzureTenantId: '%s'\n", azureTenantID))...)
+				}
 				}
 			}
 

@@ -74,6 +74,8 @@ func init() {
 	DeployCmd.Flags().String("aws-account-id", "", "AWS account ID for BYOA or hosted deployment")
 	DeployCmd.Flags().String("gcp-project-id", "", "GCP project ID for BYOA or hosted deployment. Must be used with --gcp-project-number")
 	DeployCmd.Flags().String("gcp-project-number", "", "GCP project number for BYOA or hosted deployment. Must be used with --gcp-project-id")
+	DeployCmd.Flags().String("azure-subscription-id", "", "Azure subscription ID for BYOA or hosted deployment")
+	DeployCmd.Flags().String("azure-tenant-id", "", "Azure tenant ID for BYOA or hosted deployment")
 	DeployCmd.Flags().String("deployment-type", "", "Deployment type: hosted  or byoa")
 	DeployCmd.Flags().String("service-plan-id", "", "Specify the service plan ID to use when multiple plans exist")
 	DeployCmd.Flags().StringP("spec-type", "s", DockerComposeSpecType, "Spec type")
@@ -92,6 +94,16 @@ func init() {
 var waitFlag bool
 
 func runDeploy(cmd *cobra.Command, args []string) error {
+	// Get Azure account flags
+	azureSubscriptionID, err := cmd.Flags().GetString("azure-subscription-id")
+	if err != nil {
+		return err
+	}
+	 azureTenantID, err := cmd.Flags().GetString("azure-tenant-id")
+	   if err != nil {
+		   return err
+	   }
+	// _, err = cmd.Flags().GetString("azure-tenant-id")
 	defer config.CleanupArgsAndFlags(cmd, &args)
 
 	// Step 0: Validate user is logged in first
@@ -159,14 +171,17 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 
 	
 	if deploymentType == "byoa" || deploymentType == "hosted" {
-		if awsAccountID == "" && gcpProjectID == "" {
-			return errors.New("BYOA deployment type requires either --aws-account-id or --gcp-project-id to be specified")
+		if awsAccountID == "" && gcpProjectID == "" && azureSubscriptionID == "" {
+			return errors.New("BYOA deployment type requires either --aws-account-id, --gcp-project-id or --azure-subscription-id to be specified")
 		}
 		if gcpProjectID != "" && gcpProjectNumber == "" {
 			return errors.New("GCP project number is required with GCP project ID")
 		}
 		if gcpProjectID == "" && gcpProjectNumber != "" {
 			return errors.New("GCP project ID is required with GCP project number")
+		}
+		if azureSubscriptionID == "" && azureTenantID != "" {
+			return errors.New("Azure subscription ID is required with Azure tenant ID")
 		}
 	}
 
@@ -264,13 +279,14 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 	       }
 	}
 
-	var cloudProviderAPI string = "aws"
-
-	if awsAccountID != "" {
-		cloudProviderAPI = "aws"
-	} else if gcpProjectID != "" {
-		cloudProviderAPI = "gcp"
-	}
+       var cloudProviderAPI string = "aws"
+       if awsAccountID != "" {
+	       cloudProviderAPI = "aws"
+       } else if gcpProjectID != "" {
+	       cloudProviderAPI = "gcp"
+       } else if azureSubscriptionID != "" {
+	       cloudProviderAPI = "azure"
+       }
 	// Pre-check 1: Check for linked cloud provider accounts
 	fmt.Print("Checking linked cloud provider accounts... ")
 	accounts, err := dataaccess.ListAccounts(cmd.Context(), token, cloudProviderAPI)
@@ -317,6 +333,12 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 					break
 				}
 			}
+			if azureSubscriptionID != "" && account.AzureSubscriptionID != nil && *account.AzureSubscriptionID == azureSubscriptionID {
+				if azureTenantID != "" && account.AzureTenantID != nil && *account.AzureTenantID == azureTenantID {
+					foundMatchingAccount = true
+					break
+				}
+			}
 		}
 		if !foundMatchingAccount {
 			fmt.Println("❌")
@@ -325,6 +347,9 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 			}
 			if gcpProjectID != "" {
 				return fmt.Errorf("GCP project %s/%s is not linked to your organization. Please link it using 'omctl account create' first", gcpProjectID, gcpProjectNumber)
+			}
+			if azureSubscriptionID != "" {
+				return fmt.Errorf("Azure subscription %s/%s is not linked to your organization. Please link it using 'omctl account create' first", azureSubscriptionID, azureTenantID)
 			}
 		}
 	}
@@ -598,6 +623,8 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 			awsAccountID,
 			gcpProjectID,
 			gcpProjectNumber,
+			azureSubscriptionID,
+			azureTenantID,
 			envVars,
 			skipDockerBuild,
 			skipServiceBuild,
