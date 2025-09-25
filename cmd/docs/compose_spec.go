@@ -1,7 +1,6 @@
 package docs
 
 import (
-	"fmt"
 	"strings"
 
 	"github.com/omnistrate-oss/omnistrate-ctl/internal/dataaccess"
@@ -56,17 +55,23 @@ func runComposeSpec(cmd *cobra.Command, args []string) error {
 	}
 
 	if len(results) == 0 {
-		err := fmt.Errorf("no tag sections found in the compose spec documentation")
-		utils.PrintError(err)
-		return nil
+		availableTags, err := dataaccess.ListComposeSpecSections()
+		if err != nil {
+			utils.PrintError(err)
+			return err
+		}
+		err = utils.PrintTextTableJsonArrayOutput(output, availableTags)
+		if err != nil {
+			utils.PrintError(err)
+			return err
+		}
+	} else {
+		// Print results
+		err = utils.PrintTextTableJsonArrayOutput(output, results)
+		if err != nil {
+			utils.PrintError(err)
+			return err
+		}
 	}
-
-	// Print results
-	err = utils.PrintTextTableJsonArrayOutput(output, results)
-	if err != nil {
-		utils.PrintError(err)
-		return err
-	}
-
 	return nil
 }
