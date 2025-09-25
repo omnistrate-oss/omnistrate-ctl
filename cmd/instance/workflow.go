@@ -57,13 +57,10 @@ func displayWorkflowResourceDataWithSpinners(ctx context.Context, token, instanc
 			categoryStatuses := getDynamicCategoryStatuses(resourceData.EventsByCategory)
 			
 			// Build dynamic message with available categories
-			var messageParts []string
-			var allEventTypes []string
-			
-			for _, categoryStatus := range categoryStatuses {
-				messageParts = append(messageParts, fmt.Sprintf("%s: %s", categoryStatus.Name, categoryStatus.Icon))
-				allEventTypes = append(allEventTypes, categoryStatus.EventType)
-			}
+			   var messageParts []string
+			   for _, categoryStatus := range categoryStatuses {
+				   messageParts = append(messageParts, fmt.Sprintf("%s: %s", categoryStatus.Name, categoryStatus.Icon))
+			   }
 
 			// Create dynamic message for this resource
 			message := fmt.Sprintf("%s - %s", resourceData.ResourceName, strings.Join(messageParts, " | "))
@@ -158,14 +155,7 @@ func displayWorkflowResourceDataWithSpinners(ctx context.Context, token, instanc
 
 		// Check for resource-level failures even if workflow is still running
 		for _, resourceData := range resourcesData {
-			// Get dynamic category statuses for this resource
-			categoryStatuses := getDynamicCategoryStatuses(resourceData.EventsByCategory)
-			
-			// Extract event types from all categories
-			var allEventTypes []string
-			for _, categoryStatus := range categoryStatuses {
-				allEventTypes = append(allEventTypes, categoryStatus.EventType)
-			}
+				  // (Removed unused categoryStatuses and allEventTypes)
 			
 			resourceStatus := ""
 			// Also check the resource status from DescribeWorkflow API if available
@@ -206,14 +196,11 @@ func displayWorkflowResourceDataWithSpinners(ctx context.Context, token, instanc
 		} else if isComplete {
 			break
 		}
-
 		// Wait for the next tick
 		<-ticker.C
 	}
-
 	return nil
 }
-
 // getHighestPriorityEventType checks all events in a category and returns the highest priority event type
 func getHighestPriorityEventType(events []dataaccess.CustomWorkflowEvent, categoryName string) string {
 	   // Case 1: No events at all - treat as pending
