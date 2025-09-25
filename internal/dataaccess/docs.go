@@ -57,9 +57,14 @@ type Document struct {
 
 // ComposeSpecResult represents a compose spec search result
 type ComposeSpecResult struct {
-	Header  string `json:"header"`
+	Tag     string `json:"tag"`
 	URL     string `json:"url"`
 	Content string `json:"content,omitempty"`
+}
+
+// ComposeSpecAvailableTag represents a tag that is available in the compose spec documentation
+type ComposeSpecAvailableTag struct {
+	AvailableTag string `json:"available_tag"`
 }
 
 // MarkupSection represents a section of content under a markup heading
@@ -621,6 +626,12 @@ func ParseH3Sections(content string) ([]MarkupSection, error) {
 
 // SearchComposeSpecSections retrieves all compose spec tag sections
 func SearchComposeSpecSections(tag string) ([]ComposeSpecResult, error) {
+
+	// If no tag is provided, list all sections
+	if len(strings.TrimSpace(tag)) == 0 {
+		return []ComposeSpecResult{}, nil
+	}
+
 	// Get the compose spec URL from config
 	composeSpecURL := config.GetComposeSpecUrl()
 
@@ -642,30 +653,47 @@ func SearchComposeSpecSections(tag string) ([]ComposeSpecResult, error) {
 
 	var results []ComposeSpecResult
 
-	if len(tag) > 0 {
-		// Tag provided, filter results
-		lowerTag := strings.ToLower(tag)
-		for _, section := range h3Sections {
-			if strings.Contains(strings.ToLower(section.Header), lowerTag) {
-				results = append(results, ComposeSpecResult{
-					Header:  section.Header,
-					Content: section.Content,
-					URL:     strings.TrimSuffix(composeSpecURL, "index.md") + "#" + url.QueryEscape(strings.ReplaceAll(strings.ToLower(section.Header), " ", "-")),
-				})
-			}
+	// Tag provided, filter results
+	lowerTag := strings.ToLower(tag)
+	for _, section := range h3Sections {
+		if strings.Contains(strings.ToLower(section.Header), lowerTag) {
+			results = append(results, ComposeSpecResult{
+				Tag:     section.Header,
+				Content: section.Content,
+				URL:     strings.TrimSuffix(composeSpecURL, "index.md") + "#" + url.QueryEscape(strings.ReplaceAll(strings.ToLower(section.Header), " ", "-")),
+			})
 		}
-		return results, nil
+	}
+	return results, nil
+}
+
+// ListComposeSpecSections retrieves all compose spec tag sections
+func ListComposeSpecSections() ([]ComposeSpecAvailableTag, error) {
+	// Get the compose spec URL from config
+	composeSpecURL := config.GetComposeSpecUrl()
+
+	// Fetch content from the compose spec documentation
+	content, err := fetchContentFromURL(composeSpecURL)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch compose spec documentation: %w", err)
 	}
 
-	// If no matching sections found for the tag, return all sections without content
-	// This allows users to see all available tags
+	// Parse H3 headers and their content
+	h3Sections, err := ParseH3Sections(content)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse tag information: %w", err)
+	}
+
+	if len(h3Sections) == 0 {
+		return nil, fmt.Errorf("no tag information found in the compose spec documentation")
+	}
+
+	var results []ComposeSpecAvailableTag
 	for _, section := range h3Sections {
-		results = append(results, ComposeSpecResult{
-			Header: section.Header,
-			URL:    strings.TrimSuffix(composeSpecURL, "index.md") + "#" + url.QueryEscape(strings.ReplaceAll(strings.ToLower(section.Header), " ", "-")),
+		results = append(results, ComposeSpecAvailableTag{
+			AvailableTag: section.Header,
 		})
 	}
-
 	return results, nil
 }
 
