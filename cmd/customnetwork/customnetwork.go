@@ -39,6 +39,7 @@ func formatCustomNetwork(network *openapiclientfleet.FleetCustomNetwork) model.C
 		CIDR:              network.Cidr,
 		OwningOrgID:       network.OwningOrgID,
 		OwningOrgName:     network.OwningOrgName,
+		Status:            utils.FromPtr(network.Status),
 	}
 
 	if len(network.NetworkInstances) > 0 {
