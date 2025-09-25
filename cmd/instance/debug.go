@@ -236,7 +236,7 @@ func processHelmResource(resourceInfo *ResourceInfo, actualDebugData map[string]
 	}
 
 	// Fetch workflow events for all resources in this instance
-	resourcesData, workflowInfo, err := dataaccess.GetDebugEventsForAllResources(ctx, token, serviceID, environmentID, instanceID, "")
+resourcesData, workflowInfo, err := dataaccess.GetDebugEventsForAllResources(ctx, token, serviceID, environmentID, instanceID, false,"")
 	if err == nil && len(resourcesData) > 0 {
 		// Find the matching resource and assign its events
 		for _, resData := range resourcesData {
@@ -263,7 +263,7 @@ func processTerraformResource(resourceInfo *ResourceInfo, actualDebugData map[st
 	resourceInfo.TerraformData = parseTerraformData(actualDebugData)
 
 	// Fetch workflow events for all resources in this instance
-	resourcesData, workflowInfo, err := dataaccess.GetDebugEventsForAllResources(ctx, token, serviceID, environmentID, instanceID, "")
+resourcesData, workflowInfo, err := dataaccess.GetDebugEventsForAllResources(ctx, token, serviceID, environmentID, instanceID, false,"")
 	if err == nil && len(resourcesData) > 0 {
 		// Find the matching resource and assign its events
 		for _, resData := range resourcesData {
@@ -297,7 +297,7 @@ func processGenericResource(resourceInfo *ResourceInfo, instanceData *fleet.Reso
 	}
 
 	// Fetch workflow events for all resources in this instance
-	resourcesData, workflowInfo, err := dataaccess.GetDebugEventsForAllResources(ctx, token, serviceID, environmentID, instanceID, "")
+resourcesData, workflowInfo, err := dataaccess.GetDebugEventsForAllResources(ctx, token, serviceID, environmentID, instanceID, false,"")
 	if err == nil && len(resourcesData) > 0 {
 		// Find the matching resource and assign its events
 		for _, resData := range resourcesData {
@@ -2339,7 +2339,7 @@ func pollDebugEventsAndWorkflowStatus(app *tview.Application, rightPanel *tview.
 			// Fetch updated debug events and workflow status for all resources
 			ctx := context.Background()
 			resourcesData, workflowInfo, err := dataaccess.GetDebugEventsForAllResources(
-				ctx, token, serviceID, environmentID, instanceID)
+				ctx, token, serviceID, environmentID, instanceID, false,"")
 
 			if err != nil {
 				// Log error but continue polling
