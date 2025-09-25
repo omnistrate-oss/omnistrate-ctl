@@ -83,43 +83,37 @@ func displayWorkflowResourceDataWithSpinners(ctx context.Context, token, instanc
 	completeSpinners := func(resourcesData []dataaccess.ResourceWorkflowData, workflowInfo *dataaccess.WorkflowInfo) bool {
 		hasFailures := false
 		
-		for i, resourceData := range resourcesData {
-			// First check resource status from DescribeWorkflow API if available
-			resourceStatus := ""
-			if resourceData.ResourceStatus != nil {
-				resourceStatus = mapResourceStatus(*resourceData.ResourceStatus)
-			} else {
-				// Fall back to getting status from events
-				resourceStatus = strings.ToLower(getResourceStatusFromEvents(resourceData.EventsByCategory))
-			}
-			
-			switch resourceStatus {
-			case "ResourceStatusCompleted":
-				resourceSpinners[i].Spinner.Complete()
-			case "ResourceStatusFailed":
-				resourceSpinners[i].Spinner.Error()
-				hasFailures = true
-			case "ResourceStatusPending","ResourceStatusRunning":
-				// For workflow completion, determine final status
-				// If workflow overall is successful, complete pending resources
-				if strings.ToLower(workflowInfo.WorkflowStatus) == "success" {
-					resourceSpinners[i].Spinner.Complete()
-				} else {
-					resourceSpinners[i].Spinner.Error()
-					hasFailures = true
-				}
-			default:
-				// Fallback to overall workflow status
-				if strings.ToLower(workflowInfo.WorkflowStatus) == "success" {
-					resourceSpinners[i].Spinner.Complete()
-				} else {
-					resourceSpinners[i].Spinner.Error()
-					hasFailures = true
-				}
-			}
-		}
-		sm.Stop()
-		return hasFailures
+		   workflowFailed := strings.ToLower(workflowInfo.WorkflowStatus) == "failed" || strings.ToLower(workflowInfo.WorkflowStatus) == "cancelled"
+		   workflowSucceeded := strings.ToLower(workflowInfo.WorkflowStatus) == "success"
+		   for i, resourceData := range resourcesData {
+			   resourceStatus := ""
+			   if resourceData.ResourceStatus != nil {
+				   resourceStatus = mapResourceStatus(*resourceData.ResourceStatus)
+			   } else {
+				   resourceStatus = strings.ToLower(getResourceStatusFromEvents(resourceData.EventsByCategory))
+			   }
+			   // Track if any resource failed
+			   if resourceStatus == "ResourceStatusFailed" {
+				   hasFailures = true
+			   }
+			   // Set spinner state based on resource and workflow status
+			   switch resourceStatus {
+			   case "ResourceStatusCompleted":
+				   resourceSpinners[i].Spinner.Complete()
+			   case "ResourceStatusFailed":
+				   resourceSpinners[i].Spinner.Error()
+			   default:
+				   // For any non-completed/non-failed resource, force final state based on workflow
+				   if workflowSucceeded {
+					   resourceSpinners[i].Spinner.Complete()
+				   } else if workflowFailed {
+					   resourceSpinners[i].Spinner.Error()
+					   hasFailures = true
+				   }
+			   }
+		   }
+		   sm.Stop()
+		   return hasFailures
 	}
 
 	// Function to fetch and display current workflow status for all resources
