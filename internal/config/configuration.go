@@ -3,6 +3,7 @@ package config
 import (
 	_ "embed"
 	"fmt"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -28,6 +29,10 @@ const (
 	clientTimeout        = "CLIENT_TIMEOUT_IN_SECONDS"
 )
 
+func GetComposeSpecUrl() string {
+	return fmt.Sprintf("https://%s/spec-guides/compose-spec/index.md", GetOmnistrateDocsDomain())
+}
+
 func GetLlmsTxtURL() string {
 	return fmt.Sprintf("https://%s/llms.txt", GetOmnistrateDocsDomain())
 }
@@ -44,6 +49,33 @@ func GetToken() (string, error) {
 	}
 
 	return authConfig.Token, nil
+}
+
+func GetIndexCacheTTL() time.Duration {
+	ttlInSeconds := GetEnvAsInteger("OMNISTRATE_INDEX_CACHE_TTL", "3600")
+	return time.Duration(ttlInSeconds) * time.Second
+}
+
+// GetSearchTimestampFilePath returns the path to the timestamp file used to track the last update time of the search index
+func GetSearchTimestampFilePath() string {
+	indexDir := GetSearchIndexDir()
+	indexName := GetSearchIndexName()
+	timestampFileName := indexName + ".timestamp"
+	return filepath.Join(indexDir, timestampFileName)
+}
+
+func GetSearchIndexPath() string {
+	return filepath.Join(GetSearchIndexDir(), GetSearchIndexName())
+}
+
+// GetSearchIndexDir returns the directory where search index files are stored
+func GetSearchIndexDir() string {
+	return GetEnv("OMNISTRATE_SEARCH_INDEX_DIR", filepath.Join(ConfigDir(), "search"))
+}
+
+// GetSearchIndexName returns the name of the search index file
+func GetSearchIndexName() string {
+	return GetEnv("OMNISTRATE_SEARCH_INDEX_NAME", "search_index.bleve")
 }
 
 // GetHost returns the host of the Omnistrate server
