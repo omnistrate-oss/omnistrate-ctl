@@ -23,7 +23,7 @@ services:
           valuesFile:
             path: /test/smoke_test/specfiles/helm/layered_values.yaml
             gitConfiguration:
-              reference: refs/heads/testchartvalues
+              reference: refs/heads/testchartvalues # todo replace with main when values is merged
               repositoryUrl: https://github.com/omnistrate/ctl.git
               accessToken: {{ $secret.GITHUB_TOKEN }}
 
