@@ -9,7 +9,7 @@ deployment:
 x-git-configuration: &git-configuration
   reference: refs/heads/testchartvalues # todo replace with main when values is merged
   repositoryUrl: https://github.com/omnistrate/ctl.git
-  accessToken: 123456789abcdef123456789abcdef12345678
+  accessToken: {{ $secret.GITHUB_TOKEN }}
 
 services:
   - name: Redis Cluster
