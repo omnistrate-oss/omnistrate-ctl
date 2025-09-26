@@ -88,7 +88,11 @@ func PromoteServiceEnvironment(ctx context.Context, token, serviceID, serviceEnv
 	ctxWithToken := context.WithValue(ctx, openapiclientv1.ContextAccessToken, token)
 	apiClient := getV1Client()
 
-	r, err := apiClient.ServiceEnvironmentApiAPI.ServiceEnvironmentApiPromoteServiceEnvironment(ctxWithToken, serviceID, serviceEnvironmentID).Execute()
+	r, err := apiClient.ServiceEnvironmentApiAPI.ServiceEnvironmentApiPromoteServiceEnvironment(ctxWithToken, serviceID, serviceEnvironmentID).
+		PromoteServiceEnvironmentRequest2(
+			openapiclientv1.PromoteServiceEnvironmentRequest2{},
+		).Execute()
+
 	defer func() {
 		if r != nil {
 			_ = r.Body.Close()
