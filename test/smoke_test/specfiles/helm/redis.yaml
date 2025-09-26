@@ -6,6 +6,10 @@ deployment:
     GcpProjectId: "omnistrate-dataplane-host-dev"
     GcpProjectNumber: "61114262792"
     GcpServiceAccountEmail: "bootstrap.getservice@gcp.test.iam"
+x-git-configuration: &git-configuration
+  reference: refs/heads/testchartvalues # todo replace with main when values is merged
+  repositoryUrl: https://github.com/omnistrate/ctl.git
+  accessToken: {{ $secret.GITHUB_TOKEN }}
 
 services:
   - name: Redis Cluster
@@ -23,7 +27,5 @@ services:
           valuesFile:
             path: /test/smoke_test/specfiles/helm/layered_values.yaml
             gitConfiguration:
-              reference: refs/heads/testchartvalues # todo replace with main when values is merged
-              repositoryUrl: https://github.com/omnistrate/ctl.git
-              accessToken: {{ $secret.GITHUB_TOKEN }}
+              <<: *git-configuration
 
