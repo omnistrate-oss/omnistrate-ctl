@@ -182,6 +182,17 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
+
+       // Get dry-run and wait flags
+       dryRun, err := cmd.Flags().GetBool("dry-run")
+       if err != nil {
+	       return err
+       }
+       waitFlag, err = cmd.Flags().GetBool("wait")
+       if err != nil {
+	       return err
+       }
+
 	
 	if deploymentType == "byoa" || deploymentType == "hosted" {
 		if awsAccountID == "" && gcpProjectID == "" && azureSubscriptionID == "" {
@@ -294,10 +305,9 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 	       }
 				   var yamlMap map[string]interface{}
 				   if awsAccountID != "" || gcpProjectID != "" || azureSubscriptionID != "" {
-					   // Use createDeploymentYAML to generate a YAML map, then marshal to []byte for processedData
 					   yamlMap = createDeploymentYAML(
-						   deploymentType, // modelType
-						   specType,       // creationMethod (may need to adjust if you have a separate creationMethod variable)
+						   deploymentType,
+						   specType,
 						   awsAccountID,
 						   awsBootstrapRoleARN,
 						   gcpProjectID,
@@ -310,13 +320,38 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 					   if err != nil {
 						   return errors.Wrap(err, "failed to marshal deployment YAML")
 					   }
-					   // If processedData already has content, append yamlBytes to it with a separator
+					   // If processedData already has content, remove deployment/account keys before appending
 					   if len(processedData) > 0 {
+						   var specMap map[string]interface{}
+						   if err := yaml.Unmarshal(processedData, &specMap); err == nil {
+							   delete(specMap, "deployment")
+							   delete(specMap, "x-omnistrate-byoa")
+							   delete(specMap, "x-omnistrate-my-account")
+							   cleanedData, _ := yaml.Marshal(specMap)
+							   processedData = cleanedData
+						   }
 						   processedData = append(processedData, []byte("\n---\n")...)
 						   processedData = append(processedData, yamlBytes...)
 					   } else {
 						   processedData = yamlBytes
 					   }
+					   if os.Open(absSpecFile); err == nil {
+						   // Spec file exists - back it up first
+						   backupFile := absSpecFile + ".bak"
+						   err = os.WriteFile(backupFile, fileData, 0644)
+						   if err != nil {
+							   return errors.Wrap(err, "failed to create backup of original spec file")
+						   }
+						   fmt.Printf("Backup of original spec file created at %s\n", backupFile)
+					   }
+					   // Overwrite the original spec file with the new YAML
+					   if len(yamlBytes) > 0 {
+						   err = os.WriteFile(absSpecFile, processedData, 0644)
+					   if err != nil {
+						   return errors.Wrap(err, "failed to overwrite spec file with processed YAML")
+					   }
+					}
+					//    fmt.Println("Updated spec file with deployment configuration:", string(yamlBytes))
 				   }
 	}
 
@@ -397,7 +432,6 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 
 	// Pre-check 2: Validate spec file configuration if using spec file
 	if !useRepo {
-		fmt.Print("Validating spec file configuration... ", processedData)
 		tenantAwareResourceCount, err := validateSpecFileConfiguration(processedData, specType)
 		if err != nil {
 			fmt.Println("❌")
@@ -536,32 +570,10 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 	fmt.Println("✅ All pre-checks passed! Proceeding with deployment...")
 
 
-       // Get dry-run and wait flags
-       dryRun, err := cmd.Flags().GetBool("dry-run")
-       if err != nil {
-	       return err
-       }
-       waitFlag, err = cmd.Flags().GetBool("wait")
-       if err != nil {
-	       return err
-       }
 
 	// Additional pre-checks: x-omnistrate-mode-internal tag and required parameters
 	if !useRepo {
-		// // Pre-check 5: Check for x-omnistrate-mode-internal tag
-		// fmt.Print("Checking for x-omnistrate-mode-internal tag... ")
-		// hasInternalTag, err := checkForInternalTag(processedData, specType)
-		// if err != nil {
-		// 	fmt.Println("❌")
-		// 	return fmt.Errorf("failed to check x-omnistrate-mode-internal tag: %w", err)
-		// }
-
-		// if !hasInternalTag {
-		// 	fmt.Println("❌")
-		// 	return errors.New("at least one resource must have the x-omnistrate-mode-internal tag defined")
-		// }
-		// fmt.Println("✅")
-
+		
 		// Pre-check 6: Validate required parameters and prompt for missing values
 		fmt.Print("Validating required parameters... ")
 		// parameterErrors, err := validateAndPromptForRequiredParameters(processedData, specType)
@@ -1318,22 +1330,72 @@ func upgradeExistingInstance(ctx context.Context, token, instanceID, serviceID, 
 
 // validateSpecFileConfiguration validates the spec file for  tenant-aware resources
 func validateSpecFileConfiguration(data []byte, specType string) (tenantAwareResourceCount int, err error) {
-	content := string(data)
-	// For Docker Compose specs, look for tenant-aware resources
-	if specType == build.DockerComposeSpecType {
-		// Only count x-omnistrate-mode-internal if not explicitly set to false
-		// Match lines like: x-omnistrate-mode-internal: true OR just x-omnistrate-mode-internal (without : false)
-		tenantAwareRegex := regexp.MustCompile(`(?m)^\s*x-omnistrate-mode-internal\s*:\s*(false|False|FALSE)\s*$`)
-		matches := tenantAwareRegex.FindAllString(content, -1)
-		tenantAwareResourceCount = len(matches)
-
-	} else {
-		// For Service Plan specs, assume tenant-aware if not specified otherwise
-		tenantAwareResourceCount = 1
-	}
 	
-	return  tenantAwareResourceCount, nil
-}
+	var spec map[string]interface{}
+	if err := yaml.Unmarshal(data, &spec); err != nil {
+		return 0, fmt.Errorf("failed to parse YAML: %w", err)
+	}
+
+	tenantAwareResourceCount = 0
+	// If services section exists, use it
+	if servicesRaw, ok := spec["services"]; ok {
+		if services, ok := servicesRaw.(map[string]interface{}); ok {
+			for _, svcRaw := range services {
+				svc, ok := svcRaw.(map[string]interface{})
+				if !ok {
+					continue
+				}
+				val, hasKey := svc["x-omnistrate-mode-internal"]
+				if hasKey {
+					switch v := val.(type) {
+					case bool:
+						if v {
+							continue
+						}
+					case string:
+						if strings.EqualFold(v, "true") {
+							continue
+						}
+					}
+					tenantAwareResourceCount++
+				} else {
+					tenantAwareResourceCount++
+				}
+			}
+			fmt.Println("tenantAwareResourceCount spec:", tenantAwareResourceCount)
+			return tenantAwareResourceCount, nil
+		}
+	}
+	for _, val := range spec {
+		
+		// Each top-level key is a resource
+		res, ok := val.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		tag, hasTag := res["x-omnistrate-mode-internal"]
+		fmt.Println("Resource:", res)
+		fmt.Println("Tag:", tag, "HasTag:", hasTag)
+		if hasTag {
+			switch v := tag.(type) {
+			case bool:
+				if v {
+					continue
+				}
+			case string:
+				if strings.EqualFold(v, "true") {
+					continue
+				}
+			}
+			tenantAwareResourceCount++
+		} else {
+			tenantAwareResourceCount++
+		}
+	}
+	fmt.Println("tenantAwareResourceCount spec:", tenantAwareResourceCount)
+	return tenantAwareResourceCount, nil
+	}
+
 
 // findExistingService searches for an existing service by name
 func findExistingService(ctx context.Context, token, serviceName string) (string, map[string]interface{}, error) {
@@ -1412,7 +1474,7 @@ func getDeploymentCount(ctx context.Context, token, serviceID string, envs map[s
 		envObj, ok = envs["prod"]
 	}
 	if !ok {
-		return 0, fmt.Errorf("no PROD environment found for service")
+		return 0, nil
 	}
 
 	// Extract environment ID
@@ -1623,6 +1685,10 @@ func createDeploymentYAML(
 	azureSubscriptionID string,
 	azureTenantID string,
 ) map[string]interface{} {
+	if deploymentType == "" {
+		deploymentType = "hosted"
+	}
+	
        yamlDoc := make(map[string]interface{})
 
 	if awsBootstrapRoleARN == "" && awsAccountID != "" {
@@ -1635,80 +1701,77 @@ func createDeploymentYAML(
 		gcpServiceAccountEmail = fmt.Sprintf("omnistrate-bootstrap@%s.iam.gserviceaccount.com", gcpProjectID)
 	}
 
-	// Clear out any existing deployment or account sections to avoid duplication
-	delete(yamlDoc, "deployment")
-	delete(yamlDoc, "x-omnistrate-byoa")
-	delete(yamlDoc, "x-omnistrate-my-account")
+	
 
-	       // Build the deployment section based on deploymentType and specType
+	// Build the deployment section based on deploymentType and specType
 
-	       if deploymentType == "byoa" {
-		       if specType != "DockerCompose"  {
-			       yamlDoc["deployment"] = map[string]interface{}{
-				       "byoaDeployment": map[string]interface{}{
-					       "AwsAccountId": awsAccountID,
-					       "AwsBootstrapRoleAccountArn": awsBootstrapRoleARN,
-				       },
-			       }
-		       } else {
-			       yamlDoc["x-omnistrate-byoa"] = map[string]interface{}{
-				       "AwsAccountId": awsAccountID,
-				       "AwsBootstrapRoleAccountArn": awsBootstrapRoleARN,
-			       }
-		       }
-	       } else if deploymentType == "hosted" {
-		       if specType != "DockerCompose" {
-			       hostedDeployment := make(map[string]interface{})
-			       if awsAccountID != "" {
-				       hostedDeployment["AwsAccountId"] = awsAccountID
-				       if awsBootstrapRoleARN != "" {
-					       hostedDeployment["AwsBootstrapRoleAccountArn"] = awsBootstrapRoleARN
-				       }
-			       }
-			       if gcpProjectID != "" {
-				       hostedDeployment["GcpProjectId"] = gcpProjectID
-				       if gcpProjectNumber != "" {
-					       hostedDeployment["GcpProjectNumber"] = gcpProjectNumber
-				       }
-				       if gcpServiceAccountEmail != "" {
-					       hostedDeployment["GcpServiceAccountEmail"] = gcpServiceAccountEmail
-				       }
-			       }
-			       if azureSubscriptionID != "" {
-				       hostedDeployment["AzureSubscriptionID"] = azureSubscriptionID
-				       if azureTenantID != "" {
-					       hostedDeployment["AzureTenantID"] = azureTenantID
-				       }
-			       }
-			       yamlDoc["deployment"] = map[string]interface{}{
-				       "hostedDeployment": hostedDeployment,
-			       }
-		       } else {
-			       myAccount := make(map[string]interface{})
-			       if awsAccountID != "" {
-				       myAccount["AwsAccountId"] = awsAccountID
-				       if awsBootstrapRoleARN != "" {
-					       myAccount["AwsBootstrapRoleAccountArn"] = awsBootstrapRoleARN
-				       }
-			       }
-			       if gcpProjectID != "" {
-				       myAccount["GcpProjectId"] = gcpProjectID
-				       if gcpProjectNumber != "" {
-					       myAccount["GcpProjectNumber"] = gcpProjectNumber
-				       }
-				       if gcpServiceAccountEmail != "" {
-					       myAccount["GcpServiceAccountEmail"] = gcpServiceAccountEmail
-				       }
-			       }
-			       if azureSubscriptionID != "" {
-				       myAccount["AzureSubscriptionID"] = azureSubscriptionID
-				       if azureTenantID != "" {
-					       myAccount["AzureTenantID"] = azureTenantID
-				       }
-			       }
-			       yamlDoc["x-omnistrate-my-account"] = myAccount
-		       }
+	if deploymentType == "byoa" {
+		if specType != "DockerCompose"  {
+			yamlDoc["deployment"] = map[string]interface{}{
+				"byoaDeployment": map[string]interface{}{
+					"AwsAccountId": awsAccountID,
+					"AwsBootstrapRoleAccountArn": awsBootstrapRoleARN,
+				},
 			}
-	   return yamlDoc
+		} else {
+			yamlDoc["x-omnistrate-byoa"] = map[string]interface{}{
+				"AwsAccountId": awsAccountID,
+				"AwsBootstrapRoleAccountArn": awsBootstrapRoleARN,
+			}
+		}
+	} else if deploymentType == "hosted" {
+		if specType != "DockerCompose" {
+			hostedDeployment := make(map[string]interface{})
+			if awsAccountID != "" {
+				hostedDeployment["AwsAccountId"] = awsAccountID
+				if awsBootstrapRoleARN != "" {
+					hostedDeployment["AwsBootstrapRoleAccountArn"] = awsBootstrapRoleARN
+				}
+			}
+			if gcpProjectID != "" {
+				hostedDeployment["GcpProjectId"] = gcpProjectID
+				if gcpProjectNumber != "" {
+					hostedDeployment["GcpProjectNumber"] = gcpProjectNumber
+				}
+				if gcpServiceAccountEmail != "" {
+					hostedDeployment["GcpServiceAccountEmail"] = gcpServiceAccountEmail
+				}
+			}
+			if azureSubscriptionID != "" {
+				hostedDeployment["AzureSubscriptionID"] = azureSubscriptionID
+				if azureTenantID != "" {
+					hostedDeployment["AzureTenantID"] = azureTenantID
+				}
+			}
+			yamlDoc["deployment"] = map[string]interface{}{
+				"hostedDeployment": hostedDeployment,
+			}
+		} else {
+			myAccount := make(map[string]interface{})
+			if awsAccountID != "" {
+				myAccount["AwsAccountId"] = awsAccountID
+				if awsBootstrapRoleARN != "" {
+					myAccount["AwsBootstrapRoleAccountArn"] = awsBootstrapRoleARN
+				}
+			}
+			if gcpProjectID != "" {
+				myAccount["GcpProjectId"] = gcpProjectID
+				if gcpProjectNumber != "" {
+					myAccount["GcpProjectNumber"] = gcpProjectNumber
+				}
+				if gcpServiceAccountEmail != "" {
+					myAccount["GcpServiceAccountEmail"] = gcpServiceAccountEmail
+				}
+			}
+			if azureSubscriptionID != "" {
+				myAccount["AzureSubscriptionID"] = azureSubscriptionID
+				if azureTenantID != "" {
+					myAccount["AzureTenantID"] = azureTenantID
+				}
+			}
+			yamlDoc["x-omnistrate-my-account"] = myAccount
+		}
+	}
+	return yamlDoc
 }
 
