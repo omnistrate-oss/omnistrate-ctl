@@ -276,6 +276,5 @@ volumes:
   file_system_data:
     driver: sharedFileSystem
     driver_opts:
-      efsThroughputMode: provisioned
+      efsThroughputMode: elastic
       efsPerformanceMode: generalPurpose
-      efsProvisionedThroughputInMibps: 100
