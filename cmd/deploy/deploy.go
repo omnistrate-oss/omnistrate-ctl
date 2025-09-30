@@ -229,20 +229,7 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	if deploymentType == "byoa" || deploymentType == "hosted" {
-		if awsAccountID == "" && gcpProjectID == "" && azureSubscriptionID == "" {
-			return errors.New("BYOA deployment type requires either --aws-account-id, --gcp-project-id or --azure-subscription-id to be specified")
-		}
-		if gcpProjectID != "" && gcpProjectNumber == "" {
-			return errors.New("GCP project number is required with GCP project ID")
-		}
-		if gcpProjectID == "" && gcpProjectNumber != "" {
-			return errors.New("GCP project ID is required with GCP project number")
-		}
-		if azureSubscriptionID == "" && azureTenantID != "" {
-			return errors.New("Azure subscription ID is required with Azure tenant ID")
-		}
-	}
+
 
 	// Pre-checks: Validate environment and requirements
 	fmt.Println("Running pre-deployment checks...")
@@ -382,50 +369,112 @@ func runDeploy(cmd *cobra.Command, args []string) error {
        } else if azureSubscriptionID != "" {
 	       cloudProvider = "azure"
        }
-	// Pre-check 1: Check for linked cloud provider accounts
-	accounts, err := dataaccess.ListAccounts(cmd.Context(), token, cloudProvider)
-	if err != nil {
-		return fmt.Errorf("❌ failed to check cloud provider accounts: %w", err)
-	}
 
-	// Filter for READY accounts
-	readyAccounts := []interface{}{}
-	for _, account := range accounts.AccountConfigs {
-		if account.Status == "READY" {
-			readyAccounts = append(readyAccounts, account)
+	   allCloudProviders := []string{}
+	   if cloudProvider == "" {
+
+		   // If no cloud provider is set, assume all providers are available
+		   allCloudProviders = []string{"aws", "gcp", "azure"}
+	   } else {
+		   allCloudProviders = []string{cloudProvider}
+	   }
+
+	   allAccounts := []interface{}{}
+	   // Filter for READY accounts and collect status information
+	   readyAccounts := []interface{}{}
+	   accountStatusSummary := make(map[string]int)
+	   var foundMatchingAccount bool
+		var accountStatus string
+
+	   for _, cp := range allCloudProviders {
+		   // Pre-check 1: Check for linked cloud provider accounts
+		   accounts, err := dataaccess.ListAccounts(cmd.Context(), token, cp)
+		   if err != nil {
+			   return fmt.Errorf("❌ failed to check cloud provider accounts: %w", err)
+		   }
+		   for _, acc := range accounts.AccountConfigs {
+			   allAccounts = append(allAccounts, acc)
+			   if acc.Status == "READY" {
+				   readyAccounts = append(readyAccounts, acc)
+			   }
+			   accountStatusSummary[acc.Status]++
+			   if awsAccountID != "" && acc.AwsAccountID != nil {
+				   if *acc.AwsAccountID == awsAccountID {
+					   foundMatchingAccount = true
+					   accountStatus = acc.Status
+					   break
+				   }
+				}
+			if gcpProjectID != "" && acc.GcpProjectID != nil {
+				if *acc.GcpProjectID == gcpProjectID && *acc.GcpProjectNumber == gcpProjectNumber {
+					
+							foundMatchingAccount = true
+							accountStatus = acc.Status
+							break
+				}
+			
+		   }
+		   if azureSubscriptionID != "" && acc.AzureSubscriptionID != nil {
+			   if *acc.AzureSubscriptionID == azureSubscriptionID && *acc.AzureTenantID == azureTenantID {
+				   foundMatchingAccount = true
+				   accountStatus = acc.Status
+				   break
+			   }
+			}
 		}
 	}
-	fmt.Printf("✅ (%d READY accounts found)\n", len(readyAccounts))
+	fmt.Printf("Checking cloud provider accounts...\n")
+	
+	
+	// Auto-configure cloud provider and account IDs from single account if available
+	if awsAccountID == "" && gcpProjectID == "" && azureSubscriptionID == "" {
 
+	// Display detailed account status information
+	fmt.Printf("✅ Found %d total accounts:\n", len(allAccounts))
+	for status, count := range accountStatusSummary {
+		if status == "READY" {
+			fmt.Printf("   - %d %s accounts ✅\n", count, status)
+		} else {
+			fmt.Printf("   - %d %s accounts ⚠️\n", count, status)
+		}
+	}
+
+	// Ensure at least one READY account is available
 	if len(readyAccounts) == 0 {
-		return errors.New("❌ no READY cloud provider accounts linked. Please link at least one READY account using 'omctl account create' before deploying")
+		if len(allAccounts) > 0 {
+			fmt.Printf("\n❌ No READY accounts found. Account setup required:\n")
+			fmt.Printf("   Your organization has %d accounts, but none are in READY status.\n", len(allAccounts))
+			fmt.Printf("   Non-READY accounts may need to complete onboarding or have configuration issues.\n")
+			fmt.Printf("\n💡 Next steps:\n")
+			fmt.Printf("   1. Check existing account status: omctl account list\n")
+			fmt.Printf("   2. Complete onboarding for existing accounts, or\n")
+			fmt.Printf("   3. Create a new READY account: omctl account create\n")
+			return errors.New("❌ deployment requires at least one READY cloud provider account")
+		} else {
+			fmt.Printf("\n❌ No cloud provider accounts found.\n")
+			fmt.Printf("💡 Create your first account: omctl account create\n")
+			return errors.New("❌ no cloud provider accounts linked. Please link at least one account using 'omctl account create' before deploying")
+		}
 	}
 
 	if len(readyAccounts) == 1 {
-		// Determine cloud provider from the account
 		account := readyAccounts[0]
-		// Use type assertion to access fields
 		if accMap, ok := account.(map[string]interface{}); ok {
-			if accMap["awsAccountID"] != nil {
+			if accMap["awsAccountID"] != nil && awsAccountID == "" {
 				cloudProvider = "aws"
-				if awsAccountID == "" {
 				if v, ok := accMap["awsAccountID"].(string); ok {
 					awsAccountID = v
 				}
-			}
-			} else if accMap["gcpProjectID"] != nil {
+			} else if accMap["gcpProjectID"] != nil && gcpProjectID == "" && gcpProjectNumber == "" {
 				cloudProvider = "gcp"
-				if gcpProjectID == "" && gcpProjectNumber == "" {
 				if v, ok := accMap["gcpProjectID"].(string); ok {
 					gcpProjectID = v
 				}
 				if v, ok := accMap["gcpProjectNumber"].(string); ok {
 					gcpProjectNumber = v
 				}
-			}
-			} else if accMap["azureSubscriptionID"] != nil {
+			} else if accMap["azureSubscriptionID"] != nil && azureSubscriptionID == "" && azureTenantID == "" {
 				cloudProvider = "azure"
-				if azureSubscriptionID == "" && azureTenantID == "" {
 				if v, ok := accMap["azureSubscriptionID"].(string); ok {
 					azureSubscriptionID = v
 				}
@@ -433,40 +482,21 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 					azureTenantID = v
 				}
 			}
-			}
 		}
 		fmt.Printf("✅ (1 account found - assuming provider hosted: %s)\n", cloudProvider)
-	} else {
-		fmt.Printf("✅ (%d accounts found)\n", len(accounts.AccountConfigs))
+	} else if len(readyAccounts) > 1 && awsAccountID == "" && gcpProjectID == "" && azureSubscriptionID == "" {
+		return fmt.Errorf("❌ multiple cloud provider accounts found but no account ID specified in spec file or flags. Please specify account ID in spec file or use --aws-account-id/--gcp-project-id/--azure-subscription-id flags")
+
+	}  else {
+		fmt.Printf("✅ (%d accounts found)\n", len(readyAccounts))
 	}
+}
 
 
 	// Validate cloud provider account flags for BYOA deployment
-	if deploymentType == "byoa" || deploymentType == "hosted" && (awsAccountID != "" || gcpProjectID != "" || azureSubscriptionID != "") {
+	if (awsAccountID != "" || gcpProjectID != "" || azureSubscriptionID != "") {
 		// Check if the specified account IDs match any linked accounts
-		var foundMatchingAccount bool
-		var accountStatus string
-		for _, account := range accounts.AccountConfigs {
-			if awsAccountID != "" && account.AwsAccountID != nil && *account.AwsAccountID == awsAccountID {
-				foundMatchingAccount = true
-				accountStatus = account.Status
-				break
-			}
-			if gcpProjectID != "" && account.GcpProjectID != nil && *account.GcpProjectID == gcpProjectID {
-				if gcpProjectNumber != "" && account.GcpProjectNumber != nil && *account.GcpProjectNumber == gcpProjectNumber {
-					foundMatchingAccount = true
-					accountStatus = account.Status
-					break
-				}
-			}
-			if azureSubscriptionID != "" && account.AzureSubscriptionID != nil && *account.AzureSubscriptionID == azureSubscriptionID {
-				if azureTenantID != "" && account.AzureTenantID != nil && *account.AzureTenantID == azureTenantID {
-					foundMatchingAccount = true
-					accountStatus = account.Status
-					break
-				}
-			}
-		}
+	
 		if !foundMatchingAccount {
 			
 			if awsAccountID != "" {
@@ -499,18 +529,7 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 			return fmt.Errorf("❌ spec file validation failed: %w", err)
 		}
 
-		if(deploymentType == "byoa" || deploymentType == "hosted"){
-		// Check if account ID is required but missing
-		// Account ID is considered available if it's in the spec file OR provided via flags
-		hasAccountIDFromFlags := awsAccountID != "" || gcpProjectID != "" || azureSubscriptionID != ""
-		// Assume hosted deployment if we have a single cloud provider account
-		assumeHosted := len(accounts.AccountConfigs) == 1
-		if !assumeHosted && !hasAccountIDFromFlags {
-			return errors.New("❌ multiple cloud provider accounts found but no account ID specified in spec file or flags. Please specify account ID in spec file or use --aws-account-id/--gcp-project-id/--azure-subscription-id flags")
-		}
-	}
-
-		// Check tenant-aware resource count
+		fmt.Println("Validating spec file configuration... ")		// Check tenant-aware resource count
 		if tenantAwareResourceCount == 0 {
 			return errors.New("❌ no tenant-aware resources found in spec file. At least one tenant-aware resource is required for deployment")
 		} else if tenantAwareResourceCount > 1 {
@@ -518,18 +537,6 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 		}
 
 		fmt.Printf("✅ ")
-	} else {
-		// For repository-based builds, check if account ID is required for multiple accounts
-		hasAccountIDFromFlags := awsAccountID != "" || gcpProjectID != "" || azureSubscriptionID != ""
-		assumeHosted := len(accounts.AccountConfigs) == 1
-
-
-		if !assumeHosted && !hasAccountIDFromFlags && (deploymentType == "byoa" || deploymentType == "hosted") {
-			fmt.Print("Validating repository configuration... ")
-			return errors.New("❌ multiple cloud provider accounts found but no account ID specified. Please use --aws-account-id/--gcp-project-id/--azure-subscription-id flags to specify which account to use")
-		}
-		
-		fmt.Println("Validating repository configuration... ✅ (repository-based deployment)")
 	}
 
 	// Get service name for further validation
@@ -542,13 +549,13 @@ func runDeploy(cmd *cobra.Command, args []string) error {
        serviceNameToUse = productName
        if serviceNameToUse == "" {
 	       if !useRepo && len(processedData) > 0 {
-		       // Try to extract 'name' from the YAML spec
-		       nameRegex := regexp.MustCompile(`(?m)^name:\s*"?([^"]+)"?\s*$`)
-		       matches := nameRegex.FindSubmatch(processedData)
-		       if len(matches) > 1 {
-			       extractedName := string(matches[1])
-			       if extractedName != "" {
-				       serviceNameToUse = sanitizeServiceName(extractedName)
+		       // Try to extract 'name' from the YAML spec using proper YAML parsing
+		       var yamlContent map[string]interface{}
+		       if err := yaml.Unmarshal(processedData, &yamlContent); err == nil {
+			       if nameVal, exists := yamlContent["name"]; exists {
+				       if nameStr, ok := nameVal.(string); ok && nameStr != "" {
+					       serviceNameToUse = sanitizeServiceName(nameStr)
+				       }
 			       }
 		       }
 	       }
@@ -917,13 +924,14 @@ func executeDeploymentWorkflow(cmd *cobra.Command, sm ysmrr.SpinnerManager, toke
 	var existingInstanceIDs []string
 	existingInstanceIDs, err = listInstances(cmd.Context(), token, serviceID, prodEnvironmentID, prodPlanID, instanceID)
 	if err != nil {
-		spinner.UpdateMessage(spinnerMsg + ": Failed")
-		spinner.Complete()
-		fmt.Printf("Warning: Failed to check for existing instances: %s\n", err.Error())
+		spinner.UpdateMessage(spinnerMsg + ": Failed (" + err.Error() + ")")
+		spinner.Error()
 		existingInstanceIDs = []string{} // Reset to create new instance
+		sm.Stop()
 	}
 
-	fmt.Printf("Note: Instance create/upgrade is automatic.\n", existingInstanceIDs)
+	spinner.UpdateMessage(fmt.Sprintf("Note: Instance create/upgrade is automatic.\nExisting Instances: %v", existingInstanceIDs))
+	spinner.Complete()
 
 	if len(existingInstanceIDs) > 0 {
 		foundMsg := spinnerMsg + ": Found existing instance"
@@ -935,8 +943,8 @@ func executeDeploymentWorkflow(cmd *cobra.Command, sm ysmrr.SpinnerManager, toke
 		instanceActionType = "upgrade"
 		if upgradeErr != nil {
 			spinner.UpdateMessage(fmt.Sprintf("Upgrading existing instance: Failed (%s)", upgradeErr.Error()))
-			spinner.Complete()
-			fmt.Printf("Warning: Instance upgrade failed: %s\n", upgradeErr.Error())
+			spinner.Error()
+			sm.Stop()
 		} else {
 			finalInstanceID = existingInstanceIDs[0]
 			spinner.UpdateMessage(fmt.Sprintf("Upgrading existing instance: Success (ID: %s)", finalInstanceID))
@@ -957,8 +965,8 @@ func executeDeploymentWorkflow(cmd *cobra.Command, sm ysmrr.SpinnerManager, toke
 		instanceActionType = "create"
 		if err != nil {
 			spinner.UpdateMessage(fmt.Sprintf("%s: Failed (%s)", createMsg, err.Error()))
-			spinner.Complete()
-			fmt.Printf("Error: Failed to create instance: %s\n", err.Error())
+			spinner.Error()
+			sm.Stop()
 
 		} else {
 			spinner.UpdateMessage(fmt.Sprintf("%s: Success (ID: %s)", createMsg, finalInstanceID))
@@ -977,7 +985,6 @@ func executeDeploymentWorkflow(cmd *cobra.Command, sm ysmrr.SpinnerManager, toke
 
 	   // Success message
 	   fmt.Println()
-	   fmt.Println("🎉 Deployment completed successfully!")
 	   fmt.Printf("   Service: %s (ID: %s)\n", serviceName, serviceID)
 	   fmt.Printf("   Production Environment: %s (ID: %s)\n", defaultProdEnvName, prodEnvironmentID)
 	   if finalInstanceID != "" {
@@ -1256,7 +1263,8 @@ func createInstanceUnified(ctx context.Context, token, serviceID, environmentID,
 		   case "gcp":
 			   region = "us-central1"
 		   case "aws":
-			   region = "us-east-1"
+			region = "ap-south-1"
+			//    region = "us-east-1"
 		   case "azure":
 			   region = "eastus"
 		   
@@ -1363,7 +1371,6 @@ func listInstances(ctx context.Context, token, serviceID, environmentID, service
 		return []string{}, fmt.Errorf("failed to search for instances: %w", err)
 	}
 
-	fmt.Printf("Total instances found: %d\n", len(res.ResourceInstances))
 	exitInstanceIDs := make([]string, 0)
 	seenIDs := make(map[string]bool)
 	for _, instance := range res.ResourceInstances {
@@ -1406,13 +1413,12 @@ func upgradeExistingInstance(ctx context.Context, token string, instanceIDs []st
 	for _, id := range instanceIDs {
 		searchRes, err := dataaccess.SearchInventory(ctx, token, fmt.Sprintf("resourceinstance:%s", id))
 		if err != nil {
-			fmt.Printf("❌ Failed to find instance details for %s: %v\n", id, err)
-			continue
+			return fmt.Errorf("failed to find instance details for %s: %w", id, err)
 		}
 		if len(searchRes.ResourceInstanceResults) == 0 {
-			fmt.Printf("❌ Instance not found: %s\n", id)
-			continue
+			return fmt.Errorf("instance not found: %s", id)
 		}
+		
 		environmentID := searchRes.ResourceInstanceResults[0].ServiceEnvironmentId
 		resourceOverrideConfig := make(map[string]openapiclientfleet.ResourceOneOffPatchConfigurationOverride)
 		err = dataaccess.OneOffPatchResourceInstance(ctx, token,
@@ -1423,8 +1429,7 @@ func upgradeExistingInstance(ctx context.Context, token string, instanceIDs []st
 			latestVersion,
 		)
 		if err != nil {
-			fmt.Printf("❌ Failed to upgrade instance %s: %v\n", id, err)
-			continue
+			return fmt.Errorf("failed to upgrade instance %s: %w", id, err)
 		}
 		fmt.Printf("✅ Upgraded instance: %s\n", id)
 	}
