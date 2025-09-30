@@ -63,6 +63,7 @@ var DeployCmd = &cobra.Command{
 }
 
 func init() {
+	DeployCmd.Flags().StringP("file", "f", build.ComposeFileName, "Path to the docker compose file")
 	DeployCmd.Flags().String("product-name", "", "Specify a custom service name. If not provided, directory name will be used.")
 	DeployCmd.Flags().String("release-description", "", "Release description for the version")
 	DeployCmd.Flags().String("subscription-name", "", "Subscription name for service subscription")
@@ -76,7 +77,7 @@ func init() {
 	DeployCmd.Flags().String("azure-tenant-id", "", "Azure tenant ID for BYOA or hosted deployment")
 	DeployCmd.Flags().String("deployment-type", "hosted", "Deployment type: hosted  or byoa")
 	DeployCmd.Flags().String("service-plan-id", "", "Specify the service plan ID to use when multiple plans exist")
-	DeployCmd.Flags().StringP("spec-type", "s", DockerComposeSpecType, "Spec type")
+	DeployCmd.Flags().StringP("spec-type", "s", build.DockerComposeSpecType, "Spec type")
 	DeployCmd.Flags().Bool("wait", false, "Wait for deployment to complete before returning.")
 	DeployCmd.Flags().String("instance-id", "", "Specify the instance ID to use when multiple deployments exist.")
 	DeployCmd.Flags().String("cloud-provider", "", "Cloud provider (aws|gcp|azure)")
@@ -94,6 +95,10 @@ func init() {
 	if err := DeployCmd.MarkFlagFilename("param-file"); err != nil {
 		return
 	}
+	err := DeployCmd.MarkFlagFilename("file")
+	if err != nil {
+		return
+	}
 
 }
 
@@ -108,6 +113,14 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 		fmt.Println("❌ Not logged in. Please run 'omctl login' to authenticate.")
 		return err
 	}
+
+	// Retrieve flags
+	file, err := cmd.Flags().GetString("file")
+	if err != nil {
+		return err
+	}
+	// Check if file was explicitly provided
+	fileExplicit := cmd.Flags().Changed("file")
 
 	// Extract additional cloud provider flags for YAML creation
 	awsBootstrapRoleARN, err := cmd.Flags().GetString("aws-bootstrap-role-arn")
@@ -209,8 +222,20 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
- 	// Check if spec-type was explicitly provided
+	specType, err := cmd.Flags().GetString("spec-type")
+	if err != nil {
+		return err
+	}
+
+	// Check if spec-type was explicitly provided
 	specTypeExplicit := cmd.Flags().Changed("spec-type")
+	if !specTypeExplicit {
+		if file == build.ComposeFileName {
+			specType = build.DockerComposeSpecType
+		} else {
+			specType = build.ServicePlanSpecType
+		}
+	}
 
 	// Get instance-id flag value
 	instanceID, err := cmd.Flags().GetString("instance-id")
@@ -237,9 +262,27 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 	// Get the spec file path - follow the same flow as build_from_repo.go
 	var specFile string
 	var useRepo bool
+	
 	if len(args) > 0 {
 		specFile = args[0]
+	} else if file != "" {
+		if _, err := os.Stat(file); os.IsNotExist(err) {
+			if fileExplicit {
+				utils.PrintError(err)
+				return err
+			} else {
+				// If the file doesn't exist and wasn't explicitly provided, we check if there is a spec file
+				file = "plan.yaml"
+				if _, err := os.Stat(file); os.IsNotExist(err) {
+					utils.PrintError(err)
+					return err
+				}
+			}
+		}
+
+		specFile = file
 	} else {
+
 		// Look for compose.yaml in current directory first
 		if _, err := os.Stat("compose.yaml"); err == nil {
 			specFile = "compose.yaml"
@@ -275,7 +318,6 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 	// Convert to absolute path if using spec file
 	var absSpecFile string
 	var processedData []byte
-	var specType string
 	if !useRepo {
 		absSpecFile, err = filepath.Abs(specFile)
 		if err != nil {
@@ -299,9 +341,11 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 			return errors.Wrap(err, "failed to process template expressions")
 		}
 
+	
+
 	       // Determine spec type
 	       if !specTypeExplicit {
-		       // If the file is named compose.yaml , default to DockerComposeSpecType
+		       // If the file is named compose.yaml , default to build.DockerComposeSpecType
 		       baseName := filepath.Base(absSpecFile)
 		       if baseName == "compose.yaml" {
 			       specType = build.DockerComposeSpecType // Use the correct constant value
@@ -345,7 +389,6 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 							   cleanedData, _ := yaml.Marshal(specMap)
 							   processedData = cleanedData
 						   }
-						   processedData = append(processedData, []byte("\n---\n")...)
 						   processedData = append(processedData, yamlBytes...)
 					   } else {
 						   processedData = yamlBytes
@@ -359,25 +402,48 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 					   }
 					}
 				   }
+				   
+				   // Extract cloud account information from the processed YAML if not provided via flags
+				   // This should run regardless of which flags are provided, to extract any missing account info
+				   extractedAWS, extractedGCP, extractedGCPNum, extractedAzure, extractedAzureTenant := extractCloudAccountsFromProcessedData(processedData)
+				   
+				   
+				   // Use extracted values if not provided via command line flags
+				   if awsAccountID == "" && extractedAWS != "" {
+					   awsAccountID = extractedAWS
+					   fmt.Printf("📋 Found AWS account ID in spec file: %s\n", awsAccountID)
+				   }
+				   if gcpProjectID == "" && extractedGCP != "" {
+					   gcpProjectID = extractedGCP
+					   fmt.Printf("📋 Found GCP project ID in spec file: %s\n", gcpProjectID)
+				   }
+				   if gcpProjectNumber == "" && extractedGCPNum != "" {
+					   gcpProjectNumber = extractedGCPNum
+					   fmt.Printf("📋 Found GCP project number in spec file: %s\n", gcpProjectNumber)
+				   }
+				   if azureSubscriptionID == "" && extractedAzure != "" {
+					   azureSubscriptionID = extractedAzure
+					   fmt.Printf("📋 Found Azure subscription ID in spec file: %s\n", azureSubscriptionID)
+				   }
+				   if azureTenantID == "" && extractedAzureTenant != "" {
+					   azureTenantID = extractedAzureTenant
+					   fmt.Printf("📋 Found Azure tenant ID in spec file: %s\n", azureTenantID)
+				   }
 	}
 
-     
-       if awsAccountID != "" {
+     if cloudProvider == "" {
+       if awsAccountID != ""  {
 	       cloudProvider = "aws"
        } else if gcpProjectID != "" {
 	       cloudProvider = "gcp"
        } else if azureSubscriptionID != "" {
 	       cloudProvider = "azure"
        }
-
-	   allCloudProviders := []string{}
-	   if cloudProvider == "" {
-
+	}
+	  
 		   // If no cloud provider is set, assume all providers are available
-		   allCloudProviders = []string{"aws", "gcp", "azure"}
-	   } else {
-		   allCloudProviders = []string{cloudProvider}
-	   }
+	  allCloudProviders := []string{"aws", "gcp", "azure"}
+	 
 
 	   allAccounts := []interface{}{}
 	   // Filter for READY accounts and collect status information
@@ -461,17 +527,21 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 		account := readyAccounts[0]
 		if accMap, ok := account.(map[string]interface{}); ok {
 			if accMap["awsAccountID"] != nil && awsAccountID == "" {
-				cloudProvider = "aws"
 				if v, ok := accMap["awsAccountID"].(string); ok {
 					awsAccountID = v
 				}
+				if cloudProvider == "" {
+					cloudProvider = "aws"
+				}
 			} else if accMap["gcpProjectID"] != nil && gcpProjectID == "" && gcpProjectNumber == "" {
-				cloudProvider = "gcp"
 				if v, ok := accMap["gcpProjectID"].(string); ok {
 					gcpProjectID = v
 				}
 				if v, ok := accMap["gcpProjectNumber"].(string); ok {
 					gcpProjectNumber = v
+				}
+				if cloudProvider == "" {
+					cloudProvider = "gcp"
 				}
 			} else if accMap["azureSubscriptionID"] != nil && azureSubscriptionID == "" && azureTenantID == "" {
 				cloudProvider = "azure"
@@ -480,6 +550,9 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 				}
 				if v, ok := accMap["azureTenantID"].(string); ok {
 					azureTenantID = v
+				}
+				if cloudProvider == "" {
+					cloudProvider = "azure"
 				}
 			}
 		}
@@ -930,8 +1003,43 @@ func executeDeploymentWorkflow(cmd *cobra.Command, sm ysmrr.SpinnerManager, toke
 		sm.Stop()
 	}
 
-	spinner.UpdateMessage(fmt.Sprintf("Note: Instance create/upgrade is automatic.\nExisting Instances: %v", existingInstanceIDs))
-	spinner.Complete()
+	// Display automatic instance handling message
+	if len(existingInstanceIDs) > 1 {
+		spinner.UpdateMessage(fmt.Sprintf("%s: Found %d existing instances", spinnerMsg, len(existingInstanceIDs)))
+		spinner.Complete()
+		
+		// Stop spinner manager temporarily to show the note
+		sm.Stop()
+		fmt.Printf("📝 Note: Instance upgrade is automatic.\n")
+		fmt.Printf("   Existing Instances: %v\n", existingInstanceIDs)
+		
+		// Restart spinner manager
+		sm = ysmrr.NewSpinnerManager()
+		sm.Start()
+	} else if len(existingInstanceIDs) == 1 {
+		spinner.UpdateMessage(fmt.Sprintf("%s: Found 1 existing instance", spinnerMsg))
+		spinner.Complete()
+		
+		// Stop spinner manager temporarily to show the note
+		sm.Stop()
+		fmt.Printf("📝 Note: Instance upgrade is automatic.\n")
+		fmt.Printf("   Existing Instance: %v\n", existingInstanceIDs)
+		
+		// Restart spinner manager
+		sm = ysmrr.NewSpinnerManager()
+		sm.Start()
+	} else {
+		spinner.UpdateMessage(fmt.Sprintf("%s: No existing instances found", spinnerMsg))
+		spinner.Complete()
+		
+		// Stop spinner manager temporarily to show the note
+		sm.Stop()
+		fmt.Printf("📝 Note: Instance creation is automatic.\n")
+		
+		// Restart spinner manager
+		sm = ysmrr.NewSpinnerManager()
+		sm.Start()
+	}
 
 	if len(existingInstanceIDs) > 0 {
 		foundMsg := spinnerMsg + ": Found existing instance"
@@ -1220,7 +1328,8 @@ func createInstanceUnified(ctx context.Context, token, serviceID, environmentID,
        defaultParams := map[string]interface{}{}
 
 	   // Select default cloudProvider and region from offering.CloudProviders if available
-	
+
+
 	   if len(offering.CloudProviders) > 0 {
 		   found := false
 		   for _, cp := range offering.CloudProviders {
@@ -1231,7 +1340,7 @@ func createInstanceUnified(ctx context.Context, token, serviceID, environmentID,
 		   }
 		   if !found {
 			   // fallback to first available provider
-			   cloudProvider = offering.CloudProviders[0]
+			   return "", fmt.Errorf("cloud provider '%s' is not supported for this service plan. Supported providers: %v", cloudProvider, offering.CloudProviders)
 		   }
 	   }
 
@@ -1254,7 +1363,7 @@ func createInstanceUnified(ctx context.Context, token, serviceID, environmentID,
 			   }
 		   }
 		   if !found && len(regions) > 0 {
-			   region = regions[0]
+			   return "", fmt.Errorf("region '%s' is not supported for cloud provider '%s'. Supported regions: %v", region, cloudProvider, regions)
 		   }
 	   }
 
@@ -1373,6 +1482,9 @@ func listInstances(ctx context.Context, token, serviceID, environmentID, service
 
 	exitInstanceIDs := make([]string, 0)
 	seenIDs := make(map[string]bool)
+	if len(res.ResourceInstances) == 0 {
+		return []string{}, nil
+	}
 	for _, instance := range res.ResourceInstances {
 		var idStr string
 		if instance.ConsumptionResourceInstanceResult.Id != nil {
@@ -1795,6 +1907,118 @@ func createDeploymentYAML(
 	return yamlDoc
 }
 
+
+// extractCloudAccountsFromProcessedData extracts cloud provider account information from the YAML content
+func extractCloudAccountsFromProcessedData(processedData []byte) (awsAccountID, gcpProjectID, gcpProjectNumber, azureSubscriptionID, azureTenantID string) {
+	if len(processedData) == 0 {
+		return "", "", "", "", ""
+	}
+
+	// Split YAML into multiple documents and parse each one
+	yamlDocs := strings.Split(string(processedData), "---")
+	
+	for _, docStr := range yamlDocs {
+		docStr = strings.TrimSpace(docStr)
+		if docStr == "" {
+			continue
+		}
+		
+		var yamlContent map[string]interface{}
+		if err := yaml.Unmarshal([]byte(docStr), &yamlContent); err != nil {
+			continue // Skip invalid YAML documents
+		}
+
+		// Check for deployment section (ServicePlan spec format)
+		if deployment, exists := yamlContent["deployment"]; exists {
+			if deploymentMap, ok := deployment.(map[string]interface{}); ok {
+				// Check byoaDeployment
+				if byoa, exists := deploymentMap["byoaDeployment"]; exists {
+					if byoaMap, ok := byoa.(map[string]interface{}); ok {
+						if aws, exists := byoaMap["awsAccountId"]; exists {
+							if awsStr, ok := aws.(string); ok && awsAccountID == "" {
+								awsAccountID = awsStr
+							}
+						}
+					}
+				}
+				
+				// Check hostedDeployment
+				if hosted, exists := deploymentMap["hostedDeployment"]; exists {
+					if hostedMap, ok := hosted.(map[string]interface{}); ok {
+						if aws, exists := hostedMap["awsAccountId"]; exists {
+							if awsStr, ok := aws.(string); ok && awsAccountID == "" {
+								awsAccountID = awsStr
+							}
+						}
+						if gcp, exists := hostedMap["gcpProjectId"]; exists {
+							if gcpStr, ok := gcp.(string); ok && gcpProjectID == "" {
+								gcpProjectID = gcpStr
+							}
+						}
+						if gcpNum, exists := hostedMap["gcpProjectNumber"]; exists {
+							if gcpNumStr, ok := gcpNum.(string); ok && gcpProjectNumber == "" {
+								gcpProjectNumber = gcpNumStr
+							}
+						}
+						if azure, exists := hostedMap["azureSubscriptionID"]; exists {
+							if azureStr, ok := azure.(string); ok && azureSubscriptionID == "" {
+								azureSubscriptionID = azureStr
+							}
+						}
+						if azureTenant, exists := hostedMap["azureTenantID"]; exists {
+							if azureTenantStr, ok := azureTenant.(string); ok && azureTenantID == "" {
+								azureTenantID = azureTenantStr
+							}
+						}
+					}
+				}
+			}
+		}
+
+		// Check for Docker Compose format (x-omnistrate-* sections)
+		if byoa, exists := yamlContent["x-omnistrate-byoa"]; exists {
+			if byoaMap, ok := byoa.(map[string]interface{}); ok {
+				if aws, exists := byoaMap["awsAccountId"]; exists {
+					if awsStr, ok := aws.(string); ok && awsAccountID == "" {
+						awsAccountID = awsStr
+					}
+				}
+			}
+		}
+
+		if myAccount, exists := yamlContent["x-omnistrate-my-account"]; exists {
+			if myAccountMap, ok := myAccount.(map[string]interface{}); ok {
+				if aws, exists := myAccountMap["awsAccountId"]; exists {
+					if awsStr, ok := aws.(string); ok && awsAccountID == "" {
+						awsAccountID = awsStr
+					}
+				}
+				if gcp, exists := myAccountMap["gcpProjectId"]; exists {
+					if gcpStr, ok := gcp.(string); ok && gcpProjectID == "" {
+						gcpProjectID = gcpStr
+					}
+				}
+				if gcpNum, exists := myAccountMap["gcpProjectNumber"]; exists {
+					if gcpNumStr, ok := gcpNum.(string); ok && gcpProjectNumber == "" {
+						gcpProjectNumber = gcpNumStr
+					}
+				}
+				if azure, exists := myAccountMap["azureSubscriptionID"]; exists {
+					if azureStr, ok := azure.(string); ok && azureSubscriptionID == "" {
+						azureSubscriptionID = azureStr
+					}
+				}
+				if azureTenant, exists := myAccountMap["azureTenantID"]; exists {
+					if azureTenantStr, ok := azureTenant.(string); ok && azureTenantID == "" {
+						azureTenantID = azureTenantStr
+					}
+				}
+			}
+		}
+	}
+
+	return awsAccountID, gcpProjectID, gcpProjectNumber, azureSubscriptionID, azureTenantID
+}
 
 // sanitizeServiceName converts a service name to be API-compatible (lowercase, valid characters)
 func sanitizeServiceName(name string) string {

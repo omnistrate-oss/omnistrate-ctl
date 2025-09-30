@@ -14,6 +14,7 @@ import (
 
 	"github.com/compose-spec/compose-go/loader"
 	"github.com/compose-spec/compose-go/types"
+	"github.com/omnistrate-oss/omnistrate-ctl/cmd/build"
 	"github.com/omnistrate-oss/omnistrate-ctl/internal/config"
 	"github.com/omnistrate-oss/omnistrate-ctl/internal/dataaccess"
 	"github.com/omnistrate-oss/omnistrate-ctl/internal/utils"
@@ -30,10 +31,9 @@ const (
 	DefaultProdEnvName   = "Production"
 	defaultServiceName   = "default" // Default service name when no compose spec exists in the repo
 
-	// DockerComposeSpecType is the type string for docker compose specs
-	DockerComposeSpecType = "docker-compose"
-	// ServicePlanSpecType is the type string for service plan specs
-	ServicePlanSpecType = "service-plan"
+	// Use constants from build package to ensure consistency
+	DockerComposeSpecType = build.DockerComposeSpecType // "DockerCompose"
+	ServicePlanSpecType   = build.ServicePlanSpecType   // "ServicePlanSpec"
 )
 
 // buildServiceFromRepo builds a service from repository using the same logic as build-from-repo command
