@@ -1375,7 +1375,8 @@ func createInstanceUnified(ctx context.Context, token, serviceID, environmentID,
 			region = "ap-south-1"
 			//    region = "us-east-1"
 		   case "azure":
-			   region = "eastus"
+			   region = "eastus2"
+			// region = "eastus"
 		   
 		   }
 	   }
