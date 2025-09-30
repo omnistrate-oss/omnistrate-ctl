@@ -227,6 +227,12 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
+	// Validate spec-type - only support DockerCompose or ServicePlanSpec
+	if specType != "" && specType != build.DockerComposeSpecType && specType != build.ServicePlanSpecType {
+		return fmt.Errorf("❌ invalid spec-type '%s'. Supported values: '%s' or '%s'", 
+			specType, build.DockerComposeSpecType, build.ServicePlanSpecType)
+	}
+
 	// Check if spec-type was explicitly provided
 	specTypeExplicit := cmd.Flags().Changed("spec-type")
 	if !specTypeExplicit {
@@ -1324,8 +1330,7 @@ func createInstanceUnified(ctx context.Context, token, serviceID, environmentID,
 
 	  
 
-       // Create default parameters with common sensible defaults
-       defaultParams := map[string]interface{}{}
+    
 
 	   // Select default cloudProvider and region from offering.CloudProviders if available
 
@@ -1382,7 +1387,8 @@ func createInstanceUnified(ctx context.Context, token, serviceID, environmentID,
 	   }
 
 
-		
+		 // Create default parameters with common sensible defaults
+        defaultParams := map[string]interface{}{}
 		// Try to describe service offering resource - this is optional for parameter validation
 		resApiParams, err := dataaccess.DescribeServiceOfferingResource(ctx, token, serviceID, resourceID, "none", productTierID, version)
 
@@ -1432,11 +1438,31 @@ func createInstanceUnified(ctx context.Context, token, serviceID, environmentID,
 				defaultRequiredParams = append(defaultRequiredParams, k)
 			}
 		}
+
 		
 		// Validate that all required parameters have values
 		if len(defaultRequiredParams) > 0 {
 			return "", fmt.Errorf("missing required parameters for instance creation: %v. Please provide values using --param or --param-file flags", defaultRequiredParams)
 		}
+
+		// Check for unused parameters from formattedParams
+		var unusedParams []string
+		for paramKey := range formattedParams {
+			if _, exists := defaultParams[paramKey]; !exists {
+				unusedParams = append(unusedParams, paramKey)
+			}
+		}
+		
+		// Warn user about unused parameters
+		if len(unusedParams) > 0 {
+			fmt.Printf("⚠️  Warning: The following parameters were provided but are not supported by this service and won't be used:\n")
+			for _, param := range unusedParams {
+				fmt.Printf("   - %s\n", param)
+			}
+			
+		}
+
+		
 		
 	  
 	   request := openapiclientfleet.FleetCreateResourceInstanceRequest2{
