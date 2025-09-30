@@ -63,7 +63,7 @@ var DeployCmd = &cobra.Command{
 }
 
 func init() {
-	DeployCmd.Flags().StringP("file", "f", build.ComposeFileName, "Path to the docker compose file")
+	DeployCmd.Flags().StringP("file", "f", "", "Path to the docker compose file")
 	DeployCmd.Flags().String("product-name", "", "Specify a custom service name. If not provided, directory name will be used.")
 	DeployCmd.Flags().String("release-description", "", "Release description for the version")
 	DeployCmd.Flags().String("subscription-name", "", "Subscription name for service subscription")
@@ -119,8 +119,7 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
-	// Check if file was explicitly provided
-	fileExplicit := cmd.Flags().Changed("file")
+	
 
 	// Extract additional cloud provider flags for YAML creation
 	awsBootstrapRoleARN, err := cmd.Flags().GetString("aws-bootstrap-role-arn")
@@ -271,24 +270,14 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 	
 	if len(args) > 0 {
 		specFile = args[0]
-	} else if file != "" {
-		if _, err := os.Stat(file); os.IsNotExist(err) {
-			if fileExplicit {
-				utils.PrintError(err)
-				return err
-			} else {
-				// If the file doesn't exist and wasn't explicitly provided, we check if there is a spec file
-				file = "plan.yaml"
-				if _, err := os.Stat(file); os.IsNotExist(err) {
-					utils.PrintError(err)
-					return err
-				}
-			}
-		}
 
-		specFile = file
 	} else {
-
+		if file != "" {
+			if _, err := os.Stat(file); err == nil {
+				specFile = file
+			}
+		
+	} else {
 		// Look for compose.yaml in current directory first
 		if _, err := os.Stat("compose.yaml"); err == nil {
 			specFile = "compose.yaml"
@@ -314,10 +303,12 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 					return errors.New("auto-generation requires a git repository. Please initialize git repository or provide a spec file")
 				}
 			} else {
-				return errors.New("Run deploy command with [--file=file] [--spec-type=spec-type] arguments")
+				 fmt.Println("⚠️  Run deploy command with [--file=file] [--spec-type=spec-type] arguments")
+				return nil
 			}
 		}
 	}
+}
 
       
 
@@ -938,7 +929,7 @@ func executeDeploymentWorkflow(cmd *cobra.Command, sm ysmrr.SpinnerManager, toke
 					if prodPlanID == "" {
 						spinner.UpdateMessage("Setting service plan as preferred in production: Skipped (provided plan ID not found in production)")
 						spinner.Complete()
-						fmt.Printf("Warning: Provided service plan ID '%s' not found in production environment.\n\n", userProvidedPlanID)
+						fmt.Printf("⚠️ Warning: Provided service plan ID '%s' not found in production environment.\n\n", userProvidedPlanID)
 						break
 					}
 				} else {
@@ -970,7 +961,7 @@ func executeDeploymentWorkflow(cmd *cobra.Command, sm ysmrr.SpinnerManager, toke
 	} else if prodPlanID == "" {
 		spinner.UpdateMessage("Setting service plan as preferred in production: Skipped (matching plan not found)")
 		spinner.Complete()
-		fmt.Printf("Warning: Could not find matching production plan for preference setting.\n\n")
+		fmt.Printf(" ⚠️ Warning: Could not find matching production plan for preference setting.\n\n")
 	} else {
 		// Find the latest version of the production plan
 		targetVersion, err := dataaccess.FindLatestVersion(cmd.Context(), token, serviceID, prodPlanID)
