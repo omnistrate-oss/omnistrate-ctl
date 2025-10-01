@@ -49,7 +49,7 @@ func TestSignIn(t *testing.T) {
 			"--email=xzhang+cli@omnistrate.com",
 			"wrong_password",
 			true,
-			"bad_request\nDetail: wrong user email or password",
+			"bad_request\nDetail: Invalid request: wrong user email or password",
 		},
 	}
 
