@@ -353,7 +353,7 @@ jobs:
 
       # https://github.com/sigstore/cosign-installer
       - name: Install cosign
-        uses: sigstore/cosign-installer@v3.9.2
+        uses: sigstore/cosign-installer@v3.10.0
 
       - name: Check install!
         run: cosign version
