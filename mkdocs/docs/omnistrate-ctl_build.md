@@ -41,9 +41,6 @@ omctl build --file compose.yaml --product-name "My Service" --release --release-
 # Build service with compose spec and release the service as preferred with a release description
 omctl build --file compose.yaml --product-name "My Service" --release-as-preferred --release-description "v1.0.0-alpha"
 
-# Build service with compose spec and explicitly do not release as preferred (overrides any --release-as-preferred setting)
-omctl build --file compose.yaml --product-name "My Service" --no-release-as-preferred --release-description "v1.0.0-alpha"
-
 # Build service with compose spec interactively
 omctl build --file compose.yaml --product-name "My Service" --interactive
 
