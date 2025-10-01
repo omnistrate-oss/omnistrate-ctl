@@ -71,12 +71,12 @@ func displayWorkflowResourceDataWithSpinners(ctx context.Context, token, instanc
 
 				// Use getResourceStatusFromEvents for status
 				resourceStatus := getResourceStatusFromEvents(resourceData.EventsByWorkflowStep)
-				switch resourceStatus {
-				case "ResourceStatusFailed":
-					resourceSpinners[i].Spinner.Error()
-				case "ResourceStatusCompleted":
-					resourceSpinners[i].Spinner.Complete()
-				}
+				   switch resourceStatus {
+				   case model.ResourceStatusFailed:
+					   resourceSpinners[i].Spinner.Error()
+				   case model.ResourceStatusCompleted:
+					   resourceSpinners[i].Spinner.Complete()
+				   }
 		}
 	}
 
@@ -91,7 +91,7 @@ func displayWorkflowResourceDataWithSpinners(ctx context.Context, token, instanc
 				   resourceStatus = mapResourceStatus(*resourceData.WorkflowStatus)
 			   } else {
 				   // Fallback: parse string status from events
-				   resourceStatus = model.ParseWorkflowStatus(getResourceStatusFromEvents(resourceData.EventsByWorkflowStep))
+				   resourceStatus = model.ParseWorkflowStatus(string(getResourceStatusFromEvents(resourceData.EventsByWorkflowStep)))
 			   }
 			   // Track if any resource failed
 			   if resourceStatus == model.WorkflowStatusFailed {
@@ -154,11 +154,12 @@ func displayWorkflowResourceDataWithSpinners(ctx context.Context, token, instanc
 			   if resourceData.WorkflowStatus != nil {
 				   resourceStatus = mapResourceStatus(*resourceData.WorkflowStatus)
 			   } else {
-				   resourceStatus = model.ParseWorkflowStatus(getResourceStatusFromEvents(resourceData.EventsByWorkflowStep))
+				   // Use ResourceStatus as WorkflowStatus for fallback (string types)
+				   resourceStatus = model.WorkflowStatus(getResourceStatusFromEvents(resourceData.EventsByWorkflowStep))
 			   }
 			   // Use getResourceStatusFromEvents for failure detection (legacy string fallback)
 			   resourceStatusFromEvents := getResourceStatusFromEvents(resourceData.EventsByWorkflowStep)
-			   if resourceStatus == model.WorkflowStatusFailed || strings.ToLower(resourceStatusFromEvents) == "resourcestatusfailed" {
+			   if resourceStatus == model.WorkflowStatusFailed || resourceStatusFromEvents == model.ResourceStatusFailed {
 				   sm.Stop()
 				   return false, fmt.Errorf("for resource %s", resourceData.ResourceName)
 			   }
@@ -197,55 +198,54 @@ func displayWorkflowResourceDataWithSpinners(ctx context.Context, token, instanc
 
 // getHighestPriorityEventType checks all events in a workflowStep and returns the highest priority event type
 func getHighestPriorityEventType(events []dataaccess.DebugEvent) string {
-	   // Case 1: No events at all - treat as pending
-	   if len(events) == 0 {
-		   return "WorkflowStepPending"
-	   }
+	// Case 1: No events at all - treat as pending
+	if len(events) == 0 {
+		return string(model.WorkflowStepPending)
+	}
 
 	// Check in priority order for known event types
 	// 1. First check for failed events (highest priority)
 	for _, event := range events {
-		if event.EventType == "WorkflowStepFailed" {
+		if event.EventType == string(model.WorkflowStepFailed) {
 			return event.EventType
 		}
 	}
 
 	// 2. Then check for completed events
 	for _, event := range events {
-		if event.EventType == "WorkflowStepCompleted" {
+		if (event.EventType == string(model.WorkflowStepCompleted)) {
 			return event.EventType
 		}
 	}
 
 	// 3. Then check for debug events
 	for _, event := range events {
-		if event.EventType == "WorkflowStepDebug" {
+		if event.EventType == string(model.WorkflowStepDebug) {
 			return event.EventType
 		}
 	}
 
 	// 4. Then check for started events
 	for _, event := range events {
-		if event.EventType == "WorkflowStepStarted" {
+		if event.EventType == string(model.WorkflowStepStarted) {
 			return event.EventType
 		}
 	}
 
-	// 5. If none of the above known types, return the last event type as fallback
-	return "WorkflowStepUnknown"
-
+	// 5. If none of the above known types, return the unknown event type
+	return string(model.WorkflowStepUnknown)
 }
 
 // getEventStatusIconFromType returns an appropriate icon based on event type string
 func getEventStatusIconFromType(eventType string) string {
 	switch eventType {
-	case "WorkflowStepFailed":
+	case string(model.WorkflowStepFailed):
 		return "❌"
-	case "WorkflowStepCompleted":
+	case string(model.WorkflowStepCompleted):
 		return "✅"
-	case "WorkflowStepDebug", "WorkflowStepStarted":
+	case string(model.WorkflowStepDebug), string(model.WorkflowStepStarted):
 		return "🔄"
-	case "WorkflowStepPending":
+	case string(model.WorkflowStepPending):
 		return "🟡"
 	default:
 		return "🟡"
@@ -264,50 +264,49 @@ type WorkflowStepStatus struct {
 // getDynamicWorkflowStepStatuses extracts all available workflow steps and their statuses
 func getDynamicWorkflowStepStatuses(eventsByWorkflowStep *dataaccess.DebugEventsByWorkflowSteps) []WorkflowStepStatus {
 	// Define the preferred order for workflow steps
-	workflowStepOrder := map[string]int{
-		"Bootstrap":  1,
-		"Storage":    2,
-		"Network":    3,
-		"Compute":    4,
-		"Deployment": 5,
-		"Monitoring": 6,
-		"Unknown":      7,
-	}
+	   workflowStepOrder := map[model.WorkflowStep]int{
+		   model.WorkflowStepBootstrap:  1,
+		   model.WorkflowStepStorage:    2,
+		   model.WorkflowStepNetwork:    3,
+		   model.WorkflowStepCompute:    4,
+		   model.WorkflowStepDeployment: 5,
+		   model.WorkflowStepMonitoring: 6,
+		   model.WorkflowStep(model.WorkflowStepUnknown):    7,
+	   }
 
 	var statuses []WorkflowStepStatus
 	
 	// Use reflection-like approach to get all workflowSteps dynamically
 	   if eventsByWorkflowStep != nil {
 		   workflowSteps := []struct {
-			   name   string
+			   name   model.WorkflowStep
 			   events []dataaccess.DebugEvent
 		   }{
-			   {"Bootstrap", eventsByWorkflowStep.Bootstrap},
-			   {"Storage", eventsByWorkflowStep.Storage},
-			   {"Network", eventsByWorkflowStep.Network},
-			   {"Compute", eventsByWorkflowStep.Compute},
-			   {"Deployment", eventsByWorkflowStep.Deployment},
-			   {"Monitoring", eventsByWorkflowStep.Monitoring},
-			   {"Unknown", eventsByWorkflowStep.Unknown},
+			   {model.WorkflowStepBootstrap, eventsByWorkflowStep.Bootstrap},
+			   {model.WorkflowStepStorage, eventsByWorkflowStep.Storage},
+			   {model.WorkflowStepNetwork, eventsByWorkflowStep.Network},
+			   {model.WorkflowStepCompute, eventsByWorkflowStep.Compute},
+			   {model.WorkflowStepDeployment, eventsByWorkflowStep.Deployment},
+			   {model.WorkflowStepMonitoring, eventsByWorkflowStep.Monitoring},
+			   {model.WorkflowStep(model.WorkflowStepUnknown), eventsByWorkflowStep.Unknown},
 		   }
-
 		// Track which workflow steps have actual events
 		for _, step := range workflowSteps {
 			// Check if this step has events
 			if len(step.events) > 0 {
 				eventType := getHighestPriorityEventType(step.events)
 				icon := getEventStatusIconFromType(eventType)
-				order := workflowStepOrder[step.name]
-				if order == 0 {
-					order = 999 // Put unknown categories at the end
-				}
+				   order := workflowStepOrder[step.name]
+				   if order == 0 {
+					   order = 999 // Put unknown categories at the end
+				   }
 
-				statuses = append(statuses, WorkflowStepStatus{
-					Name:      step.name,
-					EventType: eventType,
-					Icon:      icon,
-					Order:     order,
-				})
+				   statuses = append(statuses, WorkflowStepStatus{
+					   Name:      string(step.name),
+					   EventType: eventType,
+					   Icon:      icon,
+					   Order:     order,
+				   })
 			}
 		}
 		
@@ -321,22 +320,22 @@ func getDynamicWorkflowStepStatuses(eventsByWorkflowStep *dataaccess.DebugEvents
 	return statuses
 }
 // getResourceStatusFromEvents determines the overall status of a resource based on its events across all categories
-func getResourceStatusFromEvents(eventsByWorkflowStep *dataaccess.DebugEventsByWorkflowSteps) string {
+func getResourceStatusFromEvents(eventsByWorkflowStep *dataaccess.DebugEventsByWorkflowSteps) model.ResourceStatus {
    if eventsByWorkflowStep == nil {
-	   return "ResourceStatusPending"
+	   return model.ResourceStatusPending
    }
 
    // Check all workflowSteps for their highest priority event types
    workflowSteps := []struct {
-	   name   string
+	   name   model.WorkflowStep
 	   events []dataaccess.DebugEvent
    }{
-	   {"Bootstrap", eventsByWorkflowStep.Bootstrap},
-	   {"Storage", eventsByWorkflowStep.Storage},
-	   {"Network", eventsByWorkflowStep.Network},
-	   {"Compute", eventsByWorkflowStep.Compute},
-	   {"Deployment", eventsByWorkflowStep.Deployment},
-	   {"Monitoring", eventsByWorkflowStep.Monitoring},
+	   {model.WorkflowStepBootstrap, eventsByWorkflowStep.Bootstrap},
+	   {model.WorkflowStepStorage, eventsByWorkflowStep.Storage},
+	   {model.WorkflowStepNetwork, eventsByWorkflowStep.Network},
+	   {model.WorkflowStepCompute, eventsByWorkflowStep.Compute},
+	   {model.WorkflowStepDeployment, eventsByWorkflowStep.Deployment},
+	   {model.WorkflowStepMonitoring, eventsByWorkflowStep.Monitoring},
    }
 
 	hasCompleted := false
@@ -351,33 +350,33 @@ func getResourceStatusFromEvents(eventsByWorkflowStep *dataaccess.DebugEventsByW
 			workflowStepsWithEvents++
 			eventType := getHighestPriorityEventType(step.events)
 
-			switch eventType {
-			case "WorkflowStepStarted":
-				hasEvents = true
-			case "WorkflowStepCompleted":
-				hasCompleted = true
-				completedWorkflowSteps++
-			case "WorkflowStepFailed":
-				hasFailed = true
-			}
+			   switch model.WorkflowStepEventType(eventType) {
+			   case model.WorkflowStepStarted:
+				   hasEvents = true
+			   case model.WorkflowStepCompleted:
+				   hasCompleted = true
+				   completedWorkflowSteps++
+			   case model.WorkflowStepFailed:
+				   hasFailed = true
+			   }
 		}
 	}
 
 	// Determine overall status with improved logic for partial workflowStep availability
 	if hasFailed {
-		return "ResourceStatusFailed"
+		return model.ResourceStatusFailed
 	}
 
 	// If all workflowSteps that have events are completed
 	if hasCompleted && completedWorkflowSteps == workflowStepsWithEvents {
-		return "ResourceStatusCompleted"
+		return model.ResourceStatusCompleted
 	}
 
 	if hasEvents {
-		return "ResourceStatusRunning"
+		return model.ResourceStatusRunning
 	}
 
-	return "ResourceStatusPending"
+	return model.ResourceStatusPending
 }
 
 
