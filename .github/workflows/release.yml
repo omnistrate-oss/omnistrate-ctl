@@ -51,7 +51,7 @@ jobs:
 
       - name: Set up go
         timeout-minutes: 10
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v6
         with:
           go-version-file: "go.mod"
           token: ${{ secrets.GITHUB_TOKEN }}
