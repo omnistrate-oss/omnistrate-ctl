@@ -19,7 +19,7 @@ If the identifiers match an existing service plan, it will update that plan. Oth
 This command has an interactive mode. In this mode, you can choose to promote the service plan to production by interacting with the prompts.
 
 ```
-omnistrate-ctl build [--file=file] [--spec-type=spec-type] [--product-name=service-name] [--description=service-description] [--service-logo-url=service-logo-url] [--environment=environment-name] [--environment-type=environment-type] [--release] [--release-as-preferred] [--release-description=release-description][--interactive] [--image=image-url] [--image-registry-auth-username=username] [--image-registry-auth-password=password] [--env-var="key=var"] [flags]
+omnistrate-ctl build [--file=file] [--spec-type=spec-type] [--product-name=service-name] [--description=service-description] [--service-logo-url=service-logo-url] [--environment=environment-name] [--environment-type=environment-type] [--release] [--release-as-preferred] [--no-release-as-preferred] [--release-description=release-description][--interactive] [--image=image-url] [--image-registry-auth-username=username] [--image-registry-auth-password=password] [--env-var="key=var"] [flags]
 ```
 
 ### Examples
@@ -56,6 +56,9 @@ omctl build --spec-type ServicePlanSpec --file spec.yaml --product-name "My Serv
 # Build service with service specification for Helm, Operator or Kustomize as preferred
 omctl build --spec-type ServicePlanSpec --file spec.yaml --product-name "My Service" --release-as-preferred --release-description "v1.0.0-alpha"
 
+# Build service with service specification for Helm, Operator or Kustomize and explicitly do not release as preferred
+omctl build --spec-type ServicePlanSpec --file spec.yaml --product-name "My Service" --no-release-as-preferred --release-description "v1.0.0-alpha"
+
 # Build service from image in dev environment
 omctl build --image docker.io/mysql:5.7 --product-name MySQL --env-var "MYSQL_ROOT_PASSWORD=password" --env-var "MYSQL_DATABASE=mydb"
 
@@ -74,6 +77,7 @@ omctl build --image docker.io/namespace/my-image:v1.2 --product-name "My Service
   -f, --file string                  Path to the docker compose file (defaults to compose.yaml or spec.yaml)
   -h, --help                         help for build
   -i, --interactive                  Interactive mode
+      --no-release-as-preferred      Do not release the service as preferred (overrides --release-as-preferred)
       --product-name string          Name of the service. A service can have multiple service plans. The build command will build a new or existing service plan inside the specified service.
       --release                      Release the service after building it
       --release-as-preferred         Release the service as preferred after building it

@@ -60,6 +60,9 @@ omctl build --spec-type ServicePlanSpec --file spec.yaml --product-name "My Serv
 # Build service with service specification for Helm, Operator or Kustomize as preferred
 omctl build --spec-type ServicePlanSpec --file spec.yaml --product-name "My Service" --release-as-preferred --release-description "v1.0.0-alpha"
 
+# Build service with service specification for Helm, Operator or Kustomize and explicitly do not release as preferred
+omctl build --spec-type ServicePlanSpec --file spec.yaml --product-name "My Service" --no-release-as-preferred --release-description "v1.0.0-alpha"
+
 # Build service from image in dev environment
 omctl build --image docker.io/mysql:5.7 --product-name MySQL --env-var "MYSQL_ROOT_PASSWORD=password" --env-var "MYSQL_DATABASE=mydb"
 
@@ -84,7 +87,7 @@ This command has an interactive mode. In this mode, you can choose to promote th
 
 // BuildCmd represents the build command
 var BuildCmd = &cobra.Command{
-	Use:          "build [--file=file] [--spec-type=spec-type] [--product-name=service-name] [--description=service-description] [--service-logo-url=service-logo-url] [--environment=environment-name] [--environment-type=environment-type] [--release] [--release-as-preferred] [--release-description=release-description][--interactive] [--image=image-url] [--image-registry-auth-username=username] [--image-registry-auth-password=password] [--env-var=\"key=var\"]",
+	Use:          "build [--file=file] [--spec-type=spec-type] [--product-name=service-name] [--description=service-description] [--service-logo-url=service-logo-url] [--environment=environment-name] [--environment-type=environment-type] [--release] [--release-as-preferred] [--no-release-as-preferred] [--release-description=release-description][--interactive] [--image=image-url] [--image-registry-auth-username=username] [--image-registry-auth-password=password] [--env-var=\"key=var\"]",
 	Short:        "Build Services from image, compose spec or service plan spec",
 	Long:         buildLong,
 	Example:      buildExample,
@@ -103,6 +106,7 @@ func init() {
 	BuildCmd.Flags().StringP("environment-type", "", "dev", "Type of environment. Valid options include: 'dev', 'prod', 'qa', 'canary', 'staging', 'private')")
 	BuildCmd.Flags().BoolP("release", "", false, "Release the service after building it")
 	BuildCmd.Flags().BoolP("release-as-preferred", "", false, "Release the service as preferred after building it")
+	BuildCmd.Flags().BoolP("no-release-as-preferred", "", false, "Do not release the service as preferred (overrides --release-as-preferred)")
 	BuildCmd.Flags().StringP("release-name", "", "", "Custom description of the release version. Deprecated: use --release-description instead")
 	BuildCmd.Flags().StringP("release-description", "", "", "Used together with --release or --release-as-preferred flag. Provide a description for the release version")
 	BuildCmd.Flags().BoolP("interactive", "i", false, "Interactive mode")
@@ -238,6 +242,14 @@ func runBuild(cmd *cobra.Command, args []string) error {
 	releaseAsPreferred, err := cmd.Flags().GetBool("release-as-preferred")
 	if err != nil {
 		return err
+	}
+	noReleaseAsPreferred, err := cmd.Flags().GetBool("no-release-as-preferred")
+	if err != nil {
+		return err
+	}
+	// If --no-release-as-preferred is set, it overrides --release-as-preferred
+	if noReleaseAsPreferred {
+		releaseAsPreferred = false
 	}
 	releaseName, err := cmd.Flags().GetString("release-name")
 	if err != nil {
