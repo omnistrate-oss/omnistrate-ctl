@@ -644,6 +644,14 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 		       if serviceNameToUse == "." || serviceNameToUse == "/" || serviceNameToUse == "" {
 			       serviceNameToUse = "my-service"
 		       }
+			   serviceNameToUseYaml := map[string]interface{}{"name": serviceNameToUse}
+			   if serviceNameToUseYamlBytes, err := yaml.Marshal(serviceNameToUseYaml); err == nil {
+				processedData = append(serviceNameToUseYamlBytes, processedData...)
+				   err = os.WriteFile(absSpecFile, processedData, 0644)
+				   if err != nil {
+					   return errors.Wrap(err, "failed to overwrite spec file with processed YAML")
+				   }
+			   }
 	       }
        }
 
@@ -1425,7 +1433,7 @@ func createInstanceUnified(ctx context.Context, token, serviceID, environmentID,
 		// Check for missing required parameters
 		var defaultRequiredParams []string
 		for k, v := range defaultParams {
-			if v == nil {
+			if v == nil || (reflect.TypeOf(v).Kind() == reflect.String && v == "") {
 				defaultRequiredParams = append(defaultRequiredParams, k)
 			}
 		}
@@ -1465,25 +1473,28 @@ func createInstanceUnified(ctx context.Context, token, serviceID, environmentID,
 	   }
       
 
+	   fmt.Printf("🌐 Creating instance in %s ...\n", request)
+	   return "", nil
+
        // Create the instance
-       instance, err := dataaccess.CreateResourceInstance(ctx, token,
-	       res.ConsumptionDescribeServiceOfferingResult.ServiceProviderId,
-	       res.ConsumptionDescribeServiceOfferingResult.ServiceURLKey,
-	       offering.ServiceAPIVersion,
-	       offering.ServiceEnvironmentURLKey,
-	       offering.ServiceModelURLKey,
-	       offering.ProductTierURLKey,
-	       resourceKey,
-	       request)
-       if err != nil {
-	       return "", fmt.Errorf("failed to create resource instance: %w", err)
-       }
+    //    instance, err := dataaccess.CreateResourceInstance(ctx, token,
+	//        res.ConsumptionDescribeServiceOfferingResult.ServiceProviderId,
+	//        res.ConsumptionDescribeServiceOfferingResult.ServiceURLKey,
+	//        offering.ServiceAPIVersion,
+	//        offering.ServiceEnvironmentURLKey,
+	//        offering.ServiceModelURLKey,
+	//        offering.ProductTierURLKey,
+	//        resourceKey,
+	//        request)
+    //    if err != nil {
+	//        return "", fmt.Errorf("failed to create resource instance: %w", err)
+    //    }
 
-       if instance == nil || instance.Id == nil {
-	       return "", fmt.Errorf("instance creation returned empty result")
-       }
+    //    if instance == nil || instance.Id == nil {
+	//        return "", fmt.Errorf("instance creation returned empty result")
+    //    }
 
-       return *instance.Id, nil
+    //    return *instance.Id, nil
 }
 
 
@@ -1859,13 +1870,13 @@ func createDeploymentYAML(
 		if specType != "DockerCompose"  {
 			yamlDoc["deployment"] = map[string]interface{}{
 				"byoaDeployment": map[string]interface{}{
-					"awsAccountId": awsAccountID,
+					"awsAccountID": awsAccountID,
 					"awsBootstrapRoleAccountArn": awsBootstrapRoleARN,
 				},
 			}
 		} else {
 			yamlDoc["x-omnistrate-byoa"] = map[string]interface{}{
-				"awsAccountId": awsAccountID,
+				"awsAccountID": awsAccountID,
 				"awsBootstrapRoleAccountArn": awsBootstrapRoleARN,
 			}
 		}
@@ -1873,13 +1884,13 @@ func createDeploymentYAML(
 		if specType != "DockerCompose" {
 			hostedDeployment := make(map[string]interface{})
 			if awsAccountID != "" {
-				hostedDeployment["awsAccountId"] = awsAccountID
+				hostedDeployment["awsAccountID"] = awsAccountID
 				if awsBootstrapRoleARN != "" {
 					hostedDeployment["awsBootstrapRoleAccountArn"] = awsBootstrapRoleARN
 				}
 			}
 			if gcpProjectID != "" {
-				hostedDeployment["gcpProjectId"] = gcpProjectID
+				hostedDeployment["gcpProjectID"] = gcpProjectID
 				if gcpProjectNumber != "" {
 					hostedDeployment["gcpProjectNumber"] = gcpProjectNumber
 				}
@@ -1899,13 +1910,13 @@ func createDeploymentYAML(
 		} else {
 			myAccount := make(map[string]interface{})
 			if awsAccountID != "" {
-				myAccount["awsAccountId"] = awsAccountID
+				myAccount["awsAccountID"] = awsAccountID
 				if awsBootstrapRoleARN != "" {
 					myAccount["awsBootstrapRoleAccountArn"] = awsBootstrapRoleARN
 				}
 			}
 			if gcpProjectID != "" {
-				myAccount["gcpProjectId"] = gcpProjectID
+				myAccount["gcpProjectID"] = gcpProjectID
 				if gcpProjectNumber != "" {
 					myAccount["gcpProjectNumber"] = gcpProjectNumber
 				}
@@ -1952,7 +1963,7 @@ func extractCloudAccountsFromProcessedData(processedData []byte) (awsAccountID, 
 				// Check byoaDeployment
 				if byoa, exists := deploymentMap["byoaDeployment"]; exists {
 					if byoaMap, ok := byoa.(map[string]interface{}); ok {
-						if aws, exists := byoaMap["awsAccountId"]; exists {
+						if aws, exists := byoaMap["awsAccountID"]; exists {
 							if awsStr, ok := aws.(string); ok && awsAccountID == "" {
 								awsAccountID = awsStr
 							}
@@ -1963,12 +1974,12 @@ func extractCloudAccountsFromProcessedData(processedData []byte) (awsAccountID, 
 				// Check hostedDeployment
 				if hosted, exists := deploymentMap["hostedDeployment"]; exists {
 					if hostedMap, ok := hosted.(map[string]interface{}); ok {
-						if aws, exists := hostedMap["awsAccountId"]; exists {
+						if aws, exists := hostedMap["awsAccountID"]; exists {
 							if awsStr, ok := aws.(string); ok && awsAccountID == "" {
 								awsAccountID = awsStr
 							}
 						}
-						if gcp, exists := hostedMap["gcpProjectId"]; exists {
+						if gcp, exists := hostedMap["gcpProjectID"]; exists {
 							if gcpStr, ok := gcp.(string); ok && gcpProjectID == "" {
 								gcpProjectID = gcpStr
 							}
@@ -1996,7 +2007,7 @@ func extractCloudAccountsFromProcessedData(processedData []byte) (awsAccountID, 
 		// Check for Docker Compose format (x-omnistrate-* sections)
 		if byoa, exists := yamlContent["x-omnistrate-byoa"]; exists {
 			if byoaMap, ok := byoa.(map[string]interface{}); ok {
-				if aws, exists := byoaMap["awsAccountId"]; exists {
+				if aws, exists := byoaMap["awsAccountID"]; exists {
 					if awsStr, ok := aws.(string); ok && awsAccountID == "" {
 						awsAccountID = awsStr
 					}
@@ -2006,12 +2017,12 @@ func extractCloudAccountsFromProcessedData(processedData []byte) (awsAccountID, 
 
 		if myAccount, exists := yamlContent["x-omnistrate-my-account"]; exists {
 			if myAccountMap, ok := myAccount.(map[string]interface{}); ok {
-				if aws, exists := myAccountMap["awsAccountId"]; exists {
+				if aws, exists := myAccountMap["awsAccountID"]; exists {
 					if awsStr, ok := aws.(string); ok && awsAccountID == "" {
 						awsAccountID = awsStr
 					}
 				}
-				if gcp, exists := myAccountMap["gcpProjectId"]; exists {
+				if gcp, exists := myAccountMap["gcpProjectID"]; exists {
 					if gcpStr, ok := gcp.(string); ok && gcpProjectID == "" {
 						gcpProjectID = gcpStr
 					}
