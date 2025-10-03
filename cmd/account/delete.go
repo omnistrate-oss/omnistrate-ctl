@@ -1,8 +1,9 @@
 package account
 
 import (
-	"github.com/chelnak/ysmrr"
 	"github.com/omnistrate-oss/omnistrate-ctl/cmd/common"
+
+	"github.com/chelnak/ysmrr"
 	"github.com/omnistrate-oss/omnistrate-ctl/internal/config"
 	"github.com/omnistrate-oss/omnistrate-ctl/internal/dataaccess"
 	"github.com/omnistrate-oss/omnistrate-ctl/internal/utils"
@@ -10,44 +11,34 @@ import (
 	"github.com/spf13/cobra"
 )
 
-var (
-	deleteExample = `# Delete account with name
-omctl account delete [account-name]
-
-# Delete account with ID
-omctl account delete --id=[account-ID]`
+const (
+	deleteExample = `# Delete account with name or id
+omctl account delete [account-name or account-id]`
 )
 
 var deleteCmd = &cobra.Command{
-	Use:          "delete [account-name] [flags]",
+	Use:          "delete [account-name or account-id] [flags]",
 	Short:        "Delete a Cloud Provider Account",
-	Long:         `This command helps you delete a Cloud Provider Account from your account list.`,
+	Long:         "This command helps you delete a cloud provider account.",
 	Example:      deleteExample,
 	RunE:         runDelete,
 	SilenceUsage: true,
 }
 
 func init() {
-	deleteCmd.Args = cobra.MaximumNArgs(1) // Require at most one argument
-
-	deleteCmd.Flags().String("id", "", "Account ID")
+	deleteCmd.Args = cobra.MaximumNArgs(1) // Require at most 1 argument
 }
 
 func runDelete(cmd *cobra.Command, args []string) error {
 	defer config.CleanupArgsAndFlags(cmd, &args)
 
 	// Retrieve args
-	var name string
+	var nameOrID string
 	if len(args) > 0 {
-		name = args[0]
+		nameOrID = args[0]
 	}
 
 	// Retrieve flags
-	id, err := cmd.Flags().GetString("id")
-	if err != nil {
-		utils.PrintError(err)
-		return err
-	}
 	output, err := cmd.Flags().GetString("output")
 	if err != nil {
 		utils.PrintError(err)
@@ -55,7 +46,7 @@ func runDelete(cmd *cobra.Command, args []string) error {
 	}
 
 	// Validate input args
-	err = validateDeleteArguments(args, id)
+	err = validateDeleteArguments(args)
 	if err != nil {
 		utils.PrintError(err)
 		return err
@@ -79,7 +70,8 @@ func runDelete(cmd *cobra.Command, args []string) error {
 	}
 
 	// Check if account exists
-	id, _, err = getAccount(cmd.Context(), token, name, id)
+	var id string
+	id, _, err = getAccountID(cmd.Context(), token, nameOrID)
 	if err != nil {
 		utils.HandleSpinnerError(spinner, sm, err)
 		return err
@@ -99,13 +91,9 @@ func runDelete(cmd *cobra.Command, args []string) error {
 
 // Helper functions
 
-func validateDeleteArguments(args []string, accountIDArg string) error {
-	if len(args) == 0 && accountIDArg == "" {
+func validateDeleteArguments(args []string) error {
+	if len(args) == 0 {
 		return errors.New("account name or ID must be provided")
-	}
-
-	if len(args) != 0 && accountIDArg != "" {
-		return errors.New("only one of account name or ID can be provided")
 	}
 
 	return nil
