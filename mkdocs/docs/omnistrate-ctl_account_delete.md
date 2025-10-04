@@ -4,27 +4,23 @@ Delete a Cloud Provider Account
 
 ### Synopsis
 
-This command helps you delete a Cloud Provider Account from your account list.
+This command helps you delete a cloud provider account.
 
 ```
-omnistrate-ctl account delete [account-name] [flags]
+omnistrate-ctl account delete [account-name or account-id] [flags]
 ```
 
 ### Examples
 
 ```
-# Delete account with name
-omctl account delete [account-name]
-
-# Delete account with ID
-omctl account delete --id=[account-ID]
+# Delete account with name or id
+omctl account delete [account-name or account-id]
 ```
 
 ### Options
 
 ```
-  -h, --help        help for delete
-      --id string   Account ID
+  -h, --help   help for delete
 ```
 
 ### Options inherited from parent commands
