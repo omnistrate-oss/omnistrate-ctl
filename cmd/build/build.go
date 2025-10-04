@@ -430,7 +430,7 @@ func runBuild(cmd *cobra.Command, args []string) error {
 	}
 
 	var undefinedResources map[string]string
-	ServiceID, EnvironmentID, ProductTierID, undefinedResources, err = buildService(
+	ServiceID, EnvironmentID, ProductTierID, undefinedResources, err = BuildService(
 		cmd.Context(),
 		fileData,
 		token,
@@ -664,7 +664,7 @@ func runBuild(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
-func buildService(ctx context.Context, fileData []byte, token, name, specType string, description, serviceLogoURL, environment, environmentType *string, release,
+func BuildService(ctx context.Context, fileData []byte, token, name, specType string, description, serviceLogoURL, environment, environmentType *string, release,
 	releaseAsPreferred bool, releaseName *string, dryRun bool) (serviceID string, environmentID string, productTierID string, undefinedResources map[string]string, err error) {
 	if name == "" {
 		return "", "", "", make(map[string]string), errors.New("name is required")

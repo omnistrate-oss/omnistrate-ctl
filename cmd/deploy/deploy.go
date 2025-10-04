@@ -65,8 +65,6 @@ var DeployCmd = &cobra.Command{
 func init() {
 	DeployCmd.Flags().StringP("file", "f", "", "Path to the docker compose file")
 	DeployCmd.Flags().String("product-name", "", "Specify a custom service name. If not provided, directory name will be used.")
-	DeployCmd.Flags().String("release-description", "", "Release description for the version")
-	DeployCmd.Flags().String("subscription-name", "", "Subscription name for service subscription")
 	DeployCmd.Flags().Bool("dry-run", false, "Perform validation checks without actually deploying")
 	DeployCmd.Flags().String("aws-account-id", "", "AWS account ID for BYOA or hosted deployment")
 	DeployCmd.Flags().String("aws-bootstrap-role-arn", "", "AWS bootstrap role ARN for BYOA or hosted deployment")
@@ -75,26 +73,19 @@ func init() {
 	DeployCmd.Flags().String("gcp-service-account-email", "", "GCP service account email for BYOA or hosted deployment")
 	DeployCmd.Flags().String("azure-subscription-id", "", "Azure subscription ID for BYOA or hosted deployment")
 	DeployCmd.Flags().String("azure-tenant-id", "", "Azure tenant ID for BYOA or hosted deployment")
-	DeployCmd.Flags().String("deployment-type", "hosted", "Deployment type: hosted  or byoa")
-	DeployCmd.Flags().String("service-plan-id", "", "Specify the service plan ID to use when multiple plans exist")
-	DeployCmd.Flags().StringP("spec-type", "s", build.DockerComposeSpecType, "Spec type")
-	DeployCmd.Flags().Bool("wait", false, "Wait for deployment to complete before returning.")
 	DeployCmd.Flags().String("instance-id", "", "Specify the instance ID to use when multiple deployments exist.")
 	DeployCmd.Flags().String("cloud-provider", "", "Cloud provider (aws|gcp|azure)")
 	DeployCmd.Flags().String("region", "", "Region code (e.g. us-east-2, us-central1)")
 	DeployCmd.Flags().String("param", "", "Parameters for the instance deployment")
 	DeployCmd.Flags().String("param-file", "", "Json file containing parameters for the instance deployment")
 	// Additional flags from build command
-	DeployCmd.Flags().StringArray("env-var", nil, "Specify environment variables required for running the image. Use the format: --env-var key1=var1 --env-var key2=var2. Only effective when no compose spec exists in the repo.")
 	DeployCmd.Flags().Bool("skip-docker-build", false, "Skip building and pushing the Docker image")
-	DeployCmd.Flags().Bool("skip-service-build", false, "Skip building the service from the compose spec")
-	DeployCmd.Flags().Bool("skip-environment-promotion", false, "Skip creating and promoting to the production environment")
-	DeployCmd.Flags().Bool("skip-saas-portal-init", false, "Skip initializing the SaaS Portal")
 	DeployCmd.Flags().StringArray("platforms", []string{"linux/amd64"}, "Specify the platforms to build for. Use the format: --platforms linux/amd64 --platforms linux/arm64. Default is linux/amd64.")
-	DeployCmd.Flags().Bool("reset-pat", false, "Reset the GitHub Personal Access Token (PAT) for the current user.")
+	
 	if err := DeployCmd.MarkFlagFilename("param-file"); err != nil {
 		return
 	}
+
 	err := DeployCmd.MarkFlagFilename("file")
 	if err != nil {
 		return
@@ -105,7 +96,7 @@ func init() {
 var waitFlag bool
 
 func runDeploy(cmd *cobra.Command, args []string) error {
-
+	defer config.CleanupArgsAndFlags(cmd, &args)
 
 	// Step 0: Validate user is logged in first
 	token, err := common.GetTokenWithLogin()
@@ -119,6 +110,10 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
+
+
+	// Check if file was explicitly provided
+	fileExplicit := cmd.Flags().Changed("file")
 	
 
 	// Extract additional cloud provider flags for YAML creation
@@ -139,15 +134,9 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 	   if err != nil {
 		   return err
 	   }
-	// _, err = cmd.Flags().GetString("azure-tenant-id")
-	defer config.CleanupArgsAndFlags(cmd, &args)
+	
 
 	
-	// Get deployment type flag
-	deploymentType, err := cmd.Flags().GetString("deployment-type")
-	if err != nil {
-		return err
-	}
 
 	// Get cloud provider account flags
 	cloudProvider, err := cmd.Flags().GetString("cloud-provider"); 
@@ -174,41 +163,19 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	// Get additional build flags
-	envVars, err := cmd.Flags().GetStringArray("env-var")
-	if err != nil {
-		return err
-	}
 
 	skipDockerBuild, err := cmd.Flags().GetBool("skip-docker-build")
 	if err != nil {
 		return err
 	}
 
-	skipServiceBuild, err := cmd.Flags().GetBool("skip-service-build")
-	if err != nil {
-		return err
-	}
-
-	skipEnvironmentPromotion, err := cmd.Flags().GetBool("skip-environment-promotion")
-	if err != nil {
-		return err
-	}
-
-	skipSaasPortalInit, err := cmd.Flags().GetBool("skip-saas-portal-init")
-	if err != nil {
-		return err
-	}
-
+	
 	platforms, err := cmd.Flags().GetStringArray("platforms")
 	if err != nil {
 		return err
 	}
 
-	resetPAT, err := cmd.Flags().GetBool("reset-pat")
-	if err != nil {
-		return err
-	}
+	
 
 
 	// Get dry-run and wait flags
@@ -221,26 +188,7 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	specType, err := cmd.Flags().GetString("spec-type")
-	if err != nil {
-		return err
-	}
 
-	// Validate spec-type - only support DockerCompose or ServicePlanSpec
-	if specType != "" && specType != build.DockerComposeSpecType && specType != build.ServicePlanSpecType {
-		return fmt.Errorf("❌ invalid spec-type '%s'. Supported values: '%s' or '%s'", 
-			specType, build.DockerComposeSpecType, build.ServicePlanSpecType)
-	}
-
-	// Check if spec-type was explicitly provided
-	specTypeExplicit := cmd.Flags().Changed("spec-type")
-	if !specTypeExplicit {
-		if file == build.ComposeFileName {
-			specType = build.DockerComposeSpecType
-		} else {
-			specType = build.ServicePlanSpecType
-		}
-	}
 
 	// Get instance-id flag value
 	instanceID, err := cmd.Flags().GetString("instance-id")
@@ -261,12 +209,51 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 
 
 
+
 	// Pre-checks: Validate environment and requirements
 	fmt.Println("Running pre-deployment checks...")
 	
 	// Get the spec file path - follow the same flow as build_from_repo.go
 	var specFile string
 	var useRepo bool
+
+
+	specType := ""
+
+	if file == "docker-compose.yaml"{
+		specType = DockerComposeSpecType
+	} else {
+		specType = ServicePlanSpecType
+	}
+
+
+	// 	// Load the compose file
+	// var fileData []byte
+	// if file != "" {
+	// 	if _, err := os.Stat(file); os.IsNotExist(err) {
+	// 		if fileExplicit {
+	// 			utils.PrintError(err)
+	// 			return err
+	// 		} else {
+	// 			// If the file doesn't exist and wasn't explicitly provided, we check if there is a spec file
+	// 			file = build.PlanSpecFileName
+	// 			if _, err := os.Stat(file); os.IsNotExist(err) {
+	// 				utils.PrintError(err)
+	// 				return err
+	// 			}
+	// 		}
+	// 	}
+
+	// 	var err error
+	// 	fileData, err = os.ReadFile(filepath.Clean(file))
+	// 	if err != nil {
+	// 		return err
+	// 	}
+	// }
+
+
+	
+
 	
 	if len(args) > 0 {
 		specFile = args[0]
@@ -278,9 +265,9 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 			}
 		
 	} else {
-		// Look for compose.yaml in current directory first
-		if _, err := os.Stat("compose.yaml"); err == nil {
-			specFile = "compose.yaml"
+		// Look for docker-compose.yaml in current directory first
+		if _, err := os.Stat("docker-compose.yaml"); err == nil {
+			specFile = "docker-compose.yaml"
 		} else {
 			// No spec file found - ask user if they want to auto-generate one
 			fmt.Print("No spec file found, do you want to auto-generate one (Y/N): ")
@@ -736,11 +723,7 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 	}
 	fmt.Println()
 
-	// Get flags
-	releaseDescription, err := cmd.Flags().GetString("release-description")
-	if err != nil {
-		return err
-	}
+
 
 	// Instance creation/upgrade is handled automatically
 
@@ -788,50 +771,58 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 	// Step 3: Build service in DEV environment with release-as-preferred
 	spinner = sm.AddSpinner("Building service in DEV environment")
 	
-	// Prepare release description pointer
-	var releaseDescriptionPtr *string
-	if releaseDescription != "" {
-		releaseDescriptionPtr = &releaseDescription
+	// Determine deployment type for repository builds
+	if useRepo {
+		if awsAccountID != "" || gcpProjectID != "" || azureSubscriptionID != "" {
+			deploymentType = "byoa"
+		} else {
+			deploymentType = "hosted"
+		}
 	}
-
 
 	var serviceID, devEnvironmentID, devPlanID string
 	var undefinedResources map[string]string
 
-
 	if useRepo {
-		serviceID, devEnvironmentID, devPlanID, undefinedResources, err = buildServiceFromRepo(
-			cmd.Context(),
-			token,
-			serviceNameToUse,
-			releaseDescriptionPtr,
-			deploymentType,
-			awsAccountID,
-			gcpProjectID,
-			gcpProjectNumber,
-			azureSubscriptionID,
-			azureTenantID,
-			envVars,
-			skipDockerBuild,
-			skipServiceBuild,
-			skipEnvironmentPromotion,
-			skipSaasPortalInit,
-			dryRun,
-			platforms,
-			resetPAT,
-		)
-	
+		serviceID, devEnvironmentID, devPlanID, undefinedResources, err = build.BuildServiceFromRepository(
+		cmd,
+		cmd.Context(),
+		token,
+		serviceNameToUse,
+		"",
+		false,
+		dryRun,
+		skipDockerBuild,
+		false,
+		false,
+		false,
+		deploymentType,
+		awsAccountID,
+		gcpProjectID,
+		gcpProjectNumber,
+		sm,
+		file,
+		[]string{},
+		platforms,
+	)
 	} else {
-		
-		serviceID, devEnvironmentID, devPlanID, undefinedResources, err = buildServiceSpec(
+
+		serviceID, devEnvironmentID, devPlanID, undefinedResources, err = build.BuildService(
 			cmd.Context(),
 			processedData,
 			token,
 			serviceNameToUse,
 			specType,
-			releaseDescriptionPtr,
+			nil,
+			nil,
+			nil,
+			nil,
+			true,
+			true,
+			nil,
+			dryRun,
 		)
-		
+
 	}
 	if err != nil {
 			utils.HandleSpinnerError(spinner, sm, err)
