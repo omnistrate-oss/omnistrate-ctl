@@ -223,6 +223,17 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 		if specFile == "" {
 			if _, err := os.Stat("docker-compose.yaml"); err == nil {
 				specFile = "docker-compose.yaml"
+			} else {
+				// Auto-detect docker-compose.yaml in current directory if present
+				files, err := os.ReadDir(".")
+				if err == nil {
+					for _, f := range files {
+						if !f.IsDir() && (f.Name() == "docker-compose.yaml" || f.Name() == "docker-compose.yml") {
+							specFile = f.Name()
+							break
+						}
+					}
+				}
 			}
 		}
 	}
@@ -397,6 +408,16 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 }
 
 }
+	 if awsAccountID != "" {
+		fmt.Printf("Using AWS Account ID: %s\n", awsAccountID)
+	}
+	if gcpProjectID != "" {
+		fmt.Printf("Using GCP Project ID: %s and Project Number: %s\n", gcpProjectID, gcpProjectNumber)
+		
+	}
+	if azureSubscriptionID != "" {
+		fmt.Printf("Using Azure Subscription ID: %s and Tenant ID: %s\n", azureSubscriptionID, azureTenantID)
+	}
 	spinner.UpdateMessage("Specified account is linked and READY")
 	spinner.Complete()
 
