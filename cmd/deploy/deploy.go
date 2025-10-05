@@ -8,13 +8,10 @@ import (
 	"reflect"
 	"regexp"
 	"strings"
-	"time"
 
 	"gopkg.in/yaml.v3"
 
 	"github.com/chelnak/ysmrr"
-	"github.com/cqroot/prompt"
-	"github.com/cqroot/prompt/choose"
 	"github.com/omnistrate-oss/omnistrate-ctl/cmd/build"
 	"github.com/omnistrate-oss/omnistrate-ctl/cmd/common"
 	"github.com/omnistrate-oss/omnistrate-ctl/cmd/instance" // Import the correct package for instancecmd
@@ -230,15 +227,6 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	// Infer specType from file name
-	if strings.Contains(strings.ToLower(specFile), "docker-compose") {
-		specType = build.DockerComposeSpecType
-	} else if specFile != "" {
-		specType = build.ServicePlanSpecType
-	}
-
-
-      
 
 	// Convert to absolute path if using spec file
 	var absSpecFile string
@@ -297,12 +285,12 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 	  allCloudProviders := []string{"aws", "gcp", "azure"}
 	 
 
-	   allAccounts := []*openapiclient.DescribeAccountConfigResult{}
-	   // Filter for READY accounts and collect status information
-	   readyAccounts := []*openapiclient.DescribeAccountConfigResult{}
-	   accountStatusSummary := make(map[string]int)
-	   var foundMatchingAccount bool
-	   var accountStatus string
+		allAccounts := []*openapiclient.DescribeAccountConfigResult{}
+		// Filter for READY accounts and collect status information
+		readyAccounts := []*openapiclient.DescribeAccountConfigResult{}
+		accountStatusSummary := make(map[string]int)
+		var foundMatchingAccount bool
+		var accountStatus string
 
 	   for _, cp := range allCloudProviders {
 		   // Pre-check 1: Check for linked cloud provider accounts
@@ -316,6 +304,17 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 			   allAccounts = append(allAccounts, &acc)
 			   if acc.Status == "READY" {
 				   readyAccounts = append(readyAccounts, &acc)
+				   if awsAccountID == "" && acc.AwsAccountID != nil {
+						   awsAccountID = *acc.AwsAccountID
+				   }
+				   if gcpProjectID == "" && acc.GcpProjectID != nil{
+					gcpProjectID = *acc.GcpProjectID
+					gcpProjectNumber = *acc.GcpProjectNumber
+				   }
+				     if azureSubscriptionID == "" && acc.AzureSubscriptionID != nil {
+					azureSubscriptionID = *acc.AzureSubscriptionID
+					azureTenantID = *acc.AzureTenantID
+				   }
 			   }
 			   accountStatusSummary[acc.Status]++
 			   if awsAccountID != "" && acc.AwsAccountID != nil {
@@ -368,7 +367,6 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 				}
 			}
 
-		// Auto-configure cloud provider and account IDs from single and multiple account if available
 	if awsAccountID == "" && gcpProjectID == "" && azureSubscriptionID == "" {
 	
 	// Ensure at least one READY account is available
@@ -398,112 +396,12 @@ func runDeploy(cmd *cobra.Command, args []string) error {
     }
 }
 
-	if len(readyAccounts) == 1 {
-		account := readyAccounts[0]
-		if account.AwsAccountID != nil && awsAccountID == "" {
-			awsAccountID = *account.AwsAccountID
-			if cloudProvider == "" {
-				cloudProvider = "aws"
-			}
-		} else if account.GcpProjectID != nil && gcpProjectID == "" && gcpProjectNumber == "" {
-			gcpProjectID = *account.GcpProjectID
-			if account.GcpProjectNumber != nil {
-				gcpProjectNumber = *account.GcpProjectNumber
-			}
-			if cloudProvider == "" {
-				cloudProvider = "gcp"
-			}
-		} else if account.AzureSubscriptionID != nil && azureSubscriptionID == "" && azureTenantID == "" {
-			azureSubscriptionID = *account.AzureSubscriptionID
-			if account.AzureTenantID != nil {
-				azureTenantID = *account.AzureTenantID
-			}
-			if cloudProvider == "" {
-				cloudProvider = "azure"
-			}
-		}
-		spinner.UpdateMessage(fmt.Sprintf("(1 account found - assuming provider hosted: %s)\n", cloudProvider))
-		spinner.Complete()
-       } else if len(readyAccounts) > 1 && awsAccountID == "" && gcpProjectID == "" && azureSubscriptionID == "" {
-			accountsList := []string{}
-			for _, acc := range readyAccounts {
-				provider, id, extra, label := "", "", "", ""
-				if acc.AwsAccountID != nil && *acc.AwsAccountID != "" {
-					provider = "aws"
-					id = *acc.AwsAccountID
-					label = fmt.Sprintf("Provider: %s, Account ID: %s", provider, id)
-				} else if acc.GcpProjectID != nil && *acc.GcpProjectID != "" {
-					provider = "gcp"
-					id = *acc.GcpProjectID
-					if acc.GcpProjectNumber != nil {
-						extra = *acc.GcpProjectNumber
-					}
-					label = fmt.Sprintf("Provider: %s, Project ID: %s, Project Number: %s", provider, id, extra)
-				} else if acc.AzureSubscriptionID != nil && *acc.AzureSubscriptionID != "" {
-					provider = "azure"
-					id = *acc.AzureSubscriptionID
-					if acc.AzureTenantID != nil {
-						extra = *acc.AzureTenantID
-					}
-					label = fmt.Sprintf("Provider: %s, Subscription ID: %s, Tenant ID: %s", provider, id, extra)
-				}
-				
-				accountsList = append(accountsList, label)
-			}
-			   choice, err := prompt.New().Ask("Multiple READY cloud provider accounts found. Please select one").
-				   Choose(accountsList, choose.WithTheme(choose.ThemeArrow))
-			   if err != nil {
-				   utils.PrintError(err)
-				   return err
-			   }
-			   idx := -1
-			   for i, label := range accountsList {
-				   if label == choice {
-					   idx = i
-					   break
-				   }
-			   }
-			   if idx == -1 {
-				   return fmt.Errorf("Invalid account selection")
-			   }
-			   selected := readyAccounts[idx]
-			   if selected.AwsAccountID != nil && *selected.AwsAccountID != "" {
-				   cloudProvider = "aws"
-				   awsAccountID = *selected.AwsAccountID
-			   } else if selected.GcpProjectID != nil && *selected.GcpProjectID != "" {
-				   cloudProvider = "gcp"
-				   gcpProjectID = *selected.GcpProjectID
-				   if selected.GcpProjectNumber != nil {
-					   gcpProjectNumber = *selected.GcpProjectNumber
-				   }
-			   } else if selected.AzureSubscriptionID != nil && *selected.AzureSubscriptionID != "" {
-				   cloudProvider = "azure"
-				   azureSubscriptionID = *selected.AzureSubscriptionID
-				   if selected.AzureTenantID != nil {
-					   azureTenantID = *selected.AzureTenantID
-				   }
-			   }
-			
-
-		   if awsAccountID != "" {
-			   fmt.Printf("Using AWS Account ID: %s\n", awsAccountID)
-		   }
-			if gcpProjectID != "" {
-			   fmt.Printf("Using GCP Project ID: %s and Project Number: %s\n", gcpProjectID, gcpProjectNumber)
-			 
-		   }
-			if azureSubscriptionID != "" {
-			   fmt.Printf("Using Azure Subscription ID: %s and Tenant ID: %s\n", azureSubscriptionID, azureTenantID)
-		   }
-
-		spinner.UpdateMessage("Specified account is linked and READY")
-		spinner.Complete()
-
-	}
-
 }
+	spinner.UpdateMessage("Specified account is linked and READY")
+	spinner.Complete()
 
-	
+
+	spinner = sm.AddSpinner("Determining service name")
 
        var serviceNameToUse string
        serviceNameToUse = productName
@@ -525,8 +423,12 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 			
        }
 
+	spinner.UpdateMessage(fmt.Sprintf("Determining service name: %s", serviceNameToUse))
+	spinner.Complete()
+
 	// Pre-check 3: Check if service exists and validate service plan count
 	spinner.UpdateMessage(fmt.Sprintf("Checking existing service... %s", serviceNameToUse))
+	spinner.Complete()
 	existingServiceID,  err := findExistingService(cmd.Context(), token, serviceNameToUse)
 	if err != nil {
 		spinner.UpdateMessage(fmt.Sprintf("Error: failed to check existing service: %w", err))
@@ -536,43 +438,13 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 
 	if existingServiceID != "" {
 		spinner.UpdateMessage(fmt.Sprintf("Checking existing service (ID: %s)\n", existingServiceID))
+		spinner.Complete()
 	} else {
 		spinner.UpdateMessage("(new service)")
+		spinner.Complete()
 	}
 
-	spinner.UpdateMessage("All pre-checks passed! Proceeding with deployment...")
 
-
-
-
-
-
-	// Step 1: Read and parse the spec file or prepare for repo build (if not already done)
-	spinner = sm.AddSpinner("Reading and parsing spec file")
-	
-
-	// Step 2: Determine service name
-	spinner = sm.AddSpinner("Determining service name")
-	if serviceNameToUse == "" {
-		if specType == build.DockerComposeSpecType {
-			// Use current directory name for repository-based builds
-			cwd, err := os.Getwd()
-			if err != nil {
-				utils.HandleSpinnerError(spinner, sm, err)
-				return err
-			}
-			serviceNameToUse = sanitizeServiceName(filepath.Base(cwd))
-		} else {
-			// Use directory name from spec file path
-			serviceNameToUse = sanitizeServiceName(filepath.Base(filepath.Dir(absSpecFile)))
-		}
-		
-		if serviceNameToUse == "." || serviceNameToUse == "/" || serviceNameToUse == "" {
-			serviceNameToUse = "my-service"
-		}
-	}
-	spinner.UpdateMessage(fmt.Sprintf("Determining service name: %s", serviceNameToUse))
-	spinner.Complete()
 
 	// Step 3: Build service in DEV environment with release-as-preferred
 	spinner = sm.AddSpinner("Building service")
@@ -632,7 +504,7 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 
 	// Dry-run exit point
 	if dryRun {
-		spinner.UpdateMessage(fmt.Sprintf("Simulated service build completed successfully (dry run)"))
+		spinner.UpdateMessage("Simulated service build completed successfully (dry run)")
 		spinner.Complete()
 		fmt.Println("🔍 Dry-run mode: Validation checks only. No deployment will be performed.")
 		if token == "" {
@@ -663,7 +535,7 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 	}
 
 	// Execute post-service-build deployment workflow
-	err = executeDeploymentWorkflow(cmd, sm, token, serviceID, environmentID, planID, serviceNameToUse, instanceID, cloudProvider, region, param, paramFile, resourceID)
+	err = executeDeploymentWorkflow(cmd, sm, token, serviceID, environmentID, planID, serviceNameToUse, environment, environmentType, instanceID, cloudProvider, region, param, paramFile, resourceID)
 	if err != nil {
 		return err
 	}
@@ -674,130 +546,27 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 
 // executeDeploymentWorkflow handles the complete post-service-build deployment workflow
 // This function is reusable for both deploy and build_simple commands
-func executeDeploymentWorkflow(cmd *cobra.Command, sm ysmrr.SpinnerManager, token, serviceID, environmentID, planID, serviceName, instanceID, cloudProvider, region, param, paramFile, resourceID string) error {
-	const defaultProdEnvName = "Production"
+func executeDeploymentWorkflow(cmd *cobra.Command, sm ysmrr.SpinnerManager, token, serviceID, environmentID, planID, serviceName, environment, environmentType, instanceID, cloudProvider, region, param, paramFile, resourceID string) error {
 
-	// Step 4: Check if production environment exists
-	spinner := sm.AddSpinner("Checking if the production environment is set up")
-	time.Sleep(1 * time.Second) // Add a delay to show the spinner
-	prodEnvironmentID, err := checkIfProdEnvExists(cmd.Context(), token, serviceID)
+
+	// Step 7: Set service plan as preferred in environment
+	spinner := sm.AddSpinner(fmt.Sprintf("Setting service plan as preferred in %s", environment))
+	
+	// Find the latest version of the environment plan
+	targetVersion, err := dataaccess.FindLatestVersion(cmd.Context(), token, serviceID, planID)
 	if err != nil {
 		utils.HandleSpinnerError(spinner, sm, err)
 		return err
 	}
-	
-	yesOrNo := "No"
-	if prodEnvironmentID != "" {
-		yesOrNo = "Yes"
-	}
-	spinner.UpdateMessage(fmt.Sprintf("Checking if the production environment is set up: %s", yesOrNo))
-	spinner.Complete()
 
-	// Step 5: Create production environment if it doesn't exist
-	if prodEnvironmentID == "" {
-		spinner = sm.AddSpinner("Creating a production environment")
-		prodEnvironmentID, err = createProdEnv(cmd.Context(), token, serviceID, environmentID)
-		if err != nil {
-			utils.HandleSpinnerError(spinner, sm, err)
-			return err
-		}
-		spinner.UpdateMessage(fmt.Sprintf("Creating a production environment: created environment %s (environment ID: %s)", defaultProdEnvName, prodEnvironmentID))
-		spinner.Complete()
-	}
-
-	// Step 6: Promote the service to the production environment
-	spinner = sm.AddSpinner(fmt.Sprintf("Promoting the service to the %s environment", defaultProdEnvName))
-	err = dataaccess.PromoteServiceEnvironment(cmd.Context(), token, serviceID, environmentID)
-	if err != nil {
-		utils.PrintError(err)
-		return err
-	}
-	spinner.UpdateMessage("Promoting the service to the production environment: Success")
-	spinner.Complete()
-
-	// Step 7: Set service plan as preferred in production
-	spinner = sm.AddSpinner("Setting service plan as preferred in production")
-	
-	// Get service details to check production plans
-	service, err := dataaccess.DescribeService(cmd.Context(), token, serviceID)
+	// Set as preferred
+	_, err = dataaccess.SetDefaultServicePlan(cmd.Context(), token, serviceID, planID, targetVersion)
 	if err != nil {
 		utils.HandleSpinnerError(spinner, sm, err)
 		return err
 	}
-	
-	// Find the production environment and check if it has service plans
-	var hasProductionPlans bool
-	var prodPlanID string
-	
-	// Check if user provided a specific service plan ID
-	userProvidedPlanID, _ := cmd.Flags().GetString("service-plan-id")
-	
-	for _, env := range service.ServiceEnvironments {
-		if env.Id == prodEnvironmentID {
-			if len(env.ServicePlans) > 0 {
-				hasProductionPlans = true
-				
-				if userProvidedPlanID != "" {
-					// Use the user-provided service plan ID
-					for _, plan := range env.ServicePlans {
-						if plan.ProductTierID == userProvidedPlanID {
-							prodPlanID = plan.ProductTierID
-							break
-						}
-					}
-					if prodPlanID == "" {
-						spinner.UpdateMessage("Setting service plan as preferred in production: Skipped (provided plan ID not found in production)")
-						spinner.Complete()
-						fmt.Printf("⚠️ Warning: Provided service plan ID '%s' not found in production environment.\n\n", userProvidedPlanID)
-						break
-					}
-				} else {
-					// Get dev product tier details to match with production plan
-					devProductTier, err := dataaccess.DescribeProductTier(cmd.Context(), token, serviceID, planID)
-					if err != nil {
-						utils.HandleSpinnerError(spinner, sm, err)
-						return err
-					}
-					
-					// Find the production plan with the same name as the dev plan
-					for _, plan := range env.ServicePlans {
-						if plan.Name == devProductTier.Name {
-							prodPlanID = plan.ProductTierID
-							break
-						}
-					}
-				}
-			}
-			break
-		}
-	}
-
-	if !hasProductionPlans {
-		spinner.UpdateMessage("Setting service plan as preferred in production: Skipped (no plans available - promotion required)")
-		spinner.Complete()
-		fmt.Printf("Note: Service plan preference cannot be set until promotion is completed.\n")
-		fmt.Printf("After promoting, you can set the preferred plan using the serviceplan commands.\n\n")
-	} else if prodPlanID == "" {
-		spinner.UpdateMessage("Setting service plan as preferred in production: Skipped (matching plan not found)")
-		spinner.Complete()
-		fmt.Printf(" ⚠️ Warning: Could not find matching production plan for preference setting.\n\n")
-	} else {
-		// Find the latest version of the production plan
-		targetVersion, err := dataaccess.FindLatestVersion(cmd.Context(), token, serviceID, prodPlanID)
-		if err != nil {
-			utils.HandleSpinnerError(spinner, sm, err)
-			return err
-		}
-
-		// Set as preferred
-		_, err = dataaccess.SetDefaultServicePlan(cmd.Context(), token, serviceID, prodPlanID, targetVersion)
-		if err != nil {
-			utils.HandleSpinnerError(spinner, sm, err)
-			return err
-		}
-		spinner.UpdateMessage("Setting service plan as preferred in production: Success")
-		spinner.Complete()
-	}
+	spinner.UpdateMessage(fmt.Sprintf("Setting service plan as preferred in %s: Success",environment))
+	spinner.Complete()
 
 	
 
@@ -811,7 +580,7 @@ func executeDeploymentWorkflow(cmd *cobra.Command, sm ysmrr.SpinnerManager, toke
 	spinner = sm.AddSpinner(spinnerMsg)
 
 	var existingInstanceIDs []string
-	existingInstanceIDs, err = listInstances(cmd.Context(), token, serviceID, prodEnvironmentID, prodPlanID, instanceID)
+	existingInstanceIDs, err = listInstances(cmd.Context(), token, serviceID, environmentID, planID, instanceID)
 	if err != nil {
 		spinner.UpdateMessage(spinnerMsg + ": Failed (" + err.Error() + ")")
 		spinner.Error()
@@ -863,7 +632,7 @@ func executeDeploymentWorkflow(cmd *cobra.Command, sm ysmrr.SpinnerManager, toke
 		spinner.Complete()
 
 		spinner = sm.AddSpinner(fmt.Sprintf("Upgrading existing instance: %s", existingInstanceIDs))
-		upgradeErr := upgradeExistingInstance(cmd.Context(), token, existingInstanceIDs, serviceID, prodPlanID)
+		upgradeErr := upgradeExistingInstance(cmd.Context(), token, existingInstanceIDs, serviceID, planID)
 		instanceActionType = "upgrade"
 		if upgradeErr != nil {
 			spinner.UpdateMessage(fmt.Sprintf("Upgrading existing instance: Failed (%s)", upgradeErr.Error()))
@@ -884,7 +653,7 @@ func executeDeploymentWorkflow(cmd *cobra.Command, sm ysmrr.SpinnerManager, toke
 		
 		spinner = sm.AddSpinner(createMsg)
 		createdInstanceID, err := "", error(nil)
-		createdInstanceID, err = createInstanceUnified(cmd.Context(), token, serviceID, prodEnvironmentID, prodPlanID, cloudProvider, region, param, paramFile, resourceID)
+		createdInstanceID, err = createInstanceUnified(cmd.Context(), token, serviceID, environmentID, planID, cloudProvider, region, param, paramFile, resourceID)
 		finalInstanceID = createdInstanceID  
 		instanceActionType = "create"
 		if err != nil {
@@ -909,7 +678,7 @@ func executeDeploymentWorkflow(cmd *cobra.Command, sm ysmrr.SpinnerManager, toke
 	   // Success message
 	   fmt.Println()
 	   fmt.Printf("   Service: %s (ID: %s)\n", serviceName, serviceID)
-	   fmt.Printf("   Production Environment: %s (ID: %s)\n", defaultProdEnvName, prodEnvironmentID)
+	   fmt.Printf("   Environment: %s, Environment Type: %s (ID: %s)\n", environment, environmentType , environmentID)
 	   if finalInstanceID != "" {
 		   fmt.Printf("   Instance: %s (ID: %s)\n", instanceActionType, finalInstanceID)
 	   }
@@ -934,51 +703,8 @@ func executeDeploymentWorkflow(cmd *cobra.Command, sm ysmrr.SpinnerManager, toke
 
 
 
-// Helper functions (similar to build_from_repo.go)
-
-func checkIfProdEnvExists(ctx context.Context, token string, serviceID string) (string, error) {
-	prodEnvironment, err := dataaccess.FindEnvironment(ctx, token, serviceID, "prod")
-	if errors.As(err, &dataaccess.ErrEnvironmentNotFound) {
-		return "", nil
-	}
-	if err != nil {
-		return "", err
-	}
-	return prodEnvironment.Id, nil
-}
-
-func createProdEnv(ctx context.Context, token string, serviceID string, environmentID string) (string, error) {
-	// Get default deployment config ID
-	defaultDeploymentConfigID, err := dataaccess.GetDefaultDeploymentConfigID(ctx, token)
-	if err != nil {
-		return "", err
-	}
-
-	prodEnvironmentID, err := dataaccess.CreateServiceEnvironment(ctx, token,
-		defaultProdEnvName,
-		"Production environment",
-		serviceID,
-		"PUBLIC",
-		"PROD",
-		utils.ToPtr(environmentID),
-		defaultDeploymentConfigID,
-		true,
-		nil,
-	)
-	if err != nil {
-		return "", err
-	}
-
-	return prodEnvironmentID, nil
-}
-
-
-
 // createInstanceUnified creates an instance with or without subscription, removing duplicate code
 func createInstanceUnified(ctx context.Context, token, serviceID, environmentID, productTierID, cloudProvider, region, param, paramFile, resourceID string) (string, error) {
-       
-	
-	
 	// Get the latest version
        version, err := dataaccess.FindLatestVersion(ctx, token, serviceID, productTierID)
        if err != nil {
@@ -1308,7 +1034,6 @@ func upgradeExistingInstance(ctx context.Context, token string, instanceIDs []st
 		if err != nil {
 			return fmt.Errorf("failed to upgrade instance %s: %w", id, err)
 		}
-		fmt.Printf("✅ Upgraded instance: %s\n", id)
 	}
 
 	return nil
