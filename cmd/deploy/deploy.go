@@ -259,10 +259,16 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 			return errors.Wrap(err, "failed to read spec file")
 		}
 
+		// Process template expressions recursively
+		processedData, err = processTemplateExpressions(fileData, filepath.Dir(absSpecFile))
+		if err != nil {
+			return errors.Wrap(err, "failed to process template expressions")
+		}
+
 		
 		// Check for plan spec indicators in processed YAML
 		var planCheck map[string]interface{}
-		if err := yaml.Unmarshal(fileData, &planCheck); err == nil {
+		if err := yaml.Unmarshal(processedData, &planCheck); err == nil {
 			if _, ok := planCheck["helm"]; ok {
 				specType = build.ServicePlanSpecType
 			} else if _, ok := planCheck["operator"]; ok {
@@ -278,9 +284,6 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 	spinner.UpdateMessage("Checking cloud provider accounts...\n")
 
 	awsAccountID, gcpProjectID, gcpProjectNumber, azureSubscriptionID, azureTenantID := extractCloudAccountsFromProcessedData(processedData)
-		
-		
-		
 
      if cloudProvider == "" {
        if awsAccountID != ""  {
@@ -317,14 +320,20 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 				   readyAccounts = append(readyAccounts, &acc)
 				   if awsAccountID == "" && acc.AwsAccountID != nil {
 						   awsAccountID = *acc.AwsAccountID
+						   foundMatchingAccount = true
+					   		accountStatus = acc.Status
 				   }
 				   if gcpProjectID == "" && acc.GcpProjectID != nil{
 					gcpProjectID = *acc.GcpProjectID
 					gcpProjectNumber = *acc.GcpProjectNumber
+						foundMatchingAccount = true
+					   accountStatus = acc.Status
 				   }
 				     if azureSubscriptionID == "" && acc.AzureSubscriptionID != nil {
 					azureSubscriptionID = *acc.AzureSubscriptionID
 					azureTenantID = *acc.AzureTenantID
+						foundMatchingAccount = true
+					   accountStatus = acc.Status
 				   }
 			   }
 			   accountStatusSummary[acc.Status]++
@@ -353,8 +362,6 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 	   }
 
 		if !foundMatchingAccount {
-				spinner.UpdateMessage("Error: Specified cloud account is not linked to your organization.")
-				spinner.Error()
 				if awsAccountID != "" {
 					fmt.Printf("AWS account ID %s is not linked. Please link it using 'omctl account create'.\n", awsAccountID)
 				}
@@ -539,7 +546,7 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 	}
 	fmt.Println()
 
-	spinner.UpdateMessage(fmt.Sprintf("Building service in DEV environment: built service %s (ID: %s)", serviceNameToUse, serviceID))
+	spinner.UpdateMessage(fmt.Sprintf("Building service in %s environment and %s environment type: built service %s (ID: %s)", environment, environmentType, serviceNameToUse, serviceID))
 	spinner.Complete()
 
 
@@ -689,11 +696,6 @@ func executeDeploymentWorkflow(cmd *cobra.Command, sm ysmrr.SpinnerManager, toke
 	}
 
 
-
-       // Step 10: Success message - completed deployment
-       spinner = sm.AddSpinner("Deployment workflow completed")
-       spinner.Complete()
-
        sm.Stop()
 
 	   // Success message
@@ -705,6 +707,8 @@ func executeDeploymentWorkflow(cmd *cobra.Command, sm ysmrr.SpinnerManager, toke
 	   }
 	   fmt.Println()
 	   
+
+	  	fmt.Println("🔄 Deployment progress...")
 
 	    // Optionally display workflow progress if desired (if you want to keep this logic, pass cmd/context as needed)
        if finalInstanceID != "" {
@@ -958,28 +962,26 @@ func createInstanceUnified(ctx context.Context, token, serviceID, environmentID,
 	   }
       
 
-	   fmt.Printf("🌐 Creating instance in %s ...\n", request)
-	   return "", nil
 
        // Create the instance
-    //    instance, err := dataaccess.CreateResourceInstance(ctx, token,
-	//        res.ConsumptionDescribeServiceOfferingResult.ServiceProviderId,
-	//        res.ConsumptionDescribeServiceOfferingResult.ServiceURLKey,
-	//        offering.ServiceAPIVersion,
-	//        offering.ServiceEnvironmentURLKey,
-	//        offering.ServiceModelURLKey,
-	//        offering.ProductTierURLKey,
-	//        resourceKey,
-	//        request)
-    //    if err != nil {
-	//        return "", fmt.Errorf("failed to create resource instance: %w", err)
-    //    }
+       instance, err := dataaccess.CreateResourceInstance(ctx, token,
+	       res.ConsumptionDescribeServiceOfferingResult.ServiceProviderId,
+	       res.ConsumptionDescribeServiceOfferingResult.ServiceURLKey,
+	       offering.ServiceAPIVersion,
+	       offering.ServiceEnvironmentURLKey,
+	       offering.ServiceModelURLKey,
+	       offering.ProductTierURLKey,
+	       resourceKey,
+	       request)
+       if err != nil {
+	       return "", fmt.Errorf("failed to create resource instance: %w", err)
+       }
 
-    //    if instance == nil || instance.Id == nil {
-	//        return "", fmt.Errorf("instance creation returned empty result")
-    //    }
+       if instance == nil || instance.Id == nil {
+	       return "", fmt.Errorf("instance creation returned empty result")
+       }
 
-    //    return *instance.Id, nil
+       return *instance.Id, nil
 }
 
 
@@ -1062,75 +1064,6 @@ func upgradeExistingInstance(ctx context.Context, token string, instanceIDs []st
 
 
 
-// validateSpecFileConfiguration validates the spec file for  tenant-aware resources
-func validateSpecFileConfiguration(data []byte, specType string) (tenantAwareResourceCount int, err error) {
-	
-	var spec map[string]interface{}
-	if err := yaml.Unmarshal(data, &spec); err != nil {
-		return 0, fmt.Errorf("failed to parse YAML: %w", err)
-	}
-
-	tenantAwareResourceCount = 0
-	// If services section exists, use it
-	if servicesRaw, ok := spec["services"]; ok {
-		if services, ok := servicesRaw.(map[string]interface{}); ok {
-			for _, svcRaw := range services {
-				svc, ok := svcRaw.(map[string]interface{})
-				if !ok {
-					continue
-				}
-				val, hasKey := svc["x-omnistrate-mode-internal"]
-				if hasKey {
-					switch v := val.(type) {
-					case bool:
-						if v {
-							continue
-						}
-					case string:
-						if strings.EqualFold(v, "false") {
-							continue
-						}
-					}
-					tenantAwareResourceCount++
-				} else {
-					tenantAwareResourceCount++
-				}
-			}
-			fmt.Println("tenantAwareResourceCount spec:", tenantAwareResourceCount)
-			return tenantAwareResourceCount, nil
-		}
-	}
-	for _, val := range spec {
-		
-		// Each top-level key is a resource
-		res, ok := val.(map[string]interface{})
-		if !ok {
-			continue
-		}
-		tag, hasTag := res["x-omnistrate-mode-internal"]
-		fmt.Println("Resource:", res)
-		fmt.Println("Tag:", tag, "HasTag:", hasTag)
-		if hasTag {
-			switch v := tag.(type) {
-			case bool:
-				if v {
-					continue
-				}
-			case string:
-				if strings.EqualFold(v, "true") {
-					continue
-				}
-			}
-			tenantAwareResourceCount++
-		} else {
-			tenantAwareResourceCount++
-		}
-	}
-	fmt.Println("tenantAwareResourceCount spec:", tenantAwareResourceCount)
-	return tenantAwareResourceCount, nil
-	}
-
-
 // findExistingService searches for an existing service by name
 func findExistingService(ctx context.Context, token, serviceName string) (string, error) {
 	services, err := dataaccess.ListServices(ctx, token)
@@ -1148,265 +1081,98 @@ func findExistingService(ctx context.Context, token, serviceName string) (string
 	return "", nil // Service not found
 }
 
-// getServicePlans retrieves service plans for a given service
-func getServicePlans(ctx context.Context, token string, envs map[string]interface{}) ([]interface{}, error) {
-	env := envs["DEV"]
-	if env == nil {
-		env = envs["dev"]
-	}
-	if env == nil {
-		return nil, fmt.Errorf("no DEV environment found for service")
-	}
-
-	// Use reflection to handle both struct and pointer-to-struct
-	val := reflect.ValueOf(env)
-	if val.Kind() == reflect.Ptr {
-		val = val.Elem()
-	}
-	if val.Kind() == reflect.Struct {
-		field := val.FieldByName("ServicePlans")
-		if field.IsValid() && field.CanInterface() {
-			plansVal := field
-			if plansVal.Kind() == reflect.Ptr {
-				plansVal = plansVal.Elem()
-			}
-			if plansVal.Kind() == reflect.Slice {
-				var allPlans []interface{}
-				for i := 0; i < plansVal.Len(); i++ {
-					allPlans = append(allPlans, plansVal.Index(i).Interface())
-				}
-				return allPlans, nil
-			}
-		}
-	} else if val.Kind() == reflect.Map {
-		// If ServicePlans is present as a key in a map
-		plansVal := val.MapIndex(reflect.ValueOf("ServicePlans"))
-		if plansVal.IsValid() && plansVal.Kind() == reflect.Slice {
-			var allPlans []interface{}
-			for i := 0; i < plansVal.Len(); i++ {
-				allPlans = append(allPlans, plansVal.Index(i).Interface())
-			}
-			return allPlans, nil
-		}
-	}
-	return nil, fmt.Errorf("could not extract ServicePlans from environment")
-}
-
-
-// createDeploymentYAML generates a YAML document for deployment based on modelType, creationMethod, and cloud account flags
-// Returns a map[string]interface{} representing the YAML structure
-func createDeploymentYAML(
-	deploymentType string,
-	specType string,
-	awsAccountID string,
-	awsBootstrapRoleARN string,
-	gcpProjectID string,
-	gcpProjectNumber string,
-	gcpServiceAccountEmail string,
-	azureSubscriptionID string,
-	azureTenantID string,
-) map[string]interface{} {
-	if deploymentType == "" {
-		deploymentType = "hosted"
-	}
-	
-       yamlDoc := make(map[string]interface{})
-
-	if awsBootstrapRoleARN == "" && awsAccountID != "" {
-		// Default role ARN if not provided
-		awsBootstrapRoleARN = fmt.Sprintf("arn:aws:iam::%s:role/OmnistrateBootstrapRole", awsAccountID)
-	}
-
-	if gcpServiceAccountEmail == "" && gcpProjectID != "" {
-		// Default service account email if not provided
-		gcpServiceAccountEmail = fmt.Sprintf("omnistrate-bootstrap@%s.iam.gserviceaccount.com", gcpProjectID)
-	}
-
-	
-
-	// Build the deployment section based on deploymentType and specType
-
-	if deploymentType == "byoa" {
-		if specType != "DockerCompose"  {
-			yamlDoc["deployment"] = map[string]interface{}{
-				"byoaDeployment": map[string]interface{}{
-					"awsAccountID": awsAccountID,
-					"awsBootstrapRoleAccountArn": awsBootstrapRoleARN,
-				},
-			}
-		} else {
-			yamlDoc["x-omnistrate-byoa"] = map[string]interface{}{
-				"awsAccountID": awsAccountID,
-				"awsBootstrapRoleAccountArn": awsBootstrapRoleARN,
-			}
-		}
-	} else if deploymentType == "hosted" {
-		if specType != "DockerCompose" {
-			hostedDeployment := make(map[string]interface{})
-			if awsAccountID != "" {
-				hostedDeployment["awsAccountID"] = awsAccountID
-				if awsBootstrapRoleARN != "" {
-					hostedDeployment["awsBootstrapRoleAccountArn"] = awsBootstrapRoleARN
-				}
-			}
-			if gcpProjectID != "" {
-				hostedDeployment["gcpProjectID"] = gcpProjectID
-				if gcpProjectNumber != "" {
-					hostedDeployment["gcpProjectNumber"] = gcpProjectNumber
-				}
-				if gcpServiceAccountEmail != "" {
-					hostedDeployment["gcpServiceAccountEmail"] = gcpServiceAccountEmail
-				}
-			}
-			if azureSubscriptionID != "" {
-				hostedDeployment["azureSubscriptionID"] = azureSubscriptionID
-				if azureTenantID != "" {
-					hostedDeployment["azureTenantID"] = azureTenantID
-				}
-			}
-			yamlDoc["deployment"] = map[string]interface{}{
-				"hostedDeployment": hostedDeployment,
-			}
-		} else {
-			myAccount := make(map[string]interface{})
-			if awsAccountID != "" {
-				myAccount["awsAccountID"] = awsAccountID
-				if awsBootstrapRoleARN != "" {
-					myAccount["awsBootstrapRoleAccountArn"] = awsBootstrapRoleARN
-				}
-			}
-			if gcpProjectID != "" {
-				myAccount["gcpProjectID"] = gcpProjectID
-				if gcpProjectNumber != "" {
-					myAccount["gcpProjectNumber"] = gcpProjectNumber
-				}
-				if gcpServiceAccountEmail != "" {
-					myAccount["gcpServiceAccountEmail"] = gcpServiceAccountEmail
-				}
-			}
-			if azureSubscriptionID != "" {
-				myAccount["azureSubscriptionID"] = azureSubscriptionID
-				if azureTenantID != "" {
-					myAccount["azureTenantID"] = azureTenantID
-				}
-			}
-			yamlDoc["x-omnistrate-my-account"] = myAccount
-		}
-	}
-	return yamlDoc
-}
 
 
 // extractCloudAccountsFromProcessedData extracts cloud provider account information from the YAML content
 func extractCloudAccountsFromProcessedData(processedData []byte) (awsAccountID, gcpProjectID, gcpProjectNumber, azureSubscriptionID, azureTenantID string) {
-	if len(processedData) == 0 {
-		return "", "", "", "", ""
-	}
+   if len(processedData) == 0 {
+	   return "", "", "", "", ""
+   }
 
-	// Split YAML into multiple documents and parse each one
-	yamlDocs := strings.Split(string(processedData), "---")
-	
-	for _, docStr := range yamlDocs {
-		docStr = strings.TrimSpace(docStr)
-		if docStr == "" {
-			continue
-		}
-		
-		var yamlContent map[string]interface{}
-		if err := yaml.Unmarshal([]byte(docStr), &yamlContent); err != nil {
-			continue // Skip invalid YAML documents
-		}
+   // Helper to extract the first string value from a map for a list of keys
+   getFirstString := func(m map[string]interface{}, keys ...string) string {
+	   for _, key := range keys {
+		   if v, ok := m[key].(string); ok && v != "" {
+			   return v
+		   }
+	   }
+	   return ""
+   }
 
-		// Check for deployment section (ServicePlan spec format)
-		if deployment, exists := yamlContent["deployment"]; exists {
-			if deploymentMap, ok := deployment.(map[string]interface{}); ok {
-				// Check byoaDeployment
-				if byoa, exists := deploymentMap["byoaDeployment"]; exists {
-					if byoaMap, ok := byoa.(map[string]interface{}); ok {
-						if aws, exists := byoaMap["awsAccountID"]; exists {
-							if awsStr, ok := aws.(string); ok && awsAccountID == "" {
-								awsAccountID = awsStr
-							}
-						}
-					}
-				}
-				
-				// Check hostedDeployment
-				if hosted, exists := deploymentMap["hostedDeployment"]; exists {
-					if hostedMap, ok := hosted.(map[string]interface{}); ok {
-						if aws, exists := hostedMap["awsAccountID"]; exists {
-							if awsStr, ok := aws.(string); ok && awsAccountID == "" {
-								awsAccountID = awsStr
-							}
-						}
-						if gcp, exists := hostedMap["gcpProjectID"]; exists {
-							if gcpStr, ok := gcp.(string); ok && gcpProjectID == "" {
-								gcpProjectID = gcpStr
-							}
-						}
-						if gcpNum, exists := hostedMap["gcpProjectNumber"]; exists {
-							if gcpNumStr, ok := gcpNum.(string); ok && gcpProjectNumber == "" {
-								gcpProjectNumber = gcpNumStr
-							}
-						}
-						if azure, exists := hostedMap["azureSubscriptionID"]; exists {
-							if azureStr, ok := azure.(string); ok && azureSubscriptionID == "" {
-								azureSubscriptionID = azureStr
-							}
-						}
-						if azureTenant, exists := hostedMap["azureTenantID"]; exists {
-							if azureTenantStr, ok := azureTenant.(string); ok && azureTenantID == "" {
-								azureTenantID = azureTenantStr
-							}
-						}
-					}
-				}
-			}
-		}
+   yamlDocs := strings.Split(string(processedData), "---")
+   for _, docStr := range yamlDocs {
+	   docStr = strings.TrimSpace(docStr)
+	   if docStr == "" {
+		   continue
+	   }
+	   var yamlContent map[string]interface{}
+	   if err := yaml.Unmarshal([]byte(docStr), &yamlContent); err != nil {
+		   continue
+	   }
 
-		// Check for Docker Compose format (x-omnistrate-* sections)
-		if byoa, exists := yamlContent["x-omnistrate-byoa"]; exists {
-			if byoaMap, ok := byoa.(map[string]interface{}); ok {
-				if aws, exists := byoaMap["awsAccountID"]; exists {
-					if awsStr, ok := aws.(string); ok && awsAccountID == "" {
-						awsAccountID = awsStr
-					}
-				}
-			}
-		}
+	   // ServicePlan spec: deployment.hostedDeployment/byoaDeployment
+	   if deployment, exists := yamlContent["deployment"]; exists {
+		   if deploymentMap, ok := deployment.(map[string]interface{}); ok {
+			   // hostedDeployment
+			   if hosted, exists := deploymentMap["hostedDeployment"]; exists {
+				   if hostedMap, ok := hosted.(map[string]interface{}); ok {
+					   if awsAccountID == "" {
+						   awsAccountID = getFirstString(hostedMap, "awsAccountID", "AwsAccountID", "awsAccountId", "AwsAccountId")
+					   }
+					   if gcpProjectID == "" {
+						   gcpProjectID = getFirstString(hostedMap, "gcpProjectID", "GcpProjectID", "gcpProjectId", "GcpProjectId")
+					   }
+					   if gcpProjectNumber == "" {
+						   gcpProjectNumber = getFirstString(hostedMap, "gcpProjectNumber", "GcpProjectNumber")
+					   }
+					   if azureSubscriptionID == "" {
+						   azureSubscriptionID = getFirstString(hostedMap, "azureSubscriptionID", "AzureSubscriptionID", "azureSubscriptionId", "AzureSubscriptionId")
+					   }
+					   if azureTenantID == "" {
+						   azureTenantID = getFirstString(hostedMap, "azureTenantID", "AzureTenantID", "azureTenantId", "AzureTenantId")
+					   }
+				   }
+			   }
+			   // byoaDeployment
+			   if byoa, exists := deploymentMap["byoaDeployment"]; exists {
+				   if byoaMap, ok := byoa.(map[string]interface{}); ok {
+					   if awsAccountID == "" {
+						   awsAccountID = getFirstString(byoaMap, "awsAccountID", "AwsAccountID", "awsAccountId", "AwsAccountId")
+					   }
+				   }
+			   }
+		   }
+	   }
 
-		if myAccount, exists := yamlContent["x-omnistrate-my-account"]; exists {
-			if myAccountMap, ok := myAccount.(map[string]interface{}); ok {
-				if aws, exists := myAccountMap["awsAccountID"]; exists {
-					if awsStr, ok := aws.(string); ok && awsAccountID == "" {
-						awsAccountID = awsStr
-					}
-				}
-				if gcp, exists := myAccountMap["gcpProjectID"]; exists {
-					if gcpStr, ok := gcp.(string); ok && gcpProjectID == "" {
-						gcpProjectID = gcpStr
-					}
-				}
-				if gcpNum, exists := myAccountMap["gcpProjectNumber"]; exists {
-					if gcpNumStr, ok := gcpNum.(string); ok && gcpProjectNumber == "" {
-						gcpProjectNumber = gcpNumStr
-					}
-				}
-				if azure, exists := myAccountMap["azureSubscriptionID"]; exists {
-					if azureStr, ok := azure.(string); ok && azureSubscriptionID == "" {
-						azureSubscriptionID = azureStr
-					}
-				}
-				if azureTenant, exists := myAccountMap["azureTenantID"]; exists {
-					if azureTenantStr, ok := azureTenant.(string); ok && azureTenantID == "" {
-						azureTenantID = azureTenantStr
-					}
-				}
-			}
-		}
-	}
-
-	return awsAccountID, gcpProjectID, gcpProjectNumber, azureSubscriptionID, azureTenantID
+	   // DockerCompose spec: x-omnistrate-my-account, x-omnistrate-byoa
+	   if myAccount, exists := yamlContent["x-omnistrate-my-account"]; exists {
+		   if myAccountMap, ok := myAccount.(map[string]interface{}); ok {
+			   if awsAccountID == "" {
+				   awsAccountID = getFirstString(myAccountMap, "awsAccountID", "AwsAccountID", "awsAccountId", "AwsAccountId")
+			   }
+			   if gcpProjectID == "" {
+				   gcpProjectID = getFirstString(myAccountMap, "gcpProjectID", "GcpProjectID", "gcpProjectId", "GcpProjectId")
+			   }
+			   if gcpProjectNumber == "" {
+				   gcpProjectNumber = getFirstString(myAccountMap, "gcpProjectNumber", "GcpProjectNumber")
+			   }
+			   if azureSubscriptionID == "" {
+				   azureSubscriptionID = getFirstString(myAccountMap, "azureSubscriptionID", "AzureSubscriptionID", "azureSubscriptionId", "AzureSubscriptionId")
+			   }
+			   if azureTenantID == "" {
+				   azureTenantID = getFirstString(myAccountMap, "azureTenantID", "AzureTenantID", "azureTenantId", "AzureTenantId")
+			   }
+		   }
+	   }
+	   if byoa, exists := yamlContent["x-omnistrate-byoa"]; exists {
+		   if byoaMap, ok := byoa.(map[string]interface{}); ok {
+			   if awsAccountID == "" {
+				   awsAccountID = getFirstString(byoaMap, "awsAccountID", "AwsAccountID", "awsAccountId", "AwsAccountId")
+			   }
+		   }
+	   }
+   }
+   return awsAccountID, gcpProjectID, gcpProjectNumber, azureSubscriptionID, azureTenantID
 }
 
 // sanitizeServiceName converts a service name to be API-compatible (lowercase, valid characters)
@@ -1434,5 +1200,83 @@ func sanitizeServiceName(name string) string {
 	name = regexp.MustCompile(`[-_]+$`).ReplaceAllString(name, "")
 	
 	return name
+}
+
+
+
+// processTemplateExpressions processes template expressions like {{ $file:path }} recursively
+func processTemplateExpressions(data []byte, baseDir string) ([]byte, error) {
+	content := string(data)
+	
+	// Pattern to match {{ $file:path }}
+	re := regexp.MustCompile(`(?m)^(?P<indent>[ \t]*)?(?P<key>[\S\t ]*)?{{\s*\$file:(?P<filepath>[^\s}]+)\s*}}`)
+	
+	for {
+		if !re.MatchString(content) {
+			break
+		}
+		
+		var processingErr error
+		content = re.ReplaceAllStringFunc(content, func(match string) string {
+			submatches := re.FindStringSubmatch(match)
+			if len(submatches) < 4 {
+				processingErr = fmt.Errorf("invalid file reference: %s", match)
+				return match
+			}
+			
+			indent := submatches[1]
+			key := submatches[2]
+			filePath := submatches[3]
+			
+			if filePath == "" {
+				processingErr = fmt.Errorf("empty file path in reference: %s", match)
+				return match
+			}
+			
+			// Resolve file path
+			var fullPath string
+			if filepath.IsAbs(filePath) {
+				fullPath = filePath
+			} else {
+				fullPath = filepath.Join(baseDir, filePath)
+			}
+			
+			// Read file content
+			fileContent, err := os.ReadFile(fullPath)
+			if err != nil {
+				processingErr = fmt.Errorf("failed to read file %s: %v", fullPath, err)
+				return match
+			}
+			
+			// Process nested template expressions
+			processedContent, err := processTemplateExpressions(fileContent, filepath.Dir(fullPath))
+			if err != nil {
+				processingErr = fmt.Errorf("failed to process templates in %s: %v", fullPath, err)
+				return match
+			}
+			
+			// Apply indentation
+			lines := strings.Split(string(processedContent), "\n")
+			result := make([]string, len(lines))
+			
+			for i, line := range lines {
+				if i == 0 {
+					result[i] = indent + key + line
+				} else if strings.TrimSpace(line) != "" {
+					result[i] = indent + line
+				} else {
+					result[i] = line
+				}
+			}
+			
+			return strings.Join(result, "\n")
+		})
+		
+		if processingErr != nil {
+			return nil, processingErr
+		}
+	}
+	
+	return []byte(content), nil
 }
 
