@@ -85,6 +85,7 @@ func init() {
 	if err != nil {
 		return
 	}
+	DeployCmd.MarkFlagsRequiredTogether("environment", "environment-type")
 
 }
 
@@ -182,6 +183,9 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
+	environmentTypePtr := utils.ToPtr(strings.ToUpper(environmentType))
+
+
 	environment, err := cmd.Flags().GetString("environment")
 	if err != nil {
 		utils.PrintError(err)
@@ -266,17 +270,48 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 		}
 
 		
-		// Check for plan spec indicators in processed YAML
+		// Improved: Recursively check for plan spec keys at any level
 		var planCheck map[string]interface{}
 		if err := yaml.Unmarshal(processedData, &planCheck); err == nil {
-			if _, ok := planCheck["helm"]; ok {
-				specType = build.ServicePlanSpecType
-			} else if _, ok := planCheck["operator"]; ok {
-				specType = build.ServicePlanSpecType
-			} else if _, ok := planCheck["terraform"]; ok {
-				specType = build.ServicePlanSpecType
-			} else if _, ok := planCheck["kustomize"]; ok {
-				specType = build.ServicePlanSpecType
+			planKeyGroups := [][]string{
+				{"helm", "helmChart", "helmChartConfiguration"},
+				{"operator", "operatorCRDConfiguration"},
+				{"terraform", "terraformConfigurations"},
+				{"kustomize", "kustomizeConfiguration"},
+			}
+			// Helper: recursively search for any key in keys in a map
+			var containsAnyKey func(m map[string]interface{}, keys []string) bool
+			containsAnyKey = func(m map[string]interface{}, keys []string) bool {
+				for k, v := range m {
+					for _, key := range keys {
+						if k == key {
+							return true
+						}
+					}
+					// Recurse into nested maps
+					if sub, ok := v.(map[string]interface{}); ok {
+						if containsAnyKey(sub, keys) {
+							return true
+						}
+					}
+					// Recurse into slices of maps
+					if arr, ok := v.([]interface{}); ok {
+						for _, item := range arr {
+							if subm, ok := item.(map[string]interface{}); ok {
+								if containsAnyKey(subm, keys) {
+									return true
+								}
+							}
+						}
+					}
+				}
+				return false
+			}
+			for _, keys := range planKeyGroups {
+				if containsAnyKey(planCheck, keys) {
+					specType = build.ServicePlanSpecType
+					break
+				}
 			}
 		}
 	}
@@ -476,10 +511,12 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 
 	// Step 3: Build service in DEV environment with release-as-preferred
 	spinner = sm.AddSpinner("Building service")
+	spinner.Complete()
 
 
 	var serviceID, environmentID, planID string
 	var undefinedResources map[string]string
+
 
 	if specType == build.DockerComposeSpecType && !skipDockerBuild {
 		serviceID, environmentID, planID, undefinedResources, err = build.BuildServiceFromRepository(
@@ -514,7 +551,7 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 			nil,
 			nil,
 			&environment,
-			 &environmentType,
+			environmentTypePtr,
 			true,
 			true,
 			nil,
@@ -546,7 +583,7 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 	}
 	fmt.Println()
 
-	spinner.UpdateMessage(fmt.Sprintf("Building service in %s environment and %s environment type: built service %s (ID: %s)", environment, environmentType, serviceNameToUse, serviceID))
+	spinner.UpdateMessage(fmt.Sprintf("Building service in %s environment and %s environment type: built service %s (ID: %s)", environment, environmentTypePtr, serviceNameToUse, serviceID))
 	spinner.Complete()
 
 
@@ -563,7 +600,7 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 	}
 
 	// Execute post-service-build deployment workflow
-	err = executeDeploymentWorkflow(cmd, sm, token, serviceID, environmentID, planID, serviceNameToUse, environment, environmentType, instanceID, cloudProvider, region, param, paramFile, resourceID)
+	err = executeDeploymentWorkflow(cmd, sm, token, serviceID, environmentID, planID, serviceNameToUse, environment, *environmentTypePtr, instanceID, cloudProvider, region, param, paramFile, resourceID)
 	if err != nil {
 		return err
 	}
@@ -574,7 +611,7 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 
 // executeDeploymentWorkflow handles the complete post-service-build deployment workflow
 // This function is reusable for both deploy and build_simple commands
-func executeDeploymentWorkflow(cmd *cobra.Command, sm ysmrr.SpinnerManager, token, serviceID, environmentID, planID, serviceName, environment, environmentType, instanceID, cloudProvider, region, param, paramFile, resourceID string) error {
+func executeDeploymentWorkflow(cmd *cobra.Command, sm ysmrr.SpinnerManager, token, serviceID, environmentID, planID, serviceName, environment, environmentTypePtr, instanceID, cloudProvider, region, param, paramFile, resourceID string) error {
 
 
 	// Step 7: Set service plan as preferred in environment
@@ -701,7 +738,7 @@ func executeDeploymentWorkflow(cmd *cobra.Command, sm ysmrr.SpinnerManager, toke
 	   // Success message
 	   fmt.Println()
 	   fmt.Printf("   Service: %s (ID: %s)\n", serviceName, serviceID)
-	   fmt.Printf("   Environment: %s, Environment Type: %s (ID: %s)\n", environment, environmentType , environmentID)
+	   fmt.Printf("   Environment: %s, Environment Type: %s (ID: %s)\n", environment, environmentTypePtr , environmentID)
 	   if finalInstanceID != "" {
 		   fmt.Printf("   Instance: %s (ID: %s)\n", instanceActionType, finalInstanceID)
 	   }
@@ -759,8 +796,24 @@ func createInstanceUnified(ctx context.Context, token, serviceID, environmentID,
 			return "", fmt.Errorf("no resources found in service plan: %w", err)
 		}
 
+		// Remove resources with internal:true (fix type error)
+		filteredResources := make([]openapiclient.DescribeResourceResult, 0, len(resources.Resources))
+		for _, r := range resources.Resources {
+			// Defensive: check for Internal field via reflection if not present
+			hasInternal := false
+			v := reflect.ValueOf(r)
+			field := v.FieldByName("Internal")
+			if field.IsValid() && field.Kind() == reflect.Bool {
+				hasInternal = field.Bool()
+			}
+			if hasInternal {
+				continue
+			}
+			filteredResources = append(filteredResources, r)
+		}
+		resources.Resources = filteredResources
 		if len(resources.Resources) == 0 {
-			return "", fmt.Errorf("no resources found in service plan")
+			return "", fmt.Errorf("no resources found in service plan (after filtering internal resources)")
 		}
 
 
