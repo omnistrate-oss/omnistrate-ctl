@@ -25,8 +25,6 @@ import (
 )
 
 const (
-	defaultDevEnvName  = "Development"
-	defaultProdEnvName = "Production"
 	deployExample      = `
 # Deploy a service using a spec file (automatically creates/upgrades instances)
 omctl deploy spec.yaml
@@ -34,17 +32,35 @@ omctl deploy spec.yaml
 # Deploy a service with a custom product name
 omctl deploy spec.yaml --product-name "My Service"
 
-# Deploy with AWS account ID for BYOA deployment
-omctl deploy spec.yaml --aws-account-id "123456789012"
+# Build service from an existing compose spec in the repository
+omctl deploy --file docker-compose.yaml
 
-# Deploy with GCP project for BYOA deployment
-omctl deploy spec.yaml --gcp-project-id "my-project" --gcp-project-number "123456789012"
+# Build service with a custom service name
+omctl deploy --product-name my-custom-service
 
-# Perform a dry-run to validate configuration without deploying
-omctl deploy spec.yaml --dry-run
+# Build service with service specification for Helm, Operator or Kustomize in prod environment
+omctl build --file spec.yaml --product-name "My Service" --environment prod --environment-type prod
 
-# Auto-generate spec from repository and deploy
-omctl deploy --product-name "My Repo Service"
+# Skip building and pushing Docker image
+omctl deploy --skip-docker-build
+
+# Create an deploy deployment, cloud provider and region
+omctl deploy --cloud-provider=aws --region=ca-central-1 --param '{"databaseName":"default","password":"a_secure_password","rootPassword":"a_secure_root_password","username":"user"}'
+
+# Create an deploy deployment with parameters from a file, cloud provider and region
+omctl deploy --cloud-provider=aws --region=ca-central-1 --param-file /path/to/params.json
+
+# Create an deploy with instance id
+omctl deploy --instance-id <instance-id>
+
+# Create an deploy with resource-id
+omctl deploy --resource-id <resource-id>
+
+# Run in dry-run mode (build image locally but don't push or create service)
+omctl deploy --dry-run
+
+# Build for multiple platforms
+omctl deploy --platforms linux/amd64 --platforms linux/arm64
 `
 )
 
@@ -148,8 +164,6 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
-
-
 
 
 	// Get instance-id flag value
