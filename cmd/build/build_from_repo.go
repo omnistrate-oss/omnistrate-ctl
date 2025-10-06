@@ -80,6 +80,9 @@ func init() {
 	BuildFromRepoCmd.Flags().String("aws-account-id", "", "AWS account ID. Must be used with --deployment-type")
 	BuildFromRepoCmd.Flags().String("gcp-project-id", "", "GCP project ID. Must be used with --gcp-project-number and --deployment-type")
 	BuildFromRepoCmd.Flags().String("gcp-project-number", "", "GCP project number. Must be used with --gcp-project-id and --deployment-type")
+	BuildFromRepoCmd.Flags().String("azure-subscription-id", "", "Azure subscription ID. Must be used with --azure-tenant-id and --deployment-type")
+	BuildFromRepoCmd.Flags().String("azure-tenant-id", "", "Azure tenant ID. Must be used with --azure-subscription-id and --deployment-type")
+
 	BuildFromRepoCmd.Flags().Bool("reset-pat", false, "Reset the GitHub Personal Access Token (PAT) for the current user.")
 	BuildFromRepoCmd.Flags().StringP("output", "o", "text", "Output format. Only text is supported")
 	BuildFromRepoCmd.Flags().StringP("file", "f", ComposeFileName, "Specify the compose file to read and write to")
@@ -142,6 +145,14 @@ func runBuildFromRepo(cmd *cobra.Command, args []string) error {
 	}
 
 	gcpProjectNumber, err := cmd.Flags().GetString("gcp-project-number")
+	if err != nil {
+		return err
+	}
+	azureSubscriptionID, err := cmd.Flags().GetString("azure-subscription-id")
+	if err != nil {
+		return err
+	}
+	azureTenantID, err := cmd.Flags().GetString("azure-tenant-id")
 	if err != nil {
 		return err
 	}
@@ -324,6 +335,8 @@ func runBuildFromRepo(cmd *cobra.Command, args []string) error {
 		awsAccountID,
 		gcpProjectID,
 		gcpProjectNumber,
+		azureSubscriptionID,
+		azureTenantID,
 		sm,
 		file,
 		envVars,
@@ -559,7 +572,7 @@ func runBuildFromRepo(cmd *cobra.Command, args []string) error {
 
 
 
-func BuildServiceFromRepository(cmd *cobra.Command, ctx context.Context, token, serviceName, releaseDescription string, resetPAT, dryRun, skipDockerBuild, skipServiceBuild, skipEnvironmentPromotion, skipSaasPortalInit bool, deploymentType, awsAccountID, gcpProjectID, gcpProjectNumber string, sm ysmrr.SpinnerManager, file string, envVars, platforms []string) (serviceID, devEnvironmentID, devPlanID string, undefinedResources map[string]string, err error) {
+func BuildServiceFromRepository(cmd *cobra.Command, ctx context.Context, token, serviceName, releaseDescription string, resetPAT, dryRun, skipDockerBuild, skipServiceBuild, skipEnvironmentPromotion, skipSaasPortalInit bool, deploymentType, awsAccountID, gcpProjectID, gcpProjectNumber, azureSubscriptionID, azureTenantID string, sm ysmrr.SpinnerManager, file string, envVars, platforms []string) (serviceID, devEnvironmentID, devPlanID string, undefinedResources map[string]string, err error) {
 
 
 	// Step 0: Validate user is currently logged in
@@ -879,6 +892,7 @@ func BuildServiceFromRepository(cmd *cobra.Command, ctx context.Context, token, 
 				// Join the platforms list with comma as separator
 				platformsStr := strings.Join(platforms, ",")
 
+
 				buildCmd := exec.Command("docker", "buildx", "build", "--pull", "--platform", platformsStr, ".", "-f", dockerfilePath, "-t", imageUrl, "--load")
 
 				// Redirect stdout and stderr to the terminal
@@ -1089,6 +1103,10 @@ func BuildServiceFromRepository(cmd *cobra.Command, ctx context.Context, token, 
 
 					gcpServiceAccountEmail := fmt.Sprintf("bootstrap-%s@%s.iam.gserviceaccount.com", *user.OrgId, gcpProjectID)
 					fileData = append(fileData, []byte(fmt.Sprintf("      GcpServiceAccountEmail: '%s'\n", gcpServiceAccountEmail))...)
+				}
+				if azureSubscriptionID != "" {
+					fileData = append(fileData, []byte(fmt.Sprintf("      AzureSubscriptionId: '%s'\n", azureSubscriptionID))...)
+					fileData = append(fileData, []byte(fmt.Sprintf("      AzureTenantId: '%s'\n", azureTenantID))...)
 				}
 			}
 
