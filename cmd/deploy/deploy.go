@@ -491,7 +491,6 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 
 	// Pre-check 3: Check if service exists and validate service plan count
 	spinner.UpdateMessage(fmt.Sprintf("Checking existing service... %s", serviceNameToUse))
-	spinner.Complete()
 	existingServiceID,  err := findExistingService(cmd.Context(), token, serviceNameToUse)
 	if err != nil {
 		spinner.UpdateMessage(fmt.Sprintf("Error: failed to check existing service: %w", err))
@@ -500,10 +499,10 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 	}
 
 	if existingServiceID != "" {
-		spinner.UpdateMessage(fmt.Sprintf("Checking existing service (ID: %s)\n", existingServiceID))
+		spinner.UpdateMessage(fmt.Sprintf("Checking existing service: %s (ID: %s)\n",serviceNameToUse, existingServiceID))
 		spinner.Complete()
 	} else {
-		spinner.UpdateMessage("(new service)")
+		spinner.UpdateMessage(fmt.Sprintf("New service create: %s", serviceNameToUse))
 		spinner.Complete()
 	}
 
@@ -535,12 +534,38 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 		awsAccountID,
 		gcpProjectID,
 		gcpProjectNumber,
+		azureSubscriptionID,
+		azureTenantID,
 		sm,
 		file,
 		[]string{},
 		platforms,
 	)
 	} else {
+
+		// Use createDeploymentYAML to generate the deployment section
+		deploymentSection := createDeploymentYAML(
+			deploymentType,
+			specType,
+			awsAccountID,
+			"", // awsBootstrapRoleARN (let helper default it)
+			gcpProjectID,
+			gcpProjectNumber,
+			"", // gcpServiceAccountEmail (let helper default it)
+			azureSubscriptionID,
+			azureTenantID,
+		)
+
+		// Marshal the deployment section to YAML
+		deploymentYAML, err := yaml.Marshal(deploymentSection)
+		if err != nil {
+			utils.PrintError(fmt.Errorf("failed to marshal deployment section: %w", err))
+			return err
+		}
+
+		// Append the deployment YAML to processedData
+		processedData = append(processedData, deploymentYAML...)
+
 
 		serviceID, environmentID, planID, undefinedResources, err = build.BuildService(
 			cmd.Context(),
@@ -718,7 +743,7 @@ func executeDeploymentWorkflow(cmd *cobra.Command, sm ysmrr.SpinnerManager, toke
 		
 		spinner = sm.AddSpinner(createMsg)
 		createdInstanceID, err := "", error(nil)
-		createdInstanceID, err = createInstanceUnified(cmd.Context(), token, serviceID, environmentID, planID, cloudProvider, region, param, paramFile, resourceID)
+		createdInstanceID, err = createInstanceUnified(cmd.Context(), token, serviceID, planID, cloudProvider, region, param, paramFile, resourceID)
 		finalInstanceID = createdInstanceID  
 		instanceActionType = "create"
 		if err != nil {
@@ -766,7 +791,8 @@ func executeDeploymentWorkflow(cmd *cobra.Command, sm ysmrr.SpinnerManager, toke
 
 
 // createInstanceUnified creates an instance with or without subscription, removing duplicate code
-func createInstanceUnified(ctx context.Context, token, serviceID, environmentID, productTierID, cloudProvider, region, param, paramFile, resourceID string) (string, error) {
+func createInstanceUnified(ctx context.Context, token, serviceID, productTierID, cloudProvider, region, param, paramFile, resourceID string) (string, error) {
+	
 	// Get the latest version
        version, err := dataaccess.FindLatestVersion(ctx, token, serviceID, productTierID)
        if err != nil {
@@ -785,10 +811,7 @@ func createInstanceUnified(ctx context.Context, token, serviceID, environmentID,
 
        offering := res.ConsumptionDescribeServiceOfferingResult.Offerings[0]
 
-       // Find the first resource with parameters
-       if len(offering.ResourceParameters) == 0 {
-	       return "", fmt.Errorf("no resources found in service offering")
-       }
+    
 
 	   // Get list of resources in the target tier version
 		resources, err := dataaccess.ListResources(ctx, token, serviceID, productTierID, &version)
@@ -828,7 +851,7 @@ func createInstanceUnified(ctx context.Context, token, serviceID, environmentID,
 				}
 			}
 			if resourceKey == "" {
-				fmt.Printf("⚠️ Warning: resource ID : %s not found in service plan", resourceID)
+				return "", fmt.Errorf("resource ID : %s not found in service plan", resourceID)
 			}
 		}
 
@@ -858,14 +881,6 @@ func createInstanceUnified(ctx context.Context, token, serviceID, environmentID,
 		}
 
 
-
-		// Format parameters
-		formattedParams, err := common.FormatParams(param, paramFile)
-		if err != nil {
-			return "", err
-		}
-
-
 	   
 	   if resourceID == "" || resourceKey == "" {
 		   return "", fmt.Errorf("invalid resource in service plan")
@@ -873,10 +888,15 @@ func createInstanceUnified(ctx context.Context, token, serviceID, environmentID,
 
 
 
+		// Format parameters
+		formattedParams, err := common.FormatParams(param, paramFile)
+		if err != nil {
+			return "", err
+		}
+
 	   // Select default cloudProvider and region from offering.CloudProviders if available
 
-
-	   if len(offering.CloudProviders) > 0 {
+	   if len(offering.CloudProviders) > 0 && cloudProvider != "" {
 		   found := false
 		   for _, cp := range offering.CloudProviders {
 			   if cp == cloudProvider {
@@ -890,7 +910,14 @@ func createInstanceUnified(ctx context.Context, token, serviceID, environmentID,
 		   }
 	   }
 
-		
+	   if cloudProvider == "" {
+		   if len(offering.CloudProviders) > 0 {
+			   cloudProvider = offering.CloudProviders[0]
+		   } else {
+			   return "", fmt.Errorf("no cloud providers available for this service plan")
+		   }
+
+	}
 	   if cloudProvider != "" {
 		   var regions []string
 		   switch cloudProvider {
@@ -1003,8 +1030,6 @@ func createInstanceUnified(ctx context.Context, token, serviceID, environmentID,
 			
 		}
 
-		
-		
 	  
 	   request := openapiclientfleet.FleetCreateResourceInstanceRequest2{
 		   ProductTierVersion: &version,
@@ -1014,27 +1039,27 @@ func createInstanceUnified(ctx context.Context, token, serviceID, environmentID,
 		   NetworkType:        nil,
 	   }
       
-
+	   fmt.Printf("Creating instance with parameters: %v\n", request)
 
        // Create the instance
-       instance, err := dataaccess.CreateResourceInstance(ctx, token,
-	       res.ConsumptionDescribeServiceOfferingResult.ServiceProviderId,
-	       res.ConsumptionDescribeServiceOfferingResult.ServiceURLKey,
-	       offering.ServiceAPIVersion,
-	       offering.ServiceEnvironmentURLKey,
-	       offering.ServiceModelURLKey,
-	       offering.ProductTierURLKey,
-	       resourceKey,
-	       request)
-       if err != nil {
-	       return "", fmt.Errorf("failed to create resource instance: %w", err)
-       }
+    //    instance, err := dataaccess.CreateResourceInstance(ctx, token,
+	//        res.ConsumptionDescribeServiceOfferingResult.ServiceProviderId,
+	//        res.ConsumptionDescribeServiceOfferingResult.ServiceURLKey,
+	//        offering.ServiceAPIVersion,
+	//        offering.ServiceEnvironmentURLKey,
+	//        offering.ServiceModelURLKey,
+	//        offering.ProductTierURLKey,
+	//        resourceKey,
+	//        request)
+    //    if err != nil {
+	//        return "", fmt.Errorf("failed to create resource instance: %w", err)
+    //    }
 
-       if instance == nil || instance.Id == nil {
-	       return "", fmt.Errorf("instance creation returned empty result")
-       }
+    //    if instance == nil || instance.Id == nil {
+	//        return "", fmt.Errorf("instance creation returned empty result")
+    //    }
 
-       return *instance.Id, nil
+       return "", nil
 }
 
 
@@ -1332,4 +1357,110 @@ func processTemplateExpressions(data []byte, baseDir string) ([]byte, error) {
 	
 	return []byte(content), nil
 }
+
+
+// createDeploymentYAML generates a YAML document for deployment based on modelType, creationMethod, and cloud account flags
+// Returns a map[string]interface{} representing the YAML structure
+func createDeploymentYAML(
+	deploymentType string,
+	specType string,
+	awsAccountID string,
+	awsBootstrapRoleARN string,
+	gcpProjectID string,
+	gcpProjectNumber string,
+	gcpServiceAccountEmail string,
+	azureSubscriptionID string,
+	azureTenantID string,
+) map[string]interface{} {
+	if deploymentType == "" {
+		deploymentType = "hosted"
+	}
+	
+       yamlDoc := make(map[string]interface{})
+
+	if awsBootstrapRoleARN == "" && awsAccountID != "" {
+		// Default role ARN if not provided
+		awsBootstrapRoleARN = fmt.Sprintf("arn:aws:iam::%s:role/OmnistrateBootstrapRole", awsAccountID)
+	}
+
+	if gcpServiceAccountEmail == "" && gcpProjectID != "" {
+		// Default service account email if not provided
+		gcpServiceAccountEmail = fmt.Sprintf("omnistrate-bootstrap@%s.iam.gserviceaccount.com", gcpProjectID)
+	}
+	
+
+	// Build the deployment section based on deploymentType and specType
+
+	switch deploymentType {
+	case "byoa":
+		if specType == build.ServicePlanSpecType  {
+			yamlDoc["deployment"] = map[string]interface{}{
+				"byoaDeployment": map[string]interface{}{
+					"AwsAccountId": awsAccountID,
+					"AwsBootstrapRoleAccountArn": awsBootstrapRoleARN,
+				},
+			}
+		} else {
+			yamlDoc["x-omnistrate-byoa"] = map[string]interface{}{
+				"AwsAccountId": awsAccountID,
+				"AwsBootstrapRoleAccountArn": awsBootstrapRoleARN,
+			}
+		}
+	case "hosted":
+		if specType == build.ServicePlanSpecType {
+			hostedDeployment := make(map[string]interface{})
+			if awsAccountID != "" {
+				hostedDeployment["AwsAccountId"] = awsAccountID
+				if awsBootstrapRoleARN != "" {
+					hostedDeployment["AwsBootstrapRoleAccountArn"] = awsBootstrapRoleARN
+				}
+			}
+			if gcpProjectID != "" {
+				hostedDeployment["GcpProjectId"] = gcpProjectID
+				if gcpProjectNumber != "" {
+					hostedDeployment["GcpProjectNumber"] = gcpProjectNumber
+				}
+				if gcpServiceAccountEmail != "" {
+					hostedDeployment["GcpServiceAccountEmail"] = gcpServiceAccountEmail
+				}
+			}
+			if azureSubscriptionID != "" {
+				hostedDeployment["AzureSubscriptionId"] = azureSubscriptionID
+				if azureTenantID != "" {
+					hostedDeployment["AzureTenantId"] = azureTenantID
+				}
+			}
+			yamlDoc["deployment"] = map[string]interface{}{
+				"hostedDeployment": hostedDeployment,
+			}
+		} else {
+			myAccount := make(map[string]interface{})
+			if awsAccountID != "" {
+				myAccount["AwsAccountId"] = awsAccountID
+				if awsBootstrapRoleARN != "" {
+					myAccount["AwsBootstrapRoleAccountArn"] = awsBootstrapRoleARN
+				}
+			}
+			if gcpProjectID != "" {
+				myAccount["GcpProjectId"] = gcpProjectID
+				if gcpProjectNumber != "" {
+					myAccount["GcpProjectNumber"] = gcpProjectNumber
+				}
+				if gcpServiceAccountEmail != "" {
+					myAccount["GcpServiceAccountEmail"] = gcpServiceAccountEmail
+				}
+			}
+			if azureSubscriptionID != "" {
+				myAccount["AzureSubscriptionId"] = azureSubscriptionID
+				if azureTenantID != "" {
+					myAccount["AzureTenantId"] = azureTenantID
+				}
+			}
+			yamlDoc["x-omnistrate-my-account"] = myAccount
+		}
+	}
+	return yamlDoc
+}
+
+
 
