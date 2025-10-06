@@ -109,6 +109,7 @@ func init() {
 	BuildCmd.Flags().BoolP("no-release-as-preferred", "", false, "Do not release the service as preferred (overrides --release-as-preferred)")
 	BuildCmd.Flags().StringP("release-name", "", "", "Custom description of the release version. Deprecated: use --release-description instead")
 	BuildCmd.Flags().StringP("release-description", "", "", "Used together with --release or --release-as-preferred flag. Provide a description for the release version")
+	BuildCmd.Flags().BoolP("force-create-service-plan-version", "", false, "Force create a new service plan version on release.")
 	BuildCmd.Flags().BoolP("interactive", "i", false, "Interactive mode")
 
 	// Deprecated flags
@@ -284,6 +285,10 @@ func runBuild(cmd *cobra.Command, args []string) error {
 		return err
 	}
 	dryRun, err := cmd.Flags().GetBool("dry-run")
+	if err != nil {
+		return err
+	}
+	forceCreateServicePlanVersion, err := cmd.Flags().GetBool("force-create-service-plan-version")
 	if err != nil {
 		return err
 	}
@@ -476,7 +481,8 @@ func runBuild(cmd *cobra.Command, args []string) error {
 	}
 
 	var undefinedResources map[string]string
-	ServiceID, EnvironmentID, ProductTierID, undefinedResources, err = buildService(
+	var isNewVersionCreated bool
+	ServiceID, EnvironmentID, ProductTierID, undefinedResources, isNewVersionCreated, err = buildService(
 		cmd.Context(),
 		fileData,
 		token,
@@ -490,6 +496,7 @@ func runBuild(cmd *cobra.Command, args []string) error {
 		releaseAsPreferred,
 		releaseNamePtr,
 		dryRun,
+		forceCreateServicePlanVersion,
 	)
 	if err != nil {
 		utils.HandleSpinnerError(spinner1, sm1, err)
@@ -510,11 +517,12 @@ func runBuild(cmd *cobra.Command, args []string) error {
 
 	// Print the service plan details
 	servicePlanDetails := model.ServicePlanVersion{
-		PlanID:      ProductTierID,
-		PlanName:    productTier.Name,
-		ServiceID:   ServiceID,
-		ServiceName: name,
-		Environment: environment,
+		PlanID:                         ProductTierID,
+		PlanName:                       productTier.Name,
+		ServiceID:                      ServiceID,
+		ServiceName:                    name,
+		Environment:                    environment,
+		IsNewServicePlanVersionCreated: isNewVersionCreated,
 	}
 
 	if !dryRun && (release || releaseAsPreferred) {
@@ -711,38 +719,40 @@ func runBuild(cmd *cobra.Command, args []string) error {
 }
 
 func buildService(ctx context.Context, fileData []byte, token, name, specType string, description, serviceLogoURL, environment, environmentType *string, release,
-	releaseAsPreferred bool, releaseName *string, dryRun bool) (serviceID string, environmentID string, productTierID string, undefinedResources map[string]string, err error) {
+	releaseAsPreferred bool, releaseName *string, dryRun bool, forceCreateNewServicePlanVersion bool) (serviceID string, environmentID string, productTierID string, undefinedResources map[string]string, isNewVersionCreated bool, err error) {
 	if name == "" {
-		return "", "", "", make(map[string]string), errors.New("name is required")
+		return "", "", "", make(map[string]string), false, errors.New("name is required")
 	}
 
 	if specType == "" {
-		return "", "", "", make(map[string]string), errors.New("specType is required")
+		return "", "", "", make(map[string]string), false, errors.New("specType is required")
 	}
 
 	switch specType {
 	case ServicePlanSpecType:
 		request := openapiclient.BuildServiceFromServicePlanSpecRequest2{
-			Name:               name,
-			Description:        description,
-			ServiceLogoURL:     serviceLogoURL,
-			Environment:        environment,
-			EnvironmentType:    environmentType,
-			FileContent:        base64.StdEncoding.EncodeToString(fileData),
-			Release:            utils.ToPtr(release),
-			ReleaseAsPreferred: utils.ToPtr(releaseAsPreferred),
-			ReleaseVersionName: releaseName,
-			Dryrun:             utils.ToPtr(dryRun),
+			Name:                             name,
+			Description:                      description,
+			ServiceLogoURL:                   serviceLogoURL,
+			Environment:                      environment,
+			EnvironmentType:                  environmentType,
+			FileContent:                      base64.StdEncoding.EncodeToString(fileData),
+			Release:                          utils.ToPtr(release),
+			ReleaseAsPreferred:               utils.ToPtr(releaseAsPreferred),
+			ReleaseVersionName:               releaseName,
+			Dryrun:                           utils.ToPtr(dryRun),
+			ForceCreateNewServicePlanVersion: utils.ToPtr(forceCreateNewServicePlanVersion),
 		}
 
 		buildRes, err := dataaccess.BuildServiceFromServicePlanSpec(ctx, token, request)
 		if err != nil {
-			return "", "", "", make(map[string]string), err
+			return "", "", "", make(map[string]string), false, err
 		}
 		if buildRes == nil {
-			return "", "", "", make(map[string]string), errors.New("empty response from server")
+			return "", "", "", make(map[string]string), false, errors.New("empty response from server")
 		}
-		return buildRes.GetServiceID(), buildRes.GetServiceEnvironmentID(), buildRes.GetProductTierID(), buildRes.GetUndefinedResources(), nil
+
+		return buildRes.GetServiceID(), buildRes.GetServiceEnvironmentID(), buildRes.GetProductTierID(), buildRes.GetUndefinedResources(), buildRes.GetIsNewServicePlanVersionCreated(), nil
 
 	case DockerComposeSpecType:
 		// Load the YAML content
@@ -769,7 +779,7 @@ func buildService(ctx context.Context, fileData []byte, token, name, specType st
 		// Convert config volumes to configs
 		var modified bool
 		if project, modified, err = convertVolumesToConfigs(project); err != nil {
-			return "", "", "", make(map[string]string), err
+			return "", "", "", make(map[string]string), false, err
 		}
 
 		// Convert the project back to YAML, in case it was modified
@@ -790,7 +800,7 @@ func buildService(ctx context.Context, fileData []byte, token, name, specType st
 				var configFileContent []byte
 				configFileContent, err = os.ReadFile(filepath.Clean(config.File))
 				if err != nil {
-					return "", "", "", make(map[string]string), err
+					return "", "", "", make(map[string]string), false, err
 				}
 
 				configsTemp[configName] = base64.StdEncoding.EncodeToString(configFileContent)
@@ -806,7 +816,7 @@ func buildService(ctx context.Context, fileData []byte, token, name, specType st
 				var fileContent []byte
 				fileContent, err = os.ReadFile(filepath.Clean(secret.File))
 				if err != nil {
-					return "", "", "", make(map[string]string), err
+					return "", "", "", make(map[string]string), false, err
 				}
 				secretsTemp[secretName] = base64.StdEncoding.EncodeToString(fileContent)
 			}
@@ -814,31 +824,33 @@ func buildService(ctx context.Context, fileData []byte, token, name, specType st
 		}
 
 		request := openapiclient.BuildServiceFromComposeSpecRequest2{
-			Name:               name,
-			Description:        description,
-			ServiceLogoURL:     serviceLogoURL,
-			Environment:        environment,
-			EnvironmentType:    environmentType,
-			FileContent:        base64.StdEncoding.EncodeToString(fileData),
-			Release:            utils.ToPtr(release),
-			ReleaseAsPreferred: utils.ToPtr(releaseAsPreferred),
-			ReleaseVersionName: releaseName,
-			Configs:            configs,
-			Secrets:            secrets,
-			Dryrun:             utils.ToPtr(dryRun),
+			Name:                             name,
+			Description:                      description,
+			ServiceLogoURL:                   serviceLogoURL,
+			Environment:                      environment,
+			EnvironmentType:                  environmentType,
+			FileContent:                      base64.StdEncoding.EncodeToString(fileData),
+			Release:                          utils.ToPtr(release),
+			ReleaseAsPreferred:               utils.ToPtr(releaseAsPreferred),
+			ReleaseVersionName:               releaseName,
+			Configs:                          configs,
+			Secrets:                          secrets,
+			Dryrun:                           utils.ToPtr(dryRun),
+			ForceCreateNewServicePlanVersion: utils.ToPtr(forceCreateNewServicePlanVersion),
 		}
 
 		buildRes, err := dataaccess.BuildServiceFromComposeSpec(ctx, token, request)
 		if err != nil {
-			return "", "", "", make(map[string]string), err
+			return "", "", "", make(map[string]string), false, err
 		}
 		if buildRes == nil {
-			return "", "", "", make(map[string]string), errors.New("empty response from server")
+			return "", "", "", make(map[string]string), false, errors.New("empty response from server")
 		}
-		return buildRes.GetServiceID(), buildRes.GetServiceEnvironmentID(), buildRes.GetProductTierID(), buildRes.GetUndefinedResources(), nil
+
+		return buildRes.GetServiceID(), buildRes.GetServiceEnvironmentID(), buildRes.GetProductTierID(), buildRes.GetUndefinedResources(), buildRes.GetIsNewServicePlanVersionCreated(), nil
 
 	default:
-		return "", "", "", make(map[string]string), errors.New("invalid spec type")
+		return "", "", "", make(map[string]string), false, errors.New("invalid spec type")
 	}
 }
 
