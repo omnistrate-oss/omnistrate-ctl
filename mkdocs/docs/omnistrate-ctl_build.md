@@ -70,20 +70,21 @@ omctl build --image docker.io/namespace/my-image:v1.2 --product-name "My Service
 ### Options
 
 ```
-      --description string           A short description for the whole service. A service can have multiple service plans.
-  -d, --dry-run                      Simulate building the service without actually creating resources
-      --environment string           Name of the environment to build the service in (default "Dev")
-      --environment-type string      Type of environment. Valid options include: 'dev', 'prod', 'qa', 'canary', 'staging', 'private') (default "dev")
-  -f, --file string                  Path to the docker compose file (defaults to compose.yaml or spec.yaml)
-  -h, --help                         help for build
-  -i, --interactive                  Interactive mode
-      --no-release-as-preferred      Do not release the service as preferred (overrides --release-as-preferred)
-      --product-name string          Name of the service. A service can have multiple service plans. The build command will build a new or existing service plan inside the specified service.
-      --release                      Release the service after building it
-      --release-as-preferred         Release the service as preferred after building it
-      --release-description string   Used together with --release or --release-as-preferred flag. Provide a description for the release version
-      --service-logo-url string      URL to the service logo
-  -s, --spec-type string             Spec type (will infer from file if not provided). Valid options include: 'DockerCompose', 'ServicePlanSpec'
+      --description string                  A short description for the whole service. A service can have multiple service plans.
+  -d, --dry-run                             Simulate building the service without actually creating resources
+      --environment string                  Name of the environment to build the service in (default "Dev")
+      --environment-type string             Type of environment. Valid options include: 'dev', 'prod', 'qa', 'canary', 'staging', 'private') (default "dev")
+  -f, --file string                         Path to the docker compose file (defaults to compose.yaml or spec.yaml)
+      --force-create-service-plan-version   Force create a new service plan version on release.
+  -h, --help                                help for build
+  -i, --interactive                         Interactive mode
+      --no-release-as-preferred             Do not release the service as preferred (overrides --release-as-preferred)
+      --product-name string                 Name of the service. A service can have multiple service plans. The build command will build a new or existing service plan inside the specified service.
+      --release                             Release the service after building it
+      --release-as-preferred                Release the service as preferred after building it
+      --release-description string          Used together with --release or --release-as-preferred flag. Provide a description for the release version
+      --service-logo-url string             URL to the service logo
+  -s, --spec-type string                    Spec type (will infer from file if not provided). Valid options include: 'DockerCompose', 'ServicePlanSpec'
 ```
 
 ### Options inherited from parent commands
