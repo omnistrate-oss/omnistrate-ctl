@@ -96,6 +96,9 @@ func init() {
 	// Dry run flag
 	BuildFromRepoCmd.Flags().Bool("dry-run", false, "Run in dry-run mode: only build the Docker image locally without pushing, skip service creation, and write the generated spec to a local file with '-dry-run' suffix. Cannot be used with any --skip-* flags.")
 
+	// Force create version set flag
+	BuildFromRepoCmd.Flags().Bool("force-create-service-plan-version", false, "Force create a new service plan version on release.")
+
 	// Platform flag
 	BuildFromRepoCmd.Flags().StringArray("platforms", []string{"linux/amd64"}, "Specify the platforms to build for. Use the format: --platforms linux/amd64 --platforms linux/arm64. Default is linux/amd64.")
 
@@ -186,6 +189,13 @@ func runBuildFromRepo(cmd *cobra.Command, args []string) error {
 
 	// Get dry-run flag
 	dryRun, err := cmd.Flags().GetBool("dry-run")
+	if err != nil {
+		utils.PrintError(err)
+		return err
+	}
+
+	// Get force-create-service-plan-version flag
+	forceCreateServicePlanVersion, err := cmd.Flags().GetBool("force-create-service-plan-version")
 	if err != nil {
 		utils.PrintError(err)
 		return err
@@ -974,7 +984,7 @@ x-omnistrate-image-registry-attributes:
 	}
 
 	// Build the service
-	serviceID, devEnvironmentID, devPlanID, undefinedResources, err := buildService(
+	serviceID, devEnvironmentID, devPlanID, undefinedResources, _, err := buildService(
 		cmd.Context(),
 		fileData,
 		token,
@@ -988,6 +998,7 @@ x-omnistrate-image-registry-attributes:
 		true,
 		releaseDescriptionPtr,
 		false,
+		forceCreateServicePlanVersion,
 	)
 	if err != nil {
 		utils.HandleSpinnerError(spinner, sm, err)

@@ -175,13 +175,13 @@ type WorkflowInfo struct {
 
 // DebugEventsByWorkflowSteps represents workflow debug events organized by workflow step
 type DebugEventsByWorkflowSteps struct {
-		Bootstrap  []DebugEvent `json:"bootstrap"`
-		Storage    []DebugEvent `json:"storage"`
-		Network    []DebugEvent `json:"network"`
-		Compute    []DebugEvent `json:"compute"`
-		Deployment []DebugEvent `json:"deployment"`
-		Monitoring []DebugEvent `json:"monitoring"`
-		Unknown      []DebugEvent `json:"unknown"`
+	Bootstrap  []DebugEvent `json:"bootstrap"`
+	Storage    []DebugEvent `json:"storage"`
+	Network    []DebugEvent `json:"network"`
+	Compute    []DebugEvent `json:"compute"`
+	Deployment []DebugEvent `json:"deployment"`
+	Monitoring []DebugEvent `json:"monitoring"`
+	Unknown    []DebugEvent `json:"unknown"`
 }
 
 // GetDebugEventsForAllResources gets workflow events for all resources in an instance, organized by resource and workflow step.
@@ -196,11 +196,11 @@ func GetDebugEventsForAllResources(ctx context.Context, token string, serviceID,
 	}
 
 	if workflows == nil || workflows.Workflows == nil {
-			return []ResourceWorkflowDebugEvents{}, &WorkflowInfo{}, nil
+		return []ResourceWorkflowDebugEvents{}, &WorkflowInfo{}, nil
 	}
 
 	workflowInfo := &WorkflowInfo{}
-		var resourcesData []ResourceWorkflowDebugEvents
+	var resourcesData []ResourceWorkflowDebugEvents
 
 	// Find the latest workflow that matches the expected action (if specified)
 	var latestWorkflowID string
@@ -266,14 +266,14 @@ func GetDebugEventsForAllResources(ctx context.Context, token string, serviceID,
 		if workflowEvents != nil && workflowEvents.Resources != nil {
 			// Work directly with the struct - no need for marshaling/unmarshaling
 			for _, resource := range workflowEvents.Resources {
-				   eventsByWorkflowStep := &DebugEventsByWorkflowSteps{
-					   Bootstrap:  []DebugEvent{},
-					   Storage:    []DebugEvent{},
-					   Network:    []DebugEvent{},
-					   Compute:    []DebugEvent{},
-					   Deployment: []DebugEvent{},
-					   Monitoring: []DebugEvent{},
-					   Unknown:      []DebugEvent{},
+				eventsByWorkflowStep := &DebugEventsByWorkflowSteps{
+					Bootstrap:  []DebugEvent{},
+					Storage:    []DebugEvent{},
+					Network:    []DebugEvent{},
+					Compute:    []DebugEvent{},
+					Deployment: []DebugEvent{},
+					Monitoring: []DebugEvent{},
+					Unknown:    []DebugEvent{},
 				}
 
 				// Categorize events by workflow step for this resource
@@ -283,8 +283,8 @@ func GetDebugEventsForAllResources(ctx context.Context, token string, serviceID,
 
 						if step.Events != nil {
 							for _, event := range step.Events {
-								   // Create a DebugEvent with proper data
-								   workflowEvent := DebugEvent{
+								// Create a DebugEvent with proper data
+								workflowEvent := DebugEvent{
 									EventTime: event.EventTime,
 									EventType: event.EventType,
 									Message:   event.Message,
@@ -293,19 +293,19 @@ func GetDebugEventsForAllResources(ctx context.Context, token string, serviceID,
 								// Add to appropriate workflowStep
 								switch workflowStep {
 								case "bootstrap":
-									   eventsByWorkflowStep.Bootstrap = append(eventsByWorkflowStep.Bootstrap, workflowEvent)
+									eventsByWorkflowStep.Bootstrap = append(eventsByWorkflowStep.Bootstrap, workflowEvent)
 								case "storage":
-									   eventsByWorkflowStep.Storage = append(eventsByWorkflowStep.Storage, workflowEvent)
+									eventsByWorkflowStep.Storage = append(eventsByWorkflowStep.Storage, workflowEvent)
 								case "network":
-									   eventsByWorkflowStep.Network = append(eventsByWorkflowStep.Network, workflowEvent)
+									eventsByWorkflowStep.Network = append(eventsByWorkflowStep.Network, workflowEvent)
 								case "compute":
-									   eventsByWorkflowStep.Compute = append(eventsByWorkflowStep.Compute, workflowEvent)
+									eventsByWorkflowStep.Compute = append(eventsByWorkflowStep.Compute, workflowEvent)
 								case "deployment":
-									   eventsByWorkflowStep.Deployment = append(eventsByWorkflowStep.Deployment, workflowEvent)
+									eventsByWorkflowStep.Deployment = append(eventsByWorkflowStep.Deployment, workflowEvent)
 								case "monitoring":
-									   eventsByWorkflowStep.Monitoring = append(eventsByWorkflowStep.Monitoring, workflowEvent)
+									eventsByWorkflowStep.Monitoring = append(eventsByWorkflowStep.Monitoring, workflowEvent)
 								default:
-									   eventsByWorkflowStep.Unknown = append(eventsByWorkflowStep.Unknown, workflowEvent)
+									eventsByWorkflowStep.Unknown = append(eventsByWorkflowStep.Unknown, workflowEvent)
 								}
 							}
 						}
@@ -313,60 +313,58 @@ func GetDebugEventsForAllResources(ctx context.Context, token string, serviceID,
 				}
 
 				// Add this resource's data to the result
-				   resourcesData = append(resourcesData, ResourceWorkflowDebugEvents{
-					ResourceID:       resource.ResourceId,
-					ResourceKey:      resource.ResourceKey,
-					ResourceName:     resource.ResourceName,
-					   EventsByWorkflowStep: eventsByWorkflowStep,
+				resourcesData = append(resourcesData, ResourceWorkflowDebugEvents{
+					ResourceID:           resource.ResourceId,
+					ResourceKey:          resource.ResourceKey,
+					ResourceName:         resource.ResourceName,
+					EventsByWorkflowStep: eventsByWorkflowStep,
 				})
 			}
 		}
 	}
 
-	   // Optionally fetch and set resource status from DescribeWorkflow
-	   if fetchResourceStatus && workflowInfo.WorkflowID != "" {
-		   describeResult, err := DescribeWorkflow(ctx, token, serviceID, environmentID, workflowInfo.WorkflowID)
-		   if err != nil {
-			   // If DescribeWorkflow fails, continue with existing data
-			   // Don't fail the entire operation - log the error but continue
-			   return resourcesData, workflowInfo, err
-		   }
-		   if describeResult != nil {
-			   generalStatus := describeResult.Workflow.Status
-			   for i := range resourcesData {
-				   // Only set status if not already set from events analysis
-				   if resourcesData[i].WorkflowStatus == nil {
-					   resourcesData[i].WorkflowStatus = &generalStatus
-				   }
-			   }
-		   }
-	   }
-	   return resourcesData, workflowInfo, nil
+	// Optionally fetch and set resource status from DescribeWorkflow
+	if fetchResourceStatus && workflowInfo.WorkflowID != "" {
+		describeResult, err := DescribeWorkflow(ctx, token, serviceID, environmentID, workflowInfo.WorkflowID)
+		if err != nil {
+			// If DescribeWorkflow fails, continue with existing data
+			// Don't fail the entire operation - log the error but continue
+			return resourcesData, workflowInfo, err
+		}
+		if describeResult != nil {
+			generalStatus := describeResult.Workflow.Status
+			for i := range resourcesData {
+				// Only set status if not already set from events analysis
+				if resourcesData[i].WorkflowStatus == nil {
+					resourcesData[i].WorkflowStatus = &generalStatus
+				}
+			}
+		}
+	}
+	return resourcesData, workflowInfo, nil
 }
 
 // ResourceWorkflowDebugEvents represents workflow debug events for a resource organized by workflow step
 type ResourceWorkflowDebugEvents struct {
-	ResourceID       string                    `json:"resourceId"`
-	ResourceKey      string                    `json:"resourceKey"`
-	ResourceName     string                    `json:"resourceName"`
-		EventsByWorkflowStep *DebugEventsByWorkflowSteps `json:"eventsByWorkflowStep"`
-		WorkflowStatus   *string                    `json:"workflowStatus,omitempty"` // From DescribeWorkflow API
+	ResourceID           string                      `json:"resourceId"`
+	ResourceKey          string                      `json:"resourceKey"`
+	ResourceName         string                      `json:"resourceName"`
+	EventsByWorkflowStep *DebugEventsByWorkflowSteps `json:"eventsByWorkflowStep"`
+	WorkflowStatus       *string                     `json:"workflowStatus,omitempty"` // From DescribeWorkflow API
 }
-
-
 
 // workflowStepName determines the workflow step for a given step name
 func workflowStepName(stepName string) string {
 	stepLower := strings.ToLower(stepName)
 
 	// More comprehensive categorization based on step name patterns
-	if strings.Contains(stepLower, "bootstrap")  {
+	if strings.Contains(stepLower, "bootstrap") {
 		return "bootstrap"
 	}
-	if strings.Contains(stepLower, "storage")  {
+	if strings.Contains(stepLower, "storage") {
 		return "storage"
 	}
-	if strings.Contains(stepLower, "network")  {
+	if strings.Contains(stepLower, "network") {
 		return "network"
 	}
 	if strings.Contains(stepLower, "compute") {
@@ -375,7 +373,7 @@ func workflowStepName(stepName string) string {
 	if strings.Contains(stepLower, "deployment") {
 		return "deployment"
 	}
-	if strings.Contains(stepLower, "monitoring")  {
+	if strings.Contains(stepLower, "monitoring") {
 		return "monitoring"
 	}
 
