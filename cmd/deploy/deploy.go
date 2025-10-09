@@ -197,7 +197,8 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	environmentTypePtr := utils.ToPtr(strings.ToUpper(environmentType))
+	environmentTypeUpper := strings.ToUpper(environmentType)
+
 
 
 	environment, err := cmd.Flags().GetString("environment")
@@ -331,8 +332,13 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 	}
 
 	spinner.UpdateMessage("Checking cloud provider accounts...\n")
+	isAccountId := false
+	awsAccountID, awsBootstrapRoleARN, gcpProjectID, gcpProjectNumber,gcpServiceAccountEmail, azureSubscriptionID, azureTenantID := extractCloudAccountsFromProcessedData(processedData)
+	if awsAccountID != "" || gcpProjectID != "" || azureSubscriptionID != "" {
+		isAccountId = true
+	}
 
-	awsAccountID, gcpProjectID, gcpProjectNumber, azureSubscriptionID, azureTenantID := extractCloudAccountsFromProcessedData(processedData)
+
 
      if cloudProvider == "" {
        if awsAccountID != ""  {
@@ -369,14 +375,22 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 				   readyAccounts = append(readyAccounts, &acc)
 				   if awsAccountID == "" && acc.AwsAccountID != nil {
 						   awsAccountID = *acc.AwsAccountID
+						   if acc.AwsBootstrapRoleARN != nil {
+								awsBootstrapRoleARN = *acc.AwsBootstrapRoleARN
+							}	
 						   foundMatchingAccount = true
 					   		accountStatus = acc.Status
 				   }
+				 
 				   if gcpProjectID == "" && acc.GcpProjectID != nil{
 					gcpProjectID = *acc.GcpProjectID
 					gcpProjectNumber = *acc.GcpProjectNumber
-						foundMatchingAccount = true
-					   accountStatus = acc.Status
+					if acc.GcpServiceAccountEmail != nil {
+						gcpServiceAccountEmail = *acc.GcpServiceAccountEmail
+					}
+					foundMatchingAccount = true
+					accountStatus = acc.Status
+
 				   }
 				     if azureSubscriptionID == "" && acc.AzureSubscriptionID != nil {
 					azureSubscriptionID = *acc.AzureSubscriptionID
@@ -557,45 +571,87 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 	)
 	} else {
 
+		if isAccountId == false {
 		// Use createDeploymentYAML to generate the deployment section
 		deploymentSection := createDeploymentYAML(
 			deploymentType,
 			specType,
 			awsAccountID,
-			"", // awsBootstrapRoleARN (let helper default it)
+			awsBootstrapRoleARN,
 			gcpProjectID,
 			gcpProjectNumber,
-			"", // gcpServiceAccountEmail (let helper default it)
+			gcpServiceAccountEmail,
 			azureSubscriptionID,
 			azureTenantID,
 		)
-
 		// Marshal the deployment section to YAML
 		deploymentYAML, err := yaml.Marshal(deploymentSection)
 		if err != nil {
 			utils.PrintError(fmt.Errorf("failed to marshal deployment section: %w", err))
 			return err
 		}
+		if deploymentYAML != nil {
+			composeMap := map[string]interface{}{}
+			if err := yaml.Unmarshal(processedData, &composeMap); err != nil {
+				return errors.Wrap(err, "failed to parse compose YAML for injection")
+			}
+			depMap := map[string]interface{}{}
+			if err := yaml.Unmarshal(deploymentYAML, &depMap); err == nil {
+				if specType == build.DockerComposeSpecType {
+					// Inject deployment info under each service
+					if services, ok := composeMap["services"].(map[string]interface{}); ok {
+						for svcName, svcVal := range services {
+							svcMap, ok := svcVal.(map[string]interface{})
+							if !ok {
+								continue
+							}
+							for k, v := range depMap {
+								svcMap[k] = v
+							}
+							services[svcName] = svcMap
+						}
+						composeMap["services"] = services
+					}
+				} else {
+					// Inject deployment info at root level
+					for k, v := range depMap {
+						composeMap[k] = v
+					}
+				}
+			}
+			finalYAML, err := yaml.Marshal(composeMap)
+			if err != nil {
+				return errors.Wrap(err, "failed to marshal final compose YAML")
+			}
+			processedData = finalYAML
+		}
+	}
+	fmt.Printf("Final processed spec data:\n%s\n", string(processedData))
+	hasMultipleResources, allInternal, passiveResource, err := AnalyzeComposeResources(processedData)
+	if err != nil {
+				return errors.Wrap(err, "failed to Analyze final compose YAML")
+	}
 
-		// Append the deployment YAML to processedData
-		processedData = append(processedData, deploymentYAML...)
+	fmt.Println()
+	fmt.Printf("ProcessedData contents:\n%s\n", hasMultipleResources, allInternal, passiveResource)
 
 
-		serviceID, environmentID, planID, undefinedResources, err = build.BuildService(
-			cmd.Context(),
-			processedData,
-			token,
-			serviceNameToUse,
-			specType,
-			nil,
-			nil,
-			&environment,
-			environmentTypePtr,
-			true,
-			true,
-			nil,
-			dryRun,
-		)
+	serviceID, environmentID, planID, undefinedResources, err = build.BuildService(
+		cmd.Context(),
+		processedData,
+		token,
+		serviceNameToUse,
+		specType,
+		nil,
+		nil,
+	&environment,
+	&environmentTypeUpper,
+		true,
+		true,
+		nil,
+		dryRun,
+	)
+
 
 	}
 	if err != nil {
@@ -622,7 +678,7 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 	}
 	fmt.Println()
 
-	spinner.UpdateMessage(fmt.Sprintf("Building service in %s environment and %s environment type: built service %s (ID: %s)", environment, environmentTypePtr, serviceNameToUse, serviceID))
+	spinner.UpdateMessage(fmt.Sprintf("Building service in %s environment and %s environment type: built service %s (ID: %s)", environment, environmentTypeUpper, serviceNameToUse, serviceID))
 	spinner.Complete()
 
 
@@ -639,7 +695,7 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 	}
 
 	// Execute post-service-build deployment workflow
-	err = executeDeploymentWorkflow(cmd, sm, token, serviceID, environmentID, planID, serviceNameToUse, environment, *environmentTypePtr, instanceID, cloudProvider, region, param, paramFile, resourceID)
+	err = executeDeploymentWorkflow(cmd, sm, token, serviceID, environmentID, planID, serviceNameToUse, environment, environmentTypeUpper, instanceID, cloudProvider, region, param, paramFile, resourceID)
 	if err != nil {
 		return err
 	}
@@ -650,7 +706,7 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 
 // executeDeploymentWorkflow handles the complete post-service-build deployment workflow
 // This function is reusable for both deploy and build_simple commands
-func executeDeploymentWorkflow(cmd *cobra.Command, sm ysmrr.SpinnerManager, token, serviceID, environmentID, planID, serviceName, environment, environmentTypePtr, instanceID, cloudProvider, region, param, paramFile, resourceID string) error {
+func executeDeploymentWorkflow(cmd *cobra.Command, sm ysmrr.SpinnerManager, token, serviceID, environmentID, planID, serviceName, environment, environmentTypeUpper, instanceID, cloudProvider, region, param, paramFile, resourceID string) error {
 
 
 	// Step 7: Set service plan as preferred in environment
@@ -684,7 +740,7 @@ func executeDeploymentWorkflow(cmd *cobra.Command, sm ysmrr.SpinnerManager, toke
 	spinner = sm.AddSpinner(spinnerMsg)
 
 	var existingInstanceIDs []string
-	existingInstanceIDs, err = listInstances(cmd.Context(), token, serviceID, environmentID, planID, instanceID)
+	existingInstanceIDs, err = listInstances(cmd.Context(), token, serviceID, environmentID, planID, "")
 	if err != nil {
 		spinner.UpdateMessage(spinnerMsg + ": Failed (" + err.Error() + ")")
 		spinner.Error()
@@ -693,31 +749,56 @@ func executeDeploymentWorkflow(cmd *cobra.Command, sm ysmrr.SpinnerManager, toke
 	}
 
 	// Display automatic instance handling message
-	if len(existingInstanceIDs) > 1 {
+	if len(existingInstanceIDs) > 0  {
+		if instanceID != "" {
+			// If user specified an instance ID, check if it exists in the list
+			if !containsString(existingInstanceIDs, instanceID) {
+				// If not, reset to create a new instance
+				existingInstanceIDs = []string{}
+			} else {
+				// If it exists, use the specified instance ID
+				finalInstanceID = instanceID
+			}
+		} else {
+			// Prompt user to select an instance or create a new one
+			fmt.Println("Multiple existing instances found:")
+			for idx, id := range existingInstanceIDs {
+				fmt.Printf("  %d. Instance ID: %s\n", idx+1, id)
+			}
+			fmt.Println("  0. Create a new instance")
+			var choice int
+			for {
+				fmt.Print("Enter your choice (instance number or 0 for new): ")
+				_, err := fmt.Scanln(&choice)
+				if err == nil && choice >= 0 && choice <= len(existingInstanceIDs) {
+					break
+				}
+				fmt.Println("Invalid selection. Please enter a valid number.")
+			}
+			if choice == 0 {
+				// User chose to create a new instance
+				existingInstanceIDs = []string{}
+			} else {
+				// User selected an existing instance
+				finalInstanceID = existingInstanceIDs[choice-1]
+			}
+		}
+		if finalInstanceID != "" {
 		spinner.UpdateMessage(fmt.Sprintf("%s: Found %d existing instances", spinnerMsg, len(existingInstanceIDs)))
 		spinner.Complete()
 		
 		// Stop spinner manager temporarily to show the note
 		sm.Stop()
 		fmt.Printf("📝 Note: Instance upgrade is automatic.\n")
-		fmt.Printf("   Existing Instances: %v\n", existingInstanceIDs)
+		fmt.Printf("   Existing Instances: %v\n", finalInstanceID)
 		
 		// Restart spinner manager
 		sm = ysmrr.NewSpinnerManager()
 		sm.Start()
-	} else if len(existingInstanceIDs) == 1 {
-		spinner.UpdateMessage(fmt.Sprintf("%s: Found 1 existing instance", spinnerMsg))
-		spinner.Complete()
-		
-		// Stop spinner manager temporarily to show the note
-		sm.Stop()
-		fmt.Printf("📝 Note: Instance upgrade is automatic.\n")
-		fmt.Printf("   Existing Instance: %v\n", existingInstanceIDs)
-		
-		// Restart spinner manager
-		sm = ysmrr.NewSpinnerManager()
-		sm.Start()
-	} else {
+
+		}
+
+	}  else {
 		spinner.UpdateMessage(fmt.Sprintf("%s: No existing instances found", spinnerMsg))
 		spinner.Complete()
 		
@@ -728,22 +809,23 @@ func executeDeploymentWorkflow(cmd *cobra.Command, sm ysmrr.SpinnerManager, toke
 		// Restart spinner manager
 		sm = ysmrr.NewSpinnerManager()
 		sm.Start()
+		
 	}
 
-	if len(existingInstanceIDs) > 0 {
+	if finalInstanceID != "" {
 		foundMsg := spinnerMsg + ": Found existing instance"
 		spinner.UpdateMessage(foundMsg)
 		spinner.Complete()
 
-		spinner = sm.AddSpinner(fmt.Sprintf("Upgrading existing instance: %s", existingInstanceIDs))
-		upgradeErr := upgradeExistingInstance(cmd.Context(), token, existingInstanceIDs, serviceID, planID)
+		spinner = sm.AddSpinner(fmt.Sprintf("Upgrading existing instance: %s", finalInstanceID))
+		upgradeErr := upgradeExistingInstance(cmd.Context(), token, []string{finalInstanceID}, serviceID, planID)
 		instanceActionType = "upgrade"
 		if upgradeErr != nil {
 			spinner.UpdateMessage(fmt.Sprintf("Upgrading existing instance: Failed (%s)", upgradeErr.Error()))
 			spinner.Error()
 			sm.Stop()
 		} else {
-			finalInstanceID = existingInstanceIDs[0]
+			
 			spinner.UpdateMessage(fmt.Sprintf("Upgrading existing instance: Success (ID: %s)", finalInstanceID))
 			spinner.Complete()
 		}
@@ -777,7 +859,7 @@ func executeDeploymentWorkflow(cmd *cobra.Command, sm ysmrr.SpinnerManager, toke
 	   // Success message
 	   fmt.Println()
 	   fmt.Printf("   Service: %s (ID: %s)\n", serviceName, serviceID)
-	   fmt.Printf("   Environment: %s, Environment Type: %s (ID: %s)\n", environment, environmentTypePtr , environmentID)
+	   fmt.Printf("   Environment: %s, Environment Type: %s (ID: %s)\n", environment, environmentTypeUpper , environmentID)
 	   if finalInstanceID != "" {
 		   fmt.Printf("   Instance: %s (ID: %s)\n", instanceActionType, finalInstanceID)
 	   }
@@ -1175,10 +1257,39 @@ func findExistingService(ctx context.Context, token, serviceName string) (string
 
 
 
+// findAllOmnistrateServicePlanBlocks recursively finds all x-omnistrate-service-plan blocks in any YAML document
+func findAllOmnistrateServicePlanBlocks(yamlContent interface{}) []map[string]interface{} {
+    var results []map[string]interface{}
+    var search func(node interface{})
+    search = func(node interface{}) {
+        switch v := node.(type) {
+        case map[string]interface{}:
+            for k, val := range v {
+                if k == "x-omnistrate-service-plan" {
+                    if block, ok := val.(map[string]interface{}); ok {
+                        results = append(results, block)
+                    }
+                }
+                // Recurse into all values
+                search(val)
+            }
+        case []interface{}:
+            for _, item := range v {
+                search(item)
+            }
+        }
+    }
+    search(yamlContent)
+    return results
+}
+
+
+
+
 // extractCloudAccountsFromProcessedData extracts cloud provider account information from the YAML content
-func extractCloudAccountsFromProcessedData(processedData []byte) (awsAccountID, gcpProjectID, gcpProjectNumber, azureSubscriptionID, azureTenantID string) {
+func extractCloudAccountsFromProcessedData(processedData []byte) (awsAccountID, awsBootstrapRoleARN, gcpProjectID, gcpProjectNumber, gcpServiceAccountEmail, azureSubscriptionID, azureTenantID string) {
    if len(processedData) == 0 {
-	   return "", "", "", "", ""
+	   return "", "", "", "", "", "", ""
    }
 
    // Helper to extract the first string value from a map for a list of keys
@@ -1187,85 +1298,142 @@ func extractCloudAccountsFromProcessedData(processedData []byte) (awsAccountID, 
 		   if v, ok := m[key].(string); ok && v != "" {
 			   return v
 		   }
+		   // Support direct int values (for GCP project number)
+		   if v, ok := m[key].(int); ok {
+			   return fmt.Sprintf("%d", v)
+		   }
 	   }
 	   return ""
    }
 
-   yamlDocs := strings.Split(string(processedData), "---")
-   for _, docStr := range yamlDocs {
-	   docStr = strings.TrimSpace(docStr)
-	   if docStr == "" {
-		   continue
-	   }
-	   var yamlContent map[string]interface{}
-	   if err := yaml.Unmarshal([]byte(docStr), &yamlContent); err != nil {
-		   continue
-	   }
-
-	   // ServicePlan spec: deployment.hostedDeployment/byoaDeployment
-	   if deployment, exists := yamlContent["deployment"]; exists {
-		   if deploymentMap, ok := deployment.(map[string]interface{}); ok {
-			   // hostedDeployment
-			   if hosted, exists := deploymentMap["hostedDeployment"]; exists {
-				   if hostedMap, ok := hosted.(map[string]interface{}); ok {
-					   if awsAccountID == "" {
-						   awsAccountID = getFirstString(hostedMap, "awsAccountID", "AwsAccountID", "awsAccountId", "AwsAccountId")
-					   }
-					   if gcpProjectID == "" {
-						   gcpProjectID = getFirstString(hostedMap, "gcpProjectID", "GcpProjectID", "gcpProjectId", "GcpProjectId")
-					   }
-					   if gcpProjectNumber == "" {
-						   gcpProjectNumber = getFirstString(hostedMap, "gcpProjectNumber", "GcpProjectNumber")
-					   }
-					   if azureSubscriptionID == "" {
-						   azureSubscriptionID = getFirstString(hostedMap, "azureSubscriptionID", "AzureSubscriptionID", "azureSubscriptionId", "AzureSubscriptionId")
-					   }
-					   if azureTenantID == "" {
-						   azureTenantID = getFirstString(hostedMap, "azureTenantID", "AzureTenantID", "azureTenantId", "AzureTenantId")
-					   }
-				   }
-			   }
-			   // byoaDeployment
-			   if byoa, exists := deploymentMap["byoaDeployment"]; exists {
-				   if byoaMap, ok := byoa.(map[string]interface{}); ok {
-					   if awsAccountID == "" {
-						   awsAccountID = getFirstString(byoaMap, "awsAccountID", "AwsAccountID", "awsAccountId", "AwsAccountId")
-					   }
-				   }
-			   }
-		   }
-	   }
-
-	   // DockerCompose spec: x-omnistrate-my-account, x-omnistrate-byoa
-	   if myAccount, exists := yamlContent["x-omnistrate-my-account"]; exists {
-		   if myAccountMap, ok := myAccount.(map[string]interface{}); ok {
+   // Helper to extract all account info from a deployment map (hosted/byoa)
+   extractFromDeployment := func(depMap map[string]interface{}) {
+	   if hosted, exists := depMap["hostedDeployment"]; exists {
+		   if hostedMap, ok := hosted.(map[string]interface{}); ok {
 			   if awsAccountID == "" {
-				   awsAccountID = getFirstString(myAccountMap, "awsAccountID", "AwsAccountID", "awsAccountId", "AwsAccountId")
+				   awsAccountID = getFirstString(hostedMap, "awsAccountId", "awsAccountID", "AwsAccountID", "awsAccountId", "AwsAccountId")
+				   awsBootstrapRoleARN = getFirstString(hostedMap, "awsBootstrapRoleAccountArn", "awsBootstrapRoleARN", "AwsBootstrapRoleARN", "awsBootstrapRoleArn", "AwsBootstrapRoleArn")
 			   }
 			   if gcpProjectID == "" {
-				   gcpProjectID = getFirstString(myAccountMap, "gcpProjectID", "GcpProjectID", "gcpProjectId", "GcpProjectId")
+				   gcpProjectID = getFirstString(hostedMap, "gcpProjectId", "gcpProjectID", "GcpProjectID", "gcpProjectId", "GcpProjectId")
 			   }
 			   if gcpProjectNumber == "" {
-				   gcpProjectNumber = getFirstString(myAccountMap, "gcpProjectNumber", "GcpProjectNumber")
+				   gcpProjectNumber = getFirstString(hostedMap, "gcpProjectNumber", "GcpProjectNumber")
+			   }
+			   if gcpServiceAccountEmail == "" {
+				   gcpServiceAccountEmail = getFirstString(hostedMap, "gcpServiceAccountEmail", "GcpServiceAccountEmail")
 			   }
 			   if azureSubscriptionID == "" {
-				   azureSubscriptionID = getFirstString(myAccountMap, "azureSubscriptionID", "AzureSubscriptionID", "azureSubscriptionId", "AzureSubscriptionId")
+				   azureSubscriptionID = getFirstString(hostedMap, "azureSubscriptionId", "azureSubscriptionID", "AzureSubscriptionID", "azureSubscriptionId", "AzureSubscriptionId")
 			   }
 			   if azureTenantID == "" {
-				   azureTenantID = getFirstString(myAccountMap, "azureTenantID", "AzureTenantID", "azureTenantId", "AzureTenantId")
+				   azureTenantID = getFirstString(hostedMap, "azureTenantId", "azureTenantID", "AzureTenantID", "azureTenantId", "AzureTenantId")
 			   }
 		   }
 	   }
-	   if byoa, exists := yamlContent["x-omnistrate-byoa"]; exists {
+	   if byoa, exists := depMap["byoaDeployment"]; exists {
 		   if byoaMap, ok := byoa.(map[string]interface{}); ok {
 			   if awsAccountID == "" {
-				   awsAccountID = getFirstString(byoaMap, "awsAccountID", "AwsAccountID", "awsAccountId", "AwsAccountId")
+				   awsAccountID = getFirstString(byoaMap, "awsAccountId", "awsAccountID", "AwsAccountID", "awsAccountId", "AwsAccountId")
+				   awsBootstrapRoleARN = getFirstString(byoaMap, "awsBootstrapRoleAccountArn", "awsBootstrapRoleARN", "AwsBootstrapRoleARN", "awsBootstrapRoleArn", "AwsBootstrapRoleArn")
+			   }
+			   if gcpProjectID == "" {
+				   gcpProjectID = getFirstString(byoaMap, "gcpProjectId", "gcpProjectID", "GcpProjectID", "gcpProjectId", "GcpProjectId")
+			   }
+			   if gcpProjectNumber == "" {
+				   gcpProjectNumber = getFirstString(byoaMap, "gcpProjectNumber", "GcpProjectNumber")
+			   }
+			   if gcpServiceAccountEmail == "" {
+				   gcpServiceAccountEmail = getFirstString(byoaMap, "gcpServiceAccountEmail", "GcpServiceAccountEmail")
+			   }
+			   if azureSubscriptionID == "" {
+				   azureSubscriptionID = getFirstString(byoaMap, "azureSubscriptionId", "azureSubscriptionID", "AzureSubscriptionID", "azureSubscriptionId", "AzureSubscriptionId")
+			   }
+			   if azureTenantID == "" {
+				   azureTenantID = getFirstString(byoaMap, "azureTenantId", "azureTenantID", "AzureTenantID", "azureTenantId", "AzureTenantId")
 			   }
 		   }
 	   }
    }
-   return awsAccountID, gcpProjectID, gcpProjectNumber, azureSubscriptionID, azureTenantID
+
+   // Helper to extract account info directly from x-omnistrate-service-plan
+   extractFromServicePlan := func(spMap map[string]interface{}) {
+	   if awsAccountID == "" {
+		   awsAccountID = getFirstString(spMap, "awsAccountId", "awsAccountID", "AwsAccountID", "awsAccountId", "AwsAccountId")
+	   }
+	   if awsBootstrapRoleARN == "" {
+		   awsBootstrapRoleARN = getFirstString(spMap, "awsBootstrapRoleAccountArn", "awsBootstrapRoleARN", "AwsBootstrapRoleARN", "awsBootstrapRoleArn", "AwsBootstrapRoleArn")
+	   }
+	   if gcpProjectID == "" {
+		   gcpProjectID = getFirstString(spMap, "gcpProjectId", "gcpProjectID", "GcpProjectID", "gcpProjectId", "GcpProjectId")
+	   }
+	   if gcpProjectNumber == "" {
+		   gcpProjectNumber = getFirstString(spMap, "gcpProjectNumber", "GcpProjectNumber")
+	   }
+	   if gcpServiceAccountEmail == "" {
+		   gcpServiceAccountEmail = getFirstString(spMap, "gcpServiceAccountEmail", "GcpServiceAccountEmail")
+	   }
+	   if azureSubscriptionID == "" {
+		   azureSubscriptionID = getFirstString(spMap, "azureSubscriptionId", "azureSubscriptionID", "AzureSubscriptionID", "azureSubscriptionId", "AzureSubscriptionId")
+	   }
+	   if azureTenantID == "" {
+		   azureTenantID = getFirstString(spMap, "azureTenantId", "azureTenantID", "AzureTenantID", "azureTenantId", "AzureTenantId")
+	   }
+   }
+
+   yamlDocs := strings.Split(string(processedData), "---")
+   for _, docStr := range yamlDocs {
+       docStr = strings.TrimSpace(docStr)
+       if docStr == "" {
+           continue
+       }
+       var yamlContent map[string]interface{}
+       if err := yaml.Unmarshal([]byte(docStr), &yamlContent); err != nil {
+		   fmt.Printf("[DEBUG] YAML unmarshal error: %v\n", err)
+           continue
+       }
+
+
+	   // Check for x-omnistrate-service-plan at root level
+	   if sp, exists := yamlContent["x-omnistrate-service-plan"]; exists {
+		   if spMap, ok := sp.(map[string]interface{}); ok {
+			   // Extract directly from service plan
+			   extractFromServicePlan(spMap)
+			   // Also check for deployment subkey
+			   if deployment, exists := spMap["deployment"]; exists {
+				   if depMap, ok := deployment.(map[string]interface{}); ok {
+					   extractFromDeployment(depMap)
+				   }
+			   }
+		   }
+	   }
+
+	   // ServicePlanSpecType: deployment key at top level
+	   if deployment, exists := yamlContent["deployment"]; exists {
+		   if depMap, ok := deployment.(map[string]interface{}); ok {
+			   extractFromDeployment(depMap)
+		   }
+	   }
+
+	   // Recursively find all x-omnistrate-service-plan blocks in this YAML doc
+	   spBlocks := findAllOmnistrateServicePlanBlocks(yamlContent)
+	   for _, spMap := range spBlocks {
+		   // Extract directly from service plan
+		   extractFromServicePlan(spMap)
+		   // Also check for deployment subkey
+		   if deployment, exists := spMap["deployment"]; exists {
+			   if depMap, ok := deployment.(map[string]interface{}); ok {
+				   extractFromDeployment(depMap)
+			   }
+		   }
+	   }
+   }
+   
+ 
+   return awsAccountID, awsBootstrapRoleARN, gcpProjectID, gcpProjectNumber, gcpServiceAccountEmail, azureSubscriptionID, azureTenantID
 }
+
+
 
 // sanitizeServiceName converts a service name to be API-compatible (lowercase, valid characters)
 func sanitizeServiceName(name string) string {
@@ -1386,15 +1554,11 @@ func createDeploymentYAML(
 	azureSubscriptionID string,
 	azureTenantID string,
 ) map[string]interface{} {
-	if deploymentType == "" {
-		deploymentType = "hosted"
-	}
-	
-       yamlDoc := make(map[string]interface{})
+	yamlDoc := make(map[string]interface{}) // Initialize yamlDoc as an empty map
 
-	if awsBootstrapRoleARN == "" && awsAccountID != "" {
+	if awsAccountID != "" && awsBootstrapRoleARN == "" {
 		// Default role ARN if not provided
-		awsBootstrapRoleARN = fmt.Sprintf("arn:aws:iam::%s:role/OmnistrateBootstrapRole", awsAccountID)
+		awsBootstrapRoleARN = fmt.Sprintf("arn:aws:iam::%s:role/omnistrate-bootstrap-role", awsAccountID)
 	}
 
 	if gcpServiceAccountEmail == "" && gcpProjectID != "" {
@@ -1402,79 +1566,183 @@ func createDeploymentYAML(
 		gcpServiceAccountEmail = fmt.Sprintf("omnistrate-bootstrap@%s.iam.gserviceaccount.com", gcpProjectID)
 	}
 	
+	getServicePlan := func() map[string]interface{} {
+			if sp, ok := yamlDoc["x-omnistrate-service-plan"].(map[string]interface{}); ok {
+				return sp
+			}
+			return make(map[string]interface{})
+		}
+
 
 	// Build the deployment section based on deploymentType and specType
 
 	switch deploymentType {
-	case "byoa":
-		if specType == build.ServicePlanSpecType  {
-			yamlDoc["deployment"] = map[string]interface{}{
-				"byoaDeployment": map[string]interface{}{
-					"AwsAccountId": awsAccountID,
-					"AwsBootstrapRoleAccountArn": awsBootstrapRoleARN,
-				},
-			}
-		} else {
-			yamlDoc["x-omnistrate-byoa"] = map[string]interface{}{
-				"AwsAccountId": awsAccountID,
-				"AwsBootstrapRoleAccountArn": awsBootstrapRoleARN,
-			}
-		}
-	case "hosted":
-		if specType == build.ServicePlanSpecType {
-			hostedDeployment := make(map[string]interface{})
-			if awsAccountID != "" {
-				hostedDeployment["AwsAccountId"] = awsAccountID
-				if awsBootstrapRoleARN != "" {
-					hostedDeployment["AwsBootstrapRoleAccountArn"] = awsBootstrapRoleARN
+			case "byoa":
+				if specType == build.ServicePlanSpecType {
+					yamlDoc["deployment"] = map[string]interface{}{
+						"byoaDeployment": map[string]interface{}{
+							"awsAccountId": awsAccountID,
+							"awsBootstrapRoleAccountArn": awsBootstrapRoleARN,
+						},
+					}
+				} else {
+					sp := getServicePlan()
+					sp["deployment"] = map[string]interface{}{
+						"byoaDeployment": map[string]interface{}{
+							"awsAccountId": awsAccountID,
+							"awsBootstrapRoleAccountArn": awsBootstrapRoleARN,
+						},
+					}
+					yamlDoc["x-omnistrate-service-plan"] = sp
+				}
+		
+			case "hosted":
+				if specType == build.ServicePlanSpecType {
+					yamlDoc["deployment"] = map[string]interface{}{
+						"hostedDeployment": map[string]interface{}{},
+					}
+					hosted := make(map[string]interface{})
+					if awsAccountID != "" {
+						hosted["awsAccountId"] = awsAccountID
+						if awsBootstrapRoleARN != "" {
+							hosted["awsBootstrapRoleAccountArn"] = awsBootstrapRoleARN
+						}
+					}
+					if gcpProjectID != "" {
+						hosted["gcpProjectId"] = gcpProjectID
+						if gcpProjectNumber != "" {
+							hosted["gcpProjectNumber"] = gcpProjectNumber
+						}
+						if gcpServiceAccountEmail != "" {
+							hosted["gcpServiceAccountEmail"] = gcpServiceAccountEmail
+						}
+					}
+					if azureSubscriptionID != "" {
+						hosted["azureSubscriptionId"] = azureSubscriptionID
+						if azureTenantID != "" {
+							hosted["azureTenantId"] = azureTenantID
+						}
+					}
+					yamlDoc["deployment"].(map[string]interface{})["hostedDeployment"] = hosted
+				} else {
+					sp := getServicePlan()
+					hosted := make(map[string]interface{})
+					if awsAccountID != "" {
+						hosted["awsAccountId"] = awsAccountID
+						if awsBootstrapRoleARN != "" {
+							hosted["awsBootstrapRoleAccountArn"] = awsBootstrapRoleARN
+						}
+					}
+					if gcpProjectID != "" {
+						hosted["gcpProjectId"] = gcpProjectID
+						if gcpProjectNumber != "" {
+							hosted["gcpProjectNumber"] = gcpProjectNumber
+						}
+						if gcpServiceAccountEmail != "" {
+							hosted["gcpServiceAccountEmail"] = gcpServiceAccountEmail
+						}
+					}
+					if azureSubscriptionID != "" {
+						hosted["azureSubscriptionId"] = azureSubscriptionID
+						if azureTenantID != "" {
+							hosted["azureTenantId"] = azureTenantID
+						}
+					}
+					sp["deployment"] = map[string]interface{}{
+						"hostedDeployment": hosted,
+					}
+					yamlDoc["x-omnistrate-service-plan"] = sp
 				}
 			}
-			if gcpProjectID != "" {
-				hostedDeployment["GcpProjectId"] = gcpProjectID
-				if gcpProjectNumber != "" {
-					hostedDeployment["GcpProjectNumber"] = gcpProjectNumber
-				}
-				if gcpServiceAccountEmail != "" {
-					hostedDeployment["GcpServiceAccountEmail"] = gcpServiceAccountEmail
-				}
-			}
-			if azureSubscriptionID != "" {
-				hostedDeployment["AzureSubscriptionId"] = azureSubscriptionID
-				if azureTenantID != "" {
-					hostedDeployment["AzureTenantId"] = azureTenantID
-				}
-			}
-			yamlDoc["deployment"] = map[string]interface{}{
-				"hostedDeployment": hostedDeployment,
-			}
-		} else {
-			myAccount := make(map[string]interface{})
-			if awsAccountID != "" {
-				myAccount["AwsAccountId"] = awsAccountID
-				if awsBootstrapRoleARN != "" {
-					myAccount["AwsBootstrapRoleAccountArn"] = awsBootstrapRoleARN
-				}
-			}
-			if gcpProjectID != "" {
-				myAccount["GcpProjectId"] = gcpProjectID
-				if gcpProjectNumber != "" {
-					myAccount["GcpProjectNumber"] = gcpProjectNumber
-				}
-				if gcpServiceAccountEmail != "" {
-					myAccount["GcpServiceAccountEmail"] = gcpServiceAccountEmail
-				}
-			}
-			if azureSubscriptionID != "" {
-				myAccount["AzureSubscriptionId"] = azureSubscriptionID
-				if azureTenantID != "" {
-					myAccount["AzureTenantId"] = azureTenantID
-				}
-			}
-			yamlDoc["x-omnistrate-my-account"] = myAccount
-		}
-	}
-	return yamlDoc
+		return yamlDoc
 }
 
+
+
+
+// AnalyzeComposeResources inspects processed YAML data for resource structure and internal mode
+// If any service is missing x-omnistrate-mode-internal: true, creates a passive resource (Cluster)
+func AnalyzeComposeResources(processedData []byte) (hasMultipleResources bool, allInternal bool, passiveResource map[string]interface{}, err error) {
+	var compose map[string]interface{}
+	if err := yaml.Unmarshal(processedData, &compose); err != nil {
+		return false, false, nil, fmt.Errorf("failed to parse compose YAML: %w", err)
+	}
+
+	services, ok := compose["services"].(map[string]interface{})
+	if !ok || len(services) == 0 {
+		return false, false, nil, fmt.Errorf("no services found in compose spec")
+	}
+
+	hasMultipleResources = len(services) > 1
+	allInternal = true
+	for _, svc := range services {
+		svcMap, ok := svc.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		internal, exists := svcMap["x-omnistrate-mode-internal"]
+		if !exists || internal != true {
+			allInternal = false
+			break
+		}
+	}
+
+	// If not all internal, create passive resource (Cluster)
+	if !allInternal {
+		// Collect all parameters from all services
+		paramMap := map[string]interface{}{}
+		dependsOn := []string{}
+		for name, svc := range services {
+			svcMap, ok := svc.(map[string]interface{})
+			if !ok {
+				continue
+			}
+			dependsOn = append(dependsOn, name)
+			if params, ok := svcMap["x-omnistrate-api-params"].([]interface{}); ok {
+				for _, p := range params {
+					pMap, ok := p.(map[string]interface{})
+					if !ok {
+						continue
+					}
+					key, _ := pMap["key"].(string)
+					def, _ := pMap["defaultValue"]
+					paramMap[key] = def
+				}
+			}
+			// Mark as internal
+			svcMap["x-omnistrate-mode-internal"] = true
+			services[name] = svcMap
+		}
+		// Create passive resource
+		cluster := map[string]interface{}{
+			"image": "omnistrate/noop",
+			"x-omnistrate-api-params": []interface{}{},
+			"depends_on": dependsOn,
+			"x-omnistrate-mode-internal": false,
+		}
+		// Add parameters to cluster
+		for k, v := range paramMap {
+			cluster["x-omnistrate-api-params"] = append(cluster["x-omnistrate-api-params"].([]interface{}), map[string]interface{}{
+				"key": k,
+				"defaultValue": v,
+			})
+		}
+		passiveResource = cluster
+	}
+
+	return hasMultipleResources, allInternal, passiveResource, nil
+}
+
+
+
+// containsString checks if a slice of strings contains a specific string.
+func containsString(slice []string, item string) bool {
+	for _, s := range slice {
+		if s == item {
+			return true
+		}
+	}
+	return false
+}
 
 
