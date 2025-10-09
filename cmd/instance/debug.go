@@ -216,7 +216,7 @@ func processResourceByType(resourceKey string, resourceDebugInfo interface{}, in
 		}
 	}
 
-	// Now debugData will be non-nil for most resource types
+	// debugData will be non-nil for most resource types, but may still be nil if unmarshalling fails or for unexpected types
 	actualDebugData, ok := debugData["debugData"].(map[string]interface{})
 	if !ok {
 		return processGenericResource(resourceInfo, instanceData, instanceID, isLogsEnabled, logsService, ctx, token, serviceID, environmentID)
