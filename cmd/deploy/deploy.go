@@ -81,7 +81,6 @@ func init() {
 	DeployCmd.Flags().String("resource-id", "", "Specify the resource ID to use when multiple resources exist.")
 	DeployCmd.Flags().String("instance-id", "", "Specify the instance ID to use when multiple deployments exist.")
 
-	
 	DeployCmd.Flags().StringP("environment", "e", "Prod", "Name of the environment to build the service in (default: Prod)")
 	DeployCmd.Flags().StringP("environment-type", "t", "prod", "Type of environment. Valid options include: 'dev', 'prod', 'qa', 'canary', 'staging', 'private' (default: prod)")
 
@@ -571,7 +570,57 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 	)
 	} else {
 
-		if isAccountId == false {
+	hasMultipleResources, allInternal, passiveResource, err := AnalyzeComposeResources(processedData)
+	if err != nil {
+		return errors.Wrap(err, "failed to Analyze final compose YAML")
+	}
+
+	
+	// If passiveResource is needed, inject it into the services section and create a backup
+	if passiveResource != nil && !allInternal && hasMultipleResources {
+		var composeMap map[string]interface{}
+		if err := yaml.Unmarshal(processedData, &composeMap); err == nil {
+			// Backup original file
+			if specFile != "" {
+				backupFile := specFile + ".bak"
+				if err := os.WriteFile(backupFile, processedData, 0644); err == nil {
+					fmt.Printf("Backup created: %s\n", backupFile)
+				} else {
+					fmt.Printf("Failed to create backup: %v\n", err)
+				}
+			}
+			// Inject passive resource into services
+			if services, ok := composeMap["services"].(map[string]interface{}); ok {
+				services["Cluster"] = passiveResource
+				// Set x-omnistrate-mode-internal: true for all other resources
+				for name, svc := range services {
+					if name == "Cluster" {
+						continue
+					}
+					svcMap, ok := svc.(map[string]interface{})
+					if ok {
+						svcMap["x-omnistrate-mode-internal"] = true
+						services[name] = svcMap
+					}
+				}
+				composeMap["services"] = services
+				// Marshal back to YAML
+				updatedYAML, err := yaml.Marshal(composeMap)
+				if err == nil && specFile != "" {
+					// Write updated YAML to original file
+					if err := os.WriteFile(specFile, updatedYAML, 0644); err == nil {
+						fmt.Printf("Updated YAML written to: %s\n", specFile)
+						// Use updated YAML for further processing
+						processedData = updatedYAML
+					} else {
+						fmt.Printf("Failed to write updated YAML: %v\n", err)
+					}
+				}
+			}
+		}
+	}
+
+	if isAccountId == false {
 		// Use createDeploymentYAML to generate the deployment section
 		deploymentSection := createDeploymentYAML(
 			deploymentType,
@@ -597,7 +646,7 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 			}
 			depMap := map[string]interface{}{}
 			if err := yaml.Unmarshal(deploymentYAML, &depMap); err == nil {
-				if specType == build.DockerComposeSpecType {
+				if specType != build.DockerComposeSpecType {
 					// Inject deployment info under each service
 					if services, ok := composeMap["services"].(map[string]interface{}); ok {
 						for svcName, svcVal := range services {
@@ -626,14 +675,8 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 			processedData = finalYAML
 		}
 	}
-	fmt.Printf("Final processed spec data:\n%s\n", string(processedData))
-	hasMultipleResources, allInternal, passiveResource, err := AnalyzeComposeResources(processedData)
-	if err != nil {
-				return errors.Wrap(err, "failed to Analyze final compose YAML")
-	}
 
-	fmt.Println()
-	fmt.Printf("ProcessedData contents:\n%s\n", hasMultipleResources, allInternal, passiveResource)
+	
 
 
 	serviceID, environmentID, planID, undefinedResources, err = build.BuildService(
@@ -1137,25 +1180,25 @@ func createInstanceUnified(ctx context.Context, token, serviceID, productTierID,
       
 	   fmt.Printf("Creating instance with parameters: %v\n", request)
 
-       // Create the instance
-    //    instance, err := dataaccess.CreateResourceInstance(ctx, token,
-	//        res.ConsumptionDescribeServiceOfferingResult.ServiceProviderId,
-	//        res.ConsumptionDescribeServiceOfferingResult.ServiceURLKey,
-	//        offering.ServiceAPIVersion,
-	//        offering.ServiceEnvironmentURLKey,
-	//        offering.ServiceModelURLKey,
-	//        offering.ProductTierURLKey,
-	//        resourceKey,
-	//        request)
-    //    if err != nil {
-	//        return "", fmt.Errorf("failed to create resource instance: %w", err)
-    //    }
+    //    Create the instance
+       instance, err := dataaccess.CreateResourceInstance(ctx, token,
+	       res.ConsumptionDescribeServiceOfferingResult.ServiceProviderId,
+	       res.ConsumptionDescribeServiceOfferingResult.ServiceURLKey,
+	       offering.ServiceAPIVersion,
+	       offering.ServiceEnvironmentURLKey,
+	       offering.ServiceModelURLKey,
+	       offering.ProductTierURLKey,
+	       resourceKey,
+	       request)
+       if err != nil {
+	       return "", fmt.Errorf("failed to create resource instance: %w", err)
+       }
 
-    //    if instance == nil || instance.Id == nil {
-	//        return "", fmt.Errorf("instance creation returned empty result")
-    //    }
+       if instance == nil || instance.Id == nil {
+	       return "", fmt.Errorf("instance creation returned empty result")
+       }
 
-       return "", nil
+       return *instance.Id, nil
 }
 
 
@@ -1627,12 +1670,12 @@ func createDeploymentYAML(
 				} else {
 					sp := getServicePlan()
 					hosted := make(map[string]interface{})
-					if awsAccountID != "" {
-						hosted["awsAccountId"] = awsAccountID
-						if awsBootstrapRoleARN != "" {
-							hosted["awsBootstrapRoleAccountArn"] = awsBootstrapRoleARN
-						}
-					}
+					// if awsAccountID != "" {
+					// 	hosted["awsAccountId"] = awsAccountID
+					// 	if awsBootstrapRoleARN != "" {
+					// 		hosted["awsBootstrapRoleAccountArn"] = awsBootstrapRoleARN
+					// 	}
+					// }
 					if gcpProjectID != "" {
 						hosted["gcpProjectId"] = gcpProjectID
 						if gcpProjectNumber != "" {
@@ -1689,13 +1732,20 @@ func AnalyzeComposeResources(processedData []byte) (hasMultipleResources bool, a
 
 	// If not all internal, create passive resource (Cluster)
 	if !allInternal {
-		// Collect all parameters from all services
+		// Collect all parameters from all services and build dependency maps
 		paramMap := map[string]interface{}{}
+		paramDeps := map[string]map[string]string{} // paramKey -> resourceName -> resourceParamKey
 		dependsOn := []string{}
 		for name, svc := range services {
 			svcMap, ok := svc.(map[string]interface{})
 			if !ok {
 				continue
+			}
+			if name == "Cluster" {
+				// Ensure Cluster is marked as external
+				svcMap["x-omnistrate-mode-internal"] = false
+				services[name] = svcMap
+				continue // Skip self-reference for param collection
 			}
 			dependsOn = append(dependsOn, name)
 			if params, ok := svcMap["x-omnistrate-api-params"].([]interface{}); ok {
@@ -1707,11 +1757,50 @@ func AnalyzeComposeResources(processedData []byte) (hasMultipleResources bool, a
 					key, _ := pMap["key"].(string)
 					def, _ := pMap["defaultValue"]
 					paramMap[key] = def
+					// Build dependency map for this param
+					if _, exists := paramDeps[key]; !exists {
+						paramDeps[key] = map[string]string{}
+					}
+					paramDeps[key][name] = key
 				}
 			}
-			// Mark as internal
+			// Set x-omnistrate-mode-internal: true for all except Cluster
 			svcMap["x-omnistrate-mode-internal"] = true
 			services[name] = svcMap
+		}
+		// Build dynamic dependency mapping for each param
+		paramDependencyMaps := map[string]map[string]string{} // paramKey -> resourceName -> resourceParamKey
+		for k := range paramMap {
+			depMap := map[string]string{}
+			for resName, svc := range services {
+				svcMap, ok := svc.(map[string]interface{})
+				if !ok {
+					continue
+				}
+				if resName == "Cluster" {
+					continue // Skip self-reference
+				}
+				if params, ok := svcMap["x-omnistrate-api-params"].([]interface{}); ok {
+					for _, p := range params {
+						pMap, ok := p.(map[string]interface{})
+						if !ok {
+							continue
+						}
+						// If param in resource matches cluster param, or is a known mapping
+						if pMap["key"] == k {
+							depMap[resName] = k
+						} else {
+							// Try to match by normalized name (e.g., instanceType <-> writerInstanceType)
+							if strings.HasSuffix(pMap["key"].(string), k) || strings.HasPrefix(pMap["key"].(string), k) || strings.Contains(pMap["key"].(string), k) {
+								depMap[resName] = pMap["key"].(string)
+							}
+						}
+					}
+				}
+			}
+			if len(depMap) > 0 {
+				paramDependencyMaps[k] = depMap
+			}
 		}
 		// Create passive resource
 		cluster := map[string]interface{}{
@@ -1722,10 +1811,41 @@ func AnalyzeComposeResources(processedData []byte) (hasMultipleResources bool, a
 		}
 		// Add parameters to cluster
 		for k, v := range paramMap {
-			cluster["x-omnistrate-api-params"] = append(cluster["x-omnistrate-api-params"].([]interface{}), map[string]interface{}{
+			param := map[string]interface{}{
 				"key": k,
 				"defaultValue": v,
-			})
+			}
+			// Copy metadata from first matching param in any service
+			for resName, svc := range services {
+				svcMap, ok := svc.(map[string]interface{})
+				if !ok {
+					continue
+				}
+				if resName == "Cluster" {
+					continue // Skip self-reference
+				}
+				if params, ok := svcMap["x-omnistrate-api-params"].([]interface{}); ok {
+					for _, p := range params {
+						pMap, ok := p.(map[string]interface{})
+						if !ok {
+							continue
+						}
+						if pMap["key"] == k {
+							for metaKey, metaVal := range pMap {
+								if metaKey != "key" && metaKey != "defaultValue" {
+									param[metaKey] = metaVal
+								}
+							}
+							break
+						}
+					}
+				}
+			}
+			// Attach dynamic parameterDependencyMap if exists
+			if depMap, ok := paramDependencyMaps[k]; ok && len(depMap) > 0 {
+				param["parameterDependencyMap"] = depMap
+			}
+			cluster["x-omnistrate-api-params"] = append(cluster["x-omnistrate-api-params"].([]interface{}), param)
 		}
 		passiveResource = cluster
 	}
