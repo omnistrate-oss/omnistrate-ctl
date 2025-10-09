@@ -199,11 +199,21 @@ func processResourceByType(resourceKey string, resourceDebugInfo interface{}, in
 		resourceInfo.ID = actualResourceID
 	}
 
-	debugData, ok := resourceDebugInfo.(map[string]interface{})
-	if !ok {
-		return processGenericResource(resourceInfo, instanceData, instanceID, isLogsEnabled, logsService, ctx, token, serviceID, environmentID)
+	var debugData map[string]interface{}
+	switch v := resourceDebugInfo.(type) {
+	case map[string]interface{}:
+		debugData = v
+	case *map[string]interface{}:
+		debugData = *v
+	default:
+		// Try to marshal and unmarshal if it's a struct or other type
+		b, err := json.Marshal(v)
+		if err == nil {
+			_ = json.Unmarshal(b, &debugData)
+		}
 	}
 
+	// Now debugData will be non-nil for most resource types
 	actualDebugData, ok := debugData["debugData"].(map[string]interface{})
 	if !ok {
 		return processGenericResource(resourceInfo, instanceData, instanceID, isLogsEnabled, logsService, ctx, token, serviceID, environmentID)
