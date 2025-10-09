@@ -209,7 +209,10 @@ func processResourceByType(resourceKey string, resourceDebugInfo interface{}, in
 		// Try to marshal and unmarshal if it's a struct or other type
 		b, err := json.Marshal(v)
 		if err == nil {
-			_ = json.Unmarshal(b, &debugData)
+			if unmarshalErr := json.Unmarshal(b, &debugData); unmarshalErr != nil {
+				// If unmarshaling fails, initialize debugData to an empty map to avoid nil dereference
+				debugData = make(map[string]interface{})
+			}
 		}
 	}
 
