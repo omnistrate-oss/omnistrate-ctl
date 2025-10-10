@@ -1717,7 +1717,7 @@ func AnalyzeComposeResources(processedData []byte) (hasMultipleResources bool, a
 	}
 
 	hasMultipleResources = len(services) > 1
-	allInternal = true
+	allInternal = false
 	for _, svc := range services {
 		svcMap, ok := svc.(map[string]interface{})
 		if !ok {
@@ -1725,14 +1725,15 @@ func AnalyzeComposeResources(processedData []byte) (hasMultipleResources bool, a
 		}
 		// If any resource has the tag, do NOT create passive resource
 		if _, exists := svcMap["x-omnistrate-mode-internal"]; exists {
-			allInternal = false
+			allInternal = true
 			break
 		}
 	}
 
 
+
 	// If not all internal, create passive resource (Cluster)
-	if allInternal {
+	if !allInternal {
 		// Collect all parameters from all services and build dependency maps
 		paramMap := map[string]interface{}{}
 		paramDeps := map[string]map[string]string{} // paramKey -> resourceName -> resourceParamKey
