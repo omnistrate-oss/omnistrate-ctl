@@ -230,13 +230,7 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 	} else if len(args) > 0 && args[0] != "" {
 		specFile = args[0]
 	} else {
-		// 2. Check for service plan spec (plan.yaml or serviceplan.yaml)
-		for _, fname := range []string{"plan.yaml", "serviceplan.yaml"} {
-			if _, err := os.Stat(fname); err == nil {
-				specFile = fname
-				break
-			}
-		}
+		
 		// 3. If not found, check for docker-compose.yaml
 		if specFile == "" {
 			if _, err := os.Stat("docker-compose.yaml"); err == nil {
@@ -336,8 +330,6 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 	if awsAccountID != "" || gcpProjectID != "" || azureSubscriptionID != "" {
 		isAccountId = true
 	}
-
-
 
      if cloudProvider == "" {
        if awsAccountID != ""  {
@@ -604,6 +596,11 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 					}
 				}
 				composeMap["services"] = services
+				composeMap["x-omnistrate-integrations"] = []interface{}{
+						"omnistrateLogging",
+						"omnistrateMetrics",
+					}
+
 				// Marshal back to YAML
 				updatedYAML, err := yaml.Marshal(composeMap)
 				if err == nil && specFile != "" {
