@@ -557,6 +557,11 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 		platforms,
 		false,
 	)
+	if err != nil {
+			utils.HandleSpinnerError(spinner, sm, err)
+			return err
+	}
+	
 	} else {
 
 	hasMultipleResources, allInternal, passiveResource, err := AnalyzeComposeResources(processedData)
@@ -689,12 +694,13 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 		dryRun,
 		false,
 	)
-
-
-	}
 	if err != nil {
 			utils.HandleSpinnerError(spinner, sm, err)
 			return err
+	}
+	
+
+
 	}
 	
 
@@ -879,7 +885,7 @@ func executeDeploymentWorkflow(cmd *cobra.Command, sm ysmrr.SpinnerManager, toke
 		createdInstanceID, err := "", error(nil)
 		createdInstanceID, err = createInstanceUnified(cmd.Context(), token, serviceID, planID, cloudProvider, region, param, paramFile, resourceID)
 		finalInstanceID = createdInstanceID  
-		instanceActionType = "create"
+		// instanceActionType is already "create" from initialization
 		if err != nil {
 			spinner.UpdateMessage(fmt.Sprintf("%s: Failed (%s)", createMsg, err.Error()))
 			spinner.Error()
