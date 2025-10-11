@@ -39,7 +39,7 @@ omctl deploy --file docker-compose.yaml
 omctl deploy --product-name my-custom-service
 
 # Build service with service specification for Helm, Operator or Kustomize in prod environment
-omctl build --file spec.yaml --product-name "My Service" --environment prod --environment-type prod
+omctl deploy --file spec.yaml --product-name "My Service" --environment prod --environment-type prod
 
 # Skip building and pushing Docker image
 omctl deploy --skip-docker-build
@@ -559,6 +559,7 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 		file,
 		[]string{},
 		platforms,
+		false,
 	)
 	} else {
 
@@ -676,7 +677,7 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 	
 
 
-	serviceID, environmentID, planID, undefinedResources, err = build.BuildService(
+	serviceID, environmentID, planID, undefinedResources,_, err = build.BuildService(
 		cmd.Context(),
 		processedData,
 		token,
@@ -690,6 +691,7 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 		true,
 		nil,
 		dryRun,
+		false,
 	)
 
 
