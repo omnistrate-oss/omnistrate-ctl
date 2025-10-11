@@ -104,15 +104,13 @@ func init() {
 
 }
 
-var waitFlag bool
-
 func runDeploy(cmd *cobra.Command, args []string) error {
 	defer config.CleanupArgsAndFlags(cmd, &args)
 
 	// Step 0: Validate user is logged in first
 	token, err := common.GetTokenWithLogin()
 	if err != nil {
-		utils.PrintError(fmt.Errorf("Not logged in. Please run 'omctl login' to authenticate."))
+		utils.PrintError(fmt.Errorf("not logged in. Please run 'omctl login' to authenticate"))
 		return err
 	}
 
@@ -219,8 +217,8 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 
 	// Improved spec file detection: prefer service plan, then docker compose, else repo
 	var specFile string
-	var specType string =  build.DockerComposeSpecType
-	var deploymentType string = "hosted" // Default to hosted deployment
+	var specType = build.DockerComposeSpecType
+	var deploymentType = "hosted" // Default to hosted deployment
 
 
 	
@@ -230,7 +228,6 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 	} else if len(args) > 0 && args[0] != "" {
 		specFile = args[0]
 	} else {
-		
 		// 3. If not found, check for docker-compose.yaml
 		if specFile == "" {
 			if _, err := os.Stat("docker-compose.yaml"); err == nil {
@@ -445,13 +442,13 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 	if len(readyAccounts) == 0 {
 		if len(allAccounts) > 0 {
 			utils.PrintError(fmt.Errorf(
-				"\nNo READY accounts found. Account setup required:\n"+
+				"no READY accounts found. Account setup required:\n"+
 					"   Your organization has %d accounts, but none are in READY status.\n"+
 					"   Non-READY accounts may need to complete onboarding or have configuration issues.\n"+
 					"\n💡 Next steps:\n"+
 					"   1. Check existing account status: omctl account list\n"+
 					"   2. Complete onboarding for existing accounts, or\n"+
-					"   3. Create a new READY account: omctl account create\n",
+					"   3. Create a new READY account: omctl account create",
 				len(allAccounts),
 			))
 			   spinner.UpdateMessage(" deployment requires at least one READY cloud provider account")
@@ -459,8 +456,8 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 			   return nil
 		} else {
 			utils.PrintError(fmt.Errorf(
-				"\nNo cloud provider accounts found.\n"+
-					"💡 Create your first account: omctl account create\n",
+				"no cloud provider accounts found.\n"+
+					"💡 Create your first account: omctl account create",
 			))
 	spinner.UpdateMessage(" no cloud provider accounts linked. Please link at least one account using 'omctl account create' before deploying")
 	spinner.Error()
@@ -512,7 +509,7 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 	spinner.UpdateMessage(fmt.Sprintf("Checking existing service... %s", serviceNameToUse))
 	existingServiceID,  err := findExistingService(cmd.Context(), token, serviceNameToUse)
 	if err != nil {
-		spinner.UpdateMessage(fmt.Sprintf("Error: failed to check existing service: %w", err))
+		spinner.UpdateMessage(fmt.Sprintf("Error: failed to check existing service: %v", err))
 		spinner.Error()
 		return nil
 	}
@@ -576,7 +573,7 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 			// Backup original file
 			if specFile != "" {
 				backupFile := specFile + ".bak"
-				if err := os.WriteFile(backupFile, processedData, 0644); err == nil {
+				if err := os.WriteFile(backupFile, processedData, 0600); err == nil {
 					fmt.Printf("Backup created: %s\n", backupFile)
 				} else {
 					fmt.Printf("Failed to create backup: %v\n", err)
@@ -606,7 +603,7 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 				updatedYAML, err := yaml.Marshal(composeMap)
 				if err == nil && specFile != "" {
 					// Write updated YAML to original file
-					if err := os.WriteFile(specFile, updatedYAML, 0644); err == nil {
+					if err := os.WriteFile(specFile, updatedYAML, 0600); err == nil {
 						fmt.Printf("Updated YAML written to: %s\n", specFile)
 						// Use updated YAML for further processing
 						processedData = updatedYAML
@@ -618,7 +615,7 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	if isAccountId == false {
+	if !isAccountId {
 		// Use createDeploymentYAML to generate the deployment section
 		deploymentSection := createDeploymentYAML(
 			deploymentType,
@@ -677,7 +674,7 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 	
 
 
-	serviceID, environmentID, planID, undefinedResources,_, err = build.BuildService(
+	serviceID, environmentID, planID, undefinedResources, _, err = build.BuildService(
 		cmd.Context(),
 		processedData,
 		token,
@@ -775,7 +772,7 @@ func executeDeploymentWorkflow(cmd *cobra.Command, sm ysmrr.SpinnerManager, toke
 
 	// Step 9: Create or upgrade instance deployment automatically
 	var finalInstanceID string
-	var instanceActionType string = "create"
+	instanceActionType := "create"
 
 
 	spinnerMsg := "Checking for existing instances"
@@ -1122,7 +1119,7 @@ func createInstanceUnified(ctx context.Context, token, serviceID, productTierID,
 									
 								}
 						}
-						if inputParam.Required == false{
+						if !inputParam.Required {
 								if formattedParams[inputParam.Key] != nil {
 									defaultParams[inputParam.Key] = formattedParams[inputParam.Key] 
 								} else if inputParam.DefaultValue != nil {
@@ -1513,11 +1510,7 @@ func processTemplateExpressions(data []byte, baseDir string) ([]byte, error) {
 	// Pattern to match {{ $file:path }}
 	re := regexp.MustCompile(`(?m)^(?P<indent>[ \t]*)?(?P<key>[\S\t ]*)?{{\s*\$file:(?P<filepath>[^\s}]+)\s*}}`)
 	
-	for {
-		if !re.MatchString(content) {
-			break
-		}
-		
+	for re.MatchString(content) {
 		var processingErr error
 		content = re.ReplaceAllStringFunc(content, func(match string) string {
 			submatches := re.FindStringSubmatch(match)
@@ -1756,7 +1749,7 @@ func AnalyzeComposeResources(processedData []byte) (hasMultipleResources bool, a
 						continue
 					}
 					key, _ := pMap["key"].(string)
-					def, _ := pMap["defaultValue"]
+					def := pMap["defaultValue"]
 					paramMap[key] = def
 					// Build dependency map for this param
 					if _, exists := paramDeps[key]; !exists {

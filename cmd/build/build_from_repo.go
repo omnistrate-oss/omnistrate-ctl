@@ -1066,7 +1066,7 @@ func BuildServiceFromRepository(cmd *cobra.Command, ctx context.Context, token, 
 			}
 
 			var generateComposeSpecRes *openapiclient.GenerateComposeSpecFromContainerImageResult
-			generateComposeSpecRes, err = dataaccess.GenerateComposeSpecFromContainerImage(cmd.Context(), token, generateComposeSpecRequest)
+			generateComposeSpecRes, err = dataaccess.GenerateComposeSpecFromContainerImage(ctx, token, generateComposeSpecRequest)
 			if err != nil {
 				utils.HandleSpinnerError(spinner, sm, err)
 				return "", "", "", nil, err
@@ -1107,7 +1107,7 @@ func BuildServiceFromRepository(cmd *cobra.Command, ctx context.Context, token, 
 					fileData = append(fileData, []byte(fmt.Sprintf("      GcpProjectNumber: '%s'\n", gcpProjectNumber))...)
 
 					// Get organization id
-					user, err := dataaccess.DescribeUser(cmd.Context(), token)
+					user, err := dataaccess.DescribeUser(ctx, token)
 					if err != nil {
 						utils.HandleSpinnerError(spinner, sm, err)
 						return "", "", "", nil, err
