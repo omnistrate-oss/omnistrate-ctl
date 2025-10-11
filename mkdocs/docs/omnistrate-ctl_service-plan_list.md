@@ -21,7 +21,7 @@ omctl service-plan list -f="service_name:postgres,environment:prod" -f="service:
 ### Options
 
 ```
-  -f, --filter stringArray   Filter to apply to the list of service plans. E.g.: key1:value1,key2:value2, which filters service plans where key1 equals value1 and key2 equals value2. Allow use of multiple filters to form the logical OR operation. Supported keys: plan_id,plan_name,service_id,service_name,environment,version,release_description,version_set_status. Check the examples for more details.
+  -f, --filter stringArray   Filter to apply to the list of service plans. E.g.: key1:value1,key2:value2, which filters service plans where key1 equals value1 and key2 equals value2. Allow use of multiple filters to form the logical OR operation. Supported keys: plan_id,plan_name,service_id,service_name,environment,version,release_description,version_set_status,is_new_service_plan_version_created. Check the examples for more details.
   -h, --help                 help for list
       --truncate             Truncate long names in the output
 ```

@@ -46,15 +46,15 @@ type DebugData struct {
 }
 
 type ResourceInfo struct {
-	ID             string                               `json:"id"`
-	Name           string                               `json:"name"`
-	Type           string                               `json:"type"` // "helm" or "terraform"
-	DebugData      interface{}                          `json:"debugData"`
-	HelmData       *HelmData                            `json:"helmData,omitempty"`
-	TerraformData  *TerraformData                       `json:"terraformData,omitempty"`
-	GenericData    *GenericData                         `json:"genericData,omitempty"`    // For generic resources
-	WorkflowEvents *dataaccess.WorkflowEventsByCategory `json:"workflowEvents,omitempty"` // Debug events
-	WorkflowInfo   *dataaccess.WorkflowInfo             `json:"workflowInfo,omitempty"`   // Workflow metadata
+	ID             string                                 `json:"id"`
+	Name           string                                 `json:"name"`
+	Type           string                                 `json:"type"` // "helm" or "terraform"
+	DebugData      interface{}                            `json:"debugData"`
+	HelmData       *HelmData                              `json:"helmData,omitempty"`
+	TerraformData  *TerraformData                         `json:"terraformData,omitempty"`
+	GenericData    *GenericData                           `json:"genericData,omitempty"`    // For generic resources
+	WorkflowEvents *dataaccess.DebugEventsByWorkflowSteps `json:"workflowEvents,omitempty"` // Debug events
+	WorkflowInfo   *dataaccess.WorkflowInfo               `json:"workflowInfo,omitempty"`   // Workflow metadata
 }
 
 type GenericData struct {
@@ -199,11 +199,24 @@ func processResourceByType(resourceKey string, resourceDebugInfo interface{}, in
 		resourceInfo.ID = actualResourceID
 	}
 
-	debugData, ok := resourceDebugInfo.(map[string]interface{})
-	if !ok {
-		return processGenericResource(resourceInfo, instanceData, instanceID, isLogsEnabled, logsService, ctx, token, serviceID, environmentID)
+	var debugData map[string]interface{}
+	switch v := resourceDebugInfo.(type) {
+	case map[string]interface{}:
+		debugData = v
+	case *map[string]interface{}:
+		debugData = *v
+	default:
+		// Try to marshal and unmarshal if it's a struct or other type
+		b, err := json.Marshal(v)
+		if err == nil {
+			if unmarshalErr := json.Unmarshal(b, &debugData); unmarshalErr != nil {
+				// If unmarshaling fails, initialize debugData to an empty map to avoid nil dereference
+				debugData = make(map[string]interface{})
+			}
+		}
 	}
 
+	// debugData will be non-nil for most resource types, but may still be nil if unmarshalling fails or for unexpected types
 	actualDebugData, ok := debugData["debugData"].(map[string]interface{})
 	if !ok {
 		return processGenericResource(resourceInfo, instanceData, instanceID, isLogsEnabled, logsService, ctx, token, serviceID, environmentID)
@@ -236,18 +249,18 @@ func processHelmResource(resourceInfo *ResourceInfo, actualDebugData map[string]
 	}
 
 	// Fetch workflow events for all resources in this instance
-	resourcesData, workflowInfo, err := dataaccess.GetDebugEventsForAllResources(ctx, token, serviceID, environmentID, instanceID, "")
+	resourcesData, workflowInfo, err := dataaccess.GetDebugEventsForAllResources(ctx, token, serviceID, environmentID, instanceID, false, "")
 	if err == nil && len(resourcesData) > 0 {
 		// Find the matching resource and assign its events
 		for _, resData := range resourcesData {
 			if resData.ResourceKey == resourceInfo.ID || resData.ResourceName == resourceInfo.Name {
-				resourceInfo.WorkflowEvents = resData.EventsByCategory
+				resourceInfo.WorkflowEvents = resData.EventsByWorkflowStep
 				break
 			}
 		}
 		// If no specific resource found, use the first resource's events
 		if resourceInfo.WorkflowEvents == nil && len(resourcesData) > 0 {
-			resourceInfo.WorkflowEvents = resourcesData[0].EventsByCategory
+			resourceInfo.WorkflowEvents = resourcesData[0].EventsByWorkflowStep
 		}
 	}
 	if err == nil && workflowInfo != nil {
@@ -263,18 +276,18 @@ func processTerraformResource(resourceInfo *ResourceInfo, actualDebugData map[st
 	resourceInfo.TerraformData = parseTerraformData(actualDebugData)
 
 	// Fetch workflow events for all resources in this instance
-	resourcesData, workflowInfo, err := dataaccess.GetDebugEventsForAllResources(ctx, token, serviceID, environmentID, instanceID, "")
+	resourcesData, workflowInfo, err := dataaccess.GetDebugEventsForAllResources(ctx, token, serviceID, environmentID, instanceID, false, "")
 	if err == nil && len(resourcesData) > 0 {
 		// Find the matching resource and assign its events
 		for _, resData := range resourcesData {
 			if resData.ResourceKey == resourceInfo.ID || resData.ResourceName == resourceInfo.Name {
-				resourceInfo.WorkflowEvents = resData.EventsByCategory
+				resourceInfo.WorkflowEvents = resData.EventsByWorkflowStep
 				break
 			}
 		}
 		// If no specific resource found, use the first resource's events
 		if resourceInfo.WorkflowEvents == nil && len(resourcesData) > 0 {
-			resourceInfo.WorkflowEvents = resourcesData[0].EventsByCategory
+			resourceInfo.WorkflowEvents = resourcesData[0].EventsByWorkflowStep
 		}
 	}
 	if err == nil && workflowInfo != nil {
@@ -297,18 +310,18 @@ func processGenericResource(resourceInfo *ResourceInfo, instanceData *fleet.Reso
 	}
 
 	// Fetch workflow events for all resources in this instance
-	resourcesData, workflowInfo, err := dataaccess.GetDebugEventsForAllResources(ctx, token, serviceID, environmentID, instanceID, "")
+	resourcesData, workflowInfo, err := dataaccess.GetDebugEventsForAllResources(ctx, token, serviceID, environmentID, instanceID, false, "")
 	if err == nil && len(resourcesData) > 0 {
 		// Find the matching resource and assign its events
 		for _, resData := range resourcesData {
 			if resData.ResourceKey == resourceInfo.ID || resData.ResourceName == resourceInfo.Name {
-				resourceInfo.WorkflowEvents = resData.EventsByCategory
+				resourceInfo.WorkflowEvents = resData.EventsByWorkflowStep
 				break
 			}
 		}
 		// If no specific resource found, use the first resource's events
 		if resourceInfo.WorkflowEvents == nil && len(resourcesData) > 0 {
-			resourceInfo.WorkflowEvents = resourcesData[0].EventsByCategory
+			resourceInfo.WorkflowEvents = resourcesData[0].EventsByWorkflowStep
 		}
 	}
 	if err == nil && workflowInfo != nil {
@@ -678,10 +691,10 @@ func buildDebugEventsNode(resource ResourceInfo) *tview.TreeNode {
 
 	hasEvents := false
 
-	// Define categories with their events in a structured way
-	categories := []struct {
+	// Define workflow steps with their events in a structured way
+	workflowSteps := []struct {
 		name   string
-		events []dataaccess.CustomWorkflowEvent
+		events []dataaccess.DebugEvent
 	}{
 		{"Bootstrap", resource.WorkflowEvents.Bootstrap},
 		{"Storage", resource.WorkflowEvents.Storage},
@@ -689,25 +702,25 @@ func buildDebugEventsNode(resource ResourceInfo) *tview.TreeNode {
 		{"Compute", resource.WorkflowEvents.Compute},
 		{"Deployment", resource.WorkflowEvents.Deployment},
 		{"Monitoring", resource.WorkflowEvents.Monitoring},
-		{"Other", resource.WorkflowEvents.Other},
+		{"Unknown", resource.WorkflowEvents.Unknown},
 	}
 
-	// Add category nodes using a loop
-	for _, category := range categories {
-		if len(category.events) > 0 {
+	// Add workflow step nodes using a loop
+	for _, step := range workflowSteps {
+		if len(step.events) > 0 {
 
 			// Show last event summary and get icon/color
-			eventType := getHighestPriorityEventType(category.events, strings.ToLower(category.name), nil)
-			categoryIcon, categoryColor := getEventTypeOrStatusColorAndIcon(eventType)
+			eventType := getHighestPriorityEventType(step.events)
+			stepIcon, stepColor := getEventTypeOrStatusColorAndIcon(eventType)
 
-			categoryNode := tview.NewTreeNode(fmt.Sprintf("[%s]%s [white]%s (%d)", categoryColor, categoryIcon, category.name, len(category.events)))
-			categoryNode.SetReference(map[string]interface{}{
-				"type":     "debug-events-category",
+			stepNode := tview.NewTreeNode(fmt.Sprintf("[%s]%s [white]%s (%d)", stepColor, stepIcon, step.name, len(step.events)))
+			stepNode.SetReference(map[string]interface{}{
+				"type":     "debug-events-step",
 				"resource": resource,
-				"category": category.name,
-				"events":   category.events,
+				"step":     step.name,
+				"events":   step.events,
 			})
-			debugEventsNode.AddChild(categoryNode)
+			debugEventsNode.AddChild(stepNode)
 			hasEvents = true
 		}
 	}
@@ -778,8 +791,8 @@ func handleOptionMapSelection(ref map[string]interface{}, rightPanel *tview.Text
 	currentRightPanelType = ref["type"].(string)
 	if t, ok := ref["type"].(string); ok && t == "live-log-pod" {
 		handleLiveLogPodSelection(ref, rightPanel, app)
-	} else if t, ok := ref["type"].(string); ok && t == "debug-events-category" {
-		handleDebugEventsCategorySelection(ref, rightPanel)
+	} else if t, ok := ref["type"].(string); ok && (t == "debug-events-workflow-step" || t == "debug-events-step") {
+		handleDebugEventsWorkflowStepSelection(ref, rightPanel)
 		if resource, ok := ref["resource"].(ResourceInfo); ok {
 			pollDebugEventsAndWorkflowStatus(app, rightPanel, resource, data.Token, data.ServiceID, data.EnvironmentID, data.InstanceID)
 		}
@@ -835,19 +848,19 @@ func getEventTypeOrStatusColorAndIcon(eventTypeOrStatus string) (string, string)
 	}
 }
 
-// handleDebugEventsCategorySelection handles selection of debug events category nodes
-func handleDebugEventsCategorySelection(ref map[string]interface{}, rightPanel *tview.TextView) {
-	category, _ := ref["category"].(string)
-	events, _ := ref["events"].([]dataaccess.CustomWorkflowEvent)
+// handleDebugEventsWorkflowStepSelection handles selection of debug events workflow step nodes
+func handleDebugEventsWorkflowStepSelection(ref map[string]interface{}, rightPanel *tview.TextView) {
+	workflowStep, _ := ref["step"].(string)
+	events, _ := ref["events"].([]dataaccess.DebugEvent)
 	resource, _ := ref["resource"].(ResourceInfo)
 
-	rightPanel.SetTitle(fmt.Sprintf("Debug Events: %s - %s", resource.Name, category))
+	rightPanel.SetTitle(fmt.Sprintf("Debug Events: %s - %s", resource.Name, workflowStep))
 
 	var content strings.Builder
-	content.WriteString(fmt.Sprintf("[yellow]=== %s Events for %s ===[white]\n\n", category, resource.Name))
+	content.WriteString(fmt.Sprintf("[yellow]=== %s Events for %s ===[white]\n\n", workflowStep, resource.Name))
 
 	if len(events) == 0 {
-		content.WriteString("[gray]No events found in this category.[white]\n")
+		content.WriteString("[gray]No events found in this workflow step.[white]\n")
 	} else {
 		for i, event := range events {
 			// Determine event type color
@@ -927,10 +940,10 @@ func handleDebugEventsOverviewSelection(ref map[string]interface{}, rightPanel *
 		return
 	}
 
-	// Show all categories with counts and summary
-	categories := []struct {
+	// Show all workflow steps with counts and summary
+	workflowSteps := []struct {
 		name   string
-		events []dataaccess.CustomWorkflowEvent
+		events []dataaccess.DebugEvent
 	}{
 		{"Bootstrap", resource.WorkflowEvents.Bootstrap},
 		{"Storage", resource.WorkflowEvents.Storage},
@@ -938,31 +951,31 @@ func handleDebugEventsOverviewSelection(ref map[string]interface{}, rightPanel *
 		{"Compute", resource.WorkflowEvents.Compute},
 		{"Deployment", resource.WorkflowEvents.Deployment},
 		{"Monitoring", resource.WorkflowEvents.Monitoring},
-		{"Other", resource.WorkflowEvents.Other},
+		{"Unknown", resource.WorkflowEvents.Unknown},
 	}
 
 	totalEvents := 0
-	for _, category := range categories {
-		totalEvents += len(category.events)
+	for _, step := range workflowSteps {
+		totalEvents += len(step.events)
 	}
 
 	content.WriteString(fmt.Sprintf("[lightcyan]Total Events:[white] %d\n\n", totalEvents))
 
-	for _, category := range categories {
-		if len(category.events) > 0 {
-			// Determine icon and color based on the most recent event type in this category
-			eventType := getHighestPriorityEventType(category.events, strings.ToLower(category.name), nil)
-			categoryIcon, categoryColor := getEventTypeOrStatusColorAndIcon(eventType)
-			content.WriteString(fmt.Sprintf("[%s]%s [%s]%s[white] (%d events)\n", categoryColor, categoryIcon, "orange", category.name, len(category.events)))
+	for _, step := range workflowSteps {
+		if len(step.events) > 0 {
+			// Determine icon and color based on the most recent event type in this step
+			eventType := getHighestPriorityEventType(step.events)
+			stepIcon, stepColor := getEventTypeOrStatusColorAndIcon(eventType)
+			content.WriteString(fmt.Sprintf("[%s]%s [%s]%s[white] (%d events)\n", stepColor, stepIcon, "orange", step.name, len(step.events)))
 
 			// Show last event summary
-			if len(category.events) > 0 {
+			if len(step.events) > 0 {
 				// Get event type color
-				eventType := getHighestPriorityEventType(category.events, strings.ToLower(category.name), nil)
+				eventType := getHighestPriorityEventType(step.events)
 				_, eventTypeColor := getEventTypeOrStatusColorAndIcon(eventType)
 				// Find the event with the matching eventType to get its EventTime
 				eventTime := ""
-				for _, evt := range category.events {
+				for _, evt := range step.events {
 					if evt.EventType == eventType {
 						eventTime = evt.EventTime
 						break
@@ -972,11 +985,11 @@ func handleDebugEventsOverviewSelection(ref map[string]interface{}, rightPanel *
 			}
 			content.WriteString("\n")
 		} else {
-			content.WriteString(fmt.Sprintf("[gray]○ %s[white] (0 events)\n\n", category.name))
+			content.WriteString(fmt.Sprintf("[gray]○ %s[white] (0 events)\n\n", step.name))
 		}
 	}
 
-	content.WriteString("[lightcyan]Click on a category in the tree to view detailed events.[white]\n")
+	content.WriteString("[lightcyan]Click on a workflow step in the tree to view detailed events.[white]\n")
 
 	rightPanel.SetText(content.String())
 }
@@ -2339,7 +2352,7 @@ func pollDebugEventsAndWorkflowStatus(app *tview.Application, rightPanel *tview.
 			// Fetch updated debug events and workflow status for all resources
 			ctx := context.Background()
 			resourcesData, workflowInfo, err := dataaccess.GetDebugEventsForAllResources(
-				ctx, token, serviceID, environmentID, instanceID)
+				ctx, token, serviceID, environmentID, instanceID, false, "")
 
 			if err != nil {
 				// Log error but continue polling
@@ -2350,13 +2363,13 @@ func pollDebugEventsAndWorkflowStatus(app *tview.Application, rightPanel *tview.
 			if len(resourcesData) > 0 {
 				for _, resData := range resourcesData {
 					if resData.ResourceKey == resource.ID || resData.ResourceName == resource.Name {
-						resource.WorkflowEvents = resData.EventsByCategory
+						resource.WorkflowEvents = resData.EventsByWorkflowStep
 						break
 					}
 				}
 				// If no specific resource found, use the first resource's events
 				if resource.WorkflowEvents == nil {
-					resource.WorkflowEvents = resourcesData[0].EventsByCategory
+					resource.WorkflowEvents = resourcesData[0].EventsByWorkflowStep
 				}
 			}
 			resource.WorkflowInfo = workflowInfo
@@ -2380,9 +2393,9 @@ func pollDebugEventsAndWorkflowStatus(app *tview.Application, rightPanel *tview.
 								}
 								handleDebugEventsOverviewSelection(ref, rightPanel)
 
-							case "debug-events-category":
-								// We would need to track which category is currently selected
-								// For now, just refresh overview since we don't have category state
+							case "debug-events-workflow-step":
+								// We would need to track which workflow step is currently selected
+								// For now, just refresh overview since we don't have step state
 								ref := map[string]interface{}{
 									"type":     "debug-events-overview",
 									"resource": resource,
@@ -2410,9 +2423,9 @@ func pollDebugEventsAndWorkflowStatus(app *tview.Application, rightPanel *tview.
 						}
 						handleDebugEventsOverviewSelection(ref, rightPanel)
 
-					case "debug-events-category":
-						// We would need to track which category is currently selected
-						// For now, just refresh overview since we don't have category state
+					case "debug-events-workflow-step":
+						// We would need to track which workflow step is currently selected
+						// For now, just refresh overview since we don't have step state
 						ref := map[string]interface{}{
 							"type":     "debug-events-overview",
 							"resource": resource,
