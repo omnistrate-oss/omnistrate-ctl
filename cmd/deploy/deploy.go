@@ -234,8 +234,7 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 				specFile = "docker-compose.yaml"
 			} else {
 				// Auto-detect docker-compose.yaml in current directory if present
-				files, err := os.ReadDir(".")
-				if err == nil {
+				if files, err := os.ReadDir("."); err == nil {
 					for _, f := range files {
 						if !f.IsDir() && (f.Name() == "docker-compose.yaml" || f.Name() == "docker-compose.yml") {
 							specFile = f.Name()
@@ -1783,11 +1782,9 @@ func AnalyzeComposeResources(processedData []byte) (hasMultipleResources bool, a
 						// If param in resource matches cluster param, or is a known mapping
 						if pMap["key"] == k {
 							depMap[resName] = k
-						} else {
+						} else if strings.HasSuffix(pMap["key"].(string), k) || strings.HasPrefix(pMap["key"].(string), k) || strings.Contains(pMap["key"].(string), k) {
 							// Try to match by normalized name (e.g., instanceType <-> writerInstanceType)
-							if strings.HasSuffix(pMap["key"].(string), k) || strings.HasPrefix(pMap["key"].(string), k) || strings.Contains(pMap["key"].(string), k) {
-								depMap[resName] = pMap["key"].(string)
-							}
+							depMap[resName] = pMap["key"].(string)
 						}
 					}
 				}
