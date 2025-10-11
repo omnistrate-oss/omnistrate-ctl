@@ -9,22 +9,22 @@ import (
 )
 
 type CostOptions struct {
-	StartDate               time.Time
-	EndDate                 time.Time
-	EnvironmentType         string
-	Frequency               string
-	IncludeCloudProviderIDs *string
-	ExcludeCloudProviderIDs *string
-	IncludeRegionIDs        *string
-	ExcludeRegionIDs        *string
+	StartDate                time.Time
+	EndDate                  time.Time
+	EnvironmentType          string
+	Frequency                string
+	IncludeCloudProviderIDs  *string
+	ExcludeCloudProviderIDs  *string
+	IncludeRegionIDs         *string
+	ExcludeRegionIDs         *string
 	IncludeDeploymentCellIDs *string
 	ExcludeDeploymentCellIDs *string
-	IncludeInstanceIDs      *string
-	ExcludeInstanceIDs      *string
-	IncludeUserIDs          *string
-	ExcludeUserIDs          *string
-	TopNInstances           *int64
-	TopNUsers               *int64
+	IncludeInstanceIDs       *string
+	ExcludeInstanceIDs       *string
+	IncludeUserIDs           *string
+	ExcludeUserIDs           *string
+	TopNInstances            *int64
+	TopNUsers                *int64
 }
 
 func DescribeCloudProviderCost(ctx context.Context, token string, opts CostOptions) (res *openapiclientfleet.DescribeCloudProviderCostResult, err error) {

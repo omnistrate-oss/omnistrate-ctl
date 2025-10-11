@@ -32,14 +32,15 @@ type ResourceChangeSet struct {
 }
 
 type ServicePlanVersion struct {
-	PlanID             string `json:"plan_id,omitempty"`
-	PlanName           string `json:"plan_name,omitempty"`
-	ServiceID          string `json:"service_id,omitempty"`
-	ServiceName        string `json:"service_name,omitempty"`
-	Environment        string `json:"environment,omitempty"`
-	Version            string `json:"version,omitempty"`
-	ReleaseDescription string `json:"release_description,omitempty"`
-	VersionSetStatus   string `json:"version_set_status,omitempty"`
+	PlanID                         string `json:"plan_id,omitempty"`
+	PlanName                       string `json:"plan_name,omitempty"`
+	ServiceID                      string `json:"service_id,omitempty"`
+	ServiceName                    string `json:"service_name,omitempty"`
+	Environment                    string `json:"environment,omitempty"`
+	Version                        string `json:"version,omitempty"`
+	ReleaseDescription             string `json:"release_description,omitempty"`
+	VersionSetStatus               string `json:"version_set_status,omitempty"`
+	IsNewServicePlanVersionCreated bool   `json:"is_new_service_plan_version_created,omitempty"`
 }
 
 type ServicePlanVersionDetails struct {

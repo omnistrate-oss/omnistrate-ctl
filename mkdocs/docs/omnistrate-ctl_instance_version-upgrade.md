@@ -19,8 +19,11 @@ omctl instance version-upgrade instance-abcd1234 --upgrade-configuration-overrid
 # Issue a version upgrade to a specific target tier version
 omctl instance version-upgrade instance-abcd1234 --upgrade-configuration-override /path/to/config.yaml --target-tier-version 3.0
 
+# Issue a version upgrade and wait for completion with progress tracking
+omctl instance version-upgrade instance-abcd1234 --upgrade-configuration-override /path/to/config.yaml --target-tier-version 3.0 --wait
+
 # [HELM ONLY] Use generate-configuration with a target tier version to generate a default deployment instance configuration file based on the current helm values as well as the proposed helm values for the target tier version
-omctl instance version-upgrade instance-abcd1234 --existing-configuration existing-config.yaml --proposed-configuration proposed-config.yaml --generate-configuration --target-tier-version 3.0 
+omctl instance version-upgrade instance-abcd1234 --existing-configuration existing-config.yaml --proposed-configuration proposed-config.yaml --generate-configuration --target-tier-version 3.0
 
 # Example upgrade configuration override YAML file:
 # resource-key-1:
@@ -43,6 +46,7 @@ omctl instance version-upgrade instance-abcd1234 --existing-configuration existi
       --proposed-configuration string           Path to write the proposed configuration to (optional, used with --generate-configuration)
       --target-tier-version string              Target tier version for the version upgrade
       --upgrade-configuration-override string   YAML file containing upgrade configuration override
+      --wait                                    Wait for upgrade to complete and show progress
 ```
 
 ### Options inherited from parent commands

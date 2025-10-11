@@ -15,6 +15,7 @@ You can search through documentation content.`,
 
 func init() {
 	Cmd.AddCommand(searchCmd)
+	Cmd.AddCommand(composeSpecCmd)
 }
 
 func run(cmd *cobra.Command, args []string) {

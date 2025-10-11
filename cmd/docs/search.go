@@ -11,10 +11,14 @@ import (
 
 const (
 	searchExample = `# Search documentation for a specific term
-omctl docs search "kubernetes"
+omctl docs search "kubernetes" --output json
 
-# Search documentation with multiple terms
-omctl docs search "service plan deployment"`
+# Search documentation with multiple terms with JSON output
+omctl docs search "service plan deployment" --output json
+
+# Limit the number of results returned
+omctl docs search "service plan deployment" --limit 5 --output json
+`
 )
 
 var searchCmd = &cobra.Command{

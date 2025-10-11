@@ -18,6 +18,9 @@ omctl instance create --service=mysql --environment=dev --plan=mysql --version=l
 
 # Create an instance deployment with parameters from a file
 omctl instance create --service=mysql --environment=dev --plan=mysql --version=latest --resource=mySQL --cloud-provider=aws --region=ca-central-1 --param-file /path/to/params.json
+
+# Create an instance deployment and wait for completion with progress tracking
+omctl instance create --service=mysql --environment=dev --plan=mysql --version=latest --resource=mySQL --cloud-provider=aws --region=ca-central-1 --param-file /path/to/params.json --wait
 ```
 
 ### Options
@@ -34,6 +37,7 @@ omctl instance create --service=mysql --environment=dev --plan=mysql --version=l
       --service string           Service name
       --subscription-id string   Subscription ID to use for the instance deployment. If not provided, instance deployment will be created in your own subscription.
       --version string           Service plan version (latest|preferred|1.0 etc.) (default "preferred")
+      --wait                     Wait for deployment to complete and show progress
 ```
 
 ### Options inherited from parent commands

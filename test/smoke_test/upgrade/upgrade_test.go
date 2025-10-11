@@ -58,7 +58,7 @@ func Test_upgrade_basic(t *testing.T) {
 	require.NotEmpty(t, instanceID)
 
 	// PASS: wait for instance to reach running status
-	err = testutils.WaitForInstanceToReachStatus(ctx, instanceID, instance.InstanceStatusRunning, 900*time.Second)
+	err = testutils.WaitForInstanceToReachStatus(ctx, instanceID, instance.InstanceStatusRunning)
 	require.NoError(err)
 
 	// PASS: release mysql service plan
@@ -90,7 +90,7 @@ func Test_upgrade_basic(t *testing.T) {
 	require.NoError(err)
 
 	// PASS: wait for instance to reach running status
-	err = testutils.WaitForInstanceToReachStatus(ctx, instanceID, instance.InstanceStatusRunning, 900*time.Second)
+	err = testutils.WaitForInstanceToReachStatus(ctx, instanceID, instance.InstanceStatusRunning)
 	require.NoError(err)
 
 	// PASS: upgrade instance to version 1.0
@@ -101,7 +101,7 @@ func Test_upgrade_basic(t *testing.T) {
 
 	// PASS: wait for instance to reach running status
 	time.Sleep(5 * time.Second)
-	err = testutils.WaitForInstanceToReachStatus(ctx, instanceID, instance.InstanceStatusRunning, 900*time.Second)
+	err = testutils.WaitForInstanceToReachStatus(ctx, instanceID, instance.InstanceStatusRunning)
 	require.NoError(err)
 
 	// PASS: upgrade instance to preferred version
@@ -111,7 +111,7 @@ func Test_upgrade_basic(t *testing.T) {
 
 	// PASS: wait for instance to reach running status
 	time.Sleep(5 * time.Second)
-	err = testutils.WaitForInstanceToReachStatus(ctx, instanceID, instance.InstanceStatusRunning, 900*time.Second)
+	err = testutils.WaitForInstanceToReachStatus(ctx, instanceID, instance.InstanceStatusRunning)
 	require.NoError(err)
 	// PASS: scheduled upgrade
 	err = validateScheduledAndCancel(ctx, instanceID, "1.0", false)
@@ -126,7 +126,7 @@ func Test_upgrade_basic(t *testing.T) {
 
 	// PASS: wait for instance to reach running status
 	time.Sleep(5 * time.Second)
-	err = testutils.WaitForInstanceToReachStatus(ctx, instanceID, instance.InstanceStatusRunning, 900*time.Second)
+	err = testutils.WaitForInstanceToReachStatus(ctx, instanceID, instance.InstanceStatusRunning)
 	require.NoError(err)
 
 	// PASS: upgrade instance to "v1.0.0-alpha"
@@ -304,9 +304,9 @@ func Test_upgrade_concurrent(t *testing.T) {
 	require.NotEmpty(t, instanceID2)
 
 	// PASS: wait for both instances to reach running status
-	err = testutils.WaitForInstanceToReachStatus(ctx, instanceID1, instance.InstanceStatusRunning, 900*time.Second)
+	err = testutils.WaitForInstanceToReachStatus(ctx, instanceID1, instance.InstanceStatusRunning)
 	require.NoError(err)
-	err = testutils.WaitForInstanceToReachStatus(ctx, instanceID2, instance.InstanceStatusRunning, 900*time.Second)
+	err = testutils.WaitForInstanceToReachStatus(ctx, instanceID2, instance.InstanceStatusRunning)
 	require.NoError(err)
 
 	// PASS: release mysql service plan

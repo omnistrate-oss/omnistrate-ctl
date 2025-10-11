@@ -17,7 +17,10 @@ const (
 omctl instance modify instance-abcd1234 --network-type PUBLIC / INTERNAL --param '{"databaseName":"default","password":"a_secure_password","rootPassword":"a_secure_root_password","username":"user"}'
 
 # Modify an instance deployment using a parameter file
-omctl instance modify instance-abcd1234 --param-file /path/to/param.json`
+omctl instance modify instance-abcd1234 --param-file /path/to/param.json
+
+# Modify an instance deployment and wait for completion with progress tracking
+omctl instance modify instance-abcd1234 --param-file /path/to/param.json --wait`
 )
 
 var modifyCmd = &cobra.Command{
@@ -33,6 +36,7 @@ func init() {
 	modifyCmd.Flags().String("network-type", "", "Optional network type change for the instance deployment (PUBLIC / INTERNAL)")
 	modifyCmd.Flags().String("param", "", "Parameters for the instance deployment")
 	modifyCmd.Flags().String("param-file", "", "Json file containing parameters for the instance deployment")
+	modifyCmd.Flags().Bool("wait", false, "Wait for modification to complete and show progress")
 
 	if err := modifyCmd.MarkFlagFilename("param-file"); err != nil {
 		return
@@ -64,6 +68,11 @@ func runModify(cmd *cobra.Command, args []string) error {
 		return err
 	}
 	networkType, err := cmd.Flags().GetString("network-type")
+	if err != nil {
+		utils.PrintError(err)
+		return err
+	}
+	waitFlag, err := cmd.Flags().GetBool("wait")
 	if err != nil {
 		utils.PrintError(err)
 		return err
@@ -149,13 +158,13 @@ func runModify(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	// Display workflow resource-wise data if output is not JSON
-	if output != "json" {
+	// Display workflow resource-wise data if output is not JSON and wait flag is enabled
+	if output != "json" && waitFlag {
 		fmt.Println("🔄 Deployment progress...")
 		err = DisplayWorkflowResourceDataWithSpinners(cmd.Context(), token, formattedInstance.InstanceID, "modify")
 		if err != nil {
 			// Handle spinner error if deployment monitoring fails
-			fmt.Printf("❌ Deployment failed-- %s", err)
+			fmt.Println("❌ Deployment failed")
 		} else {
 			fmt.Println("✅ Deployment successful")
 		}

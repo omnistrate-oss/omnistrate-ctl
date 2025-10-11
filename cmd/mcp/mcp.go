@@ -18,10 +18,9 @@ var config = &ophis.Config{
 			"logout",
 			"services-orchestration",
 			"secret",
-			"inspect",
-			"debug",
 			"disable-feature",
 			"enable-feature",
+			"build-from-repo", // we only want build from mcp
 		})),
 		// Exclude hidden commands
 		tools.AddFilter(tools.Hidden()),

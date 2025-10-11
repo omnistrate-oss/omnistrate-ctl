@@ -60,9 +60,10 @@ omctl build-from-repo --release-description "v1.0.0-alpha"
 set GH_PAT=ghp_xxxxxxxx
 omctl build-from-repo
 "`
-	GitHubPATGenerateURL = "https://github.com/settings/tokens"
-	DefaultProdEnvName   = "Production"
-	defaultServiceName   = "default" // Default service name when no compose spec exists in the repo. It won't show up in the resulting image or compose spec. Only intermediate use.
+	GitHubPATGenerateURL      = "https://github.com/settings/tokens"
+	DefaultProdEnvName        = "Production"
+	defaultServiceName        = "default" // Default service name when no compose spec exists in the repo. It won't show up in the resulting image or compose spec. Only intermediate use.
+	ignoreKeyForFileEmbedding = "x-embed-$"
 )
 
 var BuildFromRepoCmd = &cobra.Command{
@@ -97,6 +98,9 @@ func init() {
 
 	// Dry run flag
 	BuildFromRepoCmd.Flags().Bool("dry-run", false, "Run in dry-run mode: only build the Docker image locally without pushing, skip service creation, and write the generated spec to a local file with '-dry-run' suffix. Cannot be used with any --skip-* flags.")
+
+	// Force create version set flag
+	BuildFromRepoCmd.Flags().Bool("force-create-service-plan-version", false, "Force create a new service plan version on release.")
 
 	// Platform flag
 	BuildFromRepoCmd.Flags().StringArray("platforms", []string{"linux/amd64"}, "Specify the platforms to build for. Use the format: --platforms linux/amd64 --platforms linux/arm64. Default is linux/amd64.")
@@ -196,6 +200,13 @@ func runBuildFromRepo(cmd *cobra.Command, args []string) error {
 
 	// Get dry-run flag
 	dryRun, err := cmd.Flags().GetBool("dry-run")
+	if err != nil {
+		utils.PrintError(err)
+		return err
+	}
+
+	// Get force-create-service-plan-version flag
+	forceCreateServicePlanVersion, err := cmd.Flags().GetBool("force-create-service-plan-version")
 	if err != nil {
 		utils.PrintError(err)
 		return err
@@ -341,6 +352,7 @@ func runBuildFromRepo(cmd *cobra.Command, args []string) error {
 		file,
 		envVars,
 		platforms,
+		forceCreateServicePlanVersion,
 	)
 
 	if err != nil {
@@ -572,7 +584,7 @@ func runBuildFromRepo(cmd *cobra.Command, args []string) error {
 
 
 
-func BuildServiceFromRepository(cmd *cobra.Command, ctx context.Context, token, serviceName, releaseDescription string, resetPAT, dryRun, skipDockerBuild, skipServiceBuild, skipEnvironmentPromotion, skipSaasPortalInit bool, deploymentType, awsAccountID, gcpProjectID, gcpProjectNumber, azureSubscriptionID, azureTenantID string, sm ysmrr.SpinnerManager, file string, envVars, platforms []string) (serviceID, devEnvironmentID, devPlanID string, undefinedResources map[string]string, err error) {
+func BuildServiceFromRepository(cmd *cobra.Command, ctx context.Context, token, serviceName, releaseDescription string, resetPAT, dryRun, skipDockerBuild, skipServiceBuild, skipEnvironmentPromotion, skipSaasPortalInit bool, deploymentType, awsAccountID, gcpProjectID, gcpProjectNumber, azureSubscriptionID, azureTenantID string, sm ysmrr.SpinnerManager, file string, envVars, platforms []string, forceCreateServicePlanVersion bool) (serviceID, devEnvironmentID, devPlanID string, undefinedResources map[string]string, err error) {
 
 
 	// Step 0: Validate user is currently logged in
@@ -1258,7 +1270,7 @@ x-omnistrate-image-registry-attributes:
 	}
 
 	// Build the service
-	serviceID, devEnvironmentID, devPlanID, undefinedResources, err = BuildService(
+	serviceID, devEnvironmentID, devPlanID, undefinedResources, _, err = BuildService(
 		cmd.Context(),
 		fileData,
 		token,
@@ -1272,10 +1284,11 @@ x-omnistrate-image-registry-attributes:
 		true,
 		releaseDescriptionPtr,
 		false,
+		forceCreateServicePlanVersion,
 	)
 	if err != nil {
 		utils.HandleSpinnerError(spinner, sm, err)
-		return"", "", "", nil, err
+		return "", "", "", nil, err
 	}
 
 	spinner.UpdateMessage(fmt.Sprintf("Building service from the compose spec: built service %s (service ID: %s)", serviceNameToUse, serviceID))
@@ -1503,6 +1516,10 @@ func renderFileReferences(
 		submatches := re.FindStringSubmatch(match)
 		addedIndentation := submatches[indentIndex]
 		key := submatches[keyIndex]
+		if strings.HasPrefix(key, ignoreKeyForFileEmbedding) {
+			key = ""
+		}
+
 		filePath := submatches[filePathIndex]
 		if len(filePath) == 0 {
 			renderingErr = fmt.Errorf("no file path found in file reference '%s'", match)

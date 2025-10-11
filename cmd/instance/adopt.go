@@ -340,15 +340,15 @@ func convertToSDKHelmAdoptionConfiguration(yamlConfig *HelmAdoptionConfig) opena
 // convertToSDKHelmRuntimeConfiguration converts YAML runtime config to SDK format
 func convertToSDKHelmRuntimeConfiguration(yamlConfig *HelmRuntimeConfig) openapiclientfleet.HelmRuntimeConfiguration {
 	return openapiclientfleet.HelmRuntimeConfiguration{
-		DisableHooks:         yamlConfig.DisableHooks,
-		Recreate:             yamlConfig.Recreate,
-		ResetThenReuseValues: yamlConfig.ResetThenReuseValues,
-		ResetValues:          yamlConfig.ResetValues,
-		ReuseValues:          yamlConfig.ReuseValues,
-		SkipCRDs:             yamlConfig.SkipCRDs,
-		TimeoutNanos:         yamlConfig.TimeoutNanos,
-		UpgradeCRDs:          yamlConfig.UpgradeCRDs,
-		Wait:                 yamlConfig.Wait,
-		WaitForJobs:          yamlConfig.WaitForJobs,
+		DisableHooks:         utils.ToPtr(yamlConfig.DisableHooks),
+		Recreate:             utils.ToPtr(yamlConfig.Recreate),
+		ResetThenReuseValues: utils.ToPtr(yamlConfig.ResetThenReuseValues),
+		ResetValues:          utils.ToPtr(yamlConfig.ResetValues),
+		ReuseValues:          utils.ToPtr(yamlConfig.ReuseValues),
+		SkipCRDs:             utils.ToPtr(yamlConfig.SkipCRDs),
+		TimeoutNanos:         utils.ToPtr(yamlConfig.TimeoutNanos),
+		UpgradeCRDs:          utils.ToPtr(yamlConfig.UpgradeCRDs),
+		Wait:                 utils.ToPtr(yamlConfig.Wait),
+		WaitForJobs:          utils.ToPtr(yamlConfig.WaitForJobs),
 	}
 }

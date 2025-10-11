@@ -9,8 +9,6 @@ import (
 	openapiclientfleet "github.com/omnistrate-oss/omnistrate-sdk-go/fleet"
 )
 
-
-
 type ListWorkflowsOptions struct {
 	InstanceID    string
 	StartDate     *time.Time
@@ -60,11 +58,6 @@ func ListWorkflows(ctx context.Context, token string, serviceID, environmentID s
 	}
 	return
 }
-
-
-
-
-
 
 func GetWorkflowEvents(ctx context.Context, token string, serviceID, environmentID, workflowID string) (res *openapiclientfleet.GetWorkflowEventsResult, err error) {
 	ctxWithToken := context.WithValue(ctx, openapiclientfleet.ContextAccessToken, token)
@@ -165,8 +158,8 @@ func TerminateWorkflow(ctx context.Context, token string, serviceID, environment
 	return
 }
 
-// CustomWorkflowEvent represents a workflow event with known field names
-type CustomWorkflowEvent struct {
+// DebugEvent represents a workflow debug event with known field names
+type DebugEvent struct {
 	EventTime string `json:"eventTime"`
 	EventType string `json:"eventType"`
 	Message   string `json:"message"`
@@ -180,19 +173,20 @@ type WorkflowInfo struct {
 	EndTime        string `json:"endTime,omitempty"`
 }
 
-// WorkflowEventsByCategory represents workflow events organized by category
-type WorkflowEventsByCategory struct {
-	Bootstrap  []CustomWorkflowEvent `json:"bootstrap"`
-	Storage    []CustomWorkflowEvent `json:"storage"`
-	Network    []CustomWorkflowEvent `json:"network"`
-	Compute    []CustomWorkflowEvent `json:"compute"`
-	Deployment []CustomWorkflowEvent `json:"deployment"`
-	Monitoring []CustomWorkflowEvent `json:"monitoring"`
-	Other      []CustomWorkflowEvent `json:"other"`
+// DebugEventsByWorkflowSteps represents workflow debug events organized by workflow step
+type DebugEventsByWorkflowSteps struct {
+	Bootstrap  []DebugEvent `json:"bootstrap"`
+	Storage    []DebugEvent `json:"storage"`
+	Network    []DebugEvent `json:"network"`
+	Compute    []DebugEvent `json:"compute"`
+	Deployment []DebugEvent `json:"deployment"`
+	Monitoring []DebugEvent `json:"monitoring"`
+	Unknown    []DebugEvent `json:"unknown"`
 }
 
-// GetDebugEventsForAllResources gets workflow events for all resources in an instance, organized by resource and category
-func GetDebugEventsForAllResources(ctx context.Context, token string, serviceID, environmentID, instanceID string, expectedAction ...string) ([]ResourceWorkflowData, *WorkflowInfo, error) {
+// GetDebugEventsForAllResources gets workflow events for all resources in an instance, organized by resource and workflow step.
+// If fetchResourceStatus is true, also fetches and sets workflow status from DescribeWorkflow.
+func GetDebugEventsForAllResources(ctx context.Context, token string, serviceID, environmentID, instanceID string, fetchResourceStatus bool, expectedAction ...string) ([]ResourceWorkflowDebugEvents, *WorkflowInfo, error) {
 	// First, list all workflows for the instance
 	workflows, err := ListWorkflows(ctx, token, serviceID, environmentID, &ListWorkflowsOptions{
 		InstanceID: instanceID,
@@ -202,12 +196,12 @@ func GetDebugEventsForAllResources(ctx context.Context, token string, serviceID,
 	}
 
 	if workflows == nil || workflows.Workflows == nil {
-		return []ResourceWorkflowData{}, &WorkflowInfo{}, nil
+		return []ResourceWorkflowDebugEvents{}, &WorkflowInfo{}, nil
 	}
 
 	workflowInfo := &WorkflowInfo{}
-	var resourcesData []ResourceWorkflowData
-	
+	var resourcesData []ResourceWorkflowDebugEvents
+
 	// Find the latest workflow that matches the expected action (if specified)
 	var latestWorkflowID string
 	for _, workflow := range workflows.Workflows {
@@ -215,19 +209,19 @@ func GetDebugEventsForAllResources(ctx context.Context, token string, serviceID,
 		if workflow.Id == "" || workflow.Status == "pending" || strings.HasPrefix(workflow.Id, "submit-rotate-license") || strings.HasPrefix(workflow.Id, "submit-backup") {
 			continue
 		}
-		
+
 		// If expected action is specified, validate workflow matches the action
 		if len(expectedAction) > 0 && expectedAction[0] != "" {
 			actionType := expectedAction[0]
 			workflowMatches := false
-			
+
 			// Check if workflow ID contains the expected action type
 			workflowLower := strings.ToLower(workflow.Id)
 			actionLower := strings.ToLower(actionType)
-			
+
 			switch actionLower {
 			case "create":
-				workflowMatches = strings. HasPrefix(workflowLower, "submit-create")
+				workflowMatches = strings.HasPrefix(workflowLower, "submit-create")
 			case "modify":
 				workflowMatches = strings.HasPrefix(workflowLower, "submit-update") || strings.HasPrefix(workflowLower, "submit-modify")
 			case "upgrade":
@@ -238,26 +232,26 @@ func GetDebugEventsForAllResources(ctx context.Context, token string, serviceID,
 				// If action type is unknown, fall back to original behavior
 				workflowMatches = true
 			}
-			
+
 			// Skip workflows that don't match the expected action
 			if !workflowMatches {
 				continue
 			}
 		}
-		
+
 		latestWorkflowID = workflow.Id
 
 		// Populate workflow metadata
 		workflowInfo.WorkflowID = workflow.Id
 		workflowInfo.WorkflowStatus = workflow.Status
-		
+
 		if workflow.StartTime != "" {
 			workflowInfo.StartTime = workflow.StartTime
 		}
 		if workflow.EndTime != nil {
 			workflowInfo.EndTime = *workflow.EndTime
 		}
-		
+
 		// Use the last workflow found (assuming they are ordered)
 		break
 	}
@@ -272,46 +266,46 @@ func GetDebugEventsForAllResources(ctx context.Context, token string, serviceID,
 		if workflowEvents != nil && workflowEvents.Resources != nil {
 			// Work directly with the struct - no need for marshaling/unmarshaling
 			for _, resource := range workflowEvents.Resources {
-				eventsByCategory := &WorkflowEventsByCategory{
-					Bootstrap:  []CustomWorkflowEvent{},
-					Storage:    []CustomWorkflowEvent{},
-					Network:    []CustomWorkflowEvent{},
-					Compute:    []CustomWorkflowEvent{},
-					Deployment: []CustomWorkflowEvent{},
-					Monitoring: []CustomWorkflowEvent{},
-					Other:      []CustomWorkflowEvent{},
+				eventsByWorkflowStep := &DebugEventsByWorkflowSteps{
+					Bootstrap:  []DebugEvent{},
+					Storage:    []DebugEvent{},
+					Network:    []DebugEvent{},
+					Compute:    []DebugEvent{},
+					Deployment: []DebugEvent{},
+					Monitoring: []DebugEvent{},
+					Unknown:    []DebugEvent{},
 				}
 
 				// Categorize events by workflow step for this resource
 				if resource.WorkflowSteps != nil {
 					for _, step := range resource.WorkflowSteps {
-						stepCategory := categorizeStepName(step.StepName)
-						
+						workflowStep := workflowStepName(step.StepName)
+
 						if step.Events != nil {
 							for _, event := range step.Events {
-								// Create a CustomWorkflowEvent with proper data
-								workflowEvent := CustomWorkflowEvent{
+								// Create a DebugEvent with proper data
+								workflowEvent := DebugEvent{
 									EventTime: event.EventTime,
 									EventType: event.EventType,
 									Message:   event.Message,
 								}
 
-								// Add to appropriate category
-								switch stepCategory {
+								// Add to appropriate workflowStep
+								switch workflowStep {
 								case "bootstrap":
-									eventsByCategory.Bootstrap = append(eventsByCategory.Bootstrap, workflowEvent)
+									eventsByWorkflowStep.Bootstrap = append(eventsByWorkflowStep.Bootstrap, workflowEvent)
 								case "storage":
-									eventsByCategory.Storage = append(eventsByCategory.Storage, workflowEvent)
+									eventsByWorkflowStep.Storage = append(eventsByWorkflowStep.Storage, workflowEvent)
 								case "network":
-									eventsByCategory.Network = append(eventsByCategory.Network, workflowEvent)
+									eventsByWorkflowStep.Network = append(eventsByWorkflowStep.Network, workflowEvent)
 								case "compute":
-									eventsByCategory.Compute = append(eventsByCategory.Compute, workflowEvent)
+									eventsByWorkflowStep.Compute = append(eventsByWorkflowStep.Compute, workflowEvent)
 								case "deployment":
-									eventsByCategory.Deployment = append(eventsByCategory.Deployment, workflowEvent)
+									eventsByWorkflowStep.Deployment = append(eventsByWorkflowStep.Deployment, workflowEvent)
 								case "monitoring":
-									eventsByCategory.Monitoring = append(eventsByCategory.Monitoring, workflowEvent)
+									eventsByWorkflowStep.Monitoring = append(eventsByWorkflowStep.Monitoring, workflowEvent)
 								default:
-									eventsByCategory.Other = append(eventsByCategory.Other, workflowEvent)
+									eventsByWorkflowStep.Unknown = append(eventsByWorkflowStep.Unknown, workflowEvent)
 								}
 							}
 						}
@@ -319,53 +313,69 @@ func GetDebugEventsForAllResources(ctx context.Context, token string, serviceID,
 				}
 
 				// Add this resource's data to the result
-				resourcesData = append(resourcesData, ResourceWorkflowData{
-					ResourceID:       resource.ResourceId,
-					ResourceKey:      resource.ResourceKey,
-					ResourceName:     resource.ResourceName,
-					EventsByCategory: eventsByCategory,
+				resourcesData = append(resourcesData, ResourceWorkflowDebugEvents{
+					ResourceID:           resource.ResourceId,
+					ResourceKey:          resource.ResourceKey,
+					ResourceName:         resource.ResourceName,
+					EventsByWorkflowStep: eventsByWorkflowStep,
 				})
 			}
 		}
 	}
 
+	// Optionally fetch and set resource status from DescribeWorkflow
+	if fetchResourceStatus && workflowInfo.WorkflowID != "" {
+		describeResult, err := DescribeWorkflow(ctx, token, serviceID, environmentID, workflowInfo.WorkflowID)
+		if err != nil {
+			// If DescribeWorkflow fails, continue with existing data
+			// Don't fail the entire operation - log the error but continue
+			return resourcesData, workflowInfo, err
+		}
+		if describeResult != nil {
+			generalStatus := describeResult.Workflow.Status
+			for i := range resourcesData {
+				// Only set status if not already set from events analysis
+				if resourcesData[i].WorkflowStatus == nil {
+					resourcesData[i].WorkflowStatus = &generalStatus
+				}
+			}
+		}
+	}
 	return resourcesData, workflowInfo, nil
 }
 
-
-
-// ResourceWorkflowData represents workflow events for a resource organized by category
-type ResourceWorkflowData struct {
-	ResourceID       string                  `json:"resourceId"`
-	ResourceKey      string                  `json:"resourceKey"`
-	ResourceName     string                  `json:"resourceName"`
-	EventsByCategory *WorkflowEventsByCategory `json:"eventsByCategory"`
+// ResourceWorkflowDebugEvents represents workflow debug events for a resource organized by workflow step
+type ResourceWorkflowDebugEvents struct {
+	ResourceID           string                      `json:"resourceId"`
+	ResourceKey          string                      `json:"resourceKey"`
+	ResourceName         string                      `json:"resourceName"`
+	EventsByWorkflowStep *DebugEventsByWorkflowSteps `json:"eventsByWorkflowStep"`
+	WorkflowStatus       *string                     `json:"workflowStatus,omitempty"` // From DescribeWorkflow API
 }
 
-// categorizeStepName determines the category for a workflow step name
-func categorizeStepName(stepName string) string {
+// workflowStepName determines the workflow step for a given step name
+func workflowStepName(stepName string) string {
 	stepLower := strings.ToLower(stepName)
-	
+
 	// More comprehensive categorization based on step name patterns
-	if strings.Contains(stepLower, "bootstrap") || strings.Contains(stepLower, "init") {
+	if strings.Contains(stepLower, "bootstrap") {
 		return "bootstrap"
 	}
-	if strings.Contains(stepLower, "storage") || strings.Contains(stepLower, "disk") || strings.Contains(stepLower, "volume") {
+	if strings.Contains(stepLower, "storage") {
 		return "storage"
 	}
-	if strings.Contains(stepLower, "network") || strings.Contains(stepLower, "vpc") || strings.Contains(stepLower, "subnet") {
+	if strings.Contains(stepLower, "network") {
 		return "network"
 	}
-	if strings.Contains(stepLower, "compute") || strings.Contains(stepLower, "instance") || strings.Contains(stepLower, "vm") || strings.Contains(stepLower, "server") {
+	if strings.Contains(stepLower, "compute") {
 		return "compute"
 	}
-	if strings.Contains(stepLower, "deployment") || strings.Contains(stepLower, "deploy") || strings.Contains(stepLower, "install") {
+	if strings.Contains(stepLower, "deployment") {
 		return "deployment"
 	}
-	if strings.Contains(stepLower, "monitoring") || strings.Contains(stepLower, "observability") || strings.Contains(stepLower, "metrics") {
+	if strings.Contains(stepLower, "monitoring") {
 		return "monitoring"
 	}
-	
-	return "other"
-}
 
+	return "unknown"
+}

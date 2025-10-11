@@ -21,8 +21,8 @@ omctl instance list-endpoints instance-abcd1234`
 
 // ResourceEndpoints represents the endpoints for a resource
 type ResourceEndpoints struct {
-	ClusterEndpoint     string         `json:"cluster_endpoint"`
-	AdditionalEndpoints map[string]any `json:"additional_endpoints"`
+	ClusterEndpoint     string                                        `json:"cluster_endpoint"`
+	AdditionalEndpoints map[string]openapiclientfleet.ClusterEndpoint `json:"additional_endpoints"`
 }
 
 // EndpointTableRow represents a single row in the table output
@@ -158,53 +158,33 @@ func getInstanceWithResourceName(ctx context.Context, token, instanceID string) 
 func extractEndpoints(instance *openapiclientfleet.ResourceInstance) (resourceEndpoints map[string]ResourceEndpoints) {
 	resourceEndpoints = make(map[string]ResourceEndpoints)
 
-	if len(instance.ConsumptionResourceInstanceResult.DetailedNetworkTopology) == 0 {
+	if instance.ConsumptionResourceInstanceResult.DetailedNetworkTopology == nil ||
+		len(*instance.ConsumptionResourceInstanceResult.DetailedNetworkTopology) == 0 {
 		return nil
 	}
 
-	for _, resourceIntfc := range instance.ConsumptionResourceInstanceResult.DetailedNetworkTopology {
-		resource, exists := resourceIntfc.(map[string]interface{})
-		if !exists {
-			continue // Skip if not a map
-		}
-
-		var data interface{}
-		if data, exists = resource["resourceName"]; !exists {
-			// If resourceName doesn't exist, skip this resource
-			continue
-		}
-
-		var resourceName string
-		if resourceName, exists = data.(string); !exists {
-			// If resourceName is not a string, skip this resource
-			continue
-		}
-
-		// Check for cluster endpoint
-		var endpoints ResourceEndpoints
-		if data, exists = resource["clusterEndpoint"]; exists {
-			if endpoints.ClusterEndpoint, exists = data.(string); !exists {
-				endpoints.ClusterEndpoint = "" // Default to empty string if not found
+	for _, resource := range *instance.ConsumptionResourceInstanceResult.DetailedNetworkTopology {
+		if resource.ClusterEndpoint == "" {
+			if resource.AdditionalEndpoints == nil || len(*resource.AdditionalEndpoints) == 0 {
+				// If both clusterEndpoint and additionalEndpoints are empty, skip this resource
+				continue
 			}
-		}
-
-		// Check for additional endpoints
-		if data, exists = resource["additionalEndpoints"]; exists {
-			if endpoints.AdditionalEndpoints, exists = data.(map[string]interface{}); !exists {
-				endpoints.AdditionalEndpoints = nil // Default to nil if not found
-			}
-		}
-
-		if endpoints.ClusterEndpoint == "" && len(endpoints.AdditionalEndpoints) == 0 {
-			// If both clusterEndpoint and additionalEndpoints are empty, skip this resource
-			continue
 		}
 
 		// Add to the map with resourceName as key
-		resourceEndpoints[resourceName] = endpoints
+		var additionalEndpoints map[string]openapiclientfleet.ClusterEndpoint
+		if resource.AdditionalEndpoints != nil {
+			additionalEndpoints = *resource.AdditionalEndpoints
+		} else {
+			additionalEndpoints = make(map[string]openapiclientfleet.ClusterEndpoint)
+		}
+		resourceEndpoints[resource.ResourceName] = ResourceEndpoints{
+			ClusterEndpoint:     resource.ClusterEndpoint,
+			AdditionalEndpoints: additionalEndpoints,
+		}
 	}
 
-	return
+	return resourceEndpoints
 }
 
 // convertToTableRows converts the nested endpoint structure to a flat table format
@@ -223,70 +203,28 @@ func convertToTableRows(resourceEndpoints map[string]ResourceEndpoints) []Endpoi
 		}
 
 		// Add additional endpoints if present
-		for endpointName, endpointData := range endpoints.AdditionalEndpoints {
-			// Handle different endpoint data structures
-			if endpointMap, ok := endpointData.(map[string]interface{}); ok {
-				url := ""
-				status := ""
-				networkType := ""
-				ports := ""
+		for endpointName, endpoint := range endpoints.AdditionalEndpoints {
+			url := endpoint.Endpoint
+			status := endpoint.HealthStatus
+			networkType := endpoint.NetworkingType
+			ports := ""
 
-				// Extract URL/endpoint
-				if endpointVal, exists := endpointMap["endpoint"]; exists {
-					if endpointStr, ok := endpointVal.(string); ok {
-						url = endpointStr
-					}
-				}
-
-				// Extract health status
-				if statusVal, exists := endpointMap["healthStatus"]; exists {
-					if statusStr, ok := statusVal.(string); ok {
-						status = statusStr
-					}
-				}
-
-				// Extract network type
-				if networkVal, exists := endpointMap["networkingType"]; exists {
-					if networkStr, ok := networkVal.(string); ok {
-						networkType = networkStr
-					}
-				}
-
-				// Extract ports
-				if portsVal, exists := endpointMap["openPorts"]; exists {
-					if portsSlice, ok := portsVal.([]interface{}); ok {
-						var portStrs []string
-						for _, port := range portsSlice {
-							if portNum, ok := port.(float64); ok {
-								portStrs = append(portStrs, fmt.Sprintf("%.0f", portNum))
-							} else if portStr, ok := port.(string); ok {
-								portStrs = append(portStrs, portStr)
-							}
-						}
-						ports = strings.Join(portStrs, ",")
-					}
-				}
-
-				rows = append(rows, EndpointTableRow{
-					ResourceName: resourceName,
-					EndpointType: "additional",
-					EndpointName: endpointName,
-					URL:          url,
-					Status:       status,
-					NetworkType:  networkType,
-					Ports:        ports,
-				})
-			} else {
-				// Handle simple string endpoints
-				if endpointStr, ok := endpointData.(string); ok {
-					rows = append(rows, EndpointTableRow{
-						ResourceName: resourceName,
-						EndpointType: "additional",
-						EndpointName: endpointName,
-						URL:          endpointStr,
-					})
-				}
+			// Extract ports
+			var portStrs []string
+			for _, port := range endpoint.OpenPorts {
+				portStrs = append(portStrs, fmt.Sprintf("%d", port))
 			}
+			ports = strings.Join(portStrs, ",")
+
+			rows = append(rows, EndpointTableRow{
+				ResourceName: resourceName,
+				EndpointType: "additional",
+				EndpointName: endpointName,
+				URL:          utils.FromPtr(url),
+				Status:       utils.FromPtr(status),
+				NetworkType:  utils.FromPtr(networkType),
+				Ports:        ports,
+			})
 		}
 	}
 

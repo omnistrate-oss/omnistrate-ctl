@@ -10,15 +10,17 @@ on:
 
 env:
   # test coverage threshold
-  GOLANG_CI_VERSION: v2.1.1
+  GOLANG_CI_VERSION: v2.4.0
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
   cancel-in-progress: true
 
 jobs:
+
   # security scan is included in linter
   lint:
+    if : github.event_name != 'push'
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -29,7 +31,7 @@ jobs:
         uses: actions/checkout@v5
 
       - name: Set up go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v6
         with:
           go-version-file: "go.mod"
           cache-dependency-path: "**/go.sum"
@@ -48,6 +50,7 @@ jobs:
           skip-cache: true
 
   build:
+    if : github.event_name != 'push'
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -79,7 +82,7 @@ jobs:
       - name: Gotestsum installer
         uses: autero1/action-gotestsum@v2.0.0
         with:
-          gotestsum_version: 1.11.0
+          gotestsum_version: 1.13.0
 
       - name: Unit test
         timeout-minutes: 20
@@ -102,7 +105,7 @@ jobs:
         uses: actions/checkout@v5
 
       - name: Set up go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v6
         with:
           go-version-file: "go.mod"
           cache-dependency-path: "**/go.sum"
@@ -127,9 +130,18 @@ jobs:
           OMNISTRATE_DRY_RUN: true
         run: gotestsum --format github-actions -- ./test/integration_test/... -timeout 1800s -p 1 -p 1 -v
 
+  smoke-tests:
+    if: github.event_name != 'push'
+    needs: [build, lint]
+    uses: ./.github/workflows/smoke-tests.yml
+    with:
+      environment: Dev-us-west-2
+    secrets: inherit
+    permissions:
+      contents: read
+
   publish:
     if: github.event_name == 'push'
-    needs: [build, lint]
     runs-on: ubuntu-latest
     permissions:
       contents: write

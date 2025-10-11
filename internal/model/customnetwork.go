@@ -13,4 +13,5 @@ type CustomNetwork struct {
 	GcpProjectID                 string `json:"gcp_project_id"`
 	GcpProjectNumber             string `json:"gcp_project_number"`
 	HostClusterID                string `json:"host_cluster_id"`
+	Status                       string `json:"status"`
 }

@@ -60,6 +60,9 @@ omctl build --spec-type ServicePlanSpec --file spec.yaml --product-name "My Serv
 # Build service with service specification for Helm, Operator or Kustomize as preferred
 omctl build --spec-type ServicePlanSpec --file spec.yaml --product-name "My Service" --release-as-preferred --release-description "v1.0.0-alpha"
 
+# Build service with service specification for Helm, Operator or Kustomize and explicitly do not release as preferred
+omctl build --spec-type ServicePlanSpec --file spec.yaml --product-name "My Service" --no-release-as-preferred --release-description "v1.0.0-alpha"
+
 # Build service from image in dev environment
 omctl build --image docker.io/mysql:5.7 --product-name MySQL --env-var "MYSQL_ROOT_PASSWORD=password" --env-var "MYSQL_DATABASE=mydb"
 
@@ -84,7 +87,7 @@ This command has an interactive mode. In this mode, you can choose to promote th
 
 // BuildCmd represents the build command
 var BuildCmd = &cobra.Command{
-	Use:          "build [--file=file] [--spec-type=spec-type] [--product-name=service-name] [--description=service-description] [--service-logo-url=service-logo-url] [--environment=environment-name] [--environment-type=environment-type] [--release] [--release-as-preferred] [--release-description=release-description][--interactive] [--image=image-url] [--image-registry-auth-username=username] [--image-registry-auth-password=password] [--env-var=\"key=var\"]",
+	Use:          "build [--file=file] [--spec-type=spec-type] [--product-name=service-name] [--description=service-description] [--service-logo-url=service-logo-url] [--environment=environment-name] [--environment-type=environment-type] [--release] [--release-as-preferred] [--no-release-as-preferred] [--release-description=release-description][--interactive] [--image=image-url] [--image-registry-auth-username=username] [--image-registry-auth-password=password] [--env-var=\"key=var\"]",
 	Short:        "Build Services from image, compose spec or service plan spec",
 	Long:         buildLong,
 	Example:      buildExample,
@@ -93,8 +96,9 @@ var BuildCmd = &cobra.Command{
 }
 
 func init() {
-	BuildCmd.Flags().StringP("file", "f", ComposeFileName, "Path to the docker compose file")
-	BuildCmd.Flags().StringP("name", "n", "", "Name of the service. A service can have multiple service plans. The build command will build a new or existing service plan inside the specified service.")
+	BuildCmd.Flags().StringP("file", "f", "", "Path to the docker compose file (defaults to compose.yaml or spec.yaml)")
+	BuildCmd.Flags().StringP("spec-type", "s", "", "Spec type (will infer from file if not provided). Valid options include: 'DockerCompose', 'ServicePlanSpec'")
+	BuildCmd.Flags().BoolP("dry-run", "d", false, "Simulate building the service without actually creating resources")
 	BuildCmd.Flags().StringP("product-name", "", "", "Name of the service. A service can have multiple service plans. The build command will build a new or existing service plan inside the specified service.")
 	BuildCmd.Flags().StringP("description", "", "", "A short description for the whole service. A service can have multiple service plans.")
 	BuildCmd.Flags().StringP("service-logo-url", "", "", "URL to the service logo")
@@ -102,16 +106,18 @@ func init() {
 	BuildCmd.Flags().StringP("environment-type", "", "dev", "Type of environment. Valid options include: 'dev', 'prod', 'qa', 'canary', 'staging', 'private')")
 	BuildCmd.Flags().BoolP("release", "", false, "Release the service after building it")
 	BuildCmd.Flags().BoolP("release-as-preferred", "", false, "Release the service as preferred after building it")
+	BuildCmd.Flags().BoolP("no-release-as-preferred", "", false, "Do not release the service as preferred (overrides --release-as-preferred)")
 	BuildCmd.Flags().StringP("release-name", "", "", "Custom description of the release version. Deprecated: use --release-description instead")
 	BuildCmd.Flags().StringP("release-description", "", "", "Used together with --release or --release-as-preferred flag. Provide a description for the release version")
+	BuildCmd.Flags().BoolP("force-create-service-plan-version", "", false, "Force create a new service plan version on release.")
 	BuildCmd.Flags().BoolP("interactive", "i", false, "Interactive mode")
-	BuildCmd.Flags().StringP("spec-type", "s", DockerComposeSpecType, "Spec type")
-	BuildCmd.Flags().BoolP("dry-run", "d", false, "Simulate building the service without actually creating resources")
 
-	BuildCmd.Flags().StringP("image", "", "", "Provide the complete image repository URL with the image name and tag (e.g., docker.io/namespace/my-image:v1.2)")
-	BuildCmd.Flags().StringArrayP("env-var", "", nil, "Used together with --image flag. Provide environment variables in the format --env-var key1=var1 --env-var key2=var2")
-	BuildCmd.Flags().StringP("image-registry-auth-username", "", "", "Used together with --image flag. Provide the username to authenticate with the image registry if it's a private registry")
-	BuildCmd.Flags().StringP("image-registry-auth-password", "", "", "Used together with --image flag. Provide the password to authenticate with the image registry if it's a private registry")
+	// Deprecated flags
+	BuildCmd.Flags().StringP("name", "n", "", "Name of the service. A service can have multiple service plans. The build command will build a new or existing service plan inside the specified service. Deprecated: use --product-name instead")
+	BuildCmd.Flags().StringP("image", "", "", "Provide the complete image repository URL with the image name and tag (e.g., docker.io/namespace/my-image:v1.2). Deprecated: build from a docker compose file instead")
+	BuildCmd.Flags().StringArrayP("env-var", "", nil, "Used together with --image flag. Provide environment variables in the format --env-var key1=var1 --env-var key2=var2. Deprecated: build from a docker compose file instead")
+	BuildCmd.Flags().StringP("image-registry-auth-username", "", "", "Used together with --image flag. Provide the username to authenticate with the image registry if it's a private registry. Deprecated: build from a docker compose file instead")
+	BuildCmd.Flags().StringP("image-registry-auth-password", "", "", "Used together with --image flag. Provide the password to authenticate with the image registry if it's a private registry. Deprecated: build from a docker compose file instead")
 
 	BuildCmd.MarkFlagsRequiredTogether("image-registry-auth-username", "image-registry-auth-password")
 	// Mark one of them as required
@@ -123,6 +129,40 @@ func init() {
 	}
 	// Hide the deprecated flag from help
 	if err := BuildCmd.Flags().MarkHidden("name"); err != nil {
+		utils.PrintError(err)
+		return
+	}
+	// Deprecate the old --image flag, including --env-var and image-registry-auth-username, image-registry-auth-password
+	if err := BuildCmd.Flags().MarkDeprecated("image", "build from a docker compose file instead"); err != nil {
+		utils.PrintError(err)
+		return
+	}
+	if err := BuildCmd.Flags().MarkDeprecated("env-var", "build from a docker compose file instead"); err != nil {
+		utils.PrintError(err)
+		return
+	}
+	if err := BuildCmd.Flags().MarkDeprecated("image-registry-auth-username", "build from a docker compose file instead"); err != nil {
+		utils.PrintError(err)
+		return
+	}
+	if err := BuildCmd.Flags().MarkDeprecated("image-registry-auth-password", "build from a docker compose file instead"); err != nil {
+		utils.PrintError(err)
+		return
+	}
+	// Hide the deprecated flag from help
+	if err := BuildCmd.Flags().MarkHidden("image"); err != nil {
+		utils.PrintError(err)
+		return
+	}
+	if err := BuildCmd.Flags().MarkHidden("env-var"); err != nil {
+		utils.PrintError(err)
+		return
+	}
+	if err := BuildCmd.Flags().MarkHidden("image-registry-auth-username"); err != nil {
+		utils.PrintError(err)
+		return
+	}
+	if err := BuildCmd.Flags().MarkHidden("image-registry-auth-password"); err != nil {
 		utils.PrintError(err)
 		return
 	}
@@ -146,20 +186,17 @@ func runBuild(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
-	// Check if file was explicitly provided
-	fileExplicit := cmd.Flags().Changed("file")
 
 	specType, err := cmd.Flags().GetString("spec-type")
 	if err != nil {
 		return err
 	}
-	// Check if spec-type was explicitly provided
-	specTypeExplicit := cmd.Flags().Changed("spec-type")
-	if !specTypeExplicit {
-		if file == ComposeFileName {
-			specType = DockerComposeSpecType
-		} else {
+	// Check if spec-type was provided and default if not
+	if specType == "" {
+		if file == PlanSpecFileName {
 			specType = ServicePlanSpecType
+		} else {
+			specType = DockerComposeSpecType
 		}
 	}
 
@@ -207,6 +244,14 @@ func runBuild(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
+	noReleaseAsPreferred, err := cmd.Flags().GetBool("no-release-as-preferred")
+	if err != nil {
+		return err
+	}
+	// If --no-release-as-preferred is set, it overrides --release-as-preferred
+	if noReleaseAsPreferred {
+		releaseAsPreferred = false
+	}
 	releaseName, err := cmd.Flags().GetString("release-name")
 	if err != nil {
 		return err
@@ -243,15 +288,13 @@ func runBuild(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
-
-	// Validate input arguments
-	if file == "" && imageUrl == "" {
-		err := errors.New("either file or image is required")
-		utils.PrintError(err)
+	forceCreateServicePlanVersion, err := cmd.Flags().GetBool("force-create-service-plan-version")
+	if err != nil {
 		return err
 	}
 
-	if fileExplicit && imageUrl != "" {
+	// Validate input arguments
+	if file != "" && imageUrl != "" {
 		err := errors.New("only one of file or image can be provided")
 		utils.PrintError(err)
 		return err
@@ -265,15 +308,23 @@ func runBuild(cmd *cobra.Command, args []string) error {
 
 	// Load the compose file
 	var fileData []byte
-	if file != "" {
-		if _, err := os.Stat(file); os.IsNotExist(err) {
-			if fileExplicit {
+	if imageUrl == "" {
+		if file != "" {
+			if _, err := os.Stat(file); os.IsNotExist(err) {
+				err = fmt.Errorf("file %s does not exist", file)
 				utils.PrintError(err)
 				return err
-			} else {
+			}
+		} else {
+			// check for compose file
+			file = ComposeFileName
+			specType = DockerComposeSpecType
+			if _, err := os.Stat(file); os.IsNotExist(err) {
 				// If the file doesn't exist and wasn't explicitly provided, we check if there is a spec file
 				file = PlanSpecFileName
+				specType = ServicePlanSpecType
 				if _, err := os.Stat(file); os.IsNotExist(err) {
+					err = errors.New("no compose or spec file found, please provide a valid file using --file flag")
 					utils.PrintError(err)
 					return err
 				}
@@ -384,7 +435,7 @@ func runBuild(cmd *cobra.Command, args []string) error {
 	}
 
 	if !isValidSpecType(specType) {
-		err = errors.New(fmt.Sprintf("invalid spec type, valid options are: %s", strings.Join(validSpecType, ", ")))
+		err = errors.New(fmt.Sprintf("invalid spec type %s, valid options are: %s", specType, strings.Join(validSpecType, ", ")))
 		utils.PrintError(err)
 		return err
 	}
@@ -430,7 +481,8 @@ func runBuild(cmd *cobra.Command, args []string) error {
 	}
 
 	var undefinedResources map[string]string
-	ServiceID, EnvironmentID, ProductTierID, undefinedResources, err = BuildService(
+	var isNewVersionCreated bool
+	ServiceID, EnvironmentID, ProductTierID, undefinedResources, isNewVersionCreated, err = BuildService(
 		cmd.Context(),
 		fileData,
 		token,
@@ -444,6 +496,7 @@ func runBuild(cmd *cobra.Command, args []string) error {
 		releaseAsPreferred,
 		releaseNamePtr,
 		dryRun,
+		forceCreateServicePlanVersion,
 	)
 	if err != nil {
 		utils.HandleSpinnerError(spinner1, sm1, err)
@@ -464,11 +517,12 @@ func runBuild(cmd *cobra.Command, args []string) error {
 
 	// Print the service plan details
 	servicePlanDetails := model.ServicePlanVersion{
-		PlanID:      ProductTierID,
-		PlanName:    productTier.Name,
-		ServiceID:   ServiceID,
-		ServiceName: name,
-		Environment: environment,
+		PlanID:                         ProductTierID,
+		PlanName:                       productTier.Name,
+		ServiceID:                      ServiceID,
+		ServiceName:                    name,
+		Environment:                    environment,
+		IsNewServicePlanVersionCreated: isNewVersionCreated,
 	}
 
 	if !dryRun && (release || releaseAsPreferred) {
@@ -665,38 +719,40 @@ func runBuild(cmd *cobra.Command, args []string) error {
 }
 
 func BuildService(ctx context.Context, fileData []byte, token, name, specType string, description, serviceLogoURL, environment, environmentType *string, release,
-	releaseAsPreferred bool, releaseName *string, dryRun bool) (serviceID string, environmentID string, productTierID string, undefinedResources map[string]string, err error) {
+	releaseAsPreferred bool, releaseName *string, dryRun bool, forceCreateNewServicePlanVersion bool) (serviceID string, environmentID string, productTierID string, undefinedResources map[string]string, isNewVersionCreated bool, err error) {
 	if name == "" {
-		return "", "", "", make(map[string]string), errors.New("name is required")
+		return "", "", "", make(map[string]string), false, errors.New("name is required")
 	}
 
 	if specType == "" {
-		return "", "", "", make(map[string]string), errors.New("specType is required")
+		return "", "", "", make(map[string]string), false, errors.New("specType is required")
 	}
 
 	switch specType {
 	case ServicePlanSpecType:
 		request := openapiclient.BuildServiceFromServicePlanSpecRequest2{
-			Name:               name,
-			Description:        description,
-			ServiceLogoURL:     serviceLogoURL,
-			Environment:        environment,
-			EnvironmentType:    environmentType,
-			FileContent:        base64.StdEncoding.EncodeToString(fileData),
-			Release:            utils.ToPtr(release),
-			ReleaseAsPreferred: utils.ToPtr(releaseAsPreferred),
-			ReleaseVersionName: releaseName,
-			Dryrun:             utils.ToPtr(dryRun),
+			Name:                             name,
+			Description:                      description,
+			ServiceLogoURL:                   serviceLogoURL,
+			Environment:                      environment,
+			EnvironmentType:                  environmentType,
+			FileContent:                      base64.StdEncoding.EncodeToString(fileData),
+			Release:                          utils.ToPtr(release),
+			ReleaseAsPreferred:               utils.ToPtr(releaseAsPreferred),
+			ReleaseVersionName:               releaseName,
+			Dryrun:                           utils.ToPtr(dryRun),
+			ForceCreateNewServicePlanVersion: utils.ToPtr(forceCreateNewServicePlanVersion),
 		}
 
 		buildRes, err := dataaccess.BuildServiceFromServicePlanSpec(ctx, token, request)
 		if err != nil {
-			return "", "", "", make(map[string]string), err
+			return "", "", "", make(map[string]string), false, err
 		}
 		if buildRes == nil {
-			return "", "", "", make(map[string]string), errors.New("empty response from server")
+			return "", "", "", make(map[string]string), false, errors.New("empty response from server")
 		}
-		return buildRes.GetServiceID(), buildRes.GetServiceEnvironmentID(), buildRes.GetProductTierID(), buildRes.GetUndefinedResources(), nil
+
+		return buildRes.GetServiceID(), buildRes.GetServiceEnvironmentID(), buildRes.GetProductTierID(), buildRes.GetUndefinedResources(), buildRes.GetIsNewServicePlanVersionCreated(), nil
 
 	case DockerComposeSpecType:
 		// Load the YAML content
@@ -723,7 +779,7 @@ func BuildService(ctx context.Context, fileData []byte, token, name, specType st
 		// Convert config volumes to configs
 		var modified bool
 		if project, modified, err = convertVolumesToConfigs(project); err != nil {
-			return "", "", "", make(map[string]string), err
+			return "", "", "", make(map[string]string), false, err
 		}
 
 		// Convert the project back to YAML, in case it was modified
@@ -744,7 +800,7 @@ func BuildService(ctx context.Context, fileData []byte, token, name, specType st
 				var configFileContent []byte
 				configFileContent, err = os.ReadFile(filepath.Clean(config.File))
 				if err != nil {
-					return "", "", "", make(map[string]string), err
+					return "", "", "", make(map[string]string), false, err
 				}
 
 				configsTemp[configName] = base64.StdEncoding.EncodeToString(configFileContent)
@@ -760,7 +816,7 @@ func BuildService(ctx context.Context, fileData []byte, token, name, specType st
 				var fileContent []byte
 				fileContent, err = os.ReadFile(filepath.Clean(secret.File))
 				if err != nil {
-					return "", "", "", make(map[string]string), err
+					return "", "", "", make(map[string]string), false, err
 				}
 				secretsTemp[secretName] = base64.StdEncoding.EncodeToString(fileContent)
 			}
@@ -768,31 +824,33 @@ func BuildService(ctx context.Context, fileData []byte, token, name, specType st
 		}
 
 		request := openapiclient.BuildServiceFromComposeSpecRequest2{
-			Name:               name,
-			Description:        description,
-			ServiceLogoURL:     serviceLogoURL,
-			Environment:        environment,
-			EnvironmentType:    environmentType,
-			FileContent:        base64.StdEncoding.EncodeToString(fileData),
-			Release:            utils.ToPtr(release),
-			ReleaseAsPreferred: utils.ToPtr(releaseAsPreferred),
-			ReleaseVersionName: releaseName,
-			Configs:            configs,
-			Secrets:            secrets,
-			Dryrun:             utils.ToPtr(dryRun),
+			Name:                             name,
+			Description:                      description,
+			ServiceLogoURL:                   serviceLogoURL,
+			Environment:                      environment,
+			EnvironmentType:                  environmentType,
+			FileContent:                      base64.StdEncoding.EncodeToString(fileData),
+			Release:                          utils.ToPtr(release),
+			ReleaseAsPreferred:               utils.ToPtr(releaseAsPreferred),
+			ReleaseVersionName:               releaseName,
+			Configs:                          configs,
+			Secrets:                          secrets,
+			Dryrun:                           utils.ToPtr(dryRun),
+			ForceCreateNewServicePlanVersion: utils.ToPtr(forceCreateNewServicePlanVersion),
 		}
 
 		buildRes, err := dataaccess.BuildServiceFromComposeSpec(ctx, token, request)
 		if err != nil {
-			return "", "", "", make(map[string]string), err
+			return "", "", "", make(map[string]string), false, err
 		}
 		if buildRes == nil {
-			return "", "", "", make(map[string]string), errors.New("empty response from server")
+			return "", "", "", make(map[string]string), false, errors.New("empty response from server")
 		}
-		return buildRes.GetServiceID(), buildRes.GetServiceEnvironmentID(), buildRes.GetProductTierID(), buildRes.GetUndefinedResources(), nil
+
+		return buildRes.GetServiceID(), buildRes.GetServiceEnvironmentID(), buildRes.GetProductTierID(), buildRes.GetUndefinedResources(), buildRes.GetIsNewServicePlanVersionCreated(), nil
 
 	default:
-		return "", "", "", make(map[string]string), errors.New("invalid spec type")
+		return "", "", "", make(map[string]string), false, errors.New("invalid spec type")
 	}
 }
 

@@ -15,15 +15,12 @@ import (
 )
 
 const (
-	describeExample = `# Describe account with name
-omctl account describe [account-name]
-
-# Describe account with ID
-omctl account describe --id=[account-id]`
+	describeExample = `# Describe account with name or id
+omctl account describe [account-name or account-id]`
 )
 
 var describeCmd = &cobra.Command{
-	Use:          "describe [account-name] [flags]",
+	Use:          "describe [account-name or account-id] [flags]",
 	Short:        "Describe a Cloud Provider Account",
 	Long:         "This command helps you get details of a cloud provider account.",
 	Example:      describeExample,
@@ -34,7 +31,6 @@ var describeCmd = &cobra.Command{
 func init() {
 	describeCmd.Args = cobra.MaximumNArgs(1) // Require at most 1 argument
 
-	describeCmd.Flags().String("id", "", "Account ID")
 	describeCmd.Flags().StringP("output", "o", "json", "Output format. Only json is supported.") // Override inherited flag
 }
 
@@ -42,17 +38,12 @@ func runDescribe(cmd *cobra.Command, args []string) error {
 	defer config.CleanupArgsAndFlags(cmd, &args)
 
 	// Retrieve args
-	var name string
+	var nameOrID string
 	if len(args) > 0 {
-		name = args[0]
+		nameOrID = args[0]
 	}
 
 	// Retrieve flags
-	id, err := cmd.Flags().GetString("id")
-	if err != nil {
-		utils.PrintError(err)
-		return err
-	}
 	output, err := cmd.Flags().GetString("output")
 	if err != nil {
 		utils.PrintError(err)
@@ -60,7 +51,7 @@ func runDescribe(cmd *cobra.Command, args []string) error {
 	}
 
 	// Validate input args
-	err = validateDescribeArguments(args, id, output)
+	err = validateDescribeArguments(args, output)
 	if err != nil {
 		utils.PrintError(err)
 		return err
@@ -84,7 +75,8 @@ func runDescribe(cmd *cobra.Command, args []string) error {
 	}
 
 	// Check if account exists
-	id, _, err = getAccount(cmd.Context(), token, name, id)
+	var id string
+	id, _, err = getAccountID(cmd.Context(), token, nameOrID)
 	if err != nil {
 		utils.HandleSpinnerError(spinner, sm, err)
 		return err
@@ -116,13 +108,9 @@ func runDescribe(cmd *cobra.Command, args []string) error {
 
 // Helper functions
 
-func validateDescribeArguments(args []string, accountIDArg, output string) error {
-	if len(args) == 0 && accountIDArg == "" {
+func validateDescribeArguments(args []string, output string) error {
+	if len(args) == 0 {
 		return errors.New("account name or ID must be provided")
-	}
-
-	if len(args) != 0 && accountIDArg != "" {
-		return errors.New("only one of account name or ID can be provided")
 	}
 
 	if output != "json" {
@@ -132,7 +120,7 @@ func validateDescribeArguments(args []string, accountIDArg, output string) error
 	return nil
 }
 
-func getAccount(ctx context.Context, token, accountNameArg, accountIDArg string) (accountID, accountName string, err error) {
+func getAccountID(ctx context.Context, token, accountNameOrIDArg string) (accountID, accountName string, err error) {
 	// List accounts
 	listRes, err := dataaccess.ListAccounts(ctx, token, "all")
 	if err != nil {
@@ -140,21 +128,17 @@ func getAccount(ctx context.Context, token, accountNameArg, accountIDArg string)
 	}
 
 	count := 0
-	if accountNameArg != "" {
-		for _, account := range listRes.AccountConfigs {
-			if strings.EqualFold(account.Name, accountNameArg) {
-				accountID = account.Id
-				accountName = account.Name
-				count++
-			}
+	for _, account := range listRes.AccountConfigs {
+		// Check for exact match (case-insensitive) with name or ID
+		if strings.EqualFold(account.Name, accountNameOrIDArg) {
+			accountID = account.Id
+			accountName = account.Name
+			count++
 		}
-	} else {
-		for _, account := range listRes.AccountConfigs {
-			if strings.EqualFold(account.Id, accountIDArg) {
-				accountID = account.Id
-				accountName = account.Name
-				count++
-			}
+		if strings.EqualFold(account.Id, accountNameOrIDArg) {
+			accountID = account.Id
+			accountName = account.Name
+			count++
 		}
 	}
 

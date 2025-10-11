@@ -51,7 +51,7 @@ jobs:
 
       - name: Set up go
         timeout-minutes: 10
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v6
         with:
           go-version-file: "go.mod"
           token: ${{ secrets.GITHUB_TOKEN }}
@@ -60,7 +60,7 @@ jobs:
       - name: Get dependencies
         timeout-minutes: 10
         run: |
-          GOOS=${{ matrix.goos }} GOARCH=${{ matrix.goarch }} make tidy
+          GOOS=${{ matrix.goos }} GOARCH=${{ matrix.goarch }} make download
 
       - name: Build
         timeout-minutes: 20

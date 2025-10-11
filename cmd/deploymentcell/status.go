@@ -74,7 +74,7 @@ func runStatus(cmd *cobra.Command, args []string) error {
 		deploymentCell := formatDeploymentCell(&cluster)
 		deploymentCells = append(deploymentCells, deploymentCell)
 	}
-	
+
 	// Print output in requested format
 	if output == "table" {
 		// Use table view for better readability

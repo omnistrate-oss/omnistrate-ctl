@@ -6,6 +6,10 @@ deployment:
     GcpProjectId: "omnistrate-dataplane-host-dev"
     GcpProjectNumber: "61114262792"
     GcpServiceAccountEmail: "bootstrap.getservice@gcp.test.iam"
+x-git-configuration: &git-configuration
+  reference: refs/heads/main
+  repositoryUrl: https://github.com/omnistrate/ctl.git
+  accessToken: "{{ $secret.GITHUB_TOKEN }}"
 
 services:
   - name: Redis Cluster
@@ -17,25 +21,15 @@ services:
       chartVersion: 19.6.2
       chartRepoName: bitnami
       chartRepoURL: https://charts.bitnami.com/bitnami
-      chartValues:
-        master:
-          persistence:
-            enabled: false
-          resources:
-            requests:
-              cpu: 100m
-              memory: 128Mi
-            limits:
-              cpu: 150m
-              memory: 256Mi
-        replica:
-          persistence:
-            enabled: false
-          replicaCount: 1
-          resources:
-            requests:
-              cpu: 100m
-              memory: 128Mi
-            limits:
-              cpu: 150m
-              memory: 256Mi
+      layeredChartValues:
+        - scope:
+            "{{ $sys.deploymentCell.cloudProviderName }}": "aws"
+          valuesFile:
+            path: /test/smoke_test/specfiles/helm/layered_values.yaml
+            gitConfiguration:
+              <<: *git-configuration
+        - valuesFile:
+            path: /test/smoke_test/specfiles/helm/layered_values-2.yaml
+            gitConfiguration:
+              <<: *git-configuration
+

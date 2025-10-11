@@ -66,13 +66,13 @@ func init() {
 }
 
 type Args struct {
-	ServiceID               string
-	ProductTierID           string
-	SourceVersion           string
-	TargetVersion           string
-	NotifyCustomer          bool
-	ScheduledDate           *string
-	MaxConcurrentUpgrades   *int
+	ServiceID             string
+	ProductTierID         string
+	SourceVersion         string
+	TargetVersion         string
+	NotifyCustomer        bool
+	ScheduledDate         *string
+	MaxConcurrentUpgrades *int
 }
 
 var UpgradePathIDs []string

@@ -21,7 +21,10 @@ const (
 omctl instance create --service=mysql --environment=dev --plan=mysql --version=latest --resource=mySQL --cloud-provider=aws --region=ca-central-1 --param '{"databaseName":"default","password":"a_secure_password","rootPassword":"a_secure_root_password","username":"user"}'
 
 # Create an instance deployment with parameters from a file
-omctl instance create --service=mysql --environment=dev --plan=mysql --version=latest --resource=mySQL --cloud-provider=aws --region=ca-central-1 --param-file /path/to/params.json`
+omctl instance create --service=mysql --environment=dev --plan=mysql --version=latest --resource=mySQL --cloud-provider=aws --region=ca-central-1 --param-file /path/to/params.json
+
+# Create an instance deployment and wait for completion with progress tracking
+omctl instance create --service=mysql --environment=dev --plan=mysql --version=latest --resource=mySQL --cloud-provider=aws --region=ca-central-1 --param-file /path/to/params.json --wait`
 )
 
 var InstanceID string
@@ -46,6 +49,7 @@ func init() {
 	createCmd.Flags().String("param", "", "Parameters for the instance deployment")
 	createCmd.Flags().String("param-file", "", "Json file containing parameters for the instance deployment")
 	createCmd.Flags().StringP("subscription-id", "", "", "Subscription ID to use for the instance deployment. If not provided, instance deployment will be created in your own subscription.")
+	createCmd.Flags().Bool("wait", false, "Wait for deployment to complete and show progress")
 
 	if err := createCmd.MarkFlagRequired("service"); err != nil {
 		return
@@ -123,6 +127,11 @@ func runCreate(cmd *cobra.Command, args []string) error {
 		return err
 	}
 	subscriptionID, err := cmd.Flags().GetString("subscription-id")
+	if err != nil {
+		utils.PrintError(err)
+		return err
+	}
+	waitFlag, err := cmd.Flags().GetBool("wait")
 	if err != nil {
 		utils.PrintError(err)
 		return err
@@ -267,13 +276,13 @@ func runCreate(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	// Display workflow resource-wise data if output is not JSON
-	if output != "json" {
+	// Display workflow resource-wise data if output is not JSON and wait flag is enabled
+	if output != "json" && waitFlag {
 		fmt.Println("🔄 Deployment progress...")
 		err = DisplayWorkflowResourceDataWithSpinners(cmd.Context(), token, formattedInstance.InstanceID, "create")
 		if err != nil {
 			// Handle spinner error if deployment monitoring fails
-			fmt.Printf("❌ Deployment failed-- %s", err)
+			fmt.Println("❌ Deployment failed")
 		} else {
 			fmt.Println("✅ Deployment successful")
 		}

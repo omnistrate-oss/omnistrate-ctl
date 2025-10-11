@@ -2,11 +2,11 @@ package dataaccess
 
 import (
 	"context"
-	"encoding/json"
+	"net/http"
+
 	"github.com/omnistrate-oss/omnistrate-ctl/internal/model"
 	"github.com/omnistrate-oss/omnistrate-ctl/internal/utils"
 	openapiclient "github.com/omnistrate-oss/omnistrate-sdk-go/v1"
-	"net/http"
 )
 
 func GetServiceProviderOrganization(ctx context.Context, token string) (res *openapiclient.DescribeServiceProviderOrganizationResult, err error) {
@@ -59,29 +59,9 @@ func convertTemplateToOpenAPIFormat(deploymentConfig model.DeploymentCellTemplat
 		Amenities: amenitiesAPI,
 	}
 
-	configMap, err := structToMap(configPerCloudProvider)
-	if err != nil {
-		return openapiclient.DeploymentCellConfigurations{}, err
-	}
-
-	apiModel.DeploymentCellConfigurationPerCloudProvider = configMap
+	apiModel.DeploymentCellConfigurationPerCloudProvider = utils.ToPtr(configPerCloudProvider)
 
 	return apiModel, nil
-}
-
-func structToMap(obj interface{}) (map[string]interface{}, error) {
-	data, err := json.Marshal(obj)
-	if err != nil {
-		return nil, err
-	}
-
-	var result map[string]interface{}
-	err = json.Unmarshal(data, &result)
-	if err != nil {
-		return nil, err
-	}
-
-	return result, nil
 }
 
 func UpdateServiceProviderOrganization(ctx context.Context, token string, deploymentConfig model.DeploymentCellTemplate, envType string, cloudProvider string) (err error) {
