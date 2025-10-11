@@ -688,7 +688,7 @@ func BuildServiceFromRepository(cmd *cobra.Command, ctx context.Context, token, 
 		}
 
 		// Decode spec YAML into a compose project
-		if project, err = loader.LoadWithContext(context.Background(), types.ConfigDetails{
+		if project, err = loader.LoadWithContext(ctx, types.ConfigDetails{
 			ConfigFiles: []types.ConfigFile{
 				{
 					Config: parsedYaml,
@@ -1153,7 +1153,7 @@ func BuildServiceFromRepository(cmd *cobra.Command, ctx context.Context, token, 
 						fileData = append(fileData, []byte(fmt.Sprintf("      GcpProjectNumber: '%s'\n", gcpProjectNumber))...)
 
 						// Get organization id
-						user, err := dataaccess.DescribeUser(cmd.Context(), token)
+						user, err := dataaccess.DescribeUser(ctx, token)
 						if err != nil {
 							utils.HandleSpinnerError(spinner, sm, err)
 							return "", "", "", nil, err
@@ -1271,7 +1271,7 @@ x-omnistrate-image-registry-attributes:
 
 	// Build the service
 	serviceID, devEnvironmentID, devPlanID, undefinedResources, _, err = BuildService(
-		cmd.Context(),
+		ctx,
 		fileData,
 		token,
 		serviceNameToUse,
