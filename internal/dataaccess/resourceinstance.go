@@ -106,6 +106,36 @@ func DescribeResourceInstanceSnapshot(ctx context.Context, token string, service
 	return
 }
 
+
+
+func ListResourceInstance(ctx context.Context, token string, serviceID, environmentID string) (res *openapiclientfleet.ListFleetResourceInstancesResultInternal, err error) {
+	ctxWithToken := context.WithValue(ctx, openapiclientfleet.ContextAccessToken, token)
+	apiClient := getFleetClient()
+
+	req := apiClient.InventoryApiAPI.InventoryApiListResourceInstances(
+		ctxWithToken,
+		serviceID,
+		environmentID,
+	)
+
+	var r *http.Response
+	defer func() {
+		if r != nil {
+			_ = r.Body.Close()
+		}
+	}()
+
+	res, r, err = req.Execute()
+	if err != nil {
+		return nil, handleFleetError(err)
+	}
+	return
+}
+
+
+
+
+
 func ListResourceInstanceSnapshots(ctx context.Context, token string, serviceID, environmentID, instanceID string) (res *openapiclientfleet.FleetListInstanceSnapshotResult, err error) {
 	ctxWithToken := context.WithValue(ctx, openapiclientfleet.ContextAccessToken, token)
 	apiClient := getFleetClient()
