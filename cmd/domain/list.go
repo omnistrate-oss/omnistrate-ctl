@@ -64,11 +64,7 @@ func runList(cmd *cobra.Command, args []string) error {
 
 	// Process and filter domains
 	for _, domain := range listRes.CustomDomains {
-		formattedDomain, err := formatDomain(domain)
-		if err != nil {
-			utils.PrintError(err)
-			return err
-		}
+		formattedDomain := formatDomain(domain)
 
 		match, err := utils.MatchesFilters(formattedDomain, filterMaps)
 		if err != nil {
@@ -98,12 +94,12 @@ func runList(cmd *cobra.Command, args []string) error {
 
 // Helper functions
 
-func formatDomain(domain openapiclientv1.CustomDomain) (model.Domain, error) {
+func formatDomain(domain openapiclientv1.CustomDomain) model.Domain {
 	return model.Domain{
 		EnvironmentType: domain.EnvironmentType,
 		Name:            domain.Name,
 		Domain:          domain.CustomDomain,
 		Status:          domain.Status,
 		ClusterEndpoint: domain.ClusterEndpoint,
-	}, nil
+	}
 }

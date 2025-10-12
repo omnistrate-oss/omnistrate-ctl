@@ -85,7 +85,7 @@ func runSetDefault(cmd *cobra.Command, args []string) error {
 	}
 
 	// Check if the service plan exists
-	serviceID, _, planID, _, _, err = getServicePlan(cmd.Context(), token, serviceID, serviceName, planID, planName, environment)
+	serviceID, _, planID, _, err = getServicePlan(cmd.Context(), token, serviceID, serviceName, planID, planName, environment)
 	if err != nil {
 		utils.HandleSpinnerError(spinner, sm, err)
 		return err
@@ -123,10 +123,7 @@ func runSetDefault(cmd *cobra.Command, args []string) error {
 	}
 
 	// Format output
-	formattedServicePlanVersion, err := formatServicePlanVersion(targetServicePlan, false)
-	if err != nil {
-		return err
-	}
+	formattedServicePlanVersion := formatServicePlanVersion(targetServicePlan, false)
 
 	// Print output
 	if err = utils.PrintTextTableJsonOutput(output, formattedServicePlanVersion); err != nil {
@@ -136,7 +133,7 @@ func runSetDefault(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
-func getServicePlan(ctx context.Context, token, serviceIDArg, serviceNameArg, planIDArg, planNameArg, envNameArg string) (serviceID, serviceName, planID, planName, environment string, err error) {
+func getServicePlan(ctx context.Context, token, serviceIDArg, serviceNameArg, planIDArg, planNameArg, envNameArg string) (serviceID, serviceName, planID, environment string, err error) {
 	searchRes, err := dataaccess.SearchInventory(ctx, token, "service:s")
 	if err != nil {
 		return
@@ -167,6 +164,7 @@ func getServicePlan(ctx context.Context, token, serviceIDArg, serviceNameArg, pl
 	if err != nil {
 		return
 	}
+	serviceName = describeServiceRes.Name
 	for _, env := range describeServiceRes.ServiceEnvironments {
 		if envNameArg != "" && !strings.EqualFold(envNameArg, env.Name) {
 			continue

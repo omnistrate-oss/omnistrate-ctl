@@ -86,7 +86,7 @@ func runDescribe(cmd *cobra.Command, args []string) error {
 	}
 
 	// Check if service exists
-	id, _, err = getService(cmd.Context(), token, name, id)
+	id, err = getService(cmd.Context(), token, name, id)
 	if err != nil {
 		utils.HandleSpinnerError(spinner, sm, err)
 		return err
@@ -122,7 +122,7 @@ func runDescribe(cmd *cobra.Command, args []string) error {
 
 // Helper functions
 
-func getService(ctx context.Context, token, serviceNameArg, serviceIDArg string) (serviceID, serviceName string, err error) {
+func getService(ctx context.Context, token, serviceNameArg, serviceIDArg string) (serviceID string, err error) {
 	count := 0
 	if serviceNameArg != "" {
 		var searchRes *openapiclientfleet.SearchInventoryResult
@@ -134,7 +134,6 @@ func getService(ctx context.Context, token, serviceNameArg, serviceIDArg string)
 		for _, service := range searchRes.ServiceResults {
 			if strings.EqualFold(service.Name, serviceNameArg) {
 				serviceID = service.Id
-				serviceName = service.Name
 				count++
 			}
 		}
@@ -148,7 +147,6 @@ func getService(ctx context.Context, token, serviceNameArg, serviceIDArg string)
 		for _, service := range searchRes.ServiceResults {
 			if strings.EqualFold(service.Id, serviceIDArg) {
 				serviceID = service.Id
-				serviceName = service.Name
 				count++
 			}
 		}

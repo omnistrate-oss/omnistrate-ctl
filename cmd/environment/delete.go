@@ -72,7 +72,7 @@ func runDelete(cmd *cobra.Command, args []string) error {
 	}
 
 	// Check if the environment exists
-	serviceID, _, environmentID, _, err = getServiceEnvironment(cmd.Context(), token, serviceID, serviceName, environmentID, environmentName)
+	serviceID, _, environmentID, err = getServiceEnvironment(cmd.Context(), token, serviceID, serviceName, environmentID, environmentName)
 	if err != nil {
 		utils.HandleSpinnerError(spinner, sm, err)
 		return err

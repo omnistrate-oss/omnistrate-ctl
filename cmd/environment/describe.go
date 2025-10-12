@@ -76,7 +76,7 @@ func runDescribe(cmd *cobra.Command, args []string) error {
 	}
 
 	// Retrieve service and environment details
-	serviceID, serviceName, environmentID, _, err = getServiceEnvironment(cmd.Context(), token, serviceID, serviceName, environmentID, environmentName)
+	serviceID, serviceName, environmentID, err = getServiceEnvironment(cmd.Context(), token, serviceID, serviceName, environmentID, environmentName)
 	if err != nil {
 		utils.HandleSpinnerError(spinner, sm, err)
 		return err

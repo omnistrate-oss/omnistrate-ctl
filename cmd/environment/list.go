@@ -82,11 +82,7 @@ func runList(cmd *cobra.Command, args []string) error {
 				continue
 
 			}
-			env, err := formatEnvironment(service, environment, truncateNames)
-			if err != nil {
-				utils.HandleSpinnerError(spinner, sm, err)
-				return err
-			}
+			env := formatEnvironment(service, environment, truncateNames)
 
 			match, err := utils.MatchesFilters(env, filterMaps)
 			if err != nil {
@@ -118,7 +114,7 @@ func runList(cmd *cobra.Command, args []string) error {
 
 // Helper functions
 
-func formatEnvironment(service openapiclientv1.DescribeServiceResult, environment openapiclientv1.ServiceEnvironment, truncateNames bool) (model.Environment, error) {
+func formatEnvironment(service openapiclientv1.DescribeServiceResult, environment openapiclientv1.ServiceEnvironment, truncateNames bool) model.Environment {
 	serviceName := service.Name
 	envName := environment.Name
 
@@ -144,5 +140,5 @@ func formatEnvironment(service openapiclientv1.DescribeServiceResult, environmen
 		ServiceID:       service.Id,
 		ServiceName:     serviceName,
 		SourceEnvName:   sourceEnvName,
-	}, nil
+	}
 }

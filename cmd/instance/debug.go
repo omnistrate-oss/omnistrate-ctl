@@ -149,7 +149,7 @@ func runDebug(cmd *cobra.Command, args []string) error {
 			}
 
 			// Process each resource based on its type
-			resourceInfo := processResourceByType(resourceKey, resourceDebugInfo, instanceData, instanceID, IsLogsEnabled, logsService, ctx, token, serviceID, environmentID, resourceID, resourceKeyFilter)
+			resourceInfo := processResourceByType(resourceKey, resourceDebugInfo, instanceData, instanceID, IsLogsEnabled, logsService, ctx, token, serviceID, environmentID, resourceID)
 			if resourceInfo != nil {
 				data.Resources = append(data.Resources, *resourceInfo)
 			}
@@ -173,7 +173,7 @@ func runDebug(cmd *cobra.Command, args []string) error {
 }
 
 // processResourceByType identifies the resource type and processes it accordingly
-func processResourceByType(resourceKey string, resourceDebugInfo interface{}, instanceData *fleet.ResourceInstance, instanceID string, isLogsEnabled bool, logsService *dataaccess.LogsService, ctx context.Context, token, serviceID, environmentID string, resourceIDFilter, resourceKeyFilter string) *ResourceInfo {
+func processResourceByType(resourceKey string, resourceDebugInfo interface{}, instanceData *fleet.ResourceInstance, instanceID string, isLogsEnabled bool, logsService *dataaccess.LogsService, ctx context.Context, token, serviceID, environmentID string, resourceIDFilter string) *ResourceInfo {
 	// Get actual resource ID from resource name if needed for filtering
 	var actualResourceID string
 	if resourceIDFilter != "" {
@@ -1185,8 +1185,8 @@ func formatTerraformFileList(files map[string]string) string {
 	}
 
 	// Function to render the tree
-	var renderTree func(node *TreeNode, prefix string, isLast bool) string
-	renderTree = func(node *TreeNode, prefix string, isLast bool) string {
+	var renderTree func(node *TreeNode, prefix string) string
+	renderTree = func(node *TreeNode, prefix string) string {
 		result := ""
 
 		// Sort children directories and files
@@ -1213,7 +1213,7 @@ func formatTerraformFileList(files map[string]string) string {
 			}
 
 			result += fmt.Sprintf("%s[blue]%s%s/[-]\n", prefix, symbol, childName)
-			result += renderTree(child, nextPrefix, true)
+			result += renderTree(child, nextPrefix)
 		}
 
 		// Render files
@@ -1232,7 +1232,7 @@ func formatTerraformFileList(files map[string]string) string {
 	}
 
 	// Render the tree starting from root
-	content += renderTree(root, "", true)
+	content += renderTree(root, "")
 	content += "\n[green]Press 'f' to open file browser and view individual files[-]"
 
 	return content
@@ -1336,8 +1336,8 @@ func formatTerraformLogsHierarchical(logs map[string]string) string {
 	}
 
 	// Function to render the tree
-	var renderLogTree func(node *LogTreeNode, prefix string, isLast bool) string
-	renderLogTree = func(node *LogTreeNode, prefix string, isLast bool) string {
+	var renderLogTree func(node *LogTreeNode, prefix string) string
+	renderLogTree = func(node *LogTreeNode, prefix string) string {
 		result := ""
 
 		// Sort children (phases and streams)
@@ -1394,7 +1394,7 @@ func formatTerraformLogsHierarchical(logs map[string]string) string {
 			} else {
 				result += fmt.Sprintf("%s[lightblue]%s%s[-]\n", prefix, symbol, child.Name)
 			}
-			result += renderLogTree(child, nextPrefix, true)
+			result += renderLogTree(child, nextPrefix)
 		}
 
 		// Render log files
@@ -1427,7 +1427,7 @@ func formatTerraformLogsHierarchical(logs map[string]string) string {
 	}
 
 	// Render the tree starting from root
-	content += renderLogTree(root, "", true)
+	content += renderLogTree(root, "")
 	content += "\n[green]Press 'l' to open logs browser and view individual log contents[-]"
 
 	return content

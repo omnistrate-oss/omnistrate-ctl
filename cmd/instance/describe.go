@@ -179,7 +179,7 @@ func runDescribe(cmd *cobra.Command, args []string) error {
 
 	// Apply resource filtering if specified (for full instance response)
 	if resourceID != "" || resourceKey != "" {
-		filteredInstance, err := filterInstanceByResource(cmd.Context(), token, instance, serviceID, environmentID, instanceID, resourceID, resourceKey)
+		filteredInstance, err := filterInstanceByResource(cmd.Context(), token, instance, serviceID, resourceID, resourceKey)
 		if err != nil {
 			utils.PrintError(fmt.Errorf("failed to apply resource filter: %w", err))
 			return err
@@ -257,7 +257,7 @@ func getResourceFromInstance(ctx context.Context, token string, instanceID strin
 	return
 }
 
-func filterInstanceByResource(ctx context.Context, token string, instance *openapiclientfleet.ResourceInstance, serviceID, environmentID, instanceID, resourceID, resourceKey string) (*openapiclientfleet.ResourceInstance, error) {
+func filterInstanceByResource(ctx context.Context, token string, instance *openapiclientfleet.ResourceInstance, serviceID, resourceID, resourceKey string) (*openapiclientfleet.ResourceInstance, error) {
 	// The ResourceInstance has complex nested structure with resource-specific data
 	// For filtering, we'll focus on the most relevant parts that contain resource information
 

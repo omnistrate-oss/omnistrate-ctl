@@ -71,7 +71,7 @@ func runDelete(cmd *cobra.Command, args []string) error {
 
 	// Check if account exists
 	var id string
-	id, _, err = getAccountID(cmd.Context(), token, nameOrID)
+	id, err = getAccountID(cmd.Context(), token, nameOrID)
 	if err != nil {
 		utils.HandleSpinnerError(spinner, sm, err)
 		return err

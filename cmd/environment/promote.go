@@ -76,7 +76,7 @@ func runPromote(cmd *cobra.Command, args []string) error {
 	}
 
 	// Check if the environment exists
-	serviceID, serviceName, environmentID, _, err = getServiceEnvironment(cmd.Context(), token, serviceID, serviceName, environmentID, environmentName)
+	serviceID, serviceName, environmentID, err = getServiceEnvironment(cmd.Context(), token, serviceID, serviceName, environmentID, environmentName)
 	if err != nil {
 		utils.HandleSpinnerError(spinner, sm, err)
 		return err
@@ -124,7 +124,7 @@ func validatePromoteArguments(args []string, serviceID, environmentID string) er
 	return nil
 }
 
-func getServiceEnvironment(ctx context.Context, token, serviceIDArg, serviceNameArg, environmentIDArg, environmentNameArg string) (serviceID, serviceName, environmentID, environmentName string, err error) {
+func getServiceEnvironment(ctx context.Context, token, serviceIDArg, serviceNameArg, environmentIDArg, environmentNameArg string) (serviceID, serviceName, environmentID string, err error) {
 	services, err := dataaccess.ListServices(ctx, token)
 	if err != nil {
 		return
@@ -150,7 +150,6 @@ func getServiceEnvironment(ctx context.Context, token, serviceIDArg, serviceName
 			serviceID = service.Id
 			environmentID = environment.Id
 			serviceName = service.Name
-			environmentName = environment.Name
 		}
 	}
 
