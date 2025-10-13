@@ -227,19 +227,16 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 		specFile = file
 	} else if len(args) > 0 && args[0] != "" {
 		specFile = args[0]
-	} else {
-		// 3. If not found, check for docker-compose.yaml
-		if specFile == "" {
-			if _, err := os.Stat("docker-compose.yaml"); err == nil {
-				specFile = "docker-compose.yaml"
-			} else {
-				// Auto-detect docker-compose.yaml in current directory if present
-				if files, err := os.ReadDir("."); err == nil {
-					for _, f := range files {
-						if !f.IsDir() && (f.Name() == "docker-compose.yaml" || f.Name() == "docker-compose.yml") {
-							specFile = f.Name()
-							break
-						}
+	} else if specFile == "" {
+		if _, err := os.Stat("docker-compose.yaml"); err == nil {
+			specFile = "docker-compose.yaml"
+		} else {
+			// Auto-detect docker-compose.yaml in current directory if present
+			if files, err := os.ReadDir("."); err == nil {
+				for _, f := range files {
+					if !f.IsDir() && (f.Name() == "docker-compose.yaml" || f.Name() == "docker-compose.yml") {
+						specFile = f.Name()
+						break
 					}
 				}
 			}
