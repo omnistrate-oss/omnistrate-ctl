@@ -1,10 +1,7 @@
 package dataaccess
 
 import (
-	"bytes"
 	"context"
-	"fmt"
-	"io"
 	"net/http"
 	"strings"
 
@@ -103,56 +100,12 @@ func PromoteServiceEnvironment(ctx context.Context, token, serviceID, serviceEnv
 		}
 	}()
 	
-	// If we get a "missing_payload" error, try custom HTTP request with empty JSON body
-	if err != nil && (strings.Contains(err.Error(), "missing_payload") || strings.Contains(err.Error(), "missing required payload")) {
-		return promoteServiceEnvironmentWithPayload(ctx, token, serviceID, serviceEnvironmentID)
-	}
-	
 	if err != nil {
 		return handleV1Error(err)
 	}
 	return nil
 }
 
-// Custom HTTP request function that sends an empty JSON payload
-func promoteServiceEnvironmentWithPayload(ctx context.Context, token, serviceID, serviceEnvironmentID string) error {
-	// Get the base URL from the API client configuration
-	apiClient := getV1Client()
-	config := apiClient.GetConfig()
-	baseURL := strings.TrimSuffix(config.Servers[0].URL, "/")
-	
-	// Construct the URL for the promotion endpoint
-	url := fmt.Sprintf("%s/v1/service/%s/environment/%s/promote", baseURL, serviceID, serviceEnvironmentID)
-	
-	// Create an empty JSON payload
-	payload := []byte("{}")
-	
-	// Create the HTTP request
-	req, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewBuffer(payload))
-	if err != nil {
-		return fmt.Errorf("failed to create promotion request: %w", err)
-	}
-	
-	// Set headers
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", "Bearer "+token)
-	
-	// Execute the request
-	client := &http.Client{}
-	resp, err := client.Do(req)
-	if err != nil {
-		return fmt.Errorf("failed to execute promotion request: %w", err)
-	}
-	defer resp.Body.Close()
-	
-	// Check the response status
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		body, _ := io.ReadAll(resp.Body)
-		return fmt.Errorf("promotion request failed with status %d: %s", resp.StatusCode, string(body))
-	}
-	
-	return nil
-}
 
 func PromoteServiceEnvironmentStatus(ctx context.Context, token, serviceID, serviceEnvironmentID string) (resp []openapiclientv1.EnvironmentPromotionStatus, err error) {
 	ctxWithToken := context.WithValue(ctx, openapiclientv1.ContextAccessToken, token)
