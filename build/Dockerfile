@@ -43,4 +43,3 @@ COPY --from=builder /go/src/ctl/dist/omnistrate-ctl-${TARGETOS}-${TARGETARCH} /u
 WORKDIR /omnistrate
 ENTRYPOINT [ "/usr/local/bin/omnistrate-ctl" ]
 
-LABEL org.opencontainers.image.source="https://github.com/./."
