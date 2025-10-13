@@ -1162,6 +1162,10 @@ func BuildServiceFromRepository(cmd *cobra.Command, ctx context.Context, token, 
 						gcpServiceAccountEmail := fmt.Sprintf("bootstrap-%s@%s.iam.gserviceaccount.com", *user.OrgId, gcpProjectID)
 						fileData = append(fileData, []byte(fmt.Sprintf("      GcpServiceAccountEmail: '%s'\n", gcpServiceAccountEmail))...)
 					}
+					if azureSubscriptionID != "" {
+					fileData = append(fileData, []byte(fmt.Sprintf("      AzureSubscriptionId: '%s'\n", azureSubscriptionID))...)
+					fileData = append(fileData, []byte(fmt.Sprintf("      AzureTenantId: '%s'\n", azureTenantID))...)
+				}
 				}
 			}
 
