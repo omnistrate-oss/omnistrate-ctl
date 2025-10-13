@@ -496,7 +496,7 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 				serviceNameToUse = sanitizeServiceName(filepath.Base(filepath.Dir(absSpecFile)))
 			}
 			if serviceNameToUse == "." || serviceNameToUse == "/" || serviceNameToUse == "" {
-				serviceNameToUse = "ctl"
+				serviceNameToUse = "my-service"
 			}
 			
        }
@@ -791,7 +791,7 @@ func executeDeploymentWorkflow(cmd *cobra.Command, sm ysmrr.SpinnerManager, toke
 		existingInstanceIDs = []string{} // Reset to create new instance
 		sm.Stop()
 	}
-
+	
 	// Display automatic instance handling message
 	if len(existingInstanceIDs) > 0  {
 		if instanceID != "" {
@@ -804,6 +804,8 @@ func executeDeploymentWorkflow(cmd *cobra.Command, sm ysmrr.SpinnerManager, toke
 				finalInstanceID = instanceID
 			}
 		} else {
+			spinner.Complete()
+			sm.Stop()
 			// Prompt user to select an instance or create a new one
 			fmt.Println("Multiple existing instances found:")
 			for idx, id := range existingInstanceIDs {
@@ -826,7 +828,11 @@ func executeDeploymentWorkflow(cmd *cobra.Command, sm ysmrr.SpinnerManager, toke
 				// User selected an existing instance
 				finalInstanceID = existingInstanceIDs[choice-1]
 			}
+				// Restart spinner manager
+		sm.Start()
 		}
+	
+
 		if finalInstanceID != "" {
 		spinner.UpdateMessage(fmt.Sprintf("%s: Found %d existing instances", spinnerMsg, len(existingInstanceIDs)))
 		spinner.Complete()
@@ -836,13 +842,11 @@ func executeDeploymentWorkflow(cmd *cobra.Command, sm ysmrr.SpinnerManager, toke
 		fmt.Printf("📝 Note: Instance upgrade is automatic.\n")
 		fmt.Printf("   Existing Instances: %v\n", finalInstanceID)
 		
-		// Restart spinner manager
-		sm = ysmrr.NewSpinnerManager()
-		sm.Start()
 
 		}
 
 	}  else {
+		
 		spinner.UpdateMessage(fmt.Sprintf("%s: No existing instances found", spinnerMsg))
 		spinner.Complete()
 		
@@ -850,13 +854,12 @@ func executeDeploymentWorkflow(cmd *cobra.Command, sm ysmrr.SpinnerManager, toke
 		sm.Stop()
 		fmt.Printf("📝 Note: Instance creation is automatic.\n")
 		
-		// Restart spinner manager
-		sm = ysmrr.NewSpinnerManager()
-		sm.Start()
+	
 		
 	}
 
 	if finalInstanceID != "" {
+
 		foundMsg := spinnerMsg + ": Found existing instance"
 		spinner.UpdateMessage(foundMsg)
 		spinner.Complete()
@@ -875,6 +878,7 @@ func executeDeploymentWorkflow(cmd *cobra.Command, sm ysmrr.SpinnerManager, toke
 		}
 		
 	} else {
+		
 		noFoundMsg := spinnerMsg + ": No existing instances found"
 		spinner.UpdateMessage(noFoundMsg)
 		spinner.Complete()
@@ -883,7 +887,7 @@ func executeDeploymentWorkflow(cmd *cobra.Command, sm ysmrr.SpinnerManager, toke
 		
 		spinner = sm.AddSpinner(createMsg)
 		createdInstanceID, err := "", error(nil)
-		createdInstanceID, err = createInstanceUnified(cmd.Context(), token, serviceID, planID, cloudProvider, region, param, paramFile, resourceID)
+		createdInstanceID, err = createInstanceUnified(cmd.Context(), token, serviceID, planID, cloudProvider, region, param, paramFile, resourceID, sm)
 		finalInstanceID = createdInstanceID  
 		// instanceActionType is already "create" from initialization
 		if err != nil {
@@ -892,6 +896,7 @@ func executeDeploymentWorkflow(cmd *cobra.Command, sm ysmrr.SpinnerManager, toke
 			sm.Stop()
 
 		} else {
+
 			spinner.UpdateMessage(fmt.Sprintf("%s: Success (ID: %s)", createMsg, finalInstanceID))
 			spinner.Complete()
 		}
@@ -931,7 +936,7 @@ func executeDeploymentWorkflow(cmd *cobra.Command, sm ysmrr.SpinnerManager, toke
 
 
 // createInstanceUnified creates an instance with or without subscription, removing duplicate code
-func createInstanceUnified(ctx context.Context, token, serviceID, productTierID, cloudProvider, region, param, paramFile, resourceID string) (string, error) {
+func createInstanceUnified(ctx context.Context, token, serviceID, productTierID, cloudProvider, region, param, paramFile, resourceID string, sm ysmrr.SpinnerManager) (string, error) {
 	
 	// Get the latest version
        version, err := dataaccess.FindLatestVersion(ctx, token, serviceID, productTierID)
@@ -1001,6 +1006,9 @@ func createInstanceUnified(ctx context.Context, token, serviceID, productTierID,
 				resourceID = resources.Resources[0].Id
 			}
 			if len(resources.Resources) > 1 {
+				// Stop spinner before prompting user
+				sm.Stop()
+				
 				fmt.Println("Multiple resources found in service plan. Please select one:")
 				for idx, resource := range resources.Resources {
 					fmt.Printf("  %d. Name: %s, ID: %s\n", idx+1, resource.Name, resource.Id)
@@ -1017,6 +1025,9 @@ func createInstanceUnified(ctx context.Context, token, serviceID, productTierID,
 				selected := resources.Resources[choice-1]
 				resourceKey = selected.Key
 				resourceID = selected.Id
+				
+				// Restart spinner after user input
+				sm.Start()
 			}
 		}
 
