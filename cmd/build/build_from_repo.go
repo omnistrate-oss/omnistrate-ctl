@@ -81,6 +81,8 @@ func init() {
 	BuildFromRepoCmd.Flags().String("aws-account-id", "", "AWS account ID. Must be used with --deployment-type")
 	BuildFromRepoCmd.Flags().String("gcp-project-id", "", "GCP project ID. Must be used with --gcp-project-number and --deployment-type")
 	BuildFromRepoCmd.Flags().String("gcp-project-number", "", "GCP project number. Must be used with --gcp-project-id and --deployment-type")
+	BuildFromRepoCmd.Flags().String("azure-subscription-id", "", "Azure subscription ID. Must be used with --azure-tenant-id and --deployment-type")
+	BuildFromRepoCmd.Flags().String("azure-tenant-id", "", "Azure tenant ID. Must be used with --azure-subscription-id and --deployment-type")
 	BuildFromRepoCmd.Flags().Bool("reset-pat", false, "Reset the GitHub Personal Access Token (PAT) for the current user.")
 	BuildFromRepoCmd.Flags().StringP("output", "o", "text", "Output format. Only text is supported")
 	BuildFromRepoCmd.Flags().StringP("file", "f", ComposeFileName, "Specify the compose file to read and write to")
@@ -146,6 +148,15 @@ func runBuildFromRepo(cmd *cobra.Command, args []string) error {
 	}
 
 	gcpProjectNumber, err := cmd.Flags().GetString("gcp-project-number")
+	if err != nil {
+		return err
+	}
+
+	azureSubscriptionID, err := cmd.Flags().GetString("azure-subscription-id")
+	if err != nil {
+		return err
+	}
+	azureTenantID, err := cmd.Flags().GetString("azure-tenant-id")
 	if err != nil {
 		return err
 	}
@@ -834,6 +845,10 @@ func runBuildFromRepo(cmd *cobra.Command, args []string) error {
 					gcpServiceAccountEmail := fmt.Sprintf("bootstrap-%s@%s.iam.gserviceaccount.com", *user.OrgId, gcpProjectID)
 					fileData = append(fileData, []byte(fmt.Sprintf("      GcpServiceAccountEmail: '%s'\n", gcpServiceAccountEmail))...)
 				}
+				if azureSubscriptionID != "" {
+					fileData = append(fileData, []byte(fmt.Sprintf("      AzureSubscriptionId: '%s'\n", azureSubscriptionID))...)
+					fileData = append(fileData, []byte(fmt.Sprintf("      AzureTenantId: '%s'\n", azureTenantID))...)
+				}
 			}
 
 			// Write the compose spec to a file
@@ -875,6 +890,10 @@ func runBuildFromRepo(cmd *cobra.Command, args []string) error {
 
 						gcpServiceAccountEmail := fmt.Sprintf("bootstrap-%s@%s.iam.gserviceaccount.com", *user.OrgId, gcpProjectID)
 						fileData = append(fileData, []byte(fmt.Sprintf("      GcpServiceAccountEmail: '%s'\n", gcpServiceAccountEmail))...)
+					}
+					if azureSubscriptionID != "" {
+					fileData = append(fileData, []byte(fmt.Sprintf("      AzureSubscriptionId: '%s'\n", azureSubscriptionID))...)
+					fileData = append(fileData, []byte(fmt.Sprintf("      AzureTenantId: '%s'\n", azureTenantID))...)
 					}
 				}
 			}
