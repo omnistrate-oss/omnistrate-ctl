@@ -2240,10 +2240,14 @@ func promptForCloudCredentials(cloudProvider string) (string, error) {
 		var azureSubscriptionID, azureTenantID string
 		
 		fmt.Print("Azure Subscription ID: ")
-		fmt.Scanln(&azureSubscriptionID)
+		if _, err := fmt.Scanln(&azureSubscriptionID); err != nil {
+			return "", fmt.Errorf("failed to read Azure Subscription ID: %w", err)
+		}
 		
 		fmt.Print("Azure Tenant ID: ")
-		fmt.Scanln(&azureTenantID)
+		if _, err := fmt.Scanln(&azureTenantID); err != nil {
+			return "", fmt.Errorf("failed to read Azure Tenant ID: %w", err)
+		}
 		
 		params = map[string]interface{}{
 			"account_configuration_method": "AzureScript",
