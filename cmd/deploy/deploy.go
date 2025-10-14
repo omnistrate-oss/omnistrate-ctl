@@ -2,12 +2,16 @@ package deploy
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
 	"reflect"
 	"regexp"
 	"strings"
+	"time"
+
+	"github.com/omnistrate-oss/omnistrate-ctl/internal/utils"
 
 	"gopkg.in/yaml.v3"
 
@@ -17,7 +21,6 @@ import (
 	"github.com/omnistrate-oss/omnistrate-ctl/cmd/instance" // Import the correct package for instancecmd
 	"github.com/omnistrate-oss/omnistrate-ctl/internal/config"
 	"github.com/omnistrate-oss/omnistrate-ctl/internal/dataaccess"
-	"github.com/omnistrate-oss/omnistrate-ctl/internal/utils"
 	openapiclientfleet "github.com/omnistrate-oss/omnistrate-sdk-go/fleet"
 	openapiclient "github.com/omnistrate-oss/omnistrate-sdk-go/v1"
 	"github.com/pkg/errors"
@@ -75,7 +78,7 @@ var DeployCmd = &cobra.Command{
 }
 
 func init() {
-	DeployCmd.Flags().StringP("file", "f", "", "Path to the docker compose file")
+	DeployCmd.Flags().StringP("file", "f", "", "Path to the docker compose file (defaults to docker-compose.yaml)")
 	DeployCmd.Flags().String("product-name", "", "Specify a custom service name. If not provided, directory name will be used.")
 	DeployCmd.Flags().Bool("dry-run", false, "Perform validation checks without actually deploying")
 	DeployCmd.Flags().String("resource-id", "", "Specify the resource ID to use when multiple resources exist.")
@@ -91,7 +94,10 @@ func init() {
 	// Additional flags from build command
 	DeployCmd.Flags().Bool("skip-docker-build", false, "Skip building and pushing the Docker image")
 	DeployCmd.Flags().StringArray("platforms", []string{"linux/amd64"}, "Specify the platforms to build for. Use the format: --platforms linux/amd64 --platforms linux/arm64. Default is linux/amd64.")
-	
+	DeployCmd.Flags().String("deployment-type", "hosted", "Type of deployment (e.g. hosted, byoa)")
+
+
+
 	if err := DeployCmd.MarkFlagFilename("param-file"); err != nil {
 		return
 	}
@@ -206,6 +212,14 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 
 
 
+	deploymentType, err := cmd.Flags().GetString("deployment-type")
+	if err != nil {
+		utils.PrintError(err)
+		return err
+	}
+
+
+
 	// Initialize spinner manager
 	sm := ysmrr.NewSpinnerManager()
 	sm.Start()
@@ -218,7 +232,7 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 	// Improved spec file detection: prefer service plan, then docker compose, else repo
 	var specFile string
 	var specType = build.DockerComposeSpecType
-	var deploymentType = "hosted" // Default to hosted deployment
+	
 
 
 	
@@ -234,7 +248,7 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 			// Auto-detect docker-compose.yaml in current directory if present
 			if files, err := os.ReadDir("."); err == nil {
 				for _, f := range files {
-					if !f.IsDir() && (f.Name() == "docker-compose.yaml" || f.Name() == "docker-compose.yml") {
+					if !f.IsDir() && (f.Name() == "docker-compose.yaml") {
 						specFile = f.Name()
 						break
 					}
@@ -319,10 +333,18 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 
 	spinner.UpdateMessage("Checking cloud provider accounts...\n")
 	isAccountId := false
-	awsAccountID, awsBootstrapRoleARN, gcpProjectID, gcpProjectNumber,gcpServiceAccountEmail, azureSubscriptionID, azureTenantID := extractCloudAccountsFromProcessedData(processedData)
+	awsAccountID, awsBootstrapRoleARN, gcpProjectID, gcpProjectNumber,gcpServiceAccountEmail, azureSubscriptionID, azureTenantID, extractDeploymentType := extractCloudAccountsFromProcessedData(processedData)
 	if awsAccountID != "" || gcpProjectID != "" || azureSubscriptionID != "" {
 		isAccountId = true
 	}
+
+
+
+	if extractDeploymentType != deploymentType {
+		deploymentType = extractDeploymentType
+		fmt.Printf("Detected deployment type or customer provider deployment type different from spec: %s\n", deploymentType)
+	}
+
 
      if cloudProvider == "" {
        if awsAccountID != ""  {
@@ -540,8 +562,6 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 		dryRun,
 		skipDockerBuild,
 		false,
-		false,
-		false,
 		deploymentType,
 		awsAccountID,
 		gcpProjectID,
@@ -736,7 +756,7 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 	}
 
 	// Execute post-service-build deployment workflow
-	err = executeDeploymentWorkflow(cmd, sm, token, serviceID, environmentID, planID, serviceNameToUse, environment, environmentTypeUpper, instanceID, cloudProvider, region, param, paramFile, resourceID)
+	err = executeDeploymentWorkflow(cmd, sm, token, serviceID, environmentID, planID, serviceNameToUse, environment, environmentTypeUpper, instanceID, cloudProvider, region, param, paramFile, resourceID,deploymentType)
 	if err != nil {
 		return err
 	}
@@ -747,7 +767,7 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 
 // executeDeploymentWorkflow handles the complete post-service-build deployment workflow
 // This function is reusable for both deploy and build_simple commands
-func executeDeploymentWorkflow(cmd *cobra.Command, sm ysmrr.SpinnerManager, token, serviceID, environmentID, planID, serviceName, environment, environmentTypeUpper, instanceID, cloudProvider, region, param, paramFile, resourceID string) error {
+func executeDeploymentWorkflow(cmd *cobra.Command, sm ysmrr.SpinnerManager, token, serviceID, environmentID, planID, serviceName, environment, environmentTypeUpper, instanceID, cloudProvider, region, param, paramFile, resourceID, deploymentType string) error {
 
 
 	// Step 7: Set service plan as preferred in environment
@@ -781,7 +801,7 @@ func executeDeploymentWorkflow(cmd *cobra.Command, sm ysmrr.SpinnerManager, toke
 	spinner = sm.AddSpinner(spinnerMsg)
 
 	var existingInstanceIDs []string
-	existingInstanceIDs, err = listInstances(cmd.Context(), token, serviceID, environmentID, planID, "")
+	existingInstanceIDs, _, err = listInstances(cmd.Context(), token, serviceID, environmentID, planID, "","excludeCloudAccounts")
 	if err != nil {
 		spinner.UpdateMessage(spinnerMsg + ": Failed (" + err.Error() + ")")
 		spinner.Error()
@@ -875,6 +895,17 @@ func executeDeploymentWorkflow(cmd *cobra.Command, sm ysmrr.SpinnerManager, toke
 		}
 		
 	} else {
+
+		// If deployment type is BYOA, create cloud account instances first
+	if deploymentType == "byoa" {
+		fmt.Printf("BYOA deployment detected. Creating cloud account instances...\n")
+		cloudAccountInstanceID, err := createCloudAccountInstances(cmd.Context(), token, serviceID, environmentID, planID, cloudProvider, sm)
+		if err != nil {
+			fmt.Printf("Warning: Failed to create cloud account instances: %v\n", err)
+		}
+		fmt.Printf("cloud account id: %s\n", cloudAccountInstanceID)
+	}
+
 		
 		noFoundMsg := spinnerMsg + ": No existing instances found"
 		spinner.UpdateMessage(noFoundMsg)
@@ -884,7 +915,7 @@ func executeDeploymentWorkflow(cmd *cobra.Command, sm ysmrr.SpinnerManager, toke
 		
 		spinner = sm.AddSpinner(createMsg)
 		createdInstanceID, err := "", error(nil)
-		createdInstanceID, err = createInstanceUnified(cmd.Context(), token, serviceID, planID, cloudProvider, region, param, paramFile, resourceID, sm)
+		createdInstanceID, err = createInstanceUnified(cmd.Context(), token, serviceID, planID, cloudProvider, region, param, paramFile, resourceID, "resourceInstance", sm)
 		finalInstanceID = createdInstanceID  
 		// instanceActionType is already "create" from initialization
 		if err != nil {
@@ -933,7 +964,7 @@ func executeDeploymentWorkflow(cmd *cobra.Command, sm ysmrr.SpinnerManager, toke
 
 
 // createInstanceUnified creates an instance with or without subscription, removing duplicate code
-func createInstanceUnified(ctx context.Context, token, serviceID, productTierID, cloudProvider, region, param, paramFile, resourceID string, sm ysmrr.SpinnerManager) (string, error) {
+func createInstanceUnified(ctx context.Context, token, serviceID, productTierID, cloudProvider, region, param, paramFile, resourceID, instanceType string, sm ysmrr.SpinnerManager) (string, error) {
 	
 	// Get the latest version
        version, err := dataaccess.FindLatestVersion(ctx, token, serviceID, productTierID)
@@ -953,8 +984,42 @@ func createInstanceUnified(ctx context.Context, token, serviceID, productTierID,
 
        offering := res.ConsumptionDescribeServiceOfferingResult.Offerings[0]
 
-    
 
+	   // Format parameters
+		formattedParams, err := common.FormatParams(param, paramFile)
+		if err != nil {
+			return "", err
+		}
+
+	    // Create default parameters with common sensible defaults
+        defaultParams := map[string]interface{}{}	
+		resourceKey := ""
+
+		if instanceType == "cloudAccount" {
+			defaultParams = formattedParams
+			
+			// For cloud account instances, find the injected account config resource
+			var accountConfigResource *openapiclientfleet.ResourceEntity
+			for _, param := range offering.ResourceParameters {
+				if strings.HasPrefix(param.ResourceId, "r-injectedaccountconfig") {
+					accountConfigResource = &param
+					// Use the resource ID as the key for cloud account resources
+					resourceKey = param.UrlKey
+					resourceID = param.ResourceId
+					break
+				}
+			}
+			
+			if accountConfigResource == nil {
+				return "", fmt.Errorf("no injected account config resource found for BYOA deployment")
+			}
+			
+			if offering.ServiceModelType != "BYOA" {
+				return "", fmt.Errorf("cloud account instances are only supported for BYOA service model, got: %s", offering.ServiceModelType)
+			}
+			
+			fmt.Printf("Found cloud account resource: ID=%s, Key=%s\n", resourceID, resourceKey)
+		} else {
 	   // Get list of resources in the target tier version
 		resources, err := dataaccess.ListResources(ctx, token, serviceID, productTierID, &version)
 		if err != nil {
@@ -982,7 +1047,7 @@ func createInstanceUnified(ctx context.Context, token, serviceID, productTierID,
 		}
 
 
-		resourceKey := ""
+		
 
 		if resourceID != "" {
 			for _, resource := range resources.Resources {
@@ -1035,12 +1100,8 @@ func createInstanceUnified(ctx context.Context, token, serviceID, productTierID,
 	   }
 
 
-
-		// Format parameters
-		formattedParams, err := common.FormatParams(param, paramFile)
-		if err != nil {
-			return "", err
-		}
+ 
+		
 
 	   // Select default cloudProvider and region from offering.CloudProviders if available
 
@@ -1065,7 +1126,7 @@ func createInstanceUnified(ctx context.Context, token, serviceID, productTierID,
 			   return "", fmt.Errorf("no cloud providers available for this service plan")
 		   }
 
-	}
+	   }
 	   if cloudProvider != "" {
 		   var regions []string
 		   switch cloudProvider {
@@ -1103,8 +1164,7 @@ func createInstanceUnified(ctx context.Context, token, serviceID, productTierID,
 	   }
 
 
-		 // Create default parameters with common sensible defaults
-        defaultParams := map[string]interface{}{}
+		
 		// Try to describe service offering resource - this is optional for parameter validation
 		resApiParams, err := dataaccess.DescribeServiceOfferingResource(ctx, token, serviceID, resourceID, "none", productTierID, version)
 
@@ -1177,15 +1237,24 @@ func createInstanceUnified(ctx context.Context, token, serviceID, productTierID,
 			}
 			
 		}
+	  }
 
 	  
 	   request := openapiclientfleet.FleetCreateResourceInstanceRequest2{
-		   ProductTierVersion: &version,
 		   CloudProvider:      &cloudProvider,
-		   Region:             &region,
 		   RequestParams:      defaultParams,
-		   NetworkType:        nil,
+		   NetworkType:               nil,
 	   }
+	   if instanceType == "cloudAccount" {
+		networkType := "INTERNAL"
+		request.NetworkType = &networkType
+		
+	   }
+	   if instanceType == "resourceInstance" {
+	   
+		request.Region =  &region
+		request.ProductTierVersion = &version
+		}
       
 	   fmt.Printf("Creating instance with parameters: %v\n", request)
 
@@ -1213,19 +1282,31 @@ func createInstanceUnified(ctx context.Context, token, serviceID, productTierID,
 
 
 
-
 // listInstances is a helper function for backward compatibility
-func listInstances(ctx context.Context, token, serviceID, environmentID, servicePlanID, instanceID string) ([]string, error) {
+func listInstances(ctx context.Context, token, serviceID, environmentID, servicePlanID, instanceID, filter string) ([]string, []struct {
+	cloudProvider string
+	instanceID    string
+	status        string
+}, error) {
 
-	res, err := dataaccess.ListResourceInstance(ctx, token, serviceID, environmentID)
+	res, err := dataaccess.ListResourceInstance(ctx, token, serviceID, environmentID,
+		dataaccess.WithProductTierId(servicePlanID),
+		dataaccess.WithFilter(filter),
+	)
 	if err != nil {
-		return []string{}, fmt.Errorf("failed to search for instances: %w", err)
+		return []string{}, []struct{cloudProvider string; instanceID string; status string}{}, fmt.Errorf("failed to search for instances: %w", err)
 	}
 
 	exitInstanceIDs := make([]string, 0)
 	seenIDs := make(map[string]bool)
+	instances := make([]struct {
+		cloudProvider string
+		instanceID    string
+		status        string
+	}, 0)
+
 	if len(res.ResourceInstances) == 0 {
-		return []string{}, nil
+		return []string{}, instances, nil
 	}
 	for _, instance := range res.ResourceInstances {
 		var idStr string
@@ -1235,13 +1316,25 @@ func listInstances(ctx context.Context, token, serviceID, environmentID, service
 			idStr = "<nil>"
 		}
 
+		instances = append(instances, struct {
+			cloudProvider string
+			instanceID    string
+			status        string
+		}{
+			cloudProvider: instance.CloudProvider,
+			instanceID:    idStr,
+			status:        *instance.ConsumptionResourceInstanceResult.Status,
+		})
+
+		// Prioritize adding instanceID if specified
+
 		// Priority: instanceID  > servicePlanID
 		if instanceID != "" && idStr == instanceID {
 			if !seenIDs[idStr] {
 				exitInstanceIDs = append(exitInstanceIDs, idStr)
 				seenIDs[idStr] = true
 			}
-		} else if instanceID == "" && servicePlanID != "" && instance.ProductTierId == servicePlanID {
+		} else {
 			if idStr != "" && !seenIDs[idStr] {
 				exitInstanceIDs = append(exitInstanceIDs, idStr)
 				seenIDs[idStr] = true
@@ -1249,7 +1342,7 @@ func listInstances(ctx context.Context, token, serviceID, environmentID, service
 		}
 	}
 	
-	return exitInstanceIDs, nil
+	return exitInstanceIDs, instances, nil
 }
 
 
@@ -1339,9 +1432,9 @@ func findAllOmnistrateServicePlanBlocks(yamlContent interface{}) []map[string]in
 
 
 // extractCloudAccountsFromProcessedData extracts cloud provider account information from the YAML content
-func extractCloudAccountsFromProcessedData(processedData []byte) (awsAccountID, awsBootstrapRoleARN, gcpProjectID, gcpProjectNumber, gcpServiceAccountEmail, azureSubscriptionID, azureTenantID string) {
+func extractCloudAccountsFromProcessedData(processedData []byte) (awsAccountID, awsBootstrapRoleARN, gcpProjectID, gcpProjectNumber, gcpServiceAccountEmail, azureSubscriptionID, azureTenantID, extractDeploymentType string) {
    if len(processedData) == 0 {
-	   return "", "", "", "", "", "", ""
+	   return "", "", "", "", "", "", "", ""
    }
 
    // Helper to extract the first string value from a map for a list of keys
@@ -1362,6 +1455,7 @@ func extractCloudAccountsFromProcessedData(processedData []byte) (awsAccountID, 
    extractFromDeployment := func(depMap map[string]interface{}) {
 	   if hosted, exists := depMap["hostedDeployment"]; exists {
 		   if hostedMap, ok := hosted.(map[string]interface{}); ok {
+				extractDeploymentType = "hosted"
 			   if awsAccountID == "" {
 				   awsAccountID = getFirstString(hostedMap, "awsAccountId", "awsAccountID", "AwsAccountID", "awsAccountId", "AwsAccountId")
 				   awsBootstrapRoleARN = getFirstString(hostedMap, "awsBootstrapRoleAccountArn", "awsBootstrapRoleARN", "AwsBootstrapRoleARN", "awsBootstrapRoleArn", "AwsBootstrapRoleArn")
@@ -1385,6 +1479,7 @@ func extractCloudAccountsFromProcessedData(processedData []byte) (awsAccountID, 
 	   }
 	   if byoa, exists := depMap["byoaDeployment"]; exists {
 		   if byoaMap, ok := byoa.(map[string]interface{}); ok {
+			extractDeploymentType = "byoa"
 			   if awsAccountID == "" {
 				   awsAccountID = getFirstString(byoaMap, "awsAccountId", "awsAccountID", "AwsAccountID", "awsAccountId", "AwsAccountId")
 				   awsBootstrapRoleARN = getFirstString(byoaMap, "awsBootstrapRoleAccountArn", "awsBootstrapRoleARN", "AwsBootstrapRoleARN", "awsBootstrapRoleArn", "AwsBootstrapRoleArn")
@@ -1445,6 +1540,57 @@ func extractCloudAccountsFromProcessedData(processedData []byte) (awsAccountID, 
            continue
        }
 
+	   // Check for x-omnistrate-byoa at root level (direct BYOA configuration)
+	   if byoa, exists := yamlContent["x-omnistrate-byoa"]; exists {
+		   if byoaMap, ok := byoa.(map[string]interface{}); ok {
+			   extractDeploymentType = "byoa"
+			   if awsAccountID == "" {
+				   awsAccountID = getFirstString(byoaMap, "awsAccountId", "awsAccountID", "AwsAccountID", "awsAccountId", "AwsAccountId")
+				   awsBootstrapRoleARN = getFirstString(byoaMap, "awsBootstrapRoleAccountArn", "awsBootstrapRoleARN", "AwsBootstrapRoleARN", "awsBootstrapRoleArn", "AwsBootstrapRoleArn")
+			   }
+			   if gcpProjectID == "" {
+				   gcpProjectID = getFirstString(byoaMap, "gcpProjectId", "gcpProjectID", "GcpProjectID", "gcpProjectId", "GcpProjectId")
+			   }
+			   if gcpProjectNumber == "" {
+				   gcpProjectNumber = getFirstString(byoaMap, "gcpProjectNumber", "GcpProjectNumber")
+			   }
+			   if gcpServiceAccountEmail == "" {
+				   gcpServiceAccountEmail = getFirstString(byoaMap, "gcpServiceAccountEmail", "GcpServiceAccountEmail")
+			   }
+			   if azureSubscriptionID == "" {
+				   azureSubscriptionID = getFirstString(byoaMap, "azureSubscriptionId", "azureSubscriptionID", "AzureSubscriptionID", "azureSubscriptionId", "AzureSubscriptionId")
+			   }
+			   if azureTenantID == "" {
+				   azureTenantID = getFirstString(byoaMap, "azureTenantId", "azureTenantID", "AzureTenantID", "azureTenantId", "AzureTenantId")
+			   }
+		   }
+	   }
+
+	   // Check for x-omnistrate-hosted at root level (direct hosted configuration)
+	   if hosted, exists := yamlContent["x-omnistrate-hosted"]; exists {
+		   if hostedMap, ok := hosted.(map[string]interface{}); ok {
+			   extractDeploymentType = "hosted"
+			   if awsAccountID == "" {
+				   awsAccountID = getFirstString(hostedMap, "awsAccountId", "awsAccountID", "AwsAccountID", "awsAccountId", "AwsAccountId")
+				   awsBootstrapRoleARN = getFirstString(hostedMap, "awsBootstrapRoleAccountArn", "awsBootstrapRoleARN", "AwsBootstrapRoleARN", "awsBootstrapRoleArn", "AwsBootstrapRoleArn")
+			   }
+			   if gcpProjectID == "" {
+				   gcpProjectID = getFirstString(hostedMap, "gcpProjectId", "gcpProjectID", "GcpProjectID", "gcpProjectId", "GcpProjectId")
+			   }
+			   if gcpProjectNumber == "" {
+				   gcpProjectNumber = getFirstString(hostedMap, "gcpProjectNumber", "GcpProjectNumber")
+			   }
+			   if gcpServiceAccountEmail == "" {
+				   gcpServiceAccountEmail = getFirstString(hostedMap, "gcpServiceAccountEmail", "GcpServiceAccountEmail")
+			   }
+			   if azureSubscriptionID == "" {
+				   azureSubscriptionID = getFirstString(hostedMap, "azureSubscriptionId", "azureSubscriptionID", "AzureSubscriptionID", "azureSubscriptionId", "AzureSubscriptionId")
+			   }
+			   if azureTenantID == "" {
+				   azureTenantID = getFirstString(hostedMap, "azureTenantId", "azureTenantID", "AzureTenantID", "azureTenantId", "AzureTenantId")
+			   }
+		   }
+	   }
 
 	   // Check for x-omnistrate-service-plan at root level
 	   if sp, exists := yamlContent["x-omnistrate-service-plan"]; exists {
@@ -1480,9 +1626,9 @@ func extractCloudAccountsFromProcessedData(processedData []byte) (awsAccountID, 
 		   }
 	   }
    }
-   
- 
-   return awsAccountID, awsBootstrapRoleARN, gcpProjectID, gcpProjectNumber, gcpServiceAccountEmail, azureSubscriptionID, azureTenantID
+
+
+   return awsAccountID, awsBootstrapRoleARN, gcpProjectID, gcpProjectNumber, gcpServiceAccountEmail, azureSubscriptionID, azureTenantID, extractDeploymentType
 }
 
 
@@ -1870,4 +2016,304 @@ func containsString(slice []string, item string) bool {
 	return false
 }
 
+
+
+
+
+
+
+// CloudInstanceStatus holds cloud account instances grouped by status
+type CloudInstanceStatus struct {
+	Ready     []string
+	NotReady  []string
+	Provider  string
+}
+
+func createCloudAccountInstances(ctx context.Context, token, serviceID, environmentID, planID, cloudProvider string, sm ysmrr.SpinnerManager) (string, error) {
+	spinnerMsg := "Checking for existing cloud account instances"
+	spinner := sm.AddSpinner(spinnerMsg)
+	
+	
+	// Get existing cloud account instances grouped by cloud provider and status
+	cloudInstancesByProvider, err := listCloudAccountInstancesByProvider(ctx, token, serviceID, environmentID, planID)
+	if err != nil {
+		spinner.UpdateMessage(spinnerMsg + ": Failed (" + err.Error() + ")")
+		spinner.Error()
+		sm.Stop()
+		return "", fmt.Errorf("failed to list cloud account instances: %w", err)
+	}
+
+	// Check for READY instances by cloud provider
+	readyInstances := make(map[string][]string)
+	for provider, instances := range cloudInstancesByProvider {
+		if len(instances.Ready) > 0 {
+			readyInstances[provider] = instances.Ready
+		}
+	}
+
+	spinner.Complete()
+
+	// If we have READY instances for any cloud provider, use the first one from the preferred provider
+	if len(readyInstances) > 0 {
+		// Prefer the specified cloudProvider if it has READY instances
+		if cloudProvider != "" && len(readyInstances[cloudProvider]) > 0 {
+			fmt.Printf("Using existing READY %s cloud account instance: %s\n", cloudProvider, readyInstances[cloudProvider][0])
+			return readyInstances[cloudProvider][0], nil
+		}
+		
+		// Otherwise, use the first available READY instance from any provider
+		for provider, instances := range readyInstances {
+			fmt.Printf("Using existing READY %s cloud account instance: %s\n", provider, instances[0])
+			return instances[0], nil
+		}
+	}
+
+	// No READY instances found, create a new one
+	sm.Stop()
+	fmt.Println("No READY cloud account instances found. Creating a new one.")
+	
+	// Determine which cloud provider to use and get credentials
+	targetCloudProvider := cloudProvider
+	if targetCloudProvider == "" {
+		targetCloudProvider = promptForCloudProvider()
+	}
+
+	// Get cloud-specific credentials
+	params, err := promptForCloudCredentials(targetCloudProvider)
+	if err != nil {
+		return "", fmt.Errorf("failed to get cloud credentials: %w", err)
+	}
+
+	// Restart spinner for instance creation
+	sm.Start()
+	spinner = sm.AddSpinner("Creating new cloud account instance")
+
+	createdInstanceID, err := createInstanceUnified(ctx, token, serviceID, planID, targetCloudProvider, "", params, "", "", "cloudAccount", sm)
+	if err != nil {
+		spinner.UpdateMessage("Creating cloud account instance: Failed (" + err.Error() + ")")
+		spinner.Error()
+		return "", err
+	}
+
+	spinner.UpdateMessage(fmt.Sprintf("Creating cloud account instance: Success (ID: %s)", createdInstanceID))
+	spinner.Complete()
+
+	// Stop spinner to show instructions
+	sm.Stop()
+
+	// Show cloud-specific setup instructions
+	showCloudSetupInstructions(targetCloudProvider, createdInstanceID)
+
+	// Start polling for account verification
+	fmt.Println("\n🔄 Waiting for account verification...")
+	accountID, err := waitForAccountVerification(ctx, token, serviceID, environmentID, planID, createdInstanceID)
+	if err != nil {
+		fmt.Printf("❌ Account verification failed: %v\n", err)
+		return createdInstanceID, err
+	}
+
+	fmt.Printf("✅ Account verified successfully (ID: %s)\n", accountID)
+	return createdInstanceID, nil
+}
+
+// listCloudAccountInstancesByProvider lists cloud account instances grouped by cloud provider and status
+func listCloudAccountInstancesByProvider(ctx context.Context, token, serviceID, environmentID, planID string) (map[string]CloudInstanceStatus, error) {
+	_, existingInstances, err := listInstances(ctx, token, serviceID, environmentID, planID, "", "onlyCloudAccounts")
+	if err != nil {
+		return nil, err
+	}
+
+	cloudProviderMap := make(map[string]CloudInstanceStatus)
+	
+	for _, instance := range existingInstances {
+		cloudProvider := instance.cloudProvider
+		status := instance.status
+		instanceID := instance.instanceID
+
+		if cloudProvider == "" {
+			cloudProvider = "unknown"
+		}
+
+		if _, exists := cloudProviderMap[cloudProvider]; !exists {
+			cloudProviderMap[cloudProvider] = CloudInstanceStatus{
+				Provider: cloudProvider,
+				Ready:    []string{},
+				NotReady: []string{},
+			}
+		}
+
+		instanceStatus := cloudProviderMap[cloudProvider]
+		if status == "READY" {
+			instanceStatus.Ready = append(instanceStatus.Ready, instanceID)
+		} else {
+			instanceStatus.NotReady = append(instanceStatus.NotReady, instanceID)
+		}
+		cloudProviderMap[cloudProvider] = instanceStatus
+	}
+
+	return cloudProviderMap, nil
+}
+
+// promptForCloudProvider prompts user to select a cloud provider
+func promptForCloudProvider() string {
+	fmt.Println("Available cloud providers:")
+	fmt.Println("  1. AWS")
+	fmt.Println("  2. GCP")
+	fmt.Println("  3. Azure")
+	
+	var choice int
+	for {
+		fmt.Print("Select cloud provider (1-3): ")
+		_, err := fmt.Scanln(&choice)
+		if err == nil && choice >= 1 && choice <= 3 {
+			break
+		}
+		fmt.Println("Invalid selection. Please enter 1, 2, or 3.")
+	}
+	
+	switch choice {
+	case 1:
+		return "aws"
+	case 2:
+		return "gcp"
+	case 3:
+		return "azure"
+	default:
+		return "aws" // fallback
+	}
+}
+
+// promptForCloudCredentials prompts user for cloud-specific credentials
+func promptForCloudCredentials(cloudProvider string) (string, error) {
+	var params map[string]interface{}
+	
+	switch cloudProvider {
+	case "aws":
+		fmt.Println("Enter AWS credentials:")
+		var awsAccountID, awsBootstrapRoleArn string
+		
+		fmt.Print("AWS Account ID: ")
+		fmt.Scanln(&awsAccountID)
+		
+		fmt.Print("AWS Bootstrap Role ARN (optional, press enter for default): ")
+		fmt.Scanln(&awsBootstrapRoleArn)
+		
+		if awsBootstrapRoleArn == "" {
+			awsBootstrapRoleArn = fmt.Sprintf("arn:aws:iam::%s:role/omnistrate-bootstrap-role", awsAccountID)
+		}
+		
+		params = map[string]interface{}{
+			"account_configuration_method": "CloudFormation",
+			"aws_account_id":               awsAccountID,
+			"aws_bootstrap_role_arn":       awsBootstrapRoleArn,
+			"cloud_provider":               "aws",
+		}
+		
+	case "gcp":
+		fmt.Println("Enter GCP credentials:")
+		var gcpProjectID, gcpProjectNumber string
+		
+		fmt.Print("GCP Project ID: ")
+		fmt.Scanln(&gcpProjectID)
+		
+		fmt.Print("GCP Project Number: ")
+		fmt.Scanln(&gcpProjectNumber)
+		
+		params = map[string]interface{}{
+			"account_configuration_method": "GCPScript",
+			"gcp_project_id":               gcpProjectID,
+			"gcp_project_number":           gcpProjectNumber,
+			"cloud_provider":               "gcp",
+		}
+		
+	case "azure":
+		fmt.Println("Enter Azure credentials:")
+		var azureSubscriptionID, azureTenantID string
+		
+		fmt.Print("Azure Subscription ID: ")
+		fmt.Scanln(&azureSubscriptionID)
+		
+		fmt.Print("Azure Tenant ID: ")
+		fmt.Scanln(&azureTenantID)
+		
+		params = map[string]interface{}{
+			"account_configuration_method": "AzureScript",
+			"azure_subscription_id":        azureSubscriptionID,
+			"azure_tenant_id":              azureTenantID,
+			"cloud_provider":               "azure",
+		}
+		
+	default:
+		return "", fmt.Errorf("unsupported cloud provider: %s", cloudProvider)
+	}
+	
+	// Convert to JSON string
+	jsonBytes, err := json.Marshal(params)
+	if err != nil {
+		return "", fmt.Errorf("failed to marshal parameters: %w", err)
+	}
+	
+	return string(jsonBytes), nil
+}
+
+// showCloudSetupInstructions displays cloud-specific setup instructions
+func showCloudSetupInstructions(cloudProvider, instanceID string) {
+	fmt.Printf("\n📋 Cloud Account Setup Instructions for %s:\n", strings.ToUpper(cloudProvider))
+	fmt.Printf("Instance ID: %s\n", instanceID)
+	
+	switch cloudProvider {
+	case "aws":
+		fmt.Printf(dataaccess.NextStepVerifyAccountMsgTemplateAWS,
+			"https://console.aws.amazon.com/cloudformation/",
+			dataaccess.AwsCloudFormationGuideURL,
+			"",
+			instanceID,
+			dataaccess.AwsGcpTerraformGuideURL)
+	case "gcp":
+		fmt.Printf(dataaccess.NextStepVerifyAccountMsgTemplateGCP,
+			"# Follow the setup commands for your GCP project")
+	case "azure":
+		fmt.Printf(dataaccess.NextStepVerifyAccountMsgTemplateAzure,
+			"# Follow the setup commands for your Azure subscription")
+	}
+	
+	fmt.Println("\n⏳ Please complete the setup steps above and wait for verification...")
+}
+
+// waitForAccountVerification polls for account status changes from NOT_READY to READY
+func waitForAccountVerification(ctx context.Context, token, serviceID,
+		environmentID, planID, instanceID string) (string, error) {
+	maxRetries := 60 // 10 minutes with 10-second intervals
+	retryInterval := 10 * time.Second
+	
+	for i := 0; i < maxRetries; i++ {
+		// Get all accounts for the cloud provider
+		_, existingInstances, err := listInstances(ctx, token, serviceID, environmentID, planID, "", "onlyCloudAccounts")
+		if err != nil {
+			fmt.Printf("⚠️  Failed to check account status: %v\n", err)
+			time.Sleep(retryInterval)
+			continue
+		}
+
+		for _, instance := range existingInstances {
+			if instance.instanceID == instanceID {
+				if instance.status == "READY" {
+					return instance.instanceID, nil
+				} else if instance.status == "FAILED" {
+					return "", fmt.Errorf("account setup encountered an error %s", instance.status)
+				}
+			}
+		}
+		
+		// Still not ready, continue polling
+		
+		if i%3 == 0 { // Show progress every 30 seconds
+			fmt.Printf("⏳ Still waiting for account verification... (%d/%d)\n", i+1, maxRetries)
+		}
+		
+		time.Sleep(retryInterval)
+	}
+	
+	return "", fmt.Errorf("account verification timed out after %d attempts", maxRetries)
+}
 

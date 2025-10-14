@@ -330,7 +330,7 @@ func runBuildFromRepo(cmd *cobra.Command, args []string) error {
 		return err
 	}
 	// Pass all required arguments including the SpinnerManager
-	serviceID, devEnvironmentID, devPlanID, undefinedResources, err := BuildServiceFromRepository(
+	serviceID, devEnvironmentID, devPlanID,_, err := BuildServiceFromRepository(
 		cmd,
 		cmd.Context(),
 		token,
@@ -340,8 +340,6 @@ func runBuildFromRepo(cmd *cobra.Command, args []string) error {
 		dryRun,
 		skipDockerBuild,
 		skipServiceBuild,
-		skipEnvironmentPromotion,
-		skipSaasPortalInit,
 		deploymentType,
 		awsAccountID,
 		gcpProjectID,
@@ -360,19 +358,6 @@ func runBuildFromRepo(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	// Print warning if there are any undefined resources
-	if len(undefinedResources) > 0 {
-		sm.Stop()
-
-		utils.PrintWarning("The following resources appear in the service plan but were not defined in the spec:")
-		for resourceName, resourceID := range undefinedResources {
-			utils.PrintWarning(fmt.Sprintf("  %s: %s", resourceName, resourceID))
-		}
-		utils.PrintWarning("These resources were not processed during the build. If you no longer need them, please deprecate and remove them from the service plan manually in UI or using the API.")
-
-		sm = ysmrr.NewSpinnerManager()
-		sm.Start()
-	}
 
 	// Skip environment promotion if flag is set
 	var prodEnvironmentID string
@@ -584,7 +569,7 @@ func runBuildFromRepo(cmd *cobra.Command, args []string) error {
 
 
 
-func BuildServiceFromRepository(cmd *cobra.Command, ctx context.Context, token, serviceName, releaseDescription string, resetPAT, dryRun, skipDockerBuild, skipServiceBuild, skipEnvironmentPromotion, skipSaasPortalInit bool, deploymentType, awsAccountID, gcpProjectID, gcpProjectNumber, azureSubscriptionID, azureTenantID string, sm ysmrr.SpinnerManager, file string, envVars, platforms []string, forceCreateServicePlanVersion bool) (serviceID, devEnvironmentID, devPlanID string, undefinedResources map[string]string, err error) {
+func BuildServiceFromRepository(cmd *cobra.Command, ctx context.Context, token, serviceName, releaseDescription string, resetPAT, dryRun, skipDockerBuild, skipServiceBuild bool, deploymentType, awsAccountID, gcpProjectID, gcpProjectNumber, azureSubscriptionID, azureTenantID string, sm ysmrr.SpinnerManager, file string, envVars, platforms []string, forceCreateServicePlanVersion bool) (serviceID, devEnvironmentID, devPlanID string, undefinedResources map[string]string, err error) {
 
 
 	// Step 0: Validate user is currently logged in
