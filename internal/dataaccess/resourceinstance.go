@@ -106,6 +106,49 @@ func DescribeResourceInstanceSnapshot(ctx context.Context, token string, service
 	return
 }
 
+func ListResourceInstance(ctx context.Context, token string, serviceID, environmentID string, opts ...func(openapiclientfleet.ApiInventoryApiListResourceInstancesRequest) openapiclientfleet.ApiInventoryApiListResourceInstancesRequest) (res *openapiclientfleet.ListFleetResourceInstancesResultInternal, err error) {
+	ctxWithToken := context.WithValue(ctx, openapiclientfleet.ContextAccessToken, token)
+	apiClient := getFleetClient()
+
+	req := apiClient.InventoryApiAPI.InventoryApiListResourceInstances(
+		ctxWithToken,
+		serviceID,
+		environmentID,
+	)
+
+	// Apply optional parameters
+	for _, opt := range opts {
+		req = opt(req)
+	}
+
+	var r *http.Response
+	defer func() {
+		if r != nil {
+			_ = r.Body.Close()
+		}
+	}()
+
+	res, r, err = req.Execute()
+	if err != nil {
+		return nil, handleFleetError(err)
+	}
+	return
+}
+
+// WithFilter adds a filter parameter to the ListResourceInstance request
+func WithFilter(filter string) func(openapiclientfleet.ApiInventoryApiListResourceInstancesRequest) openapiclientfleet.ApiInventoryApiListResourceInstancesRequest {
+	return func(req openapiclientfleet.ApiInventoryApiListResourceInstancesRequest) openapiclientfleet.ApiInventoryApiListResourceInstancesRequest {
+		return req.Filter(filter)
+	}
+}
+
+// WithProductTierId adds a product tier ID parameter
+func WithProductTierId(productTierId string) func(openapiclientfleet.ApiInventoryApiListResourceInstancesRequest) openapiclientfleet.ApiInventoryApiListResourceInstancesRequest {
+	return func(req openapiclientfleet.ApiInventoryApiListResourceInstancesRequest) openapiclientfleet.ApiInventoryApiListResourceInstancesRequest {
+		return req.ProductTierId(productTierId)
+	}
+}
+
 func ListResourceInstanceSnapshots(ctx context.Context, token string, serviceID, environmentID, instanceID string) (res *openapiclientfleet.FleetListInstanceSnapshotResult, err error) {
 	ctxWithToken := context.WithValue(ctx, openapiclientfleet.ContextAccessToken, token)
 	apiClient := getFleetClient()

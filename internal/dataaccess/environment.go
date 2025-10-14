@@ -85,6 +85,7 @@ func ListServiceEnvironments(ctx context.Context, token, serviceID string) (*ope
 }
 
 func PromoteServiceEnvironment(ctx context.Context, token, serviceID, serviceEnvironmentID string) error {
+	// Try the SDK approach first
 	ctxWithToken := context.WithValue(ctx, openapiclientv1.ContextAccessToken, token)
 	apiClient := getV1Client()
 
@@ -98,11 +99,13 @@ func PromoteServiceEnvironment(ctx context.Context, token, serviceID, serviceEnv
 			_ = r.Body.Close()
 		}
 	}()
+	
 	if err != nil {
 		return handleV1Error(err)
 	}
 	return nil
 }
+
 
 func PromoteServiceEnvironmentStatus(ctx context.Context, token, serviceID, serviceEnvironmentID string) (resp []openapiclientv1.EnvironmentPromotionStatus, err error) {
 	ctxWithToken := context.WithValue(ctx, openapiclientv1.ContextAccessToken, token)
