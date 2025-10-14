@@ -852,10 +852,7 @@ func runBuildFromRepo(cmd *cobra.Command, args []string) error {
 					gcpServiceAccountEmail := fmt.Sprintf("bootstrap-%s@%s.iam.gserviceaccount.com", *user.OrgId, gcpProjectID)
 					fileData = append(fileData, []byte(fmt.Sprintf("      GcpServiceAccountEmail: '%s'\n", gcpServiceAccountEmail))...)
 				}
-				if azureSubscriptionID != "" {
-					fileData = append(fileData, []byte(fmt.Sprintf("      AzureSubscriptionId: '%s'\n", azureSubscriptionID))...)
-					fileData = append(fileData, []byte(fmt.Sprintf("      AzureTenantId: '%s'\n", azureTenantID))...)
-				}
+				fileData = appendAzureConfig(fileData, azureSubscriptionID, azureTenantID)
 			}
 
 			// Write the compose spec to a file
@@ -898,10 +895,7 @@ func runBuildFromRepo(cmd *cobra.Command, args []string) error {
 						gcpServiceAccountEmail := fmt.Sprintf("bootstrap-%s@%s.iam.gserviceaccount.com", *user.OrgId, gcpProjectID)
 						fileData = append(fileData, []byte(fmt.Sprintf("      GcpServiceAccountEmail: '%s'\n", gcpServiceAccountEmail))...)
 					}
-					if azureSubscriptionID != "" {
-					fileData = append(fileData, []byte(fmt.Sprintf("      AzureSubscriptionId: '%s'\n", azureSubscriptionID))...)
-					fileData = append(fileData, []byte(fmt.Sprintf("      AzureTenantId: '%s'\n", azureTenantID))...)
-					}
+					fileData = appendAzureConfig(fileData, azureSubscriptionID, azureTenantID)
 				}
 			}
 
@@ -1257,6 +1251,15 @@ x-omnistrate-image-registry-attributes:
 }
 
 // Helper functions
+
+// appendAzureConfig appends Azure configuration to fileData if Azure credentials are provided
+func appendAzureConfig(fileData []byte, azureSubscriptionID, azureTenantID string) []byte {
+	if azureSubscriptionID != "" {
+		fileData = append(fileData, []byte(fmt.Sprintf("      AzureSubscriptionId: '%s'\n", azureSubscriptionID))...)
+		fileData = append(fileData, []byte(fmt.Sprintf("      AzureTenantId: '%s'\n", azureTenantID))...)
+	}
+	return fileData
+}
 
 func checkIfProdEnvExists(ctx context.Context, token string, serviceID string) (string, error) {
 	prodEnvironment, err := dataaccess.FindEnvironment(ctx, token, serviceID, "prod")
