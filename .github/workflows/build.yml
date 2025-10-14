@@ -98,7 +98,7 @@ jobs:
       contents: read
     concurrency:
       group: ${{ github.workflow }}-integration-tests
-      cancel-in-progress: true
+      cancel-in-progress: false
 
     steps:
       - name: Checkout repository
@@ -133,6 +133,9 @@ jobs:
   smoke-tests:
     if: github.event_name != 'push'
     needs: [build, lint]
+    concurrency:
+      group: ${{ github.workflow }}-smoke-tests
+      cancel-in-progress: false
     uses: ./.github/workflows/smoke-tests.yml
     with:
       environment: Dev-us-west-2

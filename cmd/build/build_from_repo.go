@@ -285,7 +285,7 @@ func runBuildFromRepo(cmd *cobra.Command, args []string) error {
 			utils.PrintError(err)
 			return err
 		}
-	
+
 		if awsAccountID == "" && gcpProjectID == "" && azureSubscriptionID == "" {
 			err = errors.New(fmt.Sprintf("AWS account ID or GCP project ID or Azure subscription ID are required for %s deployment type", deploymentType))
 			utils.PrintError(err)
