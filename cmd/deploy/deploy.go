@@ -2193,10 +2193,15 @@ func promptForCloudCredentials(cloudProvider string) (string, error) {
 		var awsAccountID, awsBootstrapRoleArn string
 		
 		fmt.Print("AWS Account ID: ")
-		fmt.Scanln(&awsAccountID)
+		if _, err := fmt.Scanln(&awsAccountID); err != nil {
+			return "", fmt.Errorf("failed to read AWS Account ID: %w", err)
+		}
 		
 		fmt.Print("AWS Bootstrap Role ARN (optional, press enter for default): ")
-		fmt.Scanln(&awsBootstrapRoleArn)
+		if _, err := fmt.Scanln(&awsBootstrapRoleArn); err != nil {
+			// Ignore error for optional field
+			awsBootstrapRoleArn = ""
+		}
 		
 		if awsBootstrapRoleArn == "" {
 			awsBootstrapRoleArn = fmt.Sprintf("arn:aws:iam::%s:role/omnistrate-bootstrap-role", awsAccountID)
@@ -2214,10 +2219,14 @@ func promptForCloudCredentials(cloudProvider string) (string, error) {
 		var gcpProjectID, gcpProjectNumber string
 		
 		fmt.Print("GCP Project ID: ")
-		fmt.Scanln(&gcpProjectID)
+		if _, err := fmt.Scanln(&gcpProjectID); err != nil {
+			return "", fmt.Errorf("failed to read GCP Project ID: %w", err)
+		}
 		
 		fmt.Print("GCP Project Number: ")
-		fmt.Scanln(&gcpProjectNumber)
+		if _, err := fmt.Scanln(&gcpProjectNumber); err != nil {
+			return "", fmt.Errorf("failed to read GCP Project Number: %w", err)
+		}
 		
 		params = map[string]interface{}{
 			"account_configuration_method": "GCPScript",
@@ -2297,9 +2306,10 @@ func waitForAccountVerification(ctx context.Context, token, serviceID,
 
 		for _, instance := range existingInstances {
 			if instance.instanceID == instanceID {
-				if instance.status == "READY" {
+				switch instance.status {
+				case "READY":
 					return instance.instanceID, nil
-				} else if instance.status == "FAILED" {
+				case "FAILED":
 					return "", fmt.Errorf("account setup encountered an error %s", instance.status)
 				}
 			}
