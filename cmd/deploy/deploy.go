@@ -36,7 +36,7 @@ omctl deploy spec.yaml
 omctl deploy spec.yaml --product-name "My Service"
 
 # Build service from an existing compose spec in the repository
-omctl deploy --file docker-compose.yaml
+omctl deploy --file ` + build.ComposeFileName + `
 
 # Build service with a custom service name
 omctl deploy --product-name my-custom-service
@@ -78,7 +78,7 @@ var DeployCmd = &cobra.Command{
 }
 
 func init() {
-	DeployCmd.Flags().StringP("file", "f", "", "Path to the docker compose file (defaults to docker-compose.yaml)")
+	DeployCmd.Flags().StringP("file", "f", "", fmt.Sprintf("Path to the docker compose file (defaults to %s)", build.ComposeFileName))
 	DeployCmd.Flags().String("product-name", "", "Specify a custom service name. If not provided, directory name will be used.")
 	DeployCmd.Flags().Bool("dry-run", false, "Perform validation checks without actually deploying")
 	DeployCmd.Flags().String("resource-id", "", "Specify the resource ID to use when multiple resources exist.")
@@ -242,13 +242,13 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 	} else if len(args) > 0 && args[0] != "" {
 		specFile = args[0]
 	} else if specFile == "" {
-		if _, err := os.Stat("docker-compose.yaml"); err == nil {
-			specFile = "docker-compose.yaml"
+		if _, err := os.Stat(build.ComposeFileName); err == nil {
+			specFile = build.ComposeFileName
 		} else {
-			// Auto-detect docker-compose.yaml in current directory if present
+			// Auto-detect compose file in current directory if present
 			if files, err := os.ReadDir("."); err == nil {
 				for _, f := range files {
-					if !f.IsDir() && (f.Name() == "docker-compose.yaml") {
+					if !f.IsDir() && (f.Name() == build.ComposeFileName) {
 						specFile = f.Name()
 						break
 					}
