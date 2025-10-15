@@ -19,6 +19,9 @@ omctl instance modify instance-abcd1234 --network-type PUBLIC / INTERNAL --param
 # Modify an instance deployment using a parameter file
 omctl instance modify instance-abcd1234 --param-file /path/to/param.json
 
+# Modify instance tags
+omctl instance modify instance-abcd1234 --tag environment=prod --tag owner=team
+
 # Modify an instance deployment and wait for completion with progress tracking
 omctl instance modify instance-abcd1234 --param-file /path/to/param.json --wait`
 )
@@ -36,6 +39,7 @@ func init() {
 	modifyCmd.Flags().String("network-type", "", "Optional network type change for the instance deployment (PUBLIC / INTERNAL)")
 	modifyCmd.Flags().String("param", "", "Parameters for the instance deployment")
 	modifyCmd.Flags().String("param-file", "", "Json file containing parameters for the instance deployment")
+	modifyCmd.Flags().StringToString("tag", map[string]string{}, "Custom tags to set on the instance deployment (format: key=value). Can be specified multiple times")
 	modifyCmd.Flags().Bool("wait", false, "Wait for modification to complete and show progress")
 
 	if err := modifyCmd.MarkFlagFilename("param-file"); err != nil {
@@ -77,9 +81,14 @@ func runModify(cmd *cobra.Command, args []string) error {
 		utils.PrintError(err)
 		return err
 	}
+	customTags, tagsProvided, err := parseCustomTags(cmd)
+	if err != nil {
+		utils.PrintError(err)
+		return err
+	}
 
-	if len(param) == 0 && len(paramFile) == 0 && len(networkType) == 0 {
-		err = errors.New("at least one of --param, --param-file or --network-type must be provided")
+	if len(param) == 0 && len(paramFile) == 0 && len(networkType) == 0 && !tagsProvided {
+		err = errors.New("at least one of --param, --param-file, --network-type or --tag must be provided")
 		utils.PrintError(err)
 		return err
 	}
@@ -129,6 +138,7 @@ func runModify(cmd *cobra.Command, args []string) error {
 		resourceID,
 		utils.ToPtr(networkType),
 		formattedParams,
+		customTags,
 	)
 	if err != nil {
 		utils.HandleSpinnerError(spinner, sm, err)

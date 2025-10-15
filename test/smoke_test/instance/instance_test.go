@@ -42,6 +42,8 @@ func TestInstanceBasic(t *testing.T) {
 		"--resource=mySQL",
 		"--cloud-provider=aws",
 		"--region=ca-central-1",
+		"--tag", "environment=dev",
+		"--tag", "owner=platform",
 		"--param", `{"databaseName":"default","password":"a_secure_password","rootPassword":"a_secure_root_password","username":"user"}`})
 	err = cmd.RootCmd.ExecuteContext(ctx)
 	require.NoError(t, err)
@@ -57,6 +59,7 @@ func TestInstanceBasic(t *testing.T) {
 		"--resource=mySQL",
 		"--cloud-provider=aws",
 		"--region=ca-central-1",
+		"--tag", "source=file",
 		"--param-file", "paramfiles/instance_create_param.json"})
 	err = cmd.RootCmd.ExecuteContext(ctx)
 	require.NoError(t, err)
@@ -73,6 +76,15 @@ func TestInstanceBasic(t *testing.T) {
 	err = cmd.RootCmd.ExecuteContext(ctx)
 	require.NoError(t, err)
 
+	err = testutils.WaitForInstanceToReachStatus(ctx, instanceID1, instance.InstanceStatusRunning)
+	require.NoError(t, err)
+
+	// PASS: modify instance 1 tags
+	cmd.RootCmd.SetArgs([]string{"instance", "modify", instanceID1, "--tag", "environment=prod", "--tag", "owner=platform"})
+	err = cmd.RootCmd.ExecuteContext(ctx)
+	require.NoError(t, err)
+
+	time.Sleep(5 * time.Second)
 	err = testutils.WaitForInstanceToReachStatus(ctx, instanceID1, instance.InstanceStatusRunning)
 	require.NoError(t, err)
 
