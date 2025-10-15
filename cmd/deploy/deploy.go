@@ -895,15 +895,23 @@ func executeDeploymentWorkflow(cmd *cobra.Command, sm ysmrr.SpinnerManager, toke
 		}
 		
 	} else {
+	
+	// Format parameters
+	formattedParams, err := common.FormatParams(param, paramFile)
+	if err != nil {
+		return err
+	}
 
 		// If deployment type is BYOA, create cloud account instances first
-	if deploymentType == "byoa" {
+	if deploymentType == "byoa" &&  formattedParams["cloud_provider_account_config_id"] == nil{
 		fmt.Printf("BYOA deployment detected. Creating cloud account instances...\n")
 		cloudAccountInstanceID, err := createCloudAccountInstances(cmd.Context(), token, serviceID, environmentID, planID, cloudProvider, sm)
 		if err != nil {
 			fmt.Printf("Warning: Failed to create cloud account instances: %v\n", err)
 		}
 		fmt.Printf("cloud account id: %s\n", cloudAccountInstanceID)
+		formattedParams["cloud_provider_account_config_id"] = cloudAccountInstanceID
+		
 	}
 
 		
@@ -915,7 +923,7 @@ func executeDeploymentWorkflow(cmd *cobra.Command, sm ysmrr.SpinnerManager, toke
 		
 		spinner = sm.AddSpinner(createMsg)
 		createdInstanceID, err := "", error(nil)
-		createdInstanceID, err = createInstanceUnified(cmd.Context(), token, serviceID, planID, cloudProvider, region, param, paramFile, resourceID, "resourceInstance", sm)
+		createdInstanceID, err = createInstanceUnified(cmd.Context(), token, serviceID, planID, cloudProvider, region, param, paramFile, resourceID, "resourceInstance", formattedParams, sm)
 		finalInstanceID = createdInstanceID  
 		// instanceActionType is already "create" from initialization
 		if err != nil {
@@ -964,7 +972,7 @@ func executeDeploymentWorkflow(cmd *cobra.Command, sm ysmrr.SpinnerManager, toke
 
 
 // createInstanceUnified creates an instance with or without subscription, removing duplicate code
-func createInstanceUnified(ctx context.Context, token, serviceID, productTierID, cloudProvider, region, param, paramFile, resourceID, instanceType string, sm ysmrr.SpinnerManager) (string, error) {
+func createInstanceUnified(ctx context.Context, token, serviceID, productTierID, cloudProvider, region, param, paramFile, resourceID, instanceType string, formattedParams map[string]interface{}, sm ysmrr.SpinnerManager) (string, error) {
 	
 	// Get the latest version
        version, err := dataaccess.FindLatestVersion(ctx, token, serviceID, productTierID)
@@ -985,12 +993,7 @@ func createInstanceUnified(ctx context.Context, token, serviceID, productTierID,
        offering := res.ConsumptionDescribeServiceOfferingResult.Offerings[0]
 
 
-	   // Format parameters
-		formattedParams, err := common.FormatParams(param, paramFile)
-		if err != nil {
-			return "", err
-		}
-
+	   
 	    // Create default parameters with common sensible defaults
         defaultParams := map[string]interface{}{}	
 		resourceKey := ""
@@ -1171,6 +1174,10 @@ func createInstanceUnified(ctx context.Context, token, serviceID, productTierID,
 		if err != nil {
 			return "", fmt.Errorf("failed to describe service offering resource: %w", err)
 		}
+
+
+		
+		
 		
 		// Extract CREATE verb parameters and set defaults
 		if len(resApiParams.ConsumptionDescribeServiceOfferingResourceResult.Apis) > 0 {
@@ -1191,6 +1198,7 @@ func createInstanceUnified(ctx context.Context, token, serviceID, productTierID,
 									defaultParams[inputParam.Key] = *inputParam.DefaultValue
 									
 								}
+								
 						}
 						if !inputParam.Required {
 								if formattedParams[inputParam.Key] != nil {
@@ -2088,7 +2096,7 @@ func createCloudAccountInstances(ctx context.Context, token, serviceID, environm
 	sm.Start()
 	spinner = sm.AddSpinner("Creating new cloud account instance")
 
-	createdInstanceID, err := createInstanceUnified(ctx, token, serviceID, planID, targetCloudProvider, "", params, "", "", "cloudAccount", sm)
+	createdInstanceID, err := createInstanceUnified(ctx, token, serviceID, planID, targetCloudProvider, "", params, "", "", "cloudAccount", map[string]interface{}{}, sm)
 	if err != nil {
 		spinner.UpdateMessage("Creating cloud account instance: Failed (" + err.Error() + ")")
 		spinner.Error()
