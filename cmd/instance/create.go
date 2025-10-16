@@ -23,6 +23,9 @@ omctl instance create --service=mysql --environment=dev --plan=mysql --version=l
 # Create an instance deployment with parameters from a file
 omctl instance create --service=mysql --environment=dev --plan=mysql --version=latest --resource=mySQL --cloud-provider=aws --region=ca-central-1 --param-file /path/to/params.json
 
+# Create an instance deployment with custom tags
+omctl instance create --service=mysql --environment=dev --plan=mysql --version=latest --resource=mySQL --cloud-provider=aws --region=ca-central-1 --param-file /path/to/params.json --tags environment=dev,owner=team
+
 # Create an instance deployment and wait for completion with progress tracking
 omctl instance create --service=mysql --environment=dev --plan=mysql --version=latest --resource=mySQL --cloud-provider=aws --region=ca-central-1 --param-file /path/to/params.json --wait`
 )
@@ -30,7 +33,7 @@ omctl instance create --service=mysql --environment=dev --plan=mysql --version=l
 var InstanceID string
 
 var createCmd = &cobra.Command{
-	Use:          "create --service=[service] --environment=[environment] --plan=[plan] --version=[version] --resource=[resource] --cloud-provider=[aws|gcp] --region=[region] [--param=param] [--param-file=file-path]",
+	Use:          "create --service=[service] --environment=[environment] --plan=[plan] --version=[version] --resource=[resource] --cloud-provider=[aws|gcp] --region=[region] [--param=param] [--param-file=file-path] [--tags key=value,key2=value2]",
 	Short:        "Create an instance deployment",
 	Long:         `This command helps you create an instance deployment for your service.`,
 	Example:      createExample,
@@ -48,6 +51,7 @@ func init() {
 	createCmd.Flags().String("region", "", "Region code (e.g. us-east-2, us-central1)")
 	createCmd.Flags().String("param", "", "Parameters for the instance deployment")
 	createCmd.Flags().String("param-file", "", "Json file containing parameters for the instance deployment")
+	createCmd.Flags().String("tags", "", "Custom tags to add to the instance deployment (format: key=value,key2=value2)")
 	createCmd.Flags().StringP("subscription-id", "", "", "Subscription ID to use for the instance deployment. If not provided, instance deployment will be created in your own subscription.")
 	createCmd.Flags().Bool("wait", false, "Wait for deployment to complete and show progress")
 
@@ -141,6 +145,11 @@ func runCreate(cmd *cobra.Command, args []string) error {
 		utils.PrintError(err)
 		return err
 	}
+	customTags, tagsProvided, err := parseCustomTags(cmd)
+	if err != nil {
+		utils.PrintError(err)
+		return err
+	}
 
 	// Validate user login
 	token, err := common.GetTokenWithLogin()
@@ -228,6 +237,9 @@ func runCreate(cmd *cobra.Command, args []string) error {
 		Region:             &region,
 		RequestParams:      formattedParams,
 		NetworkType:        nil,
+	}
+	if tagsProvided {
+		request.CustomTags = customTags
 	}
 	if subscriptionID != "" {
 		request.SubscriptionId = utils.ToPtr(subscriptionID)

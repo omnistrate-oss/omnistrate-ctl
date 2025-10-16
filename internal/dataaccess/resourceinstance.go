@@ -348,20 +348,26 @@ func UpdateResourceInstance(
 	resourceId string,
 	networkType *string,
 	requestParameters map[string]any,
+	customTags []openapiclientfleet.CustomTag,
 ) (err error) {
 	ctxWithToken := context.WithValue(ctx, openapiclientfleet.ContextAccessToken, token)
 	apiClient := getFleetClient()
+
+	reqBody := openapiclientfleet.FleetUpdateResourceInstanceRequest2{
+		NetworkType:   networkType,
+		ResourceId:    resourceId,
+		RequestParams: requestParameters,
+	}
+	if customTags != nil {
+		reqBody.CustomTags = customTags
+	}
 
 	req := apiClient.InventoryApiAPI.InventoryApiUpdateResourceInstance(
 		ctxWithToken,
 		serviceID,
 		environmentID,
 		instanceID,
-	).FleetUpdateResourceInstanceRequest2(openapiclientfleet.FleetUpdateResourceInstanceRequest2{
-		NetworkType:   networkType,
-		ResourceId:    resourceId,
-		RequestParams: requestParameters,
-	})
+	).FleetUpdateResourceInstanceRequest2(reqBody)
 
 	var r *http.Response
 	defer func() {
