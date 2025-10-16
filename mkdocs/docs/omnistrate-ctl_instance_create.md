@@ -7,7 +7,7 @@ Create an instance deployment
 This command helps you create an instance deployment for your service.
 
 ```
-omnistrate-ctl instance create --service=[service] --environment=[environment] --plan=[plan] --version=[version] --resource=[resource] --cloud-provider=[aws|gcp] --region=[region] [--param=param] [--param-file=file-path] [--tag key=value] [flags]
+omnistrate-ctl instance create --service=[service] --environment=[environment] --plan=[plan] --version=[version] --resource=[resource] --cloud-provider=[aws|gcp] --region=[region] [--param=param] [--param-file=file-path] [--tags key=value,key2=value2] [flags]
 ```
 
 ### Examples
@@ -20,7 +20,7 @@ omctl instance create --service=mysql --environment=dev --plan=mysql --version=l
 omctl instance create --service=mysql --environment=dev --plan=mysql --version=latest --resource=mySQL --cloud-provider=aws --region=ca-central-1 --param-file /path/to/params.json
 
 # Create an instance deployment with custom tags
-omctl instance create --service=mysql --environment=dev --plan=mysql --version=latest --resource=mySQL --cloud-provider=aws --region=ca-central-1 --param-file /path/to/params.json --tag environment=dev --tag owner=team
+omctl instance create --service=mysql --environment=dev --plan=mysql --version=latest --resource=mySQL --cloud-provider=aws --region=ca-central-1 --param-file /path/to/params.json --tags environment=dev,owner=team
 
 # Create an instance deployment and wait for completion with progress tracking
 omctl instance create --service=mysql --environment=dev --plan=mysql --version=latest --resource=mySQL --cloud-provider=aws --region=ca-central-1 --param-file /path/to/params.json --wait
@@ -39,7 +39,7 @@ omctl instance create --service=mysql --environment=dev --plan=mysql --version=l
       --resource string          Resource name
       --service string           Service name
       --subscription-id string   Subscription ID to use for the instance deployment. If not provided, instance deployment will be created in your own subscription.
-      --tag stringToString       Custom tags to add to the instance deployment (format: key=value). Can be specified multiple times (default [])
+      --tags string              Custom tags to add to the instance deployment (format: key=value,key2=value2)
       --version string           Service plan version (latest|preferred|1.0 etc.) (default "preferred")
       --wait                     Wait for deployment to complete and show progress
 ```

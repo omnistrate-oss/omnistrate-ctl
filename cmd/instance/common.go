@@ -19,45 +19,62 @@ func getTerraformDeploymentName(resourceID, instanceID string) string {
 	return strings.ToLower(fmt.Sprintf("tf-%s-%s", resourceID, instanceID))
 }
 
-// parseCustomTags reads the repeated --tag flag and converts it into the SDK custom tag format.
+// parseCustomTags reads the --tags flag and converts it into the SDK custom tag format.
 func parseCustomTags(cmd *cobra.Command) ([]openapiclientfleet.CustomTag, bool, error) {
-	if !cmd.Flags().Changed("tag") {
+	if !cmd.Flags().Changed("tags") {
 		return nil, false, nil
 	}
 
-	tagMap, err := cmd.Flags().GetStringToString("tag")
+	raw, err := cmd.Flags().GetString("tags")
 	if err != nil {
 		return nil, false, err
 	}
 
-	if len(tagMap) == 0 {
+	trimmed := strings.TrimSpace(raw)
+	if trimmed == "" {
 		return []openapiclientfleet.CustomTag{}, true, nil
 	}
 
-	normalized := make(map[string]string, len(tagMap))
-	keys := make([]string, 0, len(tagMap))
+	rawPairs := strings.Split(trimmed, ",")
+	tags := make([]openapiclientfleet.CustomTag, 0, len(rawPairs))
+	for _, rawPair := range rawPairs {
+		pair := strings.TrimSpace(rawPair)
+		if pair == "" {
+			return nil, false, fmt.Errorf("tag pair cannot be empty")
+		}
 
-	for rawKey, rawValue := range tagMap {
-		key := strings.TrimSpace(rawKey)
+		parts := strings.SplitN(pair, "=", 2)
+		if len(parts) != 2 {
+			return nil, false, fmt.Errorf("invalid tag %q. Tags must use key=value format", pair)
+		}
+
+		key := strings.TrimSpace(parts[0])
 		if key == "" {
 			return nil, false, fmt.Errorf("tag key cannot be empty")
 		}
-		if _, exists := normalized[key]; exists {
-			return nil, false, fmt.Errorf("duplicate tag key %q", key)
+
+		value := strings.TrimSpace(parts[1])
+		tags = append(tags, openapiclientfleet.CustomTag{Key: key, Value: value})
+	}
+
+	sort.Slice(tags, func(i, j int) bool {
+		return tags[i].Key < tags[j].Key
+	})
+
+	if err := ensureUniqueTagKeys(tags); err != nil {
+		return nil, false, err
+	}
+
+	return tags, true, nil
+}
+
+func ensureUniqueTagKeys(tags []openapiclientfleet.CustomTag) error {
+	seen := make(map[string]struct{}, len(tags))
+	for _, tag := range tags {
+		if _, ok := seen[tag.Key]; ok {
+			return fmt.Errorf("duplicate tag key %q", tag.Key)
 		}
-		normalized[key] = rawValue
-		keys = append(keys, key)
+		seen[tag.Key] = struct{}{}
 	}
-
-	sort.Strings(keys)
-
-	customTags := make([]openapiclientfleet.CustomTag, 0, len(keys))
-	for _, key := range keys {
-		customTags = append(customTags, openapiclientfleet.CustomTag{
-			Key:   key,
-			Value: normalized[key],
-		})
-	}
-
-	return customTags, true, nil
+	return nil
 }
