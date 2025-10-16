@@ -1441,202 +1441,115 @@ func findAllOmnistrateServicePlanBlocks(yamlContent interface{}) []map[string]in
 
 // extractCloudAccountsFromProcessedData extracts cloud provider account information from the YAML content
 func extractCloudAccountsFromProcessedData(processedData []byte) (awsAccountID, awsBootstrapRoleARN, gcpProjectID, gcpProjectNumber, gcpServiceAccountEmail, azureSubscriptionID, azureTenantID, extractDeploymentType string) {
-   if len(processedData) == 0 {
-	   return "", "", "", "", "", "", "", ""
-   }
+	if len(processedData) == 0 {
+		return "", "", "", "", "", "", "", ""
+	}
 
-   // Helper to extract the first string value from a map for a list of keys
-   getFirstString := func(m map[string]interface{}, keys ...string) string {
-	   for _, key := range keys {
-		   if v, ok := m[key].(string); ok && v != "" {
-			   return v
-		   }
-		   // Support direct int values (for GCP project number)
-		   if v, ok := m[key].(int); ok {
-			   return fmt.Sprintf("%d", v)
-		   }
-	   }
-	   return ""
-   }
+	// Simple helper to get string value with multiple key variations
+	getFirstString := func(m map[string]interface{}, keys ...string) string {
+		for _, key := range keys {
+			if v, ok := m[key].(string); ok && v != "" {
+				return v
+			}
+			if v, ok := m[key].(int); ok {
+				return fmt.Sprintf("%d", v)
+			}
+		}
+		return ""
+	}
 
-   // Helper to extract all account info from a deployment map (hosted/byoa)
-   extractFromDeployment := func(depMap map[string]interface{}) {
-	   if hosted, exists := depMap["hostedDeployment"]; exists {
-		   if hostedMap, ok := hosted.(map[string]interface{}); ok {
+	// Helper to extract account info from any map
+	extractAccountDetails := func(m map[string]interface{}) {
+		if awsAccountID == "" {
+			awsAccountID = getFirstString(m, "awsAccountId", "awsAccountID", "AwsAccountID", "AwsAccountId")
+		}
+		if awsBootstrapRoleARN == "" {
+			awsBootstrapRoleARN = getFirstString(m, "awsBootstrapRoleAccountArn", "awsBootstrapRoleARN", "AwsBootstrapRoleARN", "awsBootstrapRoleArn", "AwsBootstrapRoleArn")
+		}
+		if gcpProjectID == "" {
+			gcpProjectID = getFirstString(m, "gcpProjectId", "gcpProjectID", "GcpProjectID", "GcpProjectId")
+		}
+		if gcpProjectNumber == "" {
+			gcpProjectNumber = getFirstString(m, "gcpProjectNumber", "GcpProjectNumber")
+		}
+		if gcpServiceAccountEmail == "" {
+			gcpServiceAccountEmail = getFirstString(m, "gcpServiceAccountEmail", "GcpServiceAccountEmail")
+		}
+		if azureSubscriptionID == "" {
+			azureSubscriptionID = getFirstString(m, "azureSubscriptionId", "azureSubscriptionID", "AzureSubscriptionID", "AzureSubscriptionId")
+		}
+		if azureTenantID == "" {
+			azureTenantID = getFirstString(m, "azureTenantId", "azureTenantID", "AzureTenantID", "AzureTenantId")
+		}
+	}
+
+	// Helper to process deployment sections (hosted/byoa)
+	processDeploymentMap := func(depMap map[string]interface{}) {
+		if hosted, exists := depMap["hostedDeployment"]; exists {
+			if hostedMap, ok := hosted.(map[string]interface{}); ok {
 				extractDeploymentType = "hosted"
-			   if awsAccountID == "" {
-				   awsAccountID = getFirstString(hostedMap, "awsAccountId", "awsAccountID", "AwsAccountID", "awsAccountId", "AwsAccountId")
-				   awsBootstrapRoleARN = getFirstString(hostedMap, "awsBootstrapRoleAccountArn", "awsBootstrapRoleARN", "AwsBootstrapRoleARN", "awsBootstrapRoleArn", "AwsBootstrapRoleArn")
-			   }
-			   if gcpProjectID == "" {
-				   gcpProjectID = getFirstString(hostedMap, "gcpProjectId", "gcpProjectID", "GcpProjectID", "gcpProjectId", "GcpProjectId")
-			   }
-			   if gcpProjectNumber == "" {
-				   gcpProjectNumber = getFirstString(hostedMap, "gcpProjectNumber", "GcpProjectNumber")
-			   }
-			   if gcpServiceAccountEmail == "" {
-				   gcpServiceAccountEmail = getFirstString(hostedMap, "gcpServiceAccountEmail", "GcpServiceAccountEmail")
-			   }
-			   if azureSubscriptionID == "" {
-				   azureSubscriptionID = getFirstString(hostedMap, "azureSubscriptionId", "azureSubscriptionID", "AzureSubscriptionID", "azureSubscriptionId", "AzureSubscriptionId")
-			   }
-			   if azureTenantID == "" {
-				   azureTenantID = getFirstString(hostedMap, "azureTenantId", "azureTenantID", "AzureTenantID", "azureTenantId", "AzureTenantId")
-			   }
-		   }
-	   }
-	   if byoa, exists := depMap["byoaDeployment"]; exists {
-		   if byoaMap, ok := byoa.(map[string]interface{}); ok {
+				extractAccountDetails(hostedMap)
+			}
+		}
+		if byoa, exists := depMap["byoaDeployment"]; exists {
+			if byoaMap, ok := byoa.(map[string]interface{}); ok {
+				extractDeploymentType = "byoa"
+				extractAccountDetails(byoaMap)
+			}
+		}
+	}
+
+	// Parse YAML content directly
+	var yamlContent map[string]interface{}
+	if err := yaml.Unmarshal(processedData, &yamlContent); err != nil {
+		return "", "", "", "", "", "", "", "" // Return empty values if YAML is invalid
+	}
+
+	// Check direct x-omnistrate-byoa/hosted keys
+	if byoa, exists := yamlContent["x-omnistrate-byoa"]; exists {
+		if byoaMap, ok := byoa.(map[string]interface{}); ok {
 			extractDeploymentType = "byoa"
-			   if awsAccountID == "" {
-				   awsAccountID = getFirstString(byoaMap, "awsAccountId", "awsAccountID", "AwsAccountID", "awsAccountId", "AwsAccountId")
-				   awsBootstrapRoleARN = getFirstString(byoaMap, "awsBootstrapRoleAccountArn", "awsBootstrapRoleARN", "AwsBootstrapRoleARN", "awsBootstrapRoleArn", "AwsBootstrapRoleArn")
-			   }
-			   if gcpProjectID == "" {
-				   gcpProjectID = getFirstString(byoaMap, "gcpProjectId", "gcpProjectID", "GcpProjectID", "gcpProjectId", "GcpProjectId")
-			   }
-			   if gcpProjectNumber == "" {
-				   gcpProjectNumber = getFirstString(byoaMap, "gcpProjectNumber", "GcpProjectNumber")
-			   }
-			   if gcpServiceAccountEmail == "" {
-				   gcpServiceAccountEmail = getFirstString(byoaMap, "gcpServiceAccountEmail", "GcpServiceAccountEmail")
-			   }
-			   if azureSubscriptionID == "" {
-				   azureSubscriptionID = getFirstString(byoaMap, "azureSubscriptionId", "azureSubscriptionID", "AzureSubscriptionID", "azureSubscriptionId", "AzureSubscriptionId")
-			   }
-			   if azureTenantID == "" {
-				   azureTenantID = getFirstString(byoaMap, "azureTenantId", "azureTenantID", "AzureTenantID", "azureTenantId", "AzureTenantId")
-			   }
-		   }
-	   }
-   }
+			extractAccountDetails(byoaMap)
+		}
+	}
+	if hosted, exists := yamlContent["x-omnistrate-hosted"]; exists {
+		if hostedMap, ok := hosted.(map[string]interface{}); ok {
+			extractDeploymentType = "hosted"
+			extractAccountDetails(hostedMap)
+		}
+	}
 
-   // Helper to extract account info directly from x-omnistrate-service-plan
-   extractFromServicePlan := func(spMap map[string]interface{}) {
-	   if awsAccountID == "" {
-		   awsAccountID = getFirstString(spMap, "awsAccountId", "awsAccountID", "AwsAccountID", "awsAccountId", "AwsAccountId")
-	   }
-	   if awsBootstrapRoleARN == "" {
-		   awsBootstrapRoleARN = getFirstString(spMap, "awsBootstrapRoleAccountArn", "awsBootstrapRoleARN", "AwsBootstrapRoleARN", "awsBootstrapRoleArn", "AwsBootstrapRoleArn")
-	   }
-	   if gcpProjectID == "" {
-		   gcpProjectID = getFirstString(spMap, "gcpProjectId", "gcpProjectID", "GcpProjectID", "gcpProjectId", "GcpProjectId")
-	   }
-	   if gcpProjectNumber == "" {
-		   gcpProjectNumber = getFirstString(spMap, "gcpProjectNumber", "GcpProjectNumber")
-	   }
-	   if gcpServiceAccountEmail == "" {
-		   gcpServiceAccountEmail = getFirstString(spMap, "gcpServiceAccountEmail", "GcpServiceAccountEmail")
-	   }
-	   if azureSubscriptionID == "" {
-		   azureSubscriptionID = getFirstString(spMap, "azureSubscriptionId", "azureSubscriptionID", "AzureSubscriptionID", "azureSubscriptionId", "AzureSubscriptionId")
-	   }
-	   if azureTenantID == "" {
-		   azureTenantID = getFirstString(spMap, "azureTenantId", "azureTenantID", "AzureTenantID", "azureTenantId", "AzureTenantId")
-	   }
-   }
+	// Check x-omnistrate-service-plan
+	if sp, exists := yamlContent["x-omnistrate-service-plan"]; exists {
+		if spMap, ok := sp.(map[string]interface{}); ok {
+			extractAccountDetails(spMap)
+			if deployment, exists := spMap["deployment"]; exists {
+				if depMap, ok := deployment.(map[string]interface{}); ok {
+					processDeploymentMap(depMap)
+				}
+			}
+		}
+	}
 
-   yamlDocs := strings.Split(string(processedData), "---")
-   for _, docStr := range yamlDocs {
-       docStr = strings.TrimSpace(docStr)
-       if docStr == "" {
-           continue
-       }
-       var yamlContent map[string]interface{}
-       if err := yaml.Unmarshal([]byte(docStr), &yamlContent); err != nil {
-		   fmt.Printf("[DEBUG] YAML unmarshal error: %v\n", err)
-           continue
-       }
+	// Check top-level deployment
+	if deployment, exists := yamlContent["deployment"]; exists {
+		if depMap, ok := deployment.(map[string]interface{}); ok {
+			processDeploymentMap(depMap)
+		}
+	}
 
-	   // Check for x-omnistrate-byoa at root level (direct BYOA configuration)
-	   if byoa, exists := yamlContent["x-omnistrate-byoa"]; exists {
-		   if byoaMap, ok := byoa.(map[string]interface{}); ok {
-			   extractDeploymentType = "byoa"
-			   if awsAccountID == "" {
-				   awsAccountID = getFirstString(byoaMap, "awsAccountId", "awsAccountID", "AwsAccountID", "awsAccountId", "AwsAccountId")
-				   awsBootstrapRoleARN = getFirstString(byoaMap, "awsBootstrapRoleAccountArn", "awsBootstrapRoleARN", "AwsBootstrapRoleARN", "awsBootstrapRoleArn", "AwsBootstrapRoleArn")
-			   }
-			   if gcpProjectID == "" {
-				   gcpProjectID = getFirstString(byoaMap, "gcpProjectId", "gcpProjectID", "GcpProjectID", "gcpProjectId", "GcpProjectId")
-			   }
-			   if gcpProjectNumber == "" {
-				   gcpProjectNumber = getFirstString(byoaMap, "gcpProjectNumber", "GcpProjectNumber")
-			   }
-			   if gcpServiceAccountEmail == "" {
-				   gcpServiceAccountEmail = getFirstString(byoaMap, "gcpServiceAccountEmail", "GcpServiceAccountEmail")
-			   }
-			   if azureSubscriptionID == "" {
-				   azureSubscriptionID = getFirstString(byoaMap, "azureSubscriptionId", "azureSubscriptionID", "AzureSubscriptionID", "azureSubscriptionId", "AzureSubscriptionId")
-			   }
-			   if azureTenantID == "" {
-				   azureTenantID = getFirstString(byoaMap, "azureTenantId", "azureTenantID", "AzureTenantID", "azureTenantId", "AzureTenantId")
-			   }
-		   }
-	   }
+	// Check nested service plan blocks
+	spBlocks := findAllOmnistrateServicePlanBlocks(yamlContent)
+	for _, spMap := range spBlocks {
+		extractAccountDetails(spMap)
+		if deployment, exists := spMap["deployment"]; exists {
+			if depMap, ok := deployment.(map[string]interface{}); ok {
+				processDeploymentMap(depMap)
+			}
+		}
+	}
 
-	   // Check for x-omnistrate-hosted at root level (direct hosted configuration)
-	   if hosted, exists := yamlContent["x-omnistrate-hosted"]; exists {
-		   if hostedMap, ok := hosted.(map[string]interface{}); ok {
-			   extractDeploymentType = "hosted"
-			   if awsAccountID == "" {
-				   awsAccountID = getFirstString(hostedMap, "awsAccountId", "awsAccountID", "AwsAccountID", "awsAccountId", "AwsAccountId")
-				   awsBootstrapRoleARN = getFirstString(hostedMap, "awsBootstrapRoleAccountArn", "awsBootstrapRoleARN", "AwsBootstrapRoleARN", "awsBootstrapRoleArn", "AwsBootstrapRoleArn")
-			   }
-			   if gcpProjectID == "" {
-				   gcpProjectID = getFirstString(hostedMap, "gcpProjectId", "gcpProjectID", "GcpProjectID", "gcpProjectId", "GcpProjectId")
-			   }
-			   if gcpProjectNumber == "" {
-				   gcpProjectNumber = getFirstString(hostedMap, "gcpProjectNumber", "GcpProjectNumber")
-			   }
-			   if gcpServiceAccountEmail == "" {
-				   gcpServiceAccountEmail = getFirstString(hostedMap, "gcpServiceAccountEmail", "GcpServiceAccountEmail")
-			   }
-			   if azureSubscriptionID == "" {
-				   azureSubscriptionID = getFirstString(hostedMap, "azureSubscriptionId", "azureSubscriptionID", "AzureSubscriptionID", "azureSubscriptionId", "AzureSubscriptionId")
-			   }
-			   if azureTenantID == "" {
-				   azureTenantID = getFirstString(hostedMap, "azureTenantId", "azureTenantID", "AzureTenantID", "azureTenantId", "AzureTenantId")
-			   }
-		   }
-	   }
-
-	   // Check for x-omnistrate-service-plan at root level
-	   if sp, exists := yamlContent["x-omnistrate-service-plan"]; exists {
-		   if spMap, ok := sp.(map[string]interface{}); ok {
-			   // Extract directly from service plan
-			   extractFromServicePlan(spMap)
-			   // Also check for deployment subkey
-			   if deployment, exists := spMap["deployment"]; exists {
-				   if depMap, ok := deployment.(map[string]interface{}); ok {
-					   extractFromDeployment(depMap)
-				   }
-			   }
-		   }
-	   }
-
-	   // ServicePlanSpecType: deployment key at top level
-	   if deployment, exists := yamlContent["deployment"]; exists {
-		   if depMap, ok := deployment.(map[string]interface{}); ok {
-			   extractFromDeployment(depMap)
-		   }
-	   }
-
-	   // Recursively find all x-omnistrate-service-plan blocks in this YAML doc
-	   spBlocks := findAllOmnistrateServicePlanBlocks(yamlContent)
-	   for _, spMap := range spBlocks {
-		   // Extract directly from service plan
-		   extractFromServicePlan(spMap)
-		   // Also check for deployment subkey
-		   if deployment, exists := spMap["deployment"]; exists {
-			   if depMap, ok := deployment.(map[string]interface{}); ok {
-				   extractFromDeployment(depMap)
-			   }
-		   }
-	   }
-   }
-
-
-   return awsAccountID, awsBootstrapRoleARN, gcpProjectID, gcpProjectNumber, gcpServiceAccountEmail, azureSubscriptionID, azureTenantID, extractDeploymentType
+	return awsAccountID, awsBootstrapRoleARN, gcpProjectID, gcpProjectNumber, gcpServiceAccountEmail, azureSubscriptionID, azureTenantID, extractDeploymentType
 }
 
 
