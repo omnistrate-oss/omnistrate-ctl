@@ -133,6 +133,9 @@ jobs:
   smoke-tests:
     if: github.event_name != 'push'
     needs: [build, lint]
+    concurrency:
+      group: ${{ github.workflow }}-smoke-tests
+      cancel-in-progress: true
     uses: ./.github/workflows/smoke-tests.yml
     with:
       environment: Dev-us-west-2

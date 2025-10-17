@@ -54,6 +54,8 @@ omctl build-from-repo
 
 ```
       --aws-account-id string               AWS account ID. Must be used with --deployment-type
+      --azure-subscription-id string        Azure subscription ID. Must be used with --azure-tenant-id and --deployment-type
+      --azure-tenant-id string              Azure tenant ID. Must be used with --azure-subscription-id and --deployment-type
       --deployment-type string              Set the deployment type. Options: 'hosted' or 'byoa' (Bring Your Own Account). Only effective when no compose spec exists in the repo.
       --dry-run                             Run in dry-run mode: only build the Docker image locally without pushing, skip service creation, and write the generated spec to a local file with '-dry-run' suffix. Cannot be used with any --skip-* flags.
       --env-var stringArray                 Specify environment variables required for running the image. Effective only when the compose.yaml is absent. Use the format: --env-var key1=var1 --env-var key2=var2. Only effective when no compose spec exists in the repo.
