@@ -3,6 +3,7 @@ package subscription
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 
 	"github.com/omnistrate-oss/omnistrate-ctl/cmd/common"
 	"github.com/omnistrate-oss/omnistrate-ctl/internal/dataaccess"
@@ -21,7 +22,8 @@ func init() {
 	createOnBehalfCmd.Flags().StringP("service-id", "s", "", "Service ID (required)")
 	createOnBehalfCmd.Flags().StringP("environment-id", "e", "", "Environment ID (required)")
 	createOnBehalfCmd.Flags().String("product-tier-id", "", "Product tier ID (required)")
-	createOnBehalfCmd.Flags().String("customer-user-id", "", "Customer user ID (required)")
+	createOnBehalfCmd.Flags().String("customer-user-id", "", "Customer user ID (one of customer-user-id or customer-email required)")
+	createOnBehalfCmd.Flags().String("customer-email", "", "Customer email (one of customer-user-id or customer-email required)")
 	createOnBehalfCmd.Flags().Bool("allow-creates-without-payment", false, "Allow creation without payment configured")
 	createOnBehalfCmd.Flags().String("billing-provider", "", "Billing provider")
 	createOnBehalfCmd.Flags().Bool("custom-price", false, "Whether to use custom price")
@@ -33,7 +35,6 @@ func init() {
 	_ = createOnBehalfCmd.MarkFlagRequired("service-id")
 	_ = createOnBehalfCmd.MarkFlagRequired("environment-id")
 	_ = createOnBehalfCmd.MarkFlagRequired("product-tier-id")
-	_ = createOnBehalfCmd.MarkFlagRequired("customer-user-id")
 }
 
 func runCreateOnBehalf(cmd *cobra.Command, args []string) error {
@@ -43,6 +44,7 @@ func runCreateOnBehalf(cmd *cobra.Command, args []string) error {
 	environmentID, _ := cmd.Flags().GetString("environment-id")
 	productTierID, _ := cmd.Flags().GetString("product-tier-id")
 	customerUserID, _ := cmd.Flags().GetString("customer-user-id")
+	customerEmail, _ := cmd.Flags().GetString("customer-email")
 	allowWithoutPayment, _ := cmd.Flags().GetBool("allow-creates-without-payment")
 	billingProvider, _ := cmd.Flags().GetString("billing-provider")
 	customPrice, _ := cmd.Flags().GetBool("custom-price")
@@ -50,6 +52,11 @@ func runCreateOnBehalf(cmd *cobra.Command, args []string) error {
 	externalPayerID, _ := cmd.Flags().GetString("external-payer-id")
 	maxInstances, _ := cmd.Flags().GetInt64("max-instances")
 	priceEffectiveDate, _ := cmd.Flags().GetString("price-effective-date")
+
+	// Validate that at least one of customer-user-id or customer-email is provided
+	if customerUserID == "" && customerEmail == "" {
+		return fmt.Errorf("one of --customer-user-id or --customer-email is required")
+	}
 
 	// Parse custom price per unit if provided
 	var customPricePerUnit map[string]interface{}
@@ -62,6 +69,7 @@ func runCreateOnBehalf(cmd *cobra.Command, args []string) error {
 	opts := &dataaccess.CreateSubscriptionOnBehalfOptions{
 		ProductTierID:            productTierID,
 		OnBehalfOfCustomerUserID: customerUserID,
+		OnBehalfOfCustomerEmail:  customerEmail,
 		BillingProvider:          billingProvider,
 		ExternalPayerID:          externalPayerID,
 		PriceEffectiveDate:       priceEffectiveDate,
