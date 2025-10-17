@@ -474,7 +474,7 @@ func runBuild(cmd *cobra.Command, args []string) error {
 	}
 
 	// Render files
-	fileData, err = RenderFile(fileData, cwd, file, sm1, spinner1)
+	fileData, err = renderFile(fileData, cwd, file, sm1, spinner1)
 	if err != nil {
 		utils.HandleSpinnerError(spinner1, sm1, err)
 		return err

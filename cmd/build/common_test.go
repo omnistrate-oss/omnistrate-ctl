@@ -27,7 +27,7 @@ func TestRenderEnvFileAndInterpolateVariables(t *testing.T) {
 	expectedFileData, err := os.ReadFile(expectedFilePath)
 	require.NoError(t, err)
 
-	result, err := RenderFile(fileData, cwd, filePath, sm, nil)
+	result, err := renderFile(fileData, cwd, filePath, sm, nil)
 	require.NoError(t, err, "Error rendering env file and interpolating variables: %v", err)
 	require.Equal(t, strings.ReplaceAll(string(result), " ", ""), strings.ReplaceAll(string(expectedFileData), " ", ""), "Rendered file content does not match expected content")
 }

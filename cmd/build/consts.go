@@ -5,6 +5,7 @@ const (
 	ServicePlanSpecType   = "ServicePlanSpec"
 	ComposeFileName       = "compose.yaml"
 	PlanSpecFileName      = "spec.yaml"
+	githubPAT             = "${{ secrets.GitHubPAT }}"
 )
 
 var (
