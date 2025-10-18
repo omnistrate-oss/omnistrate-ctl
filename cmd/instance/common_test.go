@@ -263,10 +263,8 @@ func TestEnsureUniqueTagKeys(t *testing.T) {
 				if tt.duplicateKey != "" && !contains(err.Error(), tt.duplicateKey) {
 					t.Errorf("expected error to mention duplicate key %q, got %q", tt.duplicateKey, err.Error())
 				}
-			} else {
-				if err != nil {
-					t.Errorf("unexpected error: %v", err)
-				}
+			} else if err != nil {
+				t.Errorf("unexpected error: %v", err)
 			}
 		})
 	}
