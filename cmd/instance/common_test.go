@@ -394,10 +394,10 @@ func TestParseTagFilters(t *testing.T) {
 			expectError: true,
 		},
 		{
-			name:        "invalid format - multiple equals",
-			input:       []string{"env=prod=test"},
-			expected:    nil,
-			expectError: true,
+			name:        "multiple equals",
+			input:       []string{"formular=a=b+c"},
+			expected:    map[string]string{"formular": "a=b+c"},
+			expectError: false,
 		},
 	}
 
