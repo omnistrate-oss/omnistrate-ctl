@@ -125,7 +125,7 @@ func matchesTagFilters(instanceTagsStr string, tagFilters map[string]string) boo
 	instanceTags := make(map[string]string)
 	tagPairs := strings.Split(instanceTagsStr, ",")
 	for _, tagPair := range tagPairs {
-		parts := strings.Split(tagPair, "=")
+		parts := strings.SplitN(tagPair, "=", 2)
 		if len(parts) == 2 {
 			instanceTags[parts[0]] = parts[1]
 		}
