@@ -21,7 +21,7 @@ omctl instance list -f="service:postgres,environment:Production" -f="service:pos
 ### Options
 
 ```
-  -f, --filter stringArray   Filter to apply to the list of instances. E.g.: key1:value1,key2:value2, which filters instances where key1 equals value1 and key2 equals value2. Allow use of multiple filters to form the logical OR operation. Supported keys: instance_id,service,environment,plan,version,resource,cloud_provider,region,status,subscription_id. Check the examples for more details.
+  -f, --filter stringArray   Filter to apply to the list of instances. E.g.: key1:value1,key2:value2, which filters instances where key1 equals value1 and key2 equals value2. Allow use of multiple filters to form the logical OR operation. Supported keys: instance_id,service,environment,plan,version,resource,cloud_provider,region,status,subscription_id,tags. Check the examples for more details.
   -h, --help                 help for list
       --truncate             Truncate long names in the output
 ```

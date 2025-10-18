@@ -356,6 +356,9 @@ func formatInstance(instance *openapiclientfleet.ResourceInstanceSearchRecord, t
 		subscriptionID = *instance.SubscriptionId
 	}
 
+	// Format tags as comma-separated key=value pairs
+	tags := formatTags(instance.CustomTags)
+
 	formattedInstance := model.Instance{
 		InstanceID:     instance.Id,
 		Service:        serviceName,
@@ -367,6 +370,7 @@ func formatInstance(instance *openapiclientfleet.ResourceInstanceSearchRecord, t
 		Region:         instance.RegionCode,
 		Status:         instance.Status,
 		SubscriptionID: subscriptionID,
+		Tags:           tags,
 	}
 
 	return formattedInstance

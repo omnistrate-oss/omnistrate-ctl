@@ -78,3 +78,16 @@ func ensureUniqueTagKeys(tags []openapiclientfleet.CustomTag) error {
 	}
 	return nil
 }
+
+// formatTags converts CustomTag slice to a comma-separated string in key=value format
+func formatTags(tags []openapiclientfleet.CustomTag) string {
+	if len(tags) == 0 {
+		return ""
+	}
+
+	parts := make([]string, 0, len(tags))
+	for _, tag := range tags {
+		parts = append(parts, fmt.Sprintf("%s=%s", tag.Key, tag.Value))
+	}
+	return strings.Join(parts, ",")
+}
