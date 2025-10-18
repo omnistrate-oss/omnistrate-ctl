@@ -14,7 +14,13 @@ import (
 
 const (
 	listExample = `# List instance deployments of the service postgres in the prod and dev environments
-omctl instance list -f="service:postgres,environment:Production" -f="service:postgres,environment:Dev"`
+omctl instance list -f="service:postgres,environment:Production" -f="service:postgres,environment:Dev"
+
+# List instances with specific tags
+omctl instance list --tag env=prod --tag team=backend
+
+# Combine regular filters with tag filters
+omctl instance list -f="service:postgres" --tag env=prod`
 	defaultMaxNameLength = 30 // Maximum length of the name column in the table
 )
 
@@ -30,6 +36,7 @@ You can filter for specific instances by using the filter flag.`,
 
 func init() {
 	listCmd.Flags().StringArrayP("filter", "f", []string{}, "Filter to apply to the list of instances. E.g.: key1:value1,key2:value2, which filters instances where key1 equals value1 and key2 equals value2. Allow use of multiple filters to form the logical OR operation. Supported keys: "+strings.Join(utils.GetSupportedFilterKeys(model.Instance{}), ",")+". Check the examples for more details.")
+	listCmd.Flags().StringArray("tag", []string{}, "Filter instances by tags. Specify tags as key=value pairs. Multiple --tag flags can be used to filter by multiple tags (all tags must match).")
 	listCmd.Flags().Bool("truncate", false, "Truncate long names in the output")
 }
 
@@ -47,6 +54,11 @@ func runList(cmd *cobra.Command, args []string) error {
 		utils.PrintError(err)
 		return err
 	}
+	tagFilters, err := cmd.Flags().GetStringArray("tag")
+	if err != nil {
+		utils.PrintError(err)
+		return err
+	}
 	truncateNames, err := cmd.Flags().GetBool("truncate")
 	if err != nil {
 		utils.PrintError(err)
@@ -55,6 +67,13 @@ func runList(cmd *cobra.Command, args []string) error {
 
 	// Parse filters into a map
 	filterMaps, err := utils.ParseFilters(filters, utils.GetSupportedFilterKeys(model.Instance{}))
+	if err != nil {
+		utils.PrintError(err)
+		return err
+	}
+
+	// Parse tag filters
+	parsedTagFilters, err := parseTagFilters(tagFilters)
 	if err != nil {
 		utils.PrintError(err)
 		return err
@@ -99,9 +118,16 @@ func runList(cmd *cobra.Command, args []string) error {
 			utils.PrintError(err)
 			return err
 		}
-		if ok {
-			formattedInstances = append(formattedInstances, formattedInstance)
+		if !ok {
+			continue
 		}
+
+		// Check if the instance matches the tag filters
+		if !matchesTagFilters(formattedInstance.Tags, parsedTagFilters) {
+			continue
+		}
+
+		formattedInstances = append(formattedInstances, formattedInstance)
 	}
 
 	if len(formattedInstances) == 0 {

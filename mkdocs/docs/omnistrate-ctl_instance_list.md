@@ -16,6 +16,12 @@ omnistrate-ctl instance list [flags]
 ```
 # List instance deployments of the service postgres in the prod and dev environments
 omctl instance list -f="service:postgres,environment:Production" -f="service:postgres,environment:Dev"
+
+# List instances with specific tags
+omctl instance list --tag env=prod --tag team=backend
+
+# Combine regular filters with tag filters
+omctl instance list -f="service:postgres" --tag env=prod
 ```
 
 ### Options
@@ -23,6 +29,7 @@ omctl instance list -f="service:postgres,environment:Production" -f="service:pos
 ```
   -f, --filter stringArray   Filter to apply to the list of instances. E.g.: key1:value1,key2:value2, which filters instances where key1 equals value1 and key2 equals value2. Allow use of multiple filters to form the logical OR operation. Supported keys: instance_id,service,environment,plan,version,resource,cloud_provider,region,status,subscription_id,tags. Check the examples for more details.
   -h, --help                 help for list
+      --tag stringArray      Filter instances by tags. Specify tags as key=value pairs. Multiple --tag flags can be used to filter by multiple tags (all tags must match).
       --truncate             Truncate long names in the output
 ```
 
