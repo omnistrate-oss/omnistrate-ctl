@@ -78,3 +78,66 @@ func ensureUniqueTagKeys(tags []openapiclientfleet.CustomTag) error {
 	}
 	return nil
 }
+
+// formatTags converts CustomTag slice to a comma-separated string in key=value format
+func formatTags(tags []openapiclientfleet.CustomTag) string {
+	if len(tags) == 0 {
+		return ""
+	}
+
+	parts := make([]string, 0, len(tags))
+	for _, tag := range tags {
+		parts = append(parts, fmt.Sprintf("%s=%s", tag.Key, tag.Value))
+	}
+	return strings.Join(parts, ",")
+}
+
+// parseTagFilters parses tag filters from the command line in the format key=value
+// Returns a map of tag key to tag value
+func parseTagFilters(tagFilters []string) (map[string]string, error) {
+	parsedFilters := make(map[string]string)
+	for _, tagFilter := range tagFilters {
+		if tagFilter == "[]" {
+			continue // Empty filter that is reset to default value
+		}
+		parts := strings.SplitN(tagFilter, "=", 2)
+		if len(parts) != 2 {
+			return nil, fmt.Errorf("invalid tag filter format: %s, expected key=value", tagFilter)
+		}
+		parsedFilters[parts[0]] = parts[1]
+	}
+	return parsedFilters, nil
+}
+
+// matchesTagFilters checks if the instance tags match all the provided tag filters
+// The tags string is in the format: key1=value1,key2=value2,...
+// All tag filters must match for the function to return true (AND operation)
+func matchesTagFilters(instanceTagsStr string, tagFilters map[string]string) bool {
+	if len(tagFilters) == 0 {
+		return true
+	}
+
+	if instanceTagsStr == "" {
+		return false
+	}
+
+	// Parse the instance tags into a map
+	instanceTags := make(map[string]string)
+	tagPairs := strings.Split(instanceTagsStr, ",")
+	for _, tagPair := range tagPairs {
+		parts := strings.SplitN(tagPair, "=", 2)
+		if len(parts) == 2 {
+			instanceTags[parts[0]] = parts[1]
+		}
+	}
+
+	// Check if all tag filters match
+	for key, value := range tagFilters {
+		instanceValue, exists := instanceTags[key]
+		if !exists || instanceValue != value {
+			return false
+		}
+	}
+
+	return true
+}

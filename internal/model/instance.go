@@ -11,4 +11,5 @@ type Instance struct {
 	Region         string `json:"region"`
 	Status         string `json:"status"`
 	SubscriptionID string `json:"subscription_id"`
+	Tags           string `json:"tags"`
 }
