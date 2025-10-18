@@ -100,7 +100,7 @@ func parseTagFilters(tagFilters []string) (map[string]string, error) {
 		if tagFilter == "[]" {
 			continue // Empty filter that is reset to default value
 		}
-		parts := strings.Split(tagFilter, "=")
+		parts := strings.SplitN(tagFilter, "=", 2)
 		if len(parts) != 2 {
 			return nil, fmt.Errorf("invalid tag filter format: %s, expected key=value", tagFilter)
 		}
