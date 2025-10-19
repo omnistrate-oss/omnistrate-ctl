@@ -140,6 +140,26 @@ func TestInstanceBasic(t *testing.T) {
 	err = cmd.RootCmd.ExecuteContext(ctx)
 	require.NoError(t, err)
 
+	// PASS: instance list with single tag filter
+	cmd.RootCmd.SetArgs([]string{"instance", "list", "--tag", "environment=prod"})
+	err = cmd.RootCmd.ExecuteContext(ctx)
+	require.NoError(t, err)
+
+	// PASS: instance list with multiple tag filters (both must match)
+	cmd.RootCmd.SetArgs([]string{"instance", "list", "--tag", "environment=prod", "--tag", "owner=platform"})
+	err = cmd.RootCmd.ExecuteContext(ctx)
+	require.NoError(t, err)
+
+	// PASS: instance list with tag filter for second instance
+	cmd.RootCmd.SetArgs([]string{"instance", "list", "--tag", "source=file"})
+	err = cmd.RootCmd.ExecuteContext(ctx)
+	require.NoError(t, err)
+
+	// PASS: instance list combining regular filter and tag filter
+	cmd.RootCmd.SetArgs([]string{"instance", "list", "-f", fmt.Sprintf("service:%s", serviceName), "--tag", "environment=prod"})
+	err = cmd.RootCmd.ExecuteContext(ctx)
+	require.NoError(t, err)
+
 	// PASS: delete instance 1
 	cmd.RootCmd.SetArgs([]string{"instance", "delete", instanceID1, "--yes"})
 	err = cmd.RootCmd.ExecuteContext(ctx)
