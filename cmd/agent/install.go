@@ -68,7 +68,7 @@ func runInstall(cmd *cobra.Command, args []string) error {
 	fmt.Println()
 
 	// Step 1: Clone repository
-	fmt.Println("📦 Cloning agent-instructions repository...")
+	fmt.Println("Cloning agent-instructions repository...")
 
 	// Clean up old temp directory if it exists
 	if _, err := os.Stat(tmpDir); err == nil {
@@ -93,18 +93,16 @@ func runInstall(cmd *cobra.Command, args []string) error {
 	readmePath := filepath.Join(tmpDir, "README.md")
 	readmeContent, err := os.ReadFile(readmePath)
 	if err != nil {
-		fmt.Printf("⚠️  Warning: Could not read README.md: %v\n", err)
+		fmt.Printf("⚠️ Warning: Could not read README.md: %v\n", err)
 	} else {
 		// Extract skills from README
 		fmt.Println("\n📚 Installing the following skills:")
-		if err := printSkillsFromReadme(string(readmeContent)); err != nil {
-			fmt.Printf("⚠️  Warning: Could not parse skills from README: %v\n", err)
-		}
+		printSkillsFromReadme(string(readmeContent))
 		fmt.Println()
 	}
 
 	// Step 2: Copy skills directory
-	fmt.Println("📂 Copying skills to .claude/skills/...")
+	fmt.Println("Copying skills to .claude/skills/...")
 
 	destSkillsDir := filepath.Join(cwd, ".claude", "skills")
 	srcSkillsDir := filepath.Join(tmpDir, "skills")
@@ -141,7 +139,7 @@ func runInstall(cmd *cobra.Command, args []string) error {
 	fmt.Println("✅ Skills copied successfully")
 
 	// Step 3: Merge AGENTS.md
-	fmt.Println("\n📝 Merging AGENTS.md...")
+	fmt.Println("Merging AGENTS.md...")
 	agentsSrcPath := filepath.Join(tmpDir, "AGENTS.md")
 	agentsDestPath := filepath.Join(cwd, "AGENTS.md")
 
@@ -162,7 +160,7 @@ func runInstall(cmd *cobra.Command, args []string) error {
 
 	fmt.Println("✅ CLAUDE.md updated successfully")
 
-	fmt.Println("\n🎉 Installation complete!")
+	fmt.Println("Installation complete!")
 	fmt.Println()
 	fmt.Println("Next steps:")
 	fmt.Println("  - Review .claude/skills/ to see installed skills")
@@ -173,7 +171,7 @@ func runInstall(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
-func printSkillsFromReadme(readme string) error {
+func printSkillsFromReadme(readme string) {
 	// Look for the skills section and extract skill names and descriptions
 	lines := strings.Split(readme, "\n")
 	inSkillsSection := false
@@ -221,8 +219,6 @@ func printSkillsFromReadme(readme string) error {
 			}
 		}
 	}
-
-	return nil
 }
 
 func copyDir(src, dst string) error {
@@ -326,7 +322,7 @@ func mergeMarkdownFile(srcPath, destPath string) error {
 	}
 
 	// Write merged content
-	if err := os.WriteFile(destPath, destContent, 0644); err != nil {
+	if err := os.WriteFile(destPath, destContent, 0600); err != nil {
 		return fmt.Errorf("failed to write destination file: %w", err)
 	}
 

@@ -36,6 +36,7 @@ omnistrate-ctl [flags]
 ### SEE ALSO
 
 * [omnistrate-ctl account](omnistrate-ctl_account.md)	 - Manage your Cloud Provider Accounts
+* [omnistrate-ctl agent](omnistrate-ctl_agent.md)	 - Manage AI agent configurations and skills
 * [omnistrate-ctl alarms](omnistrate-ctl_alarms.md)	 - Manage alarms and notification channels
 * [omnistrate-ctl audit](omnistrate-ctl_audit.md)	 - Audit events and logging management
 * [omnistrate-ctl build](omnistrate-ctl_build.md)	 - Build Services from image, compose spec or service plan spec
