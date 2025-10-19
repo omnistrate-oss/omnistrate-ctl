@@ -117,7 +117,7 @@ func runDebug(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to get debug information: %w", err)
 	}
 
-	instanceData, err := dataaccess.DescribeResourceInstance(ctx, token, serviceID, environmentID, instanceID)
+	instanceData, err := dataaccess.DescribeResourceInstance(ctx, token, serviceID, environmentID, instanceID, true)
 	if err != nil {
 		return fmt.Errorf("failed to describe resource instance: %w", err)
 	}
@@ -2150,6 +2150,13 @@ func init() {
 	debugCmd.Flags().StringVarP(&outputFlag, "output", "o", "interactive", "Output format (interactive|json)")
 	debugCmd.Flags().String("resource-id", "", "Filter results by resource ID")
 	debugCmd.Flags().String("resource-key", "", "Filter results by resource key")
+
+	// Add subcommands
+	debugCmd.AddCommand(debugHelmLogsCmd)
+	debugCmd.AddCommand(debugHelmValuesCmd)
+	debugCmd.AddCommand(debugTerraformFilesCmd)
+	debugCmd.AddCommand(debugTerraformOutputsCmd)
+
 	// Command will be added by the parent instance command
 }
 

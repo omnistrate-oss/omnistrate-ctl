@@ -183,7 +183,7 @@ func DeleteResourceInstance(ctx context.Context, token, serviceID, environmentID
 	return
 }
 
-func DescribeResourceInstance(ctx context.Context, token string, serviceID, environmentID, instanceID string) (resp *openapiclientfleet.ResourceInstance, err error) {
+func DescribeResourceInstance(ctx context.Context, token string, serviceID, environmentID, instanceID string, detail bool) (resp *openapiclientfleet.ResourceInstance, err error) {
 	ctxWithToken := context.WithValue(ctx, openapiclientfleet.ContextAccessToken, token)
 	apiClient := getFleetClient()
 
@@ -192,7 +192,7 @@ func DescribeResourceInstance(ctx context.Context, token string, serviceID, envi
 		serviceID,
 		environmentID,
 		instanceID,
-	).Detail(true)
+	).Detail(detail)
 
 	var r *http.Response
 	defer func() {
