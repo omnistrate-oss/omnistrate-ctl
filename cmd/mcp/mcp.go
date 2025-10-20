@@ -12,6 +12,7 @@ var config = &ophis.Config{
 		// Command filtering
 		tools.AddFilter(tools.Exclude([]string{
 			"mcp",
+			"agent install",
 			"build",
 			"domain",
 			"alarms",
@@ -40,10 +41,6 @@ var config = &ophis.Config{
 			"login",
 			"logout",
 			"services-orchestration",
-			"secret delete",
-			"secret get",
-			"secret list",
-			"secret set",
 			"service-plan disable-feature",
 			"service-plan enable-feature",
 			"service-plan release",
