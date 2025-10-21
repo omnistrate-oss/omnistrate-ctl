@@ -17,7 +17,7 @@ Examples:
   omnistrate-ctl deployment-cell describe-config-template -e PROD --cloud aws
 
   # Describe specific deployment cell configuration
-  omnistrate-ctl deployment-cell describe-config-template hc-12345
+  omnistrate-ctl deployment-cell describe-config-template --id hc-12345
 
   # Get JSON output format
   omnistrate-ctl deployment-cell describe-config-template -e PROD --cloud aws --output json
@@ -26,7 +26,7 @@ Examples:
   omnistrate-ctl deployment-cell describe-config-template -e PROD --cloud aws --output-file template.yaml
 
   # Generate template for specific deployment cell to file
-  omnistrate-ctl deployment-cell describe-config-template hc-12345 --output-file deployment-cell-config.yaml
+  omnistrate-ctl deployment-cell describe-config-template --id hc-12345 --output-file deployment-cell-config.yaml
 
 ```
 omnistrate-ctl deployment-cell describe-config-template [flags]
