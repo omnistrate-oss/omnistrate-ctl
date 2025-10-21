@@ -171,7 +171,7 @@ func TestRemoveAuthConfigWhenFileNotExists(t *testing.T) {
 	// Ensure config file doesn't exist
 	dir := ConfigDir()
 	filePath := filepath.Join(dir, DefaultFile)
-	os.Remove(filePath)
+	_ = os.Remove(filePath)
 
 	err := RemoveAuthConfig()
 	assert.Error(t, err)
