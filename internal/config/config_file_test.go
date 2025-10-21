@@ -190,5 +190,6 @@ func TestRemoveAuthConfigWhenAuthNotExists(t *testing.T) {
 	assert.Equal(t, ErrAuthConfigNotFound, err)
 
 	// Cleanup
-	os.Remove(filePath)
+	err = os.Remove(filePath)
+	assert.NoError(t, err)
 }
