@@ -166,3 +166,30 @@ func TestLoadInvalidYaml(t *testing.T) {
 	err = os.Remove(filePath)
 	assert.NoError(t, err)
 }
+
+func TestRemoveAuthConfigWhenFileNotExists(t *testing.T) {
+	// Ensure config file doesn't exist
+	dir := ConfigDir()
+	filePath := filepath.Join(dir, DefaultFile)
+	_ = os.Remove(filePath)
+
+	err := RemoveAuthConfig()
+	assert.Error(t, err)
+	assert.Equal(t, ErrConfigFileNotFound, err)
+}
+
+func TestRemoveAuthConfigWhenAuthNotExists(t *testing.T) {
+	// Create empty config file
+	dir := ConfigDir()
+	filePath := filepath.Join(dir, DefaultFile)
+	err := os.WriteFile(filePath, []byte("auths: []\n"), 0600)
+	assert.NoError(t, err)
+
+	err = RemoveAuthConfig()
+	assert.Error(t, err)
+	assert.Equal(t, ErrAuthConfigNotFound, err)
+
+	// Cleanup
+	err = os.Remove(filePath)
+	assert.NoError(t, err)
+}
