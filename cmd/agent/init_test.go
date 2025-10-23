@@ -207,7 +207,7 @@ func TestMergeMarkdownFile_Idempotent(t *testing.T) {
 	}
 }
 
-func TestSkillInstallation_PreservesOtherSkills(t *testing.T) {
+func TestSkillInitation_PreservesOtherSkills(t *testing.T) {
 	tmpDir := t.TempDir()
 	destSkillsDir := filepath.Join(tmpDir, "dest-skills")
 	srcSkillsDir := filepath.Join(tmpDir, "src-skills")
@@ -256,7 +256,7 @@ func TestSkillInstallation_PreservesOtherSkills(t *testing.T) {
 		}
 	}
 
-	// Simulate skill installation process
+	// Simulate skill initation process
 	srcSkills, err := os.ReadDir(srcSkillsDir)
 	if err != nil {
 		t.Fatalf("Failed to read source skills: %v", err)
@@ -305,7 +305,7 @@ func TestSkillInstallation_PreservesOtherSkills(t *testing.T) {
 	}
 }
 
-func TestSkillInstallation_RemovesExtraFilesOnReinstall(t *testing.T) {
+func TestSkillInitation_RemovesExtraFilesOnReinit(t *testing.T) {
 	tmpDir := t.TempDir()
 	destSkillsDir := filepath.Join(tmpDir, "dest-skills")
 	srcSkillsDir := filepath.Join(tmpDir, "src-skills")
@@ -347,7 +347,7 @@ func TestSkillInstallation_RemovesExtraFilesOnReinstall(t *testing.T) {
 		}
 	}
 
-	// Simulate reinstall process
+	// Simulate reinit process
 	srcSkills, err := os.ReadDir(srcSkillsDir)
 	if err != nil {
 		t.Fatalf("Failed to read source skills: %v", err)
@@ -388,7 +388,7 @@ func TestSkillInstallation_RemovesExtraFilesOnReinstall(t *testing.T) {
 	}
 }
 
-func TestSkillInstallation_Idempotent(t *testing.T) {
+func TestSkillInitation_Idempotent(t *testing.T) {
 	tmpDir := t.TempDir()
 	destSkillsDir := filepath.Join(tmpDir, "dest-skills")
 	srcSkillsDir := filepath.Join(tmpDir, "src-skills")
@@ -411,8 +411,8 @@ func TestSkillInstallation_Idempotent(t *testing.T) {
 		}
 	}
 
-	// Helper function to perform install
-	doInstall := func() error {
+	// Helper function to perform init
+	doInit := func() error {
 		srcSkills, err := os.ReadDir(srcSkillsDir)
 		if err != nil {
 			return err
@@ -432,36 +432,36 @@ func TestSkillInstallation_Idempotent(t *testing.T) {
 		return copyDir(srcSkillsDir, destSkillsDir)
 	}
 
-	// First install
-	if err := doInstall(); err != nil {
-		t.Fatalf("First install failed: %v", err)
+	// First init
+	if err := doInit(); err != nil {
+		t.Fatalf("First init failed: %v", err)
 	}
 
-	// Read content after first install
-	firstInstallContents := make(map[string]string)
+	// Read content after first init
+	firstInitContents := make(map[string]string)
 	for fileName := range skillFiles {
 		filePath := filepath.Join(destSkillsDir, "omnistrate-fde", fileName)
 		content, err := os.ReadFile(filePath)
 		if err != nil {
-			t.Fatalf("Failed to read file after first install: %v", err)
+			t.Fatalf("Failed to read file after first init: %v", err)
 		}
-		firstInstallContents[fileName] = string(content)
+		firstInitContents[fileName] = string(content)
 	}
 
-	// Second install (should be idempotent)
-	if err := doInstall(); err != nil {
-		t.Fatalf("Second install failed: %v", err)
+	// Second init (should be idempotent)
+	if err := doInit(); err != nil {
+		t.Fatalf("Second init failed: %v", err)
 	}
 
-	// Verify content is identical after second install
-	for fileName, firstContent := range firstInstallContents {
+	// Verify content is identical after second init
+	for fileName, firstContent := range firstInitContents {
 		filePath := filepath.Join(destSkillsDir, "omnistrate-fde", fileName)
 		secondContent, err := os.ReadFile(filePath)
 		if err != nil {
-			t.Fatalf("Failed to read file after second install: %v", err)
+			t.Fatalf("Failed to read file after second init: %v", err)
 		}
 		if string(secondContent) != firstContent {
-			t.Errorf("Install is not idempotent for %s:\nFirst:  %q\nSecond: %q", fileName, firstContent, string(secondContent))
+			t.Errorf("Init is not idempotent for %s:\nFirst:  %q\nSecond: %q", fileName, firstContent, string(secondContent))
 		}
 	}
 }

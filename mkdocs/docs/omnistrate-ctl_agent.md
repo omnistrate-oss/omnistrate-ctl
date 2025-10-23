@@ -26,5 +26,5 @@ omnistrate-ctl agent [operation] [flags]
 ### SEE ALSO
 
 * [omnistrate-ctl](omnistrate-ctl.md)	 - Manage your Omnistrate SaaS from the command line
-* [omnistrate-ctl agent install](omnistrate-ctl_agent_install.md)	 - Install Claude Code skills and agent instructions for Omnistrate
+* [omnistrate-ctl agent init](omnistrate-ctl_agent_init.md)	 - Initialize Claude Code skills and agent instructions for Omnistrate
 

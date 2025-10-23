@@ -13,7 +13,7 @@ var Cmd = &cobra.Command{
 }
 
 func init() {
-	Cmd.AddCommand(installCmd)
+	Cmd.AddCommand(initCmd)
 }
 
 func run(cmd *cobra.Command, args []string) {

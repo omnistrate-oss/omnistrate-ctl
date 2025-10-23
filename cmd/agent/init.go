@@ -17,23 +17,23 @@ const (
 	omnistrateSectionHeader = "## Omnistrate Agent Instructions\n\n"
 )
 
-var installCmd = &cobra.Command{
-	Use:   "install",
-	Short: "Install Claude Code skills and agent instructions for Omnistrate",
-	Long: `Installs Claude Code skills and agent instructions for Omnistrate.
+var initCmd = &cobra.Command{
+	Use:   "init",
+	Short: "Initialize Claude Code skills and agent instructions for Omnistrate",
+	Long: `Initializes Claude Code skills and agent instructions for Omnistrate.
 This command will:
 1. Clone the agent-instructions repository (or use local directory)
 2. Copy skills to .claude/skills/ directory
 3. Merge AGENTS.md and CLAUDE.md into your project`,
-	RunE:         runInstall,
+	RunE:         runInit,
 	SilenceUsage: true,
 }
 
 func init() {
-	installCmd.Flags().String("instruction-source", "", "Path to local agent-instructions directory (default: clones from GitHub)")
+	initCmd.Flags().String("instruction-source", "", "Path to local agent-instructions directory (default: clones from GitHub)")
 }
 
-func runInstall(cmd *cobra.Command, args []string) error {
+func runInit(cmd *cobra.Command, args []string) error {
 	// Get current working directory
 	cwd, err := os.Getwd()
 	if err != nil {
@@ -77,7 +77,7 @@ func runInstall(cmd *cobra.Command, args []string) error {
 	}
 
 	// Show user what will happen
-	fmt.Println("Omnistrate Agent Installation")
+	fmt.Println("Omnistrate Agent Initialization")
 	fmt.Println("==============================")
 	fmt.Println()
 	if instructionSource != "" {
@@ -102,12 +102,12 @@ func runInstall(cmd *cobra.Command, args []string) error {
 
 	response = strings.TrimSpace(strings.ToLower(response))
 	if response != "yes" && response != "y" {
-		fmt.Println("Installation cancelled.")
+		fmt.Println("Initialization cancelled.")
 		return nil
 	}
 
 	fmt.Println()
-	fmt.Println("Installing Claude Skills...")
+	fmt.Println("Initializing Claude Skills...")
 	fmt.Println()
 
 	// Step 1: Prepare source directory
@@ -143,7 +143,7 @@ func runInstall(cmd *cobra.Command, args []string) error {
 		fmt.Printf("⚠️ Warning: Could not read README.md: %v\n", err)
 	} else {
 		// Extract skills from README
-		fmt.Println("Installing the following skills:")
+		fmt.Println("Initializing the following skills:")
 		printSkillsFromReadme(string(readmeContent))
 		fmt.Println()
 	}
@@ -248,7 +248,7 @@ func runInstall(cmd *cobra.Command, args []string) error {
 
 	fmt.Println("✅ CLAUDE.md updated successfully")
 
-	fmt.Println("Installation complete!")
+	fmt.Println("Initialization complete!")
 	fmt.Println()
 	fmt.Println("Next steps:")
 	fmt.Println("  - Review .claude/skills/ (local) and ~/.claude/skills/ (global) to see installed skills")
