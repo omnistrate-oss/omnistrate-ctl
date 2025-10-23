@@ -19,6 +19,9 @@ omctl instance modify instance-abcd1234 --network-type PUBLIC / INTERNAL --param
 # Modify an instance deployment using a parameter file
 omctl instance modify instance-abcd1234 --param-file /path/to/param.json
 
+# Modify instance tags
+omctl instance modify instance-abcd1234 --tags environment=prod,owner=team
+
 # Modify an instance deployment and wait for completion with progress tracking
 omctl instance modify instance-abcd1234 --param-file /path/to/param.json --wait
 ```
@@ -30,6 +33,7 @@ omctl instance modify instance-abcd1234 --param-file /path/to/param.json --wait
       --network-type string   Optional network type change for the instance deployment (PUBLIC / INTERNAL)
       --param string          Parameters for the instance deployment
       --param-file string     Json file containing parameters for the instance deployment
+      --tags string           Custom tags to set on the instance deployment (format: key=value,key2=value2)
       --wait                  Wait for modification to complete and show progress
 ```
 

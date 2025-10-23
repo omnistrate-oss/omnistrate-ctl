@@ -83,7 +83,6 @@ func init() {
 	BuildFromRepoCmd.Flags().String("gcp-project-number", "", "GCP project number. Must be used with --gcp-project-id and --deployment-type")
 	BuildFromRepoCmd.Flags().String("azure-subscription-id", "", "Azure subscription ID. Must be used with --azure-tenant-id and --deployment-type")
 	BuildFromRepoCmd.Flags().String("azure-tenant-id", "", "Azure tenant ID. Must be used with --azure-subscription-id and --deployment-type")
-
 	BuildFromRepoCmd.Flags().Bool("reset-pat", false, "Reset the GitHub Personal Access Token (PAT) for the current user.")
 	BuildFromRepoCmd.Flags().StringP("output", "o", "text", "Output format. Only text is supported")
 	BuildFromRepoCmd.Flags().StringP("file", "f", ComposeFileName, "Specify the compose file to read and write to")
@@ -298,8 +297,9 @@ func runBuildFromRepo(cmd *cobra.Command, args []string) error {
 			utils.PrintError(err)
 			return err
 		}
-		if awsAccountID == "" && gcpProjectID == "" {
-			err = errors.New(fmt.Sprintf("AWS account ID or GCP project ID are required for %s deployment type", deploymentType))
+
+		if awsAccountID == "" && gcpProjectID == "" && azureSubscriptionID == "" {
+			err = errors.New(fmt.Sprintf("AWS account ID or GCP project ID or Azure subscription ID are required for %s deployment type", deploymentType))
 			utils.PrintError(err)
 			return err
 		}
@@ -313,6 +313,12 @@ func runBuildFromRepo(cmd *cobra.Command, args []string) error {
 			utils.PrintError(err)
 			return err
 		}
+		if azureSubscriptionID != "" && azureTenantID == "" {
+			err = errors.New("Azure tenant ID is required with Azure subscription ID")
+			utils.PrintError(err)
+			return err
+		}
+
 	}
 
 	// Initialize the spinner manager
@@ -1101,10 +1107,7 @@ func BuildServiceFromRepository(cmd *cobra.Command, ctx context.Context, token, 
 					gcpServiceAccountEmail := fmt.Sprintf("bootstrap-%s@%s.iam.gserviceaccount.com", *user.OrgId, gcpProjectID)
 					fileData = append(fileData, []byte(fmt.Sprintf("      GcpServiceAccountEmail: '%s'\n", gcpServiceAccountEmail))...)
 				}
-				if azureSubscriptionID != "" {
-					fileData = append(fileData, []byte(fmt.Sprintf("      AzureSubscriptionId: '%s'\n", azureSubscriptionID))...)
-					fileData = append(fileData, []byte(fmt.Sprintf("      AzureTenantId: '%s'\n", azureTenantID))...)
-				}
+				fileData = appendAzureConfig(fileData, azureSubscriptionID, azureTenantID)
 			}
 
 			// Write the compose spec to a file
@@ -1147,10 +1150,7 @@ func BuildServiceFromRepository(cmd *cobra.Command, ctx context.Context, token, 
 						gcpServiceAccountEmail := fmt.Sprintf("bootstrap-%s@%s.iam.gserviceaccount.com", *user.OrgId, gcpProjectID)
 						fileData = append(fileData, []byte(fmt.Sprintf("      GcpServiceAccountEmail: '%s'\n", gcpServiceAccountEmail))...)
 					}
-					if azureSubscriptionID != "" {
-					fileData = append(fileData, []byte(fmt.Sprintf("      AzureSubscriptionId: '%s'\n", azureSubscriptionID))...)
-					fileData = append(fileData, []byte(fmt.Sprintf("      AzureTenantId: '%s'\n", azureTenantID))...)
-				}
+					fileData = appendAzureConfig(fileData, azureSubscriptionID, azureTenantID)
 				}
 			}
 
@@ -1294,6 +1294,15 @@ return serviceID, devEnvironmentID, devPlanID, undefinedResources, nil
 
 
 // Helper functions
+
+// appendAzureConfig appends Azure configuration to fileData if Azure credentials are provided
+func appendAzureConfig(fileData []byte, azureSubscriptionID, azureTenantID string) []byte {
+	if azureSubscriptionID != "" {
+		fileData = append(fileData, []byte(fmt.Sprintf("      AzureSubscriptionId: '%s'\n", azureSubscriptionID))...)
+		fileData = append(fileData, []byte(fmt.Sprintf("      AzureTenantId: '%s'\n", azureTenantID))...)
+	}
+	return fileData
+}
 
 func checkIfProdEnvExists(ctx context.Context, token string, serviceID string) (string, error) {
 	prodEnvironment, err := dataaccess.FindEnvironment(ctx, token, serviceID, "prod")

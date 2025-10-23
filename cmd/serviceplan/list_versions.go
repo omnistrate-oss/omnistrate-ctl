@@ -101,7 +101,7 @@ func runListVersions(cmd *cobra.Command, args []string) error {
 	}
 
 	// Check if the service plan exists
-	_, _, planID, _, _, err = getServicePlan(cmd.Context(), token, serviceID, serviceName, planID, planName, environment)
+	_, _, planID, _, err = getServicePlan(cmd.Context(), token, serviceID, serviceName, planID, planName, environment)
 	if err != nil {
 		utils.HandleSpinnerError(spinner, sm, err)
 		return err
@@ -121,11 +121,7 @@ func runListVersions(cmd *cobra.Command, args []string) error {
 
 	// Process and filter service plans
 	for _, servicePlanVersion := range latestNServicePlanVersions {
-		formattedServicePlanVersion, err := formatServicePlanVersion(servicePlanVersion, truncateNames)
-		if err != nil {
-			utils.HandleSpinnerError(spinner, sm, err)
-			return err
-		}
+		formattedServicePlanVersion := formatServicePlanVersion(servicePlanVersion, truncateNames)
 
 		match, err := utils.MatchesFilters(formattedServicePlanVersion, filterMaps)
 		if err != nil {
@@ -157,7 +153,7 @@ func runListVersions(cmd *cobra.Command, args []string) error {
 
 // Helper functions
 
-func formatServicePlanVersion(servicePlan openapiclientfleet.ServicePlanSearchRecord, truncateNames bool) (model.ServicePlanVersion, error) {
+func formatServicePlanVersion(servicePlan openapiclientfleet.ServicePlanSearchRecord, truncateNames bool) model.ServicePlanVersion {
 	serviceName := servicePlan.ServiceName
 	envName := servicePlan.ServiceEnvironmentName
 	planName := servicePlan.Name
@@ -182,7 +178,7 @@ func formatServicePlanVersion(servicePlan openapiclientfleet.ServicePlanSearchRe
 		Version:            servicePlan.Version,
 		ReleaseDescription: releaseDescription,
 		VersionSetStatus:   servicePlan.VersionSetStatus,
-	}, nil
+	}
 }
 
 func validateListVersionsArguments(args []string, serviceID, planID string) error {

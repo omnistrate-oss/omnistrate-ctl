@@ -8,6 +8,7 @@ import (
 	"github.com/fatih/color"
 	"github.com/mitchellh/go-wordwrap"
 	"github.com/omnistrate-oss/omnistrate-ctl/cmd/account"
+	"github.com/omnistrate-oss/omnistrate-ctl/cmd/agent"
 	"github.com/omnistrate-oss/omnistrate-ctl/cmd/alarms"
 	"github.com/omnistrate-oss/omnistrate-ctl/cmd/audit"
 	"github.com/omnistrate-oss/omnistrate-ctl/cmd/auth/login"
@@ -120,6 +121,7 @@ func init() {
 
 	RootCmd.AddCommand(service.Cmd)
 	RootCmd.AddCommand(account.Cmd)
+	RootCmd.AddCommand(agent.Cmd)
 	RootCmd.AddCommand(alarms.Cmd)
 	RootCmd.AddCommand(docs.Cmd)
 	RootCmd.AddCommand(domain.Cmd)

@@ -1,0 +1,34 @@
+## omnistrate-ctl agent init
+
+Initialize Claude Code skills and agent instructions for Omnistrate
+
+### Synopsis
+
+Initializes Claude Code skills and agent instructions for Omnistrate.
+This command will:
+1. Clone the agent-instructions repository (or use local directory)
+2. Copy skills to .claude/skills/ directory
+3. Merge AGENTS.md and CLAUDE.md into your project
+
+```
+omnistrate-ctl agent init [flags]
+```
+
+### Options
+
+```
+  -h, --help                        help for init
+      --instruction-source string   Path to local agent-instructions directory (default: clones from GitHub)
+```
+
+### Options inherited from parent commands
+
+```
+  -o, --output string   Output format (text|table|json) (default "table")
+  -v, --version         Print the version number of omnistrate-ctl
+```
+
+### SEE ALSO
+
+* [omnistrate-ctl agent](omnistrate-ctl_agent.md)	 - Manage AI agent configurations and skills
+

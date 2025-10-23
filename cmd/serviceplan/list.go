@@ -81,11 +81,7 @@ func runList(cmd *cobra.Command, args []string) error {
 	for _, service := range listRes.Services {
 		for _, env := range service.ServiceEnvironments {
 			for _, servicePlan := range env.ServicePlans {
-				formattedServicePlan, err := formatServicePlan(service.Id, service.Name, env.Name, servicePlan, truncateNames)
-				if err != nil {
-					utils.HandleSpinnerError(spinner, sm, err)
-					return err
-				}
+				formattedServicePlan := formatServicePlan(service.Id, service.Name, env.Name, servicePlan, truncateNames)
 
 				match, err := utils.MatchesFilters(formattedServicePlan, filterMaps)
 				if err != nil {
@@ -118,7 +114,7 @@ func runList(cmd *cobra.Command, args []string) error {
 
 // Helper functions
 
-func formatServicePlan(serviceID, serviceName, envName string, servicePlan openapiclient.ServicePlan, truncateNames bool) (model.ServicePlan, error) {
+func formatServicePlan(serviceID, serviceName, envName string, servicePlan openapiclient.ServicePlan, truncateNames bool) model.ServicePlan {
 	planName := servicePlan.Name
 
 	if truncateNames {
@@ -135,5 +131,5 @@ func formatServicePlan(serviceID, serviceName, envName string, servicePlan opena
 		Environment:    envName,
 		DeploymentType: servicePlan.TierType,
 		TenancyType:    servicePlan.ModelType,
-	}, nil
+	}
 }

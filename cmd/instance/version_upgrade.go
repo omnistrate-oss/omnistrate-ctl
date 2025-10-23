@@ -187,7 +187,7 @@ func runVersionUpgrade(cmd *cobra.Command, args []string) error {
 			spinner.UpdateMessage("Processing instance configuration to generate overrides")
 		}
 		// Describe instance to get current configuration
-		instance, err := dataaccess.DescribeResourceInstance(cmd.Context(), token, serviceID, environmentID, instanceID)
+		instance, err := dataaccess.DescribeResourceInstance(cmd.Context(), token, serviceID, environmentID, instanceID, true)
 		if err != nil {
 			utils.HandleSpinnerError(spinner, sm, err)
 			return err

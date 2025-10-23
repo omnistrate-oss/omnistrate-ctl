@@ -76,7 +76,7 @@ func runDescribe(cmd *cobra.Command, args []string) error {
 
 	// Check if account exists
 	var id string
-	id, _, err = getAccountID(cmd.Context(), token, nameOrID)
+	id, err = getAccountID(cmd.Context(), token, nameOrID)
 	if err != nil {
 		utils.HandleSpinnerError(spinner, sm, err)
 		return err
@@ -120,7 +120,7 @@ func validateDescribeArguments(args []string, output string) error {
 	return nil
 }
 
-func getAccountID(ctx context.Context, token, accountNameOrIDArg string) (accountID, accountName string, err error) {
+func getAccountID(ctx context.Context, token, accountNameOrIDArg string) (accountID string, err error) {
 	// List accounts
 	listRes, err := dataaccess.ListAccounts(ctx, token, "all")
 	if err != nil {
@@ -132,12 +132,10 @@ func getAccountID(ctx context.Context, token, accountNameOrIDArg string) (accoun
 		// Check for exact match (case-insensitive) with name or ID
 		if strings.EqualFold(account.Name, accountNameOrIDArg) {
 			accountID = account.Id
-			accountName = account.Name
 			count++
 		}
 		if strings.EqualFold(account.Id, accountNameOrIDArg) {
 			accountID = account.Id
-			accountName = account.Name
 			count++
 		}
 	}

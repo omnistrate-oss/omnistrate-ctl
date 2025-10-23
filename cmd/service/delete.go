@@ -79,7 +79,7 @@ func runDelete(cmd *cobra.Command, args []string) error {
 	}
 
 	// Check if service exists
-	id, _, err = getService(cmd.Context(), token, name, id)
+	id, err = getService(cmd.Context(), token, name, id)
 	if err != nil {
 		utils.HandleSpinnerError(spinner, sm, err)
 		return err

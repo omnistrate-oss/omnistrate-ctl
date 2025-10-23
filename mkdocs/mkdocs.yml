@@ -51,6 +51,7 @@ nav:
   - Commands:
       - login: "omnistrate-ctl_login.md"
       - logout: "omnistrate-ctl_logout.md"
+      - mcp: "omnistrate-ctl_mcp.md"
       - account: "omnistrate-ctl_account.md"
       - deployment-cell: "omnistrate-ctl_deployment-cell.md"
       - build: "omnistrate-ctl_build.md"

@@ -79,14 +79,14 @@ func runListEndpoints(cmd *cobra.Command, args []string) error {
 	}
 
 	// Check if instance exists and get details
-	serviceID, environmentID, _, err := getInstanceWithResourceName(cmd.Context(), token, instanceID)
+	serviceID, environmentID, err := getInstanceWithResourceName(cmd.Context(), token, instanceID)
 	if err != nil {
 		utils.HandleSpinnerError(spinner, sm, err)
 		return err
 	}
 
 	// Get detailed instance information
-	detailedInstance, err := dataaccess.DescribeResourceInstance(cmd.Context(), token, serviceID, environmentID, instanceID)
+	detailedInstance, err := dataaccess.DescribeResourceInstance(cmd.Context(), token, serviceID, environmentID, instanceID, true)
 	if err != nil {
 		utils.HandleSpinnerError(spinner, sm, err)
 		return err
@@ -129,7 +129,7 @@ func runListEndpoints(cmd *cobra.Command, args []string) error {
 }
 
 // getInstanceWithResourceName gets instance details including resource name
-func getInstanceWithResourceName(ctx context.Context, token, instanceID string) (serviceID, environmentID, productTierID string, err error) {
+func getInstanceWithResourceName(ctx context.Context, token, instanceID string) (serviceID, environmentID string, err error) {
 	searchRes, err := dataaccess.SearchInventory(ctx, token, fmt.Sprintf("resourceinstance:%s", instanceID))
 	if err != nil {
 		return
@@ -140,7 +140,6 @@ func getInstanceWithResourceName(ctx context.Context, token, instanceID string) 
 		if instance.Id == instanceID {
 			serviceID = instance.ServiceId
 			environmentID = instance.ServiceEnvironmentId
-			productTierID = instance.ProductTierId
 			found = true
 			break
 		}

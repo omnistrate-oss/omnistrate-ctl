@@ -17,7 +17,8 @@ omnistrate-ctl subscription create-on-behalf [flags]
       --billing-provider string         Billing provider
       --custom-price                    Whether to use custom price
       --custom-price-per-unit string    Custom price per unit (JSON object)
-      --customer-user-id string         Customer user ID (required)
+      --customer-email string           Customer email (one of customer-user-id or customer-email required)
+      --customer-user-id string         Customer user ID (one of customer-user-id or customer-email required)
   -e, --environment-id string           Environment ID (required)
       --external-payer-id string        External payer ID
   -h, --help                            help for create-on-behalf
