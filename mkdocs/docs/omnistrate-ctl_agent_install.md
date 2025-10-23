@@ -6,7 +6,7 @@ Install Claude Code skills and agent instructions for Omnistrate
 
 Installs Claude Code skills and agent instructions for Omnistrate.
 This command will:
-1. Clone the agent-instructions repository
+1. Clone the agent-instructions repository (or use local directory)
 2. Copy skills to .claude/skills/ directory
 3. Merge AGENTS.md and CLAUDE.md into your project
 
@@ -17,7 +17,8 @@ omnistrate-ctl agent install [flags]
 ### Options
 
 ```
-  -h, --help   help for install
+  -h, --help                        help for install
+      --instruction-source string   Path to local agent-instructions directory (default: clones from GitHub)
 ```
 
 ### Options inherited from parent commands

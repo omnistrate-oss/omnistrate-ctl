@@ -26,7 +26,7 @@ func TestCopyDir(t *testing.T) {
 		if err := os.MkdirAll(filepath.Dir(fullPath), 0755); err != nil {
 			t.Fatalf("Failed to create directory: %v", err)
 		}
-		if err := os.WriteFile(fullPath, []byte(content), 0644); err != nil {
+		if err := os.WriteFile(fullPath, []byte(content), 0600); err != nil {
 			t.Fatalf("Failed to create test file: %v", err)
 		}
 	}
@@ -57,7 +57,7 @@ func TestMergeMarkdownFile_CreateNew(t *testing.T) {
 	dstPath := filepath.Join(tmpDir, "dst.md")
 
 	srcContent := "This is source content"
-	if err := os.WriteFile(srcPath, []byte(srcContent), 0644); err != nil {
+	if err := os.WriteFile(srcPath, []byte(srcContent), 0600); err != nil {
 		t.Fatalf("Failed to create source file: %v", err)
 	}
 
@@ -87,10 +87,10 @@ func TestMergeMarkdownFile_AppendToExisting(t *testing.T) {
 	srcContent := "Omnistrate content"
 	existingContent := "# Existing Content\n\nSome existing text"
 
-	if err := os.WriteFile(srcPath, []byte(srcContent), 0644); err != nil {
+	if err := os.WriteFile(srcPath, []byte(srcContent), 0600); err != nil {
 		t.Fatalf("Failed to create source file: %v", err)
 	}
-	if err := os.WriteFile(dstPath, []byte(existingContent), 0644); err != nil {
+	if err := os.WriteFile(dstPath, []byte(existingContent), 0600); err != nil {
 		t.Fatalf("Failed to create destination file: %v", err)
 	}
 
@@ -125,10 +125,10 @@ func TestMergeMarkdownFile_ReplaceExistingSection(t *testing.T) {
 	srcContent := "New Omnistrate content"
 	existingContent := "# Existing Content\n\n" + omnistrateSectionHeader + "Old Omnistrate content\n\n## Other Section\n\nOther content"
 
-	if err := os.WriteFile(srcPath, []byte(srcContent), 0644); err != nil {
+	if err := os.WriteFile(srcPath, []byte(srcContent), 0600); err != nil {
 		t.Fatalf("Failed to create source file: %v", err)
 	}
-	if err := os.WriteFile(dstPath, []byte(existingContent), 0644); err != nil {
+	if err := os.WriteFile(dstPath, []byte(existingContent), 0600); err != nil {
 		t.Fatalf("Failed to create destination file: %v", err)
 	}
 
@@ -174,10 +174,10 @@ func TestMergeMarkdownFile_Idempotent(t *testing.T) {
 	srcContent := "Omnistrate content"
 	existingContent := "# Existing Content\n\nSome text"
 
-	if err := os.WriteFile(srcPath, []byte(srcContent), 0644); err != nil {
+	if err := os.WriteFile(srcPath, []byte(srcContent), 0600); err != nil {
 		t.Fatalf("Failed to create source file: %v", err)
 	}
-	if err := os.WriteFile(dstPath, []byte(existingContent), 0644); err != nil {
+	if err := os.WriteFile(dstPath, []byte(existingContent), 0600); err != nil {
 		t.Fatalf("Failed to create destination file: %v", err)
 	}
 
@@ -230,7 +230,7 @@ func TestSkillInstallation_PreservesOtherSkills(t *testing.T) {
 		}
 		for fileName, content := range files {
 			filePath := filepath.Join(skillDir, fileName)
-			if err := os.WriteFile(filePath, []byte(content), 0644); err != nil {
+			if err := os.WriteFile(filePath, []byte(content), 0600); err != nil {
 				t.Fatalf("Failed to create skill file: %v", err)
 			}
 		}
@@ -250,7 +250,7 @@ func TestSkillInstallation_PreservesOtherSkills(t *testing.T) {
 		}
 		for fileName, content := range files {
 			filePath := filepath.Join(skillDir, fileName)
-			if err := os.WriteFile(filePath, []byte(content), 0644); err != nil {
+			if err := os.WriteFile(filePath, []byte(content), 0600); err != nil {
 				t.Fatalf("Failed to create source skill file: %v", err)
 			}
 		}
@@ -324,7 +324,7 @@ func TestSkillInstallation_RemovesExtraFilesOnReinstall(t *testing.T) {
 
 	for fileName, content := range oldFiles {
 		filePath := filepath.Join(skillDir, fileName)
-		if err := os.WriteFile(filePath, []byte(content), 0644); err != nil {
+		if err := os.WriteFile(filePath, []byte(content), 0600); err != nil {
 			t.Fatalf("Failed to create file: %v", err)
 		}
 	}
@@ -342,7 +342,7 @@ func TestSkillInstallation_RemovesExtraFilesOnReinstall(t *testing.T) {
 
 	for fileName, content := range newFiles {
 		filePath := filepath.Join(srcSkillDir, fileName)
-		if err := os.WriteFile(filePath, []byte(content), 0644); err != nil {
+		if err := os.WriteFile(filePath, []byte(content), 0600); err != nil {
 			t.Fatalf("Failed to create source file: %v", err)
 		}
 	}
@@ -406,7 +406,7 @@ func TestSkillInstallation_Idempotent(t *testing.T) {
 
 	for fileName, content := range skillFiles {
 		filePath := filepath.Join(srcSkillDir, fileName)
-		if err := os.WriteFile(filePath, []byte(content), 0644); err != nil {
+		if err := os.WriteFile(filePath, []byte(content), 0600); err != nil {
 			t.Fatalf("Failed to create source file: %v", err)
 		}
 	}
@@ -472,7 +472,7 @@ func TestMergeMarkdownFileWithContent_UpdatesExistingPaths(t *testing.T) {
 
 	// Create existing file with old skill paths
 	existingContent := "# My Skills\n\n**Location**: " + "`skills/omnistrate-fde/`\n\nSome content"
-	if err := os.WriteFile(destPath, []byte(existingContent), 0644); err != nil {
+	if err := os.WriteFile(destPath, []byte(existingContent), 0600); err != nil {
 		t.Fatalf("Failed to create test file: %v", err)
 	}
 
