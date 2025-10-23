@@ -30,7 +30,7 @@ func GetServiceProviderOrganization(ctx context.Context, token string) (res *ope
 	return
 }
 
-func convertTemplateToOpenAPIFormat(deploymentConfig model.DeploymentCellTemplate, cloudProvider string) (openapiclient.DeploymentCellConfigurations, error) {
+func convertTemplateToOpenAPIFormat(deploymentConfig model.DeploymentCellTemplate, cloudProvider string) openapiclient.DeploymentCellConfigurations {
 	apiModel := openapiclient.DeploymentCellConfigurations{}
 	configPerCloudProvider := make(map[string]openapiclient.DeploymentCellConfiguration)
 
@@ -61,17 +61,14 @@ func convertTemplateToOpenAPIFormat(deploymentConfig model.DeploymentCellTemplat
 
 	apiModel.DeploymentCellConfigurationPerCloudProvider = utils.ToPtr(configPerCloudProvider)
 
-	return apiModel, nil
+	return apiModel
 }
 
 func UpdateServiceProviderOrganization(ctx context.Context, token string, deploymentConfig model.DeploymentCellTemplate, envType string, cloudProvider string) (err error) {
 	ctxWithToken := context.WithValue(ctx, openapiclient.ContextAccessToken, token)
 	apiClient := getV1Client()
 
-	apiModel, err := convertTemplateToOpenAPIFormat(deploymentConfig, cloudProvider)
-	if err != nil {
-		return
-	}
+	apiModel := convertTemplateToOpenAPIFormat(deploymentConfig, cloudProvider)
 
 	configMap := map[string]openapiclient.DeploymentCellConfigurations{
 		envType: apiModel,

@@ -117,7 +117,7 @@ test-coverage-report:
 
 lint-install:
 	@echo "Installing golangci-lint"
-	go install github.com/golangci/golangci-lint/cmd/golangci-lint@v1.56.2
+	go install github.com/golangci/golangci-lint/cmd/golangci-lint@v2.5.0
 
 .PHONY: lint
 lint:

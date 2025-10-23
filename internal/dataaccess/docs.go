@@ -2,6 +2,7 @@ package dataaccess
 
 import (
 	"bufio"
+	"context"
 	"fmt"
 	"io"
 	"net/http"
@@ -57,9 +58,10 @@ type Document struct {
 
 // ComposeSpecResult represents a compose spec search result
 type ComposeSpecResult struct {
-	Tag     string `json:"tag"`
-	URL     string `json:"url"`
-	Content string `json:"content,omitempty"`
+	Tag        string      `json:"tag"`
+	URL        string      `json:"url"`
+	Content    string      `json:"content,omitempty"`
+	JSONSchema interface{} `json:"json_schema,omitempty"`
 }
 
 // ComposeSpecAvailableTag represents a tag that is available in the compose spec documentation
@@ -665,6 +667,26 @@ func SearchComposeSpecSections(tag string) ([]ComposeSpecResult, error) {
 		}
 	}
 	return results, nil
+}
+
+// GetJSONSchema retrieves the JSON schema for a specific type
+func GetJSONSchema(ctx context.Context, schemaType string) (interface{}, error) {
+	// Get the v1 client
+	client := getV1Client()
+
+	// Create the request with the schema type
+	req := client.SchemaApiAPI.SchemaApiGetJSONSchema(ctx).Type_(schemaType)
+
+	// Execute the request
+	schema, httpRes, err := req.Execute()
+	if err != nil {
+		// Log the error but don't fail the entire operation
+		log.Debug().Err(err).Str("type", schemaType).Msg("Failed to fetch JSON schema")
+		return nil, handleV1Error(err)
+	}
+	defer httpRes.Body.Close()
+
+	return schema, nil
 }
 
 // ListComposeSpecSections retrieves all compose spec tag sections

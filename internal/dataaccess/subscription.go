@@ -246,6 +246,7 @@ func DenySubscriptionRequest(ctx context.Context, token string, serviceID, envir
 type CreateSubscriptionOnBehalfOptions struct {
 	ProductTierID                        string
 	OnBehalfOfCustomerUserID             string
+	OnBehalfOfCustomerEmail              string
 	AllowCreatesWhenPaymentNotConfigured *bool
 	BillingProvider                      string
 	CustomPrice                          *bool
@@ -259,9 +260,35 @@ func CreateSubscriptionOnBehalf(ctx context.Context, token string, serviceID, en
 	ctxWithToken := context.WithValue(ctx, openapiclientfleet.ContextAccessToken, token)
 	apiClient := getFleetClient()
 
+	// If email is provided instead of user ID, resolve it to user ID
+	customerUserID := opts.OnBehalfOfCustomerUserID
+	if customerUserID == "" && opts.OnBehalfOfCustomerEmail != "" {
+		listUsersRes, r, err := apiClient.InventoryApiAPI.InventoryApiListAllUsers(ctxWithToken).Execute()
+		if err != nil {
+			if r != nil {
+				_ = r.Body.Close()
+			}
+			return nil, handleFleetError(errors.Wrap(err, "failed to list users"))
+		}
+		if r != nil {
+			_ = r.Body.Close()
+		}
+
+		for _, user := range listUsersRes.Users {
+			if user.Email != nil && *user.Email == opts.OnBehalfOfCustomerEmail {
+				customerUserID = *user.UserId
+				break
+			}
+		}
+
+		if customerUserID == "" {
+			return nil, errors.Errorf("no user found with email %s", opts.OnBehalfOfCustomerEmail)
+		}
+	}
+
 	requestBody := openapiclientfleet.FleetCreateSubscriptionOnBehalfOfCustomerRequest2{
 		ProductTierId:            opts.ProductTierID,
-		OnBehalfOfCustomerUserId: opts.OnBehalfOfCustomerUserID,
+		OnBehalfOfCustomerUserId: customerUserID,
 	}
 
 	if opts.AllowCreatesWhenPaymentNotConfigured != nil {

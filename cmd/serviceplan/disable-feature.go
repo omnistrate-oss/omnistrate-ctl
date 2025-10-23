@@ -75,7 +75,7 @@ func runDisableFeature(cmd *cobra.Command, args []string) error {
 	sm.Start()
 
 	// Check if the service plan exists
-	serviceID, _, planID, _, _, err = getServicePlan(cmd.Context(), token, serviceID, serviceName, planID, planName, environment)
+	serviceID, _, planID, _, err = getServicePlan(cmd.Context(), token, serviceID, serviceName, planID, planName, environment)
 	if err != nil {
 		utils.HandleSpinnerError(spinner, sm, err)
 		return err

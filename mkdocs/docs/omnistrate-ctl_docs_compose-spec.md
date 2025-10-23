@@ -27,8 +27,9 @@ omctl docs compose-spec "x-omnistrate-compute" --output json
 ### Options
 
 ```
-  -h, --help            help for compose-spec
-  -o, --output string   Output format (table|json) (default "table")
+  -h, --help               help for compose-spec
+      --json-schema-only   Return only the JSON schema for the specified tag
+  -o, --output string      Output format (table|json) (default "table")
 ```
 
 ### Options inherited from parent commands

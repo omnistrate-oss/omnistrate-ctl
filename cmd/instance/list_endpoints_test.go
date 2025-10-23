@@ -27,7 +27,7 @@ func TestGetInstanceWithResourceName(t *testing.T) {
 	instanceID := "test-instance-id"
 
 	// This would fail with a real API call, but validates the function signature
-	_, _, _, err := getInstanceWithResourceName(ctx, token, instanceID)
+	_, _, err := getInstanceWithResourceName(ctx, token, instanceID)
 	assert.Error(t, err) // Should error since this is not a real token/instance
 }
 

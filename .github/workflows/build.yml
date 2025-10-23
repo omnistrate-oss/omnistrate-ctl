@@ -10,7 +10,7 @@ on:
 
 env:
   # test coverage threshold
-  GOLANG_CI_VERSION: v2.4.0
+  GOLANG_CI_VERSION: v2.5.0
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
