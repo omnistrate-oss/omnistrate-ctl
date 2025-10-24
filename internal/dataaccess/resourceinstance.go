@@ -106,7 +106,13 @@ func DescribeResourceInstanceSnapshot(ctx context.Context, token string, service
 	return
 }
 
-func ListResourceInstance(ctx context.Context, token string, serviceID, environmentID string, opts ...func(openapiclientfleet.ApiInventoryApiListResourceInstancesRequest) openapiclientfleet.ApiInventoryApiListResourceInstancesRequest) (res *openapiclientfleet.ListFleetResourceInstancesResultInternal, err error) {
+// ListResourceInstanceOptions contains all optional parameters for ListResourceInstance
+type ListResourceInstanceOptions struct {
+	Filter        *string
+	ProductTierId *string
+}
+
+func ListResourceInstance(ctx context.Context, token string, serviceID, environmentID string, options *ListResourceInstanceOptions) (res *openapiclientfleet.ListFleetResourceInstancesResultInternal, err error) {
 	ctxWithToken := context.WithValue(ctx, openapiclientfleet.ContextAccessToken, token)
 	apiClient := getFleetClient()
 
@@ -116,9 +122,14 @@ func ListResourceInstance(ctx context.Context, token string, serviceID, environm
 		environmentID,
 	)
 
-	// Apply optional parameters
-	for _, opt := range opts {
-		req = opt(req)
+	// Apply optional parameters with compile-time safety
+	if options != nil {
+		if options.Filter != nil {
+			req = req.Filter(*options.Filter)
+		}
+		if options.ProductTierId != nil {
+			req = req.ProductTierId(*options.ProductTierId)
+		}
 	}
 
 	var r *http.Response
@@ -135,19 +146,7 @@ func ListResourceInstance(ctx context.Context, token string, serviceID, environm
 	return
 }
 
-// WithFilter adds a filter parameter to the ListResourceInstance request
-func WithFilter(filter string) func(openapiclientfleet.ApiInventoryApiListResourceInstancesRequest) openapiclientfleet.ApiInventoryApiListResourceInstancesRequest {
-	return func(req openapiclientfleet.ApiInventoryApiListResourceInstancesRequest) openapiclientfleet.ApiInventoryApiListResourceInstancesRequest {
-		return req.Filter(filter)
-	}
-}
 
-// WithProductTierId adds a product tier ID parameter
-func WithProductTierId(productTierId string) func(openapiclientfleet.ApiInventoryApiListResourceInstancesRequest) openapiclientfleet.ApiInventoryApiListResourceInstancesRequest {
-	return func(req openapiclientfleet.ApiInventoryApiListResourceInstancesRequest) openapiclientfleet.ApiInventoryApiListResourceInstancesRequest {
-		return req.ProductTierId(productTierId)
-	}
-}
 
 func ListResourceInstanceSnapshots(ctx context.Context, token string, serviceID, environmentID, instanceID string) (res *openapiclientfleet.FleetListInstanceSnapshotResult, err error) {
 	ctxWithToken := context.WithValue(ctx, openapiclientfleet.ContextAccessToken, token)

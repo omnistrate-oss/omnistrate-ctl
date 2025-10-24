@@ -1298,8 +1298,10 @@ func listInstances(ctx context.Context, token, serviceID, environmentID, service
 }, error) {
 
 	res, err := dataaccess.ListResourceInstance(ctx, token, serviceID, environmentID,
-		dataaccess.WithProductTierId(servicePlanID),
-		dataaccess.WithFilter(filter),
+		&dataaccess.ListResourceInstanceOptions{
+			ProductTierId: &servicePlanID,
+			Filter:        &filter,
+		},
 	)
 	if err != nil {
 		return []string{}, []struct{cloudProvider string; instanceID string; status string}{}, fmt.Errorf("failed to search for instances: %w", err)
