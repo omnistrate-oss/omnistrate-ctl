@@ -85,7 +85,6 @@ func ListServiceEnvironments(ctx context.Context, token, serviceID string) (*ope
 }
 
 func PromoteServiceEnvironment(ctx context.Context, token, serviceID, serviceEnvironmentID string) error {
-	// Try the SDK approach first
 	ctxWithToken := context.WithValue(ctx, openapiclientv1.ContextAccessToken, token)
 	apiClient := getV1Client()
 
