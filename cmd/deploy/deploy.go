@@ -923,7 +923,7 @@ func executeDeploymentWorkflow(cmd *cobra.Command, sm ysmrr.SpinnerManager, toke
 		
 		spinner = sm.AddSpinner(createMsg)
 		createdInstanceID, err := "", error(nil)
-		createdInstanceID, err = createInstanceUnified(cmd.Context(), token, serviceID, planID, cloudProvider, region, param, paramFile, resourceID, "resourceInstance", formattedParams, sm)
+		createdInstanceID, err = createInstanceUnified(cmd.Context(), token, serviceID, planID, cloudProvider, region, resourceID, "resourceInstance", formattedParams, sm)
 		finalInstanceID = createdInstanceID  
 		// instanceActionType is already "create" from initialization
 		if err != nil {
@@ -972,7 +972,7 @@ func executeDeploymentWorkflow(cmd *cobra.Command, sm ysmrr.SpinnerManager, toke
 
 
 // createInstanceUnified creates an instance with or without subscription, removing duplicate code
-func createInstanceUnified(ctx context.Context, token, serviceID, productTierID, cloudProvider, region, param, paramFile, resourceID, instanceType string, formattedParams map[string]interface{}, sm ysmrr.SpinnerManager) (string, error) {
+func createInstanceUnified(ctx context.Context, token, serviceID, productTierID, cloudProvider, region, resourceID, instanceType string, formattedParams map[string]interface{}, sm ysmrr.SpinnerManager) (string, error) {
 	
 	// Get the latest version
        version, err := dataaccess.FindLatestVersion(ctx, token, serviceID, productTierID)
@@ -2007,11 +2007,17 @@ func createCloudAccountInstances(ctx context.Context, token, serviceID, environm
 		return "", fmt.Errorf("failed to get cloud credentials: %w", err)
 	}
 
+	// Format parameters
+	formattedParams, err := common.FormatParams(params, "")
+	if err != nil {
+		return "", err
+	}
+
 	// Restart spinner for instance creation
 	sm.Start()
 	spinner = sm.AddSpinner("Creating new cloud account instance")
 
-	createdInstanceID, err := createInstanceUnified(ctx, token, serviceID, planID, targetCloudProvider, "", params, "", "", "cloudAccount", map[string]interface{}{}, sm)
+	createdInstanceID, err := createInstanceUnified(ctx, token, serviceID, planID, targetCloudProvider, "", "", "cloudAccount", formattedParams, sm)
 	if err != nil {
 		spinner.UpdateMessage("Creating cloud account instance: Failed (" + err.Error() + ")")
 		spinner.Error()
