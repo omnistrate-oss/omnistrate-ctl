@@ -6,7 +6,7 @@ import (
 	"github.com/spf13/cobra"
 )
 
-var validEnvironments = []string{"PROD", "PRIVATE", "CANARY", "STAGING", "QA", "DEV"}
+var validEnvironments = []string{"PROD", "PRIVATE", "CANARY", "STAGING", "QA", "DEV", "GLOBAL"}
 var validCloudProviders = []string{"aws", "azure", "gcp"}
 
 var Cmd = &cobra.Command{
