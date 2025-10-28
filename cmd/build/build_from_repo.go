@@ -744,7 +744,8 @@ func BuildServiceFromRepository(cmd *cobra.Command, ctx context.Context, token, 
 					ghUsername = config.GithubTokenUserName
 				} else {
 					// Use GitHub API directly with PAT to get username
-					ghUsernameOutput, err := exec.Command("curl", "-s", "-H", fmt.Sprintf("Authorization: token %s", pat), "https://api.github.com/user").Output()
+					authHeader := fmt.Sprintf("Authorization: token %s", pat)
+					ghUsernameOutput, err := exec.Command("curl", "-s", "-H", authHeader, "https://api.github.com/user").Output()
 					if err != nil {
 						utils.HandleSpinnerError(spinner, sm, err)
 						return "", "", "", nil, err
@@ -832,7 +833,8 @@ func BuildServiceFromRepository(cmd *cobra.Command, ctx context.Context, token, 
 				ghUsername = config.GithubTokenUserName
 			} else {
 				// Use GitHub API directly with PAT to get username
-				ghUsernameOutput, err := exec.Command("curl", "-s", "-H", fmt.Sprintf("Authorization: token %s", pat), "https://api.github.com/user").Output()
+				authHeader := fmt.Sprintf("Authorization: token %s", pat)
+				ghUsernameOutput, err := exec.Command("curl", "-s", "-H", authHeader, "https://api.github.com/user").Output()
 				if err != nil {
 					utils.HandleSpinnerError(spinner, sm, err)
 					return "", "", "", nil, err

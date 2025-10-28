@@ -1,0 +1,94 @@
+Test Category,Test ID,Scenario Description,Command Example,Expected Result,Priority,Status,Notes
+Authentication & Authorization,AUTH-001,User not logged in,omctl deploy spec.yaml,Error: not logged in. Please run 'omctl login' to authenticate,P1,Not Started,Critical path validation
+Authentication & Authorization,AUTH-002,Invalid/expired token,omctl deploy spec.yaml,Token refresh or login prompt,P2,Not Started,Auth flow validation
+Authentication & Authorization,AUTH-003,Valid authenticated user,omctl deploy spec.yaml,Proceeds with deployment,P1,Not Started,Happy path validation
+Spec File Validation,SPEC-001,No spec file provided no compose.yaml,omctl deploy,Auto-detect repo build mode,P2,Not Started,Auto-detection logic
+Spec File Validation,SPEC-002,Invalid spec file path,omctl deploy nonexistent.yaml,Error: spec file does not exist,P2,Not Started,File validation
+Spec File Validation,SPEC-003,Valid docker-compose.yaml,omctl deploy docker-compose.yaml,Docker compose spec type detected,P1,Not Started,Core functionality
+Spec File Validation,SPEC-004,Valid service plan spec,omctl deploy serviceplan.yaml,Service plan spec type detected,P1,Not Started,Core functionality
+Spec File Validation,SPEC-005,YAML with template expressions,omctl deploy spec-with-templates.yaml,Template expressions processed correctly,P3,Not Started,Advanced feature
+Spec File Validation,SPEC-006,Spec without x-omnistrate keys,omctl deploy plain-docker-compose.yaml,Warning about missing omnistrate configurations,P2,Not Started,User guidance
+Spec File Validation,SPEC-007,Malformed YAML file,omctl deploy malformed.yaml,Error parsing YAML,P2,Not Started,Error handling
+Spec File Validation,SPEC-008,Empty spec file,omctl deploy empty.yaml,Error: invalid or empty spec,P2,Not Started,Edge case
+Deployment Type Validation,DTYPE-001,Valid hosted deployment,omctl deploy spec.yaml --deployment-type hosted,Deployment type set to hosted,P1,Not Started,Core functionality
+Deployment Type Validation,DTYPE-002,Valid BYOA deployment,omctl deploy spec.yaml --deployment-type byoa,Deployment type set to byoa,P1,Not Started,Core functionality
+Deployment Type Validation,DTYPE-003,Invalid deployment type,omctl deploy spec.yaml --deployment-type invalid,Error: invalid deployment-type. Valid values are: hosted byoa,P1,Not Started,Input validation
+Deployment Type Validation,DTYPE-004,Deployment type in spec overrides flag,omctl deploy byoa-spec.yaml --deployment-type hosted,Spec deployment type takes precedence,P2,Not Started,Priority logic
+Deployment Type Validation,DTYPE-005,No deployment type specified,omctl deploy spec.yaml,Defaults to hosted,P2,Not Started,Default behavior
+Cloud Provider Account Management,CLOUD-001,No cloud accounts linked,omctl deploy spec.yaml,Error: no cloud provider accounts found,P1,Not Started,Pre-requisite validation
+Cloud Provider Account Management,CLOUD-002,Only non-READY accounts,omctl deploy spec.yaml,Error: no READY accounts found,P1,Not Started,Account state validation
+Cloud Provider Account Management,CLOUD-003,Multiple READY accounts,omctl deploy spec.yaml,Uses first available READY account,P1,Not Started,Account selection logic
+Cloud Provider Account Management,CLOUD-004,AWS account in spec file,omctl deploy aws-spec.yaml,Uses specified AWS account,P2,Not Started,Account specification
+Cloud Provider Account Management,CLOUD-005,GCP account in spec file,omctl deploy gcp-spec.yaml,Uses specified GCP account,P2,Not Started,Account specification
+Cloud Provider Account Management,CLOUD-006,Azure account in spec file,omctl deploy azure-spec.yaml,Uses specified Azure account,P2,Not Started,Account specification
+Cloud Provider Account Management,CLOUD-007,Account specified but not linked,omctl deploy spec-with-unlinked-account.yaml,Error: account not linked,P2,Not Started,Account validation
+Cloud Provider Account Management,CLOUD-008,Account linked but not READY,omctl deploy spec-with-pending-account.yaml,Error: account not READY,P2,Not Started,Account state validation
+Service Name Handling,SVC-001,Custom service name provided,omctl deploy spec.yaml --product-name my-service,Uses my-service,P1,Not Started,User input handling
+Service Name Handling,SVC-002,No service name use directory,omctl deploy spec.yaml,Uses sanitized directory name,P1,Not Started,Default naming logic
+Service Name Handling,SVC-003,Invalid service name characters,omctl deploy spec.yaml --product-name My Service!,Sanitizes to valid name,P2,Not Started,Name sanitization
+Service Name Handling,SVC-004,Service name starting with numbers,omctl deploy spec.yaml --product-name 123service,Prefixed with svc-,P2,Not Started,Name validation rules
+Service Name Handling,SVC-005,Very long service name,omctl deploy spec.yaml --product-name very-long-service-name...,Truncated appropriately,P3,Not Started,Edge case handling
+Environment Management,ENV-001,Default environment,omctl deploy spec.yaml,Uses Prod environment with prod type,P1,Not Started,Default behavior
+Environment Management,ENV-002,Custom environment,omctl deploy spec.yaml --environment MyEnv --environment-type staging,Creates/uses MyEnv staging environment,P2,Not Started,Custom environment
+Environment Management,ENV-003,Environment without type,omctl deploy spec.yaml --environment MyEnv,Error: environment and environment-type must be used together,P2,Not Started,Flag validation
+Environment Management,ENV-004,Type without environment,omctl deploy spec.yaml --environment-type dev,Error: environment and environment-type must be used together,P2,Not Started,Flag validation
+Environment Management,ENV-005,Invalid environment type,omctl deploy spec.yaml --environment Test --environment-type invalid,Validation error for environment type,P2,Not Started,Input validation
+Dry Run Mode,DRY-001,Dry run with valid spec,omctl deploy spec.yaml --dry-run,Validation only no actual deployment,P2,Not Started,Testing feature
+Dry Run Mode,DRY-002,Dry run with invalid spec,omctl deploy invalid.yaml --dry-run,Shows validation errors,P2,Not Started,Error preview
+Dry Run Mode,DRY-003,Dry run with auth issues,omctl deploy spec.yaml --dry-run (not logged in),Shows auth error,P2,Not Started,Auth validation
+Dry Run Mode,DRY-004,Dry run with missing accounts,omctl deploy spec.yaml --dry-run,Shows account validation errors,P2,Not Started,Account validation
+Instance Management,INST-001,No existing instances,omctl deploy spec.yaml,Creates new instance automatically,P1,Not Started,New deployment
+Instance Management,INST-002,One existing instance,omctl deploy spec.yaml,Upgrades existing instance,P1,Not Started,Update deployment
+Instance Management,INST-003,Multiple existing instances,omctl deploy spec.yaml,Prompts user to select instance or create new,P2,Not Started,User choice handling
+Instance Management,INST-004,Specific instance ID,omctl deploy spec.yaml --instance-id abc123,Upgrades specified instance,P2,Not Started,Instance targeting
+Instance Management,INST-005,Invalid instance ID,omctl deploy spec.yaml --instance-id invalid,Creates new instance,P2,Not Started,Invalid input handling
+Instance Management,INST-006,Instance creation with params,omctl deploy spec.yaml --param {"key":"value"},Creates instance with parameters,P2,Not Started,Parameter passing
+Instance Management,INST-007,Instance with param file,omctl deploy spec.yaml --param-file params.json,Creates instance with file parameters,P2,Not Started,File parameter loading
+Instance Management,INST-008,Missing required parameters,omctl deploy spec.yaml,Error: missing required parameters,P2,Not Started,Parameter validation
+Resource Management,RES-001,Single resource in spec,omctl deploy spec.yaml,Uses the single resource,P2,Not Started,Simple resource handling
+Resource Management,RES-002,Multiple resources in spec,omctl deploy spec.yaml,Prompts user to select resource,P2,Not Started,Resource selection
+Resource Management,RES-003,Specific resource ID,omctl deploy spec.yaml --resource-id res123,Uses specified resource,P2,Not Started,Resource targeting
+Resource Management,RES-004,Invalid resource ID,omctl deploy spec.yaml --resource-id invalid,Error: resource not found,P2,Not Started,Resource validation
+Resource Management,RES-005,All internal resources,omctl deploy internal-spec.yaml,Creates passive cluster resource,P3,Not Started,Advanced resource handling
+Resource Management,RES-006,Mixed internal/external resources,omctl deploy mixed-spec.yaml,Processes resources appropriately,P3,Not Started,Complex resource handling
+Cloud Provider Specific,CP-001,AWS with all parameters,omctl deploy spec.yaml --cloud-provider aws --region us-east-1,Creates AWS instance,P2,Not Started,AWS integration
+Cloud Provider Specific,CP-002,GCP with all parameters,omctl deploy spec.yaml --cloud-provider gcp --region us-central1,Creates GCP instance,P2,Not Started,GCP integration
+Cloud Provider Specific,CP-003,Azure with all parameters,omctl deploy spec.yaml --cloud-provider azure --region eastus,Creates Azure instance,P2,Not Started,Azure integration
+Cloud Provider Specific,CP-004,Invalid cloud provider,omctl deploy spec.yaml --cloud-provider invalid,Error: unsupported cloud provider,P2,Not Started,Provider validation
+Cloud Provider Specific,CP-005,Invalid region for provider,omctl deploy spec.yaml --cloud-provider aws --region invalid-region,Error: unsupported region,P2,Not Started,Region validation
+Cloud Provider Specific,CP-006,Region without provider,omctl deploy spec.yaml --region us-east-1,Auto-detects or uses default provider,P3,Not Started,Auto-detection
+BYOA Specific,BYOA-001,BYOA without cloud account instances,omctl deploy byoa-spec.yaml,Creates cloud account instances first,P2,Not Started,BYOA flow
+BYOA Specific,BYOA-002,BYOA with existing cloud account,omctl deploy byoa-spec.yaml,Uses existing cloud account instance,P2,Not Started,BYOA optimization
+BYOA Specific,BYOA-003,BYOA cloud account creation flow,omctl deploy byoa-spec.yaml,Prompts for cloud credentials,P2,Not Started,User interaction
+BYOA Specific,BYOA-004,BYOA account verification timeout,omctl deploy byoa-spec.yaml,Error after verification timeout,P3,Not Started,Timeout handling
+BYOA Specific,BYOA-005,BYOA account verification success,omctl deploy byoa-spec.yaml,Proceeds after account verification,P2,Not Started,Success path
+Multi-Resource Scenarios,MULTI-001,Multiple services all internal,omctl deploy multi-internal.yaml,Injects Cluster passive resource,P3,Not Started,Complex deployment
+Multi-Resource Scenarios,MULTI-002,Multiple services mixed mode,omctl deploy multi-mixed.yaml,Sets appropriate internal flags,P3,Not Started,Resource classification
+Multi-Resource Scenarios,MULTI-003,Multiple services with dependencies,omctl deploy multi-deps.yaml,Preserves dependency order,P3,Not Started,Dependency handling
+Multi-Resource Scenarios,MULTI-004,Services with parameter mapping,omctl deploy multi-params.yaml,Creates parameter dependency maps,P3,Not Started,Parameter mapping
+Build Integration,BUILD-001,Docker compose with Docker build,omctl deploy compose.yaml,Builds and pushes Docker images,P2,Not Started,Build integration
+Build Integration,BUILD-002,Skip Docker build,omctl deploy compose.yaml --skip-docker-build,Uses existing images,P2,Not Started,Build skip logic
+Build Integration,BUILD-003,Multiple platform build,omctl deploy compose.yaml --platforms linux/amd64 --platforms linux/arm64,Builds for multiple platforms,P3,Not Started,Multi-platform build
+Build Integration,BUILD-004,Build with custom platforms,omctl deploy compose.yaml --platforms linux/arm64,Builds for ARM64 only,P3,Not Started,Platform specification
+Error Handling & Edge Cases,ERR-001,Network connectivity issues,omctl deploy spec.yaml,Graceful error handling,P3,Not Started,Network resilience
+Error Handling & Edge Cases,ERR-002,API rate limiting,omctl deploy spec.yaml,Retry with backoff,P3,Not Started,Rate limit handling
+Error Handling & Edge Cases,ERR-003,Large spec file processing,omctl deploy large-spec.yaml,Handles large files efficiently,P3,Not Started,Performance testing
+Error Handling & Edge Cases,ERR-004,Spec with circular dependencies,omctl deploy circular-deps.yaml,Error: circular dependency detected,P3,Not Started,Dependency validation
+Error Handling & Edge Cases,ERR-005,Interrupted deployment,Ctrl+C during deploy,Graceful cleanup,P3,Not Started,Interruption handling
+Error Handling & Edge Cases,ERR-006,Disk space issues,omctl deploy spec.yaml (low disk),Error: insufficient disk space,P3,Not Started,Resource validation
+Integration & End-to-End,E2E-001,Complete new service deployment,omctl deploy new-service.yaml,Service created and instance deployed,P1,Not Started,Full workflow
+Integration & End-to-End,E2E-002,Service update deployment,omctl deploy updated-service.yaml,Service updated and instance upgraded,P1,Not Started,Update workflow
+Integration & End-to-End,E2E-003,Multi-environment deployment,omctl deploy spec.yaml --environment staging --environment-type staging,Deploys to staging environment,P2,Not Started,Environment workflow
+Integration & End-to-End,E2E-004,Cross-cloud deployment,omctl deploy multi-cloud-spec.yaml,Handles multiple cloud providers,P3,Not Started,Multi-cloud support
+Integration & End-to-End,E2E-005,Complete workflow with monitoring,omctl deploy spec.yaml,Shows deployment progress and completion,P2,Not Started,Progress tracking
+Parameter Validation,PARAM-001,Valid JSON parameters,omctl deploy spec.yaml --param {"key":"value"},Parameters parsed correctly,P2,Not Started,Parameter parsing
+Parameter Validation,PARAM-002,Invalid JSON parameters,omctl deploy spec.yaml --param invalid-json,Error: invalid JSON format,P2,Not Started,JSON validation
+Parameter Validation,PARAM-003,Parameters from file,omctl deploy spec.yaml --param-file params.json,File parameters loaded,P2,Not Started,File loading
+Parameter Validation,PARAM-004,Missing parameter file,omctl deploy spec.yaml --param-file missing.json,Error: file not found,P2,Not Started,File validation
+Parameter Validation,PARAM-005,Both param and param-file,omctl deploy spec.yaml --param {} --param-file params.json,File parameters take precedence,P3,Not Started,Parameter precedence
+Parameter Validation,PARAM-006,Empty parameters,omctl deploy spec.yaml --param {},Uses default parameter values,P2,Not Started,Default handling
+Template Processing,TMPL-001,Simple file inclusion,omctl deploy spec-with-file-ref.yaml,File content included,P3,Not Started,Template processing
+Template Processing,TMPL-002,Nested file inclusions,omctl deploy spec-with-nested-refs.yaml,All nested files processed,P3,Not Started,Nested processing
+Template Processing,TMPL-003,Missing template file,omctl deploy spec-with-missing-ref.yaml,Error: template file not found,P3,Not Started,Error handling
+Template Processing,TMPL-004,Circular template references,omctl deploy spec-with-circular-refs.yaml,Error: circular reference,P3,Not Started,Circular detection
+Template Processing,TMPL-005,Template with indentation,omctl deploy spec-with-indented-ref.yaml,Proper indentation preserved,P3,Not Started,Formatting preservation

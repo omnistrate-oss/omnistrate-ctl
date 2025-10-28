@@ -8,7 +8,6 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
@@ -50,7 +49,7 @@ services:
       POSTGRES_PASSWORD: password
 `
 		composeFile := filepath.Join(tempDir, "docker-compose.yaml")
-		err := os.WriteFile(composeFile, []byte(composeContent), 0644)
+		err := os.WriteFile(composeFile, []byte(composeContent), 0600)
 		require.NoError(t, err)
 
 		// Read and process the file
@@ -78,7 +77,7 @@ services:
         type: Password
 `
 		specFile := filepath.Join(tempDir, "serviceplan.yaml")
-		err := os.WriteFile(specFile, []byte(servicePlanContent), 0644)
+		err := os.WriteFile(specFile, []byte(servicePlanContent), 0600)
 		require.NoError(t, err)
 
 		data, err := os.ReadFile(specFile)
@@ -100,7 +99,7 @@ services:
       - "5432:5432"
 `
 		plainFile := filepath.Join(tempDir, "plain-compose.yaml")
-		err := os.WriteFile(plainFile, []byte(plainComposeContent), 0644)
+		err := os.WriteFile(plainFile, []byte(plainComposeContent), 0600)
 		require.NoError(t, err)
 
 		data, err := os.ReadFile(plainFile)
@@ -816,80 +815,6 @@ services:
 			assert.Equal(t, tt.expectedDeploymentType, deploymentType)
 		})
 	}
-}
-
-// Helper functions for test setup
-func createTestYAMLFile(t *testing.T, dir, filename, content string) string {
-	filePath := filepath.Join(dir, filename)
-	err := os.WriteFile(filePath, []byte(content), 0644)
-	require.NoError(t, err)
-	return filePath
-}
-
-func createTestContext() (context.Context, context.CancelFunc) {
-	return context.WithTimeout(context.Background(), 5*time.Second)
-}
-
-// Test data generators
-func generateValidDockerCompose() string {
-	return `version: '3.8'
-services:
-  postgres:
-    image: postgres:13
-    environment:
-      POSTGRES_PASSWORD: password
-      POSTGRES_DB: testdb
-    ports:
-      - "5432:5432"
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-
-volumes:
-  postgres_data:
-`
-}
-
-func generateValidServicePlan() string {
-	return `x-omnistrate-service-plan:
-  tenancyType: DEDICATED
-  deployment:
-    hostedDeployment: {}
-  
-services:
-  postgres:
-    image: postgres:13
-    x-omnistrate-api-params:
-      - key: password
-        type: Password
-        description: Database password
-        required: true
-      - key: database_name
-        type: String
-        description: Database name
-        defaultValue: postgres
-    environment:
-      POSTGRES_PASSWORD: $password
-      POSTGRES_DB: $database_name
-    ports:
-      - "5432:5432"
-`
-}
-
-func generateBYOASpec() string {
-	return `x-omnistrate-byoa:
-  awsAccountId: '123456789012'
-  awsBootstrapRoleAccountArn: 'arn:aws:iam::123456789012:role/omnistrate-bootstrap-role'
-
-services:
-  postgres:
-    image: postgres:13
-    x-omnistrate-api-params:
-      - key: password
-        type: Password
-        required: true
-    environment:
-      POSTGRES_PASSWORD: $password
-`
 }
 
 // Benchmark tests for performance-critical functions
