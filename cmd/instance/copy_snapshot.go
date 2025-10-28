@@ -34,9 +34,6 @@ func init() {
 	copySnapshotCmd.Flags().String("snapshot-id", "", "The ID of the snapshot to copy")
 	copySnapshotCmd.Flags().String("target-region", "", "The region to copy the snapshot into")
 
-	if err := copySnapshotCmd.MarkFlagRequired("snapshot-id"); err != nil {
-		return
-	}
 	if err := copySnapshotCmd.MarkFlagRequired("target-region"); err != nil {
 		return
 	}
