@@ -54,7 +54,6 @@ nav:
       - mcp: "omnistrate-ctl_mcp.md"
       - agent: "omnistrate-ctl_agent.md"
       - account: "omnistrate-ctl_account.md"
-      - agent: "omnistrate-ctl_agent.md"
       - alarms: "omnistrate-ctl_alarms.md"
       - audit: "omnistrate-ctl_audit.md"
       - build: "omnistrate-ctl_build.md"
