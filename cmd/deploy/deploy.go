@@ -387,15 +387,7 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 	}
 
 
-     if cloudProvider == "" {
-       if awsAccountID != ""  {
-	       cloudProvider = "aws"
-       } else if gcpProjectID != "" {
-	       cloudProvider = "gcp"
-       } else if azureSubscriptionID != "" {
-	       cloudProvider = "azure"
-       }
-	}
+     
 	  
 		   // If no cloud provider is set, assume all providers are available
 	  allCloudProviders := []string{"aws", "gcp", "azure"}
@@ -953,7 +945,7 @@ func executeDeploymentWorkflow(cmd *cobra.Command, sm ysmrr.SpinnerManager, toke
 		}
 
 		fmt.Printf("BYOA deployment detected. Creating cloud account instances...\n")
-		cloudAccountInstanceID, targetCloudProvider, err := createCloudAccountInstances(cmd.Context(), token, serviceID, environmentID, planID, sm)
+		cloudAccountInstanceID, targetCloudProvider, err := createCloudAccountInstances(cmd.Context(), token, serviceID, environmentID, planID,cloudProvider, sm)
 		if err != nil {
 			fmt.Printf("Warning: Failed to create cloud account instances: %v\n", err)
 		}
@@ -1171,7 +1163,7 @@ func createInstanceUnified(ctx context.Context, token, serviceID, productTierID,
 		   }
 	   }
 
-	   if cloudProvider == "" {
+	   if cloudProvider == "" && region == "" {
 		   if len(offering.CloudProviders) > 0 {
 			   cloudProvider = offering.CloudProviders[0]
 		   } else {
@@ -1179,6 +1171,51 @@ func createInstanceUnified(ctx context.Context, token, serviceID, productTierID,
 		   }
 
 	   }
+
+
+	   if cloudProvider == "" && region != ""{
+		   // If region is specified but not cloud provider, try to infer cloud provider from region
+
+		   gcpRegions := offering.GcpRegions
+		   awsRegions := offering.AwsRegions
+		   azureRegions := offering.AzureRegions
+
+		   // Check GCP regions first
+		   for _, gcpRegion := range gcpRegions {
+			   if gcpRegion == region {
+				   cloudProvider = "gcp"
+				   break
+			   }
+		   }
+
+		   // If not found in GCP, check AWS regions
+		   if cloudProvider == "" {
+			   for _, awsRegion := range awsRegions {
+				   if awsRegion == region {
+					   cloudProvider = "aws"
+					   break
+				   }
+			   }
+		   }
+
+		   // If not found in AWS, check Azure regions
+		   if cloudProvider == "" {
+			   for _, azureRegion := range azureRegions {
+				   if azureRegion == region {
+					   cloudProvider = "azure"
+					   break
+				   }
+			   }
+		   }
+
+		   // If not found in any provider, return error
+		   if cloudProvider == "" {
+			   return "", fmt.Errorf("unknown region '%s'. Please specify a valid cloud provider.", region)
+		   }
+	   }
+
+
+
 	   if cloudProvider != "" {
 		   var regions []string
 		   switch cloudProvider {
@@ -2015,11 +2052,11 @@ type CloudInstanceStatus struct {
 	Provider  string
 }
 
-func createCloudAccountInstances(ctx context.Context, token, serviceID, environmentID, planID string,  sm ysmrr.SpinnerManager) (string,string, error) {
+func createCloudAccountInstances(ctx context.Context, token, serviceID, environmentID, planID, cloudProvider string, sm ysmrr.SpinnerManager) (string, string, error) {
 	
 	sm.Stop()
 	// Determine which cloud provider to use and get credentials
-	targetCloudProvider := ""
+	targetCloudProvider := cloudProvider
 	if targetCloudProvider == "" {
 		targetCloudProvider = promptForCloudProvider()
 	}

@@ -96,7 +96,7 @@ var BuildCmd = &cobra.Command{
 }
 
 func init() {
-	BuildCmd.Flags().StringP("file", "f", "", "Path to the docker compose file (defaults to compose.yaml or spec.yaml)")
+	BuildCmd.Flags().StringP("file", "f", "", "Path to the docker compose file (defaults to docker-compose.yaml or spec.yaml)")
 	BuildCmd.Flags().StringP("spec-type", "s", "", "Spec type (will infer from file if not provided). Valid options include: 'DockerCompose', 'ServicePlanSpec'")
 	BuildCmd.Flags().BoolP("dry-run", "d", false, "Simulate building the service without actually creating resources")
 	BuildCmd.Flags().StringP("product-name", "", "", "Name of the service. A service can have multiple service plans. The build command will build a new or existing service plan inside the specified service.")
