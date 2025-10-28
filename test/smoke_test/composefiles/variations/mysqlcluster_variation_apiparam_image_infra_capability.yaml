@@ -137,8 +137,7 @@ services:
         required: false
         defaultValue: small
         export: true
-        hasOptions: true
-        labeledOptions:
+        options:
           small: t4g.small
           medium: t4g.medium
           large: t4g.large
@@ -193,8 +192,7 @@ services:
         required: false
         export: true
         defaultValue: small
-        hasOptions: true
-        labeledOptions:
+        options:
           small: t4g.small
           medium: t4g.medium
           large: t4g.large
