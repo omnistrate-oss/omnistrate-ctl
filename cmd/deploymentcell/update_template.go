@@ -34,7 +34,7 @@ Examples:
   # Update organization template for all environments and AWS
   omnistrate-ctl deployment-cell update-config-template - --cloud aws -f template-aws.yaml
 
-  # Update organization template for all environment and AWS
+  # Update organization template for all environments and AWS
   omnistrate-ctl deployment-cell update-config-template --environment GLOBAL --cloud aws -f template-aws.yaml
 
   # Update organization template for PROD environment and AWS
