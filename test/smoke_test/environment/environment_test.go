@@ -40,12 +40,12 @@ func Test_environment_basic(t *testing.T) {
 
 	// PASS: create an environment
 	envName := "prod"
-	cmd.RootCmd.SetArgs([]string{"environment", "create", serviceName, envName, "--type=prod", "--source=dev"})
+	cmd.RootCmd.SetArgs([]string{"environment", "create", serviceName, envName, "--type=PROD", "--source=dev"})
 	err = cmd.RootCmd.ExecuteContext(ctx)
 	require.NoError(err)
 
 	envName2 := "qa"
-	cmd.RootCmd.SetArgs([]string{"environment", "create", envName2, "--type=qa", "--service-id=" + serviceID})
+	cmd.RootCmd.SetArgs([]string{"environment", "create", envName2, "--type=QA", "--service-id=" + serviceID})
 	err = cmd.RootCmd.ExecuteContext(ctx)
 	require.NoError(err)
 	env2ID := environment.EnvironmentID

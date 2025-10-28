@@ -522,7 +522,6 @@ services:
     x-omnistrate-capabilities:
       enableMultiZone: false
       enableEndpointPerReplica: true
-    x-omnistrate-actionhooks:
 
   # Single Zone
 
@@ -1246,7 +1245,8 @@ services:
         required: true
         export: true
         defaultValue: "6"
-        min: 6
+        limits:
+          min: 6
         parameterDependencyMap:
           cluster-sz: hostCount
       - key: clusterReplicas
@@ -1257,8 +1257,9 @@ services:
         required: true
         export: true
         defaultValue: "1"
-        min: 1
-        max: 3
+        limits:
+          min: 1
+          max: 3
         parameterDependencyMap:
           cluster-sz: clusterReplicas
     x-omnistrate-capabilities:
@@ -1285,7 +1286,8 @@ services:
         required: true
         export: true
         defaultValue: "6"
-        min: 6
+        limits:
+          min: 6
       - key: clusterReplicas
         description: The number of replicas per shard
         name: Cluster Replicas
@@ -1294,8 +1296,9 @@ services:
         required: true
         export: true
         defaultValue: "1"
-        min: 1
-        max: 3
+        limits:
+          min: 1
+          max: 3
       - key: nodeInstanceType
         description: The size of the node instance. Check the documentation for more information.
         name: Node Instance Type
@@ -1486,7 +1489,8 @@ services:
         required: true
         export: true
         defaultValue: "6"
-        min: 6
+        limits:
+          min: 6
         parameterDependencyMap:
           cluster-mz: hostCount
       - key: clusterReplicas
@@ -1497,8 +1501,9 @@ services:
         required: true
         export: true
         defaultValue: "1"
-        min: 1
-        max: 3
+        limits:
+          min: 1
+          max: 3
         parameterDependencyMap:
           cluster-mz: clusterReplicas
     x-omnistrate-capabilities:
@@ -1525,7 +1530,8 @@ services:
         required: true
         export: true
         defaultValue: "6"
-        min: 6
+        limits:
+          min: 6
       - key: clusterReplicas
         description: The number of replicas per shard
         name: Cluster Replicas
@@ -1534,8 +1540,9 @@ services:
         required: true
         export: true
         defaultValue: "1"
-        min: 1
-        max: 3
+        limits:
+          min: 1
+          max: 3
       - key: nodeInstanceType
         description: The size of the node instance. Check the documentation for more information.
         name: Node Instance Type
