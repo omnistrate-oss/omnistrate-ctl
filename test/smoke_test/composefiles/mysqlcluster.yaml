@@ -40,7 +40,7 @@ services:
             instanceStorageType: AWS::EBS_GP3
             instanceStorageSizeGi: 100
             instanceStorageIOPS: 3000
-            instanceStorageThroughput: 400
+            instanceStorageThroughputMiBps: 400
           gcp:
             instanceStorageType: GCP::PD_BALANCED
             instanceStorageSizeGi: 100

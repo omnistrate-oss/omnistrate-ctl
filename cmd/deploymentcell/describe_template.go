@@ -3,6 +3,7 @@ package deploymentcell
 import (
 	"context"
 	"fmt"
+
 	"github.com/omnistrate-oss/omnistrate-ctl/internal/model"
 	"github.com/omnistrate-oss/omnistrate-sdk-go/fleet"
 
@@ -25,17 +26,23 @@ You can also describe the configuration of a specific deployment cell by providi
 its ID as an argument.
 
 Examples:
+  # Describe organization template for all environments and AWS
+  omnistrate-ctl deployment-cell describe-config-template --cloud aws
+
+  # Describe organization template for all environments and AWS
+  omnistrate-ctl deployment-cell describe-config-template --cloud aws
+
   # Describe organization template for PROD environment and AWS
-  omnistrate-ctl deployment-cell describe-config-template -e PROD --cloud aws
+  omnistrate-ctl deployment-cell describe-config-template --environment PROD --cloud aws
 
   # Describe specific deployment cell configuration
   omnistrate-ctl deployment-cell describe-config-template --id hc-12345
 
   # Get JSON output format
-  omnistrate-ctl deployment-cell describe-config-template -e PROD --cloud aws --output json
+  omnistrate-ctl deployment-cell describe-config-template --cloud aws --output json
 
   # Generate YAML template to local file
-  omnistrate-ctl deployment-cell describe-config-template -e PROD --cloud aws --output-file template.yaml
+  omnistrate-ctl deployment-cell describe-config-template --cloud aws --output-file template.yaml
 
   # Generate template for specific deployment cell to file
   omnistrate-ctl deployment-cell describe-config-template --id hc-12345 --output-file deployment-cell-config.yaml`,
@@ -44,8 +51,8 @@ Examples:
 }
 
 func init() {
-	describeTemplateCmd.Flags().StringP("environment", "e", "", "Environment type (e.g., PROD, STAGING)")
-	describeTemplateCmd.Flags().StringP("cloud", "c", "", "Cloud provider (aws, azure, gcp)")
+	describeTemplateCmd.Flags().StringP("environment", "e", "", "Environment type (e.g., GLOBAL, PROD, STAGING) - optional for organization template update, defaults to GLOBAL")
+	describeTemplateCmd.Flags().StringP("cloud", "c", "", "Cloud provider (e.g., aws, azure, gcp) - required for organization template updates")
 	describeTemplateCmd.Flags().StringP("id", "i", "", "Deployment cell ID")
 	describeTemplateCmd.Flags().StringP("output", "o", "yaml", "Output format (yaml, json, table)")
 	describeTemplateCmd.Flags().StringP("output-file", "", "", "Output template to file (YAML format)")
@@ -80,19 +87,14 @@ func runDescribeTemplate(cmd *cobra.Command, args []string) error {
 	}
 
 	// Validate environment if provided
-	if environment != "" {
-		if !isValidEnvironment(environment) {
-			utils.PrintError(fmt.Errorf("invalid environment '%s'. Valid values are: %v", environment, validEnvironments))
-			return fmt.Errorf("invalid environment type")
-		}
+	if environment == "" && cloudProvider != "" {
+		environment = defaultEnvironment
 	}
 
-	// Validate cloud provider if provided
-	if cloudProvider != "" {
-		if !isValidCloudProvider(cloudProvider) {
-			utils.PrintError(fmt.Errorf("invalid cloud provider '%s'. Valid values are: aws, azure, gcp", cloudProvider))
-			return fmt.Errorf("invalid cloud provider")
-		}
+	// Validate arguments
+	if environment != "" && cloudProvider == "" {
+		utils.PrintError(fmt.Errorf("cloud provider is required when specifying environment"))
+		return fmt.Errorf("invalid arguments")
 	}
 
 	output, err := cmd.Flags().GetString("output")
@@ -118,14 +120,14 @@ func runDescribeTemplate(cmd *cobra.Command, args []string) error {
 		return describeDeploymentCellConfiguration(ctx, token, id, output, file)
 	} else {
 		// Validate required flags for organization template
-		if environment == "" {
-			err := fmt.Errorf("environment flag is required when not specifying a deployment cell ID")
+		if cloudProvider == "" {
+			err := fmt.Errorf("cloud flag is required when not specifying a deployment cell ID")
 			utils.PrintError(err)
 			return err
 		}
 
-		if cloudProvider == "" {
-			err := fmt.Errorf("cloud flag is required when not specifying a deployment cell ID")
+		if environment == "" {
+			err := fmt.Errorf("environment flag is required when not specifying a deployment cell ID")
 			utils.PrintError(err)
 			return err
 		}
