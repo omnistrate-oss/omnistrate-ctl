@@ -43,8 +43,8 @@ Examples:
 }
 
 func init() {
-	updateTemplateCmd.Flags().StringP("environment", "e", "", "Environment type (e.g., PROD, STAGING) - required for organization template updates")
-	updateTemplateCmd.Flags().StringP("cloud", "c", "", "Cloud provider (aws, azure, gcp) - required for organization template updates")
+	updateTemplateCmd.Flags().StringP("environment", "e", "", "Environment type (e.g., PROD, STAGING) - optional for organization template update, defaults to GLOBAL")
+	updateTemplateCmd.Flags().StringP("cloud", "c", "", "Cloud provider (e.g., aws, azure, gcp) - required for organization template updates")
 	updateTemplateCmd.Flags().StringP("file", "f", "", "Configuration file path (YAML format)")
 	updateTemplateCmd.Flags().StringP("id", "i", "", "Deployment cell ID")
 	updateTemplateCmd.Flags().Bool("sync-with-template", false, "Sync deployment cell with organization template")
@@ -101,8 +101,14 @@ func runUpdateTemplate(cmd *cobra.Command, args []string) error {
 	}
 
 	// Set default environment if not provided
-	if environment != "" && cloudProvider != "" {
+	if environment == "" && cloudProvider != "" {
 		environment = defaultEnvironment
+	}
+
+	// Validate arguments
+	if environment != "" && cloudProvider == "" {
+		utils.PrintError(fmt.Errorf("cloud provider is required when specifying environment"))
+		return fmt.Errorf("invalid arguments")
 	}
 
 	ctx := context.Background()

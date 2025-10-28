@@ -51,8 +51,8 @@ Examples:
 }
 
 func init() {
-	describeTemplateCmd.Flags().StringP("environment", "e", "", "Environment type (e.g., GLOBAL, PROD, STAGING)")
-	describeTemplateCmd.Flags().StringP("cloud", "c", "", "Cloud provider (aws, azure, gcp)")
+	updateTemplateCmd.Flags().StringP("environment", "e", "", "Environment type (e.g., PROD, STAGING) - optional for organization template update, defaults to GLOBAL")
+	updateTemplateCmd.Flags().StringP("cloud", "c", "", "Cloud provider (e.g., aws, azure, gcp) - required for organization template updates")
 	describeTemplateCmd.Flags().StringP("id", "i", "", "Deployment cell ID")
 	describeTemplateCmd.Flags().StringP("output", "o", "yaml", "Output format (yaml, json, table)")
 	describeTemplateCmd.Flags().StringP("output-file", "", "", "Output template to file (YAML format)")
@@ -87,8 +87,14 @@ func runDescribeTemplate(cmd *cobra.Command, args []string) error {
 	}
 
 	// Validate environment if provided
-	if environment != "" && cloudProvider != "" {
+	if environment == "" && cloudProvider != "" {
 		environment = defaultEnvironment
+	}
+
+	// Validate arguments
+	if environment != "" && cloudProvider == "" {
+		utils.PrintError(fmt.Errorf("cloud provider is required when specifying environment"))
+		return fmt.Errorf("invalid arguments")
 	}
 
 	output, err := cmd.Flags().GetString("output")
