@@ -26,11 +26,14 @@ You can also describe the configuration of a specific deployment cell by providi
 its ID as an argument.
 
 Examples:
-  # Describe organization template for all environment and AWS
+  # Describe organization template for any environment and AWS
   omnistrate-ctl deployment-cell describe-config-template --cloud aws
 
-  # Describe organization template for all environment and AWS
+  # Describe organization template for any environment and AWS
   omnistrate-ctl deployment-cell describe-config-template --environment GLOBAL --cloud aws
+
+  # Describe organization template for PROD environment and AWS
+  omnistrate-ctl deployment-cell describe-config-template --environment PROD --cloud aws
 
   # Describe specific deployment cell configuration
   omnistrate-ctl deployment-cell describe-config-template --id hc-12345
@@ -42,9 +45,7 @@ Examples:
   omnistrate-ctl deployment-cell describe-config-template --environment GLOBAL --cloud aws --output-file template.yaml
 
   # Generate template for specific deployment cell to file
-  omnistrate-ctl deployment-cell describe-config-template --id hc-12345 --output-file deployment-cell-config.yaml
-  # Describe organization template for PROD environment and AWS
-  omnistrate-ctl deployment-cell describe-config-template --environment PROD --cloud aws`,
+  omnistrate-ctl deployment-cell describe-config-template --id hc-12345 --output-file deployment-cell-config.yaml`,
 	RunE:         runDescribeTemplate,
 	SilenceUsage: true,
 }
