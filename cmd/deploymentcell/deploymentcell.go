@@ -6,9 +6,6 @@ import (
 	"github.com/spf13/cobra"
 )
 
-var validEnvironments = []string{"PROD", "PRIVATE", "CANARY", "STAGING", "QA", "DEV", "GLOBAL"}
-var validCloudProviders = []string{"aws", "azure", "gcp"}
-
 var Cmd = &cobra.Command{
 	Use:          "deployment-cell [operation] [flags]",
 	Short:        "Manage Deployment Cells",
@@ -28,24 +25,6 @@ func init() {
 	Cmd.AddCommand(describeTemplateCmd)
 	Cmd.AddCommand(updateTemplateCmd)
 	Cmd.AddCommand(debugCmd)
-}
-
-func isValidCloudProvider(provider string) bool {
-	for _, valid := range validCloudProviders {
-		if provider == valid {
-			return true
-		}
-	}
-	return false
-}
-
-func isValidEnvironment(env string) bool {
-	for _, valid := range validEnvironments {
-		if env == valid {
-			return true
-		}
-	}
-	return false
 }
 
 func run(cmd *cobra.Command, args []string) {
