@@ -141,7 +141,7 @@ services:
     invalid-yaml: [unclosed array
 `
 		malformedFile := filepath.Join(tempDir, "malformed.yaml")
-		err := os.WriteFile(malformedFile, []byte(malformedContent), 0644)
+		err := os.WriteFile(malformedFile, []byte(malformedContent), 0600)
 		require.NoError(t, err)
 
 		data, err := os.ReadFile(malformedFile)
@@ -155,7 +155,7 @@ services:
 	// SPEC-008: Empty spec file
 	t.Run("SPEC-008_EmptySpecFile", func(t *testing.T) {
 		emptyFile := filepath.Join(tempDir, "empty.yaml")
-		err := os.WriteFile(emptyFile, []byte(""), 0644)
+		err := os.WriteFile(emptyFile, []byte(""), 0600)
 		require.NoError(t, err)
 
 		data, err := os.ReadFile(emptyFile)
@@ -488,7 +488,7 @@ func TestParameterValidation(t *testing.T) {
 
 		paramContent := `{"database_name":"testdb","port":5432}`
 		paramFile := filepath.Join(tempDir, "params.json")
-		err = os.WriteFile(paramFile, []byte(paramContent), 0644)
+		err = os.WriteFile(paramFile, []byte(paramContent), 0600)
 		require.NoError(t, err)
 
 		// Read and parse the file
