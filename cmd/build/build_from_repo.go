@@ -85,6 +85,7 @@ func init() {
 	BuildFromRepoCmd.Flags().String("azure-subscription-id", "", "Azure subscription ID. Must be used with --azure-tenant-id and --deployment-type")
 	BuildFromRepoCmd.Flags().String("azure-tenant-id", "", "Azure tenant ID. Must be used with --azure-subscription-id and --deployment-type")
 	BuildFromRepoCmd.Flags().Bool("reset-pat", false, "Reset the GitHub Personal Access Token (PAT) for the current user.")
+	BuildFromRepoCmd.Flags().String("github-username", "", "GitHub username to use if GitHub API fails to retrieve it automatically")
 	BuildFromRepoCmd.Flags().StringP("output", "o", "text", "Output format. Only text is supported")
 	BuildFromRepoCmd.Flags().StringP("file", "f", OmnistrateComposeFileName, "Specify the compose file to read and write to")
 	BuildFromRepoCmd.Flags().String("service-name", "", "Specify a custom service name. If not provided, the repository name will be used.")
@@ -754,15 +755,45 @@ func BuildServiceFromRepository(cmd *cobra.Command, ctx context.Context, token, 
 					// Parse JSON response to extract login field
 					var response map[string]interface{}
 					if err := json.Unmarshal(ghUsernameOutput, &response); err != nil {
-						utils.HandleSpinnerError(spinner, sm, err)
+						utils.HandleSpinnerError(spinner, sm, fmt.Errorf("failed to parse GitHub API response: %v, response: %s", err, string(ghUsernameOutput)))
 						return "", "", "", nil, err
 					}
 					
-					if login, ok := response["login"].(string); ok {
-						ghUsername = login
+					// Check if the API returned an error (like bad credentials)
+					if message, exists := response["message"]; exists {
+						// Try to use the GitHub username flag as a fallback
+						if flagUsername, _ := cmd.Flags().GetString("github-username"); flagUsername != "" {
+							ghUsername = flagUsername
+							spinner.UpdateMessage(fmt.Sprintf("GitHub API failed, using provided username: %s", ghUsername))
+						} else {
+							// Ask user to enter GitHub username interactively
+							spinner.UpdateMessage("GitHub API failed. Please enter your GitHub username:")
+							spinner.Complete()
+							sm.Stop()
+
+							fmt.Print("Enter your GitHub username: ")
+							var inputUsername string
+							fmt.Scanln(&inputUsername)
+
+							sm.Start()
+							
+							if inputUsername != "" {
+								ghUsername = inputUsername
+								spinner = sm.AddSpinner(fmt.Sprintf("Using provided GitHub username: %s", ghUsername))
+								spinner.Complete()
+							} else {
+								utils.HandleSpinnerError(spinner, sm, fmt.Errorf("GitHub API error: %v. Please check your GitHub Personal Access Token or provide --github-username flag", message))
+								return "", "", "", nil, fmt.Errorf("GitHub API error: %v. Please update your GitHub Personal Access Token with proper permissions or use --github-username flag", message)
+							}
+						}
 					} else {
-						utils.HandleSpinnerError(spinner, sm, errors.New("unable to get GitHub username from API response"))
-						return "", "", "", nil, err
+						// Only try to extract login if there was no error
+						if login, ok := response["login"].(string); ok {
+							ghUsername = login
+						} else {
+							utils.HandleSpinnerError(spinner, sm, fmt.Errorf("unable to get GitHub username from API response: %v", response))
+							return "", "", "", nil, fmt.Errorf("unable to get GitHub username from API response")
+						}
 					}
 				}
 				spinner.UpdateMessage(fmt.Sprintf("Getting GitHub username for compose spec: %s", ghUsername))
@@ -843,15 +874,45 @@ func BuildServiceFromRepository(cmd *cobra.Command, ctx context.Context, token, 
 				// Parse JSON response to extract login field
 				var response map[string]interface{}
 				if err := json.Unmarshal(ghUsernameOutput, &response); err != nil {
-					utils.HandleSpinnerError(spinner, sm, err)
+					utils.HandleSpinnerError(spinner, sm, fmt.Errorf("failed to parse GitHub API response: %v, response: %s", err, string(ghUsernameOutput)))
 					return "", "", "", nil, err
 				}
 				
-				if login, ok := response["login"].(string); ok {
-					ghUsername = login
+				// Check if the API returned an error (like bad credentials)
+				if message, exists := response["message"]; exists {
+					// Try to use the GitHub username flag as a fallback
+					if flagUsername, _ := cmd.Flags().GetString("github-username"); flagUsername != "" {
+						ghUsername = flagUsername
+						spinner.UpdateMessage(fmt.Sprintf("GitHub API failed, using provided username: %s", ghUsername))
+					} else {
+						// Ask user to enter GitHub username interactively
+						spinner.UpdateMessage("GitHub API failed.")
+						spinner.Complete()
+						sm.Stop()
+
+						fmt.Println()
+						
+						fmt.Print("Enter your GitHub username: ")
+						var inputUsername string
+						fmt.Scanln(&inputUsername)
+						
+						if inputUsername != "" {
+							ghUsername = inputUsername
+							spinner = sm.AddSpinner(fmt.Sprintf("Using provided GitHub username: %s", ghUsername))
+							spinner.Complete()
+						} else {
+							utils.HandleSpinnerError(spinner, sm, fmt.Errorf("GitHub API error: %v. Please check your GitHub Personal Access Token or provide --github-username flag", message))
+							return "", "", "", nil, fmt.Errorf("GitHub API error: %v. Please update your GitHub Personal Access Token with proper permissions or use --github-username flag", message)
+						}
+					}
 				} else {
-					utils.HandleSpinnerError(spinner, sm, errors.New("unable to get GitHub username from API response"))
-					return "", "", "", nil, err
+					// Only try to extract login if there was no error
+					if login, ok := response["login"].(string); ok {
+						ghUsername = login
+					} else {
+						utils.HandleSpinnerError(spinner, sm, fmt.Errorf("unable to get GitHub username from API response: %v", response))
+						return "", "", "", nil, fmt.Errorf("unable to get GitHub username from API response")
+					}
 				}
 			}
 			spinner.UpdateMessage(fmt.Sprintf("Retrieving GitHub username: %s", ghUsername))
