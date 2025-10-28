@@ -26,10 +26,10 @@ You can also describe the configuration of a specific deployment cell by providi
 its ID as an argument.
 
 Examples:
-  # Describe organization template for any environment and AWS
+  # Describe organization template for all environments and AWS
   omnistrate-ctl deployment-cell describe-config-template --cloud aws
 
-  # Describe organization template for any environment and AWS
+  # Describe organization template for all environments and AWS
   omnistrate-ctl deployment-cell describe-config-template --environment GLOBAL --cloud aws
 
   # Describe organization template for PROD environment and AWS
@@ -51,7 +51,7 @@ Examples:
 }
 
 func init() {
-	updateTemplateCmd.Flags().StringP("environment", "e", "", "Environment type (e.g., PROD, STAGING) - optional for organization template update, defaults to GLOBAL")
+	updateTemplateCmd.Flags().StringP("environment", "e", "", "Environment type (e.g., GLOBAL, PROD, STAGING) - optional for organization template update, defaults to GLOBAL")
 	updateTemplateCmd.Flags().StringP("cloud", "c", "", "Cloud provider (e.g., aws, azure, gcp) - required for organization template updates")
 	describeTemplateCmd.Flags().StringP("id", "i", "", "Deployment cell ID")
 	describeTemplateCmd.Flags().StringP("output", "o", "yaml", "Output format (yaml, json, table)")

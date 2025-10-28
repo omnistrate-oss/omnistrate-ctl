@@ -34,7 +34,7 @@ Examples:
   # Update organization template for all environments and AWS
   omnistrate-ctl deployment-cell update-config-template - --cloud aws -f template-aws.yaml
 
-  # Update organization template for all environments and AWS
+  # Update organization template for all environment and AWS
   omnistrate-ctl deployment-cell update-config-template --environment GLOBAL --cloud aws -f template-aws.yaml
 
   # Update organization template for PROD environment and AWS
@@ -50,7 +50,7 @@ Examples:
 }
 
 func init() {
-	updateTemplateCmd.Flags().StringP("environment", "e", "", "Environment type (e.g., PROD, STAGING) - optional for organization template update, defaults to GLOBAL")
+	updateTemplateCmd.Flags().StringP("environment", "e", "", "Environment type (e.g., GLOBAL, PROD, STAGING) - optional for organization template update, defaults to GLOBAL")
 	updateTemplateCmd.Flags().StringP("cloud", "c", "", "Cloud provider (e.g., aws, azure, gcp) - required for organization template updates")
 	updateTemplateCmd.Flags().StringP("file", "f", "", "Configuration file path (YAML format)")
 	updateTemplateCmd.Flags().StringP("id", "i", "", "Deployment cell ID")
