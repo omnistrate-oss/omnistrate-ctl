@@ -773,7 +773,10 @@ func BuildServiceFromRepository(cmd *cobra.Command, ctx context.Context, token, 
 
 							fmt.Print("Enter your GitHub username: ")
 							var inputUsername string
-							fmt.Scanln(&inputUsername)
+							if _, err := fmt.Scanln(&inputUsername); err != nil {
+								utils.HandleSpinnerError(spinner, sm, fmt.Errorf("failed to read GitHub username: %w", err))
+								return "", "", "", nil, fmt.Errorf("failed to read GitHub username: %w", err)
+							}
 
 							sm.Start()
 							
@@ -894,7 +897,10 @@ func BuildServiceFromRepository(cmd *cobra.Command, ctx context.Context, token, 
 						
 						fmt.Print("Enter your GitHub username: ")
 						var inputUsername string
-						fmt.Scanln(&inputUsername)
+						if _, err := fmt.Scanln(&inputUsername); err != nil {
+							utils.HandleSpinnerError(spinner, sm, fmt.Errorf("failed to read GitHub username: %w", err))
+							return "", "", "", nil, fmt.Errorf("failed to read GitHub username: %w", err)
+						}
 						
 						if inputUsername != "" {
 							ghUsername = inputUsername
