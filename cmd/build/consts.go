@@ -3,7 +3,8 @@ package build
 const (
 	DockerComposeSpecType = "DockerCompose"
 	ServicePlanSpecType   = "ServicePlanSpec"
-	ComposeFileName       = "compose.yaml"
+	OmnistrateComposeFileName = "omnistrate-compose.yaml"
+	ComposeFileName       = "docker-compose.yaml"
 	PlanSpecFileName      = "spec.yaml"
 )
 

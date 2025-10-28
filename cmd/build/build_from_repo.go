@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/base64"
+	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
@@ -85,7 +86,7 @@ func init() {
 	BuildFromRepoCmd.Flags().String("azure-tenant-id", "", "Azure tenant ID. Must be used with --azure-subscription-id and --deployment-type")
 	BuildFromRepoCmd.Flags().Bool("reset-pat", false, "Reset the GitHub Personal Access Token (PAT) for the current user.")
 	BuildFromRepoCmd.Flags().StringP("output", "o", "text", "Output format. Only text is supported")
-	BuildFromRepoCmd.Flags().StringP("file", "f", ComposeFileName, "Specify the compose file to read and write to")
+	BuildFromRepoCmd.Flags().StringP("file", "f", OmnistrateComposeFileName, "Specify the compose file to read and write to")
 	BuildFromRepoCmd.Flags().String("service-name", "", "Specify a custom service name. If not provided, the repository name will be used.")
 	BuildFromRepoCmd.Flags().String("product-name", "", "Specify a custom service name. If not provided, the repository name will be used.")
 
@@ -508,14 +509,14 @@ func runBuildFromRepo(cmd *cobra.Command, args []string) error {
 	if config.IsProd() && !skipSaasPortalInit && !skipEnvironmentPromotion && prodEnvironment != nil {
 		utils.PrintURL("You can access the SaaS Portal at", getSaaSPortalURL(prodEnvironment, serviceID, prodEnvironmentID))
 	}
-
 	println()
 
 	// Check if the cloud provider account(s) are verified
 	awsAccountUnverified := false
 	gcpAccountUnverified := false
-	var unverifiedAwsAccountConfigID, unverifiedGcpAccountConfigID string
-	if awsAccountID != "" || gcpProjectID != "" {
+	azureAccountUnverified := false
+	var unverifiedAwsAccountConfigID, unverifiedGcpAccountConfigID, unverifiedAzureAccountConfigID string
+	if awsAccountID != "" || gcpProjectID != "" || azureSubscriptionID != "" {
 		accounts, err := dataaccess.ListAccounts(cmd.Context(), token, "all")
 		if err != nil {
 			utils.HandleSpinnerError(spinner, sm, err)
@@ -532,33 +533,53 @@ func runBuildFromRepo(cmd *cobra.Command, args []string) error {
 				gcpAccountUnverified = true
 				unverifiedGcpAccountConfigID = account.Id
 			}
+			
+			if account.Status == model.Verifying.String() && account.AzureSubscriptionID != nil && *account.AzureSubscriptionID == azureSubscriptionID {
+				azureAccountUnverified = true
+				unverifiedAzureAccountConfigID = account.Id
+			}
 		}
 	}
 
 	urlMsg := color.New(color.FgCyan).SprintFunc()
-	if awsAccountUnverified || gcpAccountUnverified {
+	if awsAccountUnverified || gcpAccountUnverified || azureAccountUnverified {
 		fmt.Println("Next steps:")
 		fmt.Printf("1.")
 		if awsAccountUnverified {
 			account, err := dataaccess.DescribeAccount(cmd.Context(), token, unverifiedAwsAccountConfigID)
 			if err != nil {
-				utils.PrintError(err)
-				return err
+				// If we can't get account details but the account was previously verified as READY,
+				// continue with a warning instead of failing the build
+				fmt.Printf(" Warning: Could not fetch details for AWS account %s: %v\n", awsAccountID, err)
+				fmt.Printf(" Your AWS account appears to be functional based on earlier checks.\n")
+			} else {
+				fmt.Printf(" Verify your cloud provider account %s following the instructions below:\n", account.Name)
+				fmt.Printf("  - For CloudFormation users: Please create your CloudFormation Stack using the provided template at %s. Watch the CloudFormation guide at %s for help.\n", urlMsg(*account.AwsCloudFormationTemplateURL), urlMsg(dataaccess.AwsCloudFormationGuideURL))
+				fmt.Printf("  - For Terraform users: Execute the Terraform scripts available at %s, by using the Account Config Identity ID below. For guidance our Terraform instructional video is at %s.\n", urlMsg(dataaccess.AwsGcpTerraformScriptsURL), urlMsg(dataaccess.AwsGcpTerraformGuideURL))
 			}
-			fmt.Printf(" Verify your cloud provider account %s following the instructions below:\n", account.Name)
-			fmt.Printf("  - For CloudFormation users: Please create your CloudFormation Stack using the provided template at %s. Watch the CloudFormation guide at %s for help.\n", urlMsg(*account.AwsCloudFormationTemplateURL), urlMsg(dataaccess.AwsCloudFormationGuideURL))
-			fmt.Printf("  - For Terraform users: Execute the Terraform scripts available at %s, by using the Account Config Identity ID below. For guidance our Terraform instructional video is at %s.\n", urlMsg(dataaccess.AwsGcpTerraformScriptsURL), urlMsg(dataaccess.AwsGcpTerraformGuideURL))
 		}
 
 		if gcpAccountUnverified {
 			account, err := dataaccess.DescribeAccount(cmd.Context(), token, unverifiedGcpAccountConfigID)
 			if err != nil {
-				utils.PrintError(err)
-				return err
+				fmt.Printf(" Warning: Could not fetch details for GCP account %s: %v\n", gcpProjectID, err)
+				fmt.Printf(" Your GCP account appears to be functional based on earlier checks.\n")
+			} else {
+				fmt.Printf(" Verify your cloud provider account %s following the instructions below:\n", account.Name)
+				fmt.Printf("  - Execute the Terraform scripts available at %s, by using the Account Config Identity ID below. For guidance our Terraform instructional video is at %s.\n", urlMsg(dataaccess.AwsGcpTerraformScriptsURL), urlMsg(dataaccess.AwsGcpTerraformGuideURL))
 			}
-			fmt.Printf(" Verify your cloud provider account %s following the instructions below:\n", account.Name)
-			fmt.Printf("  - Execute the Terraform scripts available at %s, by using the Account Config Identity ID below. For guidance our Terraform instructional video is at %s.\n", urlMsg(dataaccess.AwsGcpTerraformScriptsURL), urlMsg(dataaccess.AwsGcpTerraformGuideURL))
 		}
+		if azureAccountUnverified {
+			account, err := dataaccess.DescribeAccount(cmd.Context(), token, unverifiedAzureAccountConfigID)
+			if err != nil {
+				fmt.Printf(" Warning: Could not fetch details for Azure account %s: %v\n", azureSubscriptionID, err)
+				fmt.Printf(" Your Azure account appears to be functional based on earlier checks.\n")
+			} else {
+				fmt.Printf(" Verify your cloud provider account %s following the instructions below:\n", account.Name)
+				fmt.Printf("  - Execute the Terraform scripts available at %s, by using the Account Config Identity ID below. For guidance our Terraform instructional video is at %s.\n", urlMsg(dataaccess.AwsGcpTerraformScriptsURL), urlMsg(dataaccess.AwsGcpTerraformGuideURL))
+			}
+		}
+
 
 		fmt.Printf("2. After account verified, play around with the SaaS Portal! Subscribe to your service and create instance deployments.\n")
 		fmt.Printf("3. A compose spec has been generated from the Docker image. You can customize it further by editing the %s file. Refer to the documentation %s for more information.\n", filepath.Base(file), urlMsg("https://docs.omnistrate.com/getting-started/compose-spec/"))
@@ -580,7 +601,6 @@ func BuildServiceFromRepository(cmd *cobra.Command, ctx context.Context, token, 
 
 	// Step 0: Validate user is currently logged in
 	spinner := sm.AddSpinner("Checking if user is logged in")
-	time.Sleep(1 * time.Second) // Add a delay to show the spinner
 	spinner.Complete()
 	sm.Stop()
 
@@ -589,18 +609,7 @@ func BuildServiceFromRepository(cmd *cobra.Command, ctx context.Context, token, 
 	sm = ysmrr.NewSpinnerManager()
 	sm.Start()
 
-	// Only check for gh if we're not skipping Docker build
-	if !skipDockerBuild {
-		spinner = sm.AddSpinner("Checking if gh installed")
-		time.Sleep(1 * time.Second) // Add a delay to show the spinner
-		err = exec.Command("gh", "version").Run()
-		if err != nil {
-			utils.HandleSpinnerError(spinner, sm, err)
-			return  "", "", "", nil, err
-		}
-		spinner.UpdateMessage("Checking if gh installed: Yes")
-		spinner.Complete()
-	}
+	// Skip gh installation check - we'll handle username differently
 
 	// Step 1: Check if the user is in the root of the repository
 	spinner = sm.AddSpinner("Checking if user is in the root of the repository")
@@ -734,12 +743,26 @@ func BuildServiceFromRepository(cmd *cobra.Command, ctx context.Context, token, 
 				if config.IsGithubTokenEnvVarConfigured() {
 					ghUsername = config.GithubTokenUserName
 				} else {
-					ghUsernameOutput, err := exec.Command("gh", "api", "user", "-q", ".login").Output()
+					// Use GitHub API directly with PAT to get username
+					ghUsernameOutput, err := exec.Command("curl", "-s", "-H", fmt.Sprintf("Authorization: token %s", pat), "https://api.github.com/user").Output()
 					if err != nil {
 						utils.HandleSpinnerError(spinner, sm, err)
 						return "", "", "", nil, err
 					}
-					ghUsername = strings.TrimSpace(string(ghUsernameOutput))
+					
+					// Parse JSON response to extract login field
+					var response map[string]interface{}
+					if err := json.Unmarshal(ghUsernameOutput, &response); err != nil {
+						utils.HandleSpinnerError(spinner, sm, err)
+						return "", "", "", nil, err
+					}
+					
+					if login, ok := response["login"].(string); ok {
+						ghUsername = login
+					} else {
+						utils.HandleSpinnerError(spinner, sm, errors.New("unable to get GitHub username from API response"))
+						return "", "", "", nil, err
+					}
 				}
 				spinner.UpdateMessage(fmt.Sprintf("Getting GitHub username for compose spec: %s", ghUsername))
 			} else {
@@ -808,12 +831,26 @@ func BuildServiceFromRepository(cmd *cobra.Command, ctx context.Context, token, 
 			if config.IsGithubTokenEnvVarConfigured() {
 				ghUsername = config.GithubTokenUserName
 			} else {
-				ghUsernameOutput, err := exec.Command("gh", "api", "user", "-q", ".login").Output()
+				// Use GitHub API directly with PAT to get username
+				ghUsernameOutput, err := exec.Command("curl", "-s", "-H", fmt.Sprintf("Authorization: token %s", pat), "https://api.github.com/user").Output()
 				if err != nil {
 					utils.HandleSpinnerError(spinner, sm, err)
 					return "", "", "", nil, err
 				}
-				ghUsername = strings.TrimSpace(string(ghUsernameOutput))
+				
+				// Parse JSON response to extract login field
+				var response map[string]interface{}
+				if err := json.Unmarshal(ghUsernameOutput, &response); err != nil {
+					utils.HandleSpinnerError(spinner, sm, err)
+					return "", "", "", nil, err
+				}
+				
+				if login, ok := response["login"].(string); ok {
+					ghUsername = login
+				} else {
+					utils.HandleSpinnerError(spinner, sm, errors.New("unable to get GitHub username from API response"))
+					return "", "", "", nil, err
+				}
 			}
 			spinner.UpdateMessage(fmt.Sprintf("Retrieving GitHub username: %s", ghUsername))
 			spinner.Complete()

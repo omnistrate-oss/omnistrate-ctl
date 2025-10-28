@@ -36,7 +36,7 @@ omctl deploy spec.yaml
 omctl deploy spec.yaml --product-name "My Service"
 
 # Build service from an existing compose spec in the repository
-omctl deploy --file ` + build.ComposeFileName + `
+omctl deploy --file ` + build.OmnistrateComposeFileName + `
 
 # Build service with a custom service name
 omctl deploy --product-name my-custom-service
@@ -78,7 +78,7 @@ var DeployCmd = &cobra.Command{
 }
 
 func init() {
-	DeployCmd.Flags().StringP("file", "f", "", fmt.Sprintf("Path to the docker compose file (defaults to %s)", build.ComposeFileName))
+	DeployCmd.Flags().StringP("file", "f", "", fmt.Sprintf("Path to the docker compose file (defaults to %s)", build.OmnistrateComposeFileName))
 	DeployCmd.Flags().String("product-name", "", "Specify a custom service name. If not provided, directory name will be used.")
 	DeployCmd.Flags().Bool("dry-run", false, "Perform validation checks without actually deploying")
 	DeployCmd.Flags().String("resource-id", "", "Specify the resource ID to use when multiple resources exist.")
@@ -94,7 +94,7 @@ func init() {
 	// Additional flags from build command
 	DeployCmd.Flags().Bool("skip-docker-build", false, "Skip building and pushing the Docker image")
 	DeployCmd.Flags().StringArray("platforms", []string{"linux/amd64"}, "Specify the platforms to build for. Use the format: --platforms linux/amd64 --platforms linux/arm64. Default is linux/amd64.")
-	DeployCmd.Flags().String("deployment-type", "hosted", "Type of deployment (e.g. hosted, byoa)")
+	DeployCmd.Flags().String("deployment-type", "hosted", "Type of deployment. Valid values: hosted, byoa")
 
 
 
@@ -218,6 +218,12 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
+	// Validate deployment-type
+	if deploymentType != "hosted" && deploymentType != "byoa" {
+		utils.PrintError(fmt.Errorf("invalid deployment-type '%s'. Valid values are: hosted, byoa", deploymentType))
+		return fmt.Errorf("invalid deployment-type '%s'. Valid values are: hosted, byoa", deploymentType)
+	}
+
 
 
 	// Initialize spinner manager
@@ -242,13 +248,13 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 	} else if len(args) > 0 && args[0] != "" {
 		specFile = args[0]
 	} else if specFile == "" {
-		if _, err := os.Stat(build.ComposeFileName); err == nil {
-			specFile = build.ComposeFileName
+		if _, err := os.Stat(build.OmnistrateComposeFileName); err == nil {
+			specFile = build.OmnistrateComposeFileName
 		} else {
 			// Auto-detect compose file in current directory if present
 			if files, err := os.ReadDir("."); err == nil {
 				for _, f := range files {
-					if !f.IsDir() && (f.Name() == build.ComposeFileName) {
+					if !f.IsDir() && (f.Name() == build.OmnistrateComposeFileName || f.Name() == build.ComposeFileName) {
 						specFile = f.Name()
 						break
 					}
@@ -284,10 +290,45 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 			return errors.Wrap(err, "failed to process template expressions")
 		}
 
-		
-		// Improved: Recursively check for plan spec keys at any level
+		// Check for omnistrate-specific configurations
 		var planCheck map[string]interface{}
 		if err := yaml.Unmarshal(processedData, &planCheck); err == nil {
+			// Helper: recursively search for any x-omnistrate key
+			var containsOmnistrateKey func(m map[string]interface{}) bool
+			containsOmnistrateKey = func(m map[string]interface{}) bool {
+				for k, v := range m {
+					// Check for any x-omnistrate key
+					if strings.HasPrefix(k, "x-omnistrate-") {
+						return true
+					}
+					// Recurse into nested maps
+					if sub, ok := v.(map[string]interface{}); ok {
+						if containsOmnistrateKey(sub) {
+							return true
+						}
+					}
+					// Recurse into slices of maps
+					if arr, ok := v.([]interface{}); ok {
+						for _, item := range arr {
+							if subm, ok := item.(map[string]interface{}); ok {
+								if containsOmnistrateKey(subm) {
+									return true
+								}
+							}
+						}
+					}
+				}
+				return false
+			}
+			
+			// Check if this is an omnistrate spec file
+			isOmnistrate := containsOmnistrateKey(planCheck)
+			if !isOmnistrate {
+				utils.PrintWarning(fmt.Sprintf("Spec file '%s' doesn't contain omnistrate-specific configurations (x-omnistrate-* keys)", specFile))
+				utils.PrintWarning("This might be a standard docker-compose file. Consider adding omnistrate configurations for better service definition.")
+			}
+			
+			// Improved: Recursively check for plan spec keys at any level
 			planKeyGroups := [][]string{
 				{"helm", "helmChart", "helmChartConfiguration"},
 				{"operator", "operatorCRDConfiguration"},
@@ -340,9 +381,9 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 
 
 
-	if extractDeploymentType != deploymentType {
+	if extractDeploymentType != "" && extractDeploymentType != deploymentType {
 		deploymentType = extractDeploymentType
-		fmt.Printf("Detected deployment type or customer provider deployment type different from spec: %s\n", deploymentType)
+		spinner.UpdateMessage(fmt.Sprintf("Detected deployment type different from spec: %s", deploymentType))
 	}
 
 
@@ -431,28 +472,30 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 	   }
 
 		if !foundMatchingAccount {
-				if awsAccountID != "" {
-					fmt.Printf("AWS account ID %s is not linked. Please link it using 'omctl account create'.\n", awsAccountID)
-				}
-				if gcpProjectID != "" {
-					fmt.Printf("GCP project %s/%s is not linked. Please link it using 'omctl account create'.\n", gcpProjectID, gcpProjectNumber)
-				}
-				if azureSubscriptionID != "" {
-					fmt.Printf("Azure subscription %s/%s is not linked. Please link it using 'omctl account create'.\n", azureSubscriptionID, azureTenantID)
-				}
-			} else if accountStatus != "READY" {
-				spinner.UpdateMessage("Error: Specified cloud account is not READY.")
-				spinner.Error()
-				if awsAccountID != "" {
-					fmt.Printf("AWS account ID %s is linked but has status '%s'. Complete onboarding if required.\n", awsAccountID, accountStatus)
-				}
-				if gcpProjectID != "" {
-					fmt.Printf("GCP project %s/%s is linked but has status '%s'. Complete onboarding if required.\n", gcpProjectID, gcpProjectNumber, accountStatus)
-				}
-				if azureSubscriptionID != "" {
-					fmt.Printf("Azure subscription %s/%s is linked but has status '%s'. Complete onboarding if required.\n", azureSubscriptionID, azureTenantID, accountStatus)
-				}
+			var errorMessage string
+			if awsAccountID != "" {
+				errorMessage = fmt.Sprintf("AWS account ID %s is not linked. Please link it using 'omctl account create'.", awsAccountID)
+			} else if gcpProjectID != "" {
+				errorMessage = fmt.Sprintf("GCP project %s/%s is not linked. Please link it using 'omctl account create'.", gcpProjectID, gcpProjectNumber)
+			} else if azureSubscriptionID != "" {
+				errorMessage = fmt.Sprintf("Azure subscription %s/%s is not linked. Please link it using 'omctl account create'.", azureSubscriptionID, azureTenantID)
 			}
+			spinner.UpdateMessage(errorMessage)
+			spinner.Error()
+			return nil
+		} else if accountStatus != "READY" {
+			var errorMessage string
+			if awsAccountID != "" {
+				errorMessage = fmt.Sprintf("AWS account ID %s is linked but has status '%s'. Complete onboarding if required.", awsAccountID, accountStatus)
+			} else if gcpProjectID != "" {
+				errorMessage = fmt.Sprintf("GCP project %s/%s is linked but has status '%s'. Complete onboarding if required.", gcpProjectID, gcpProjectNumber, accountStatus)
+			} else if azureSubscriptionID != "" {
+				errorMessage = fmt.Sprintf("Azure subscription %s/%s is linked but has status '%s'. Complete onboarding if required.", azureSubscriptionID, azureTenantID, accountStatus)
+			}
+			spinner.UpdateMessage(errorMessage)
+			spinner.Error()
+			return nil
+		}
 
 	if awsAccountID == "" && gcpProjectID == "" && azureSubscriptionID == "" {
 	
@@ -484,17 +527,20 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 }
 
 }
-	 if awsAccountID != "" {
-		fmt.Printf("Using AWS Account ID: %s\n", awsAccountID)
+	var accountMessage string
+	if awsAccountID != "" {
+		accountMessage = fmt.Sprintf("Using AWS Account ID: %s", awsAccountID)
+	} else if gcpProjectID != "" {
+		accountMessage = fmt.Sprintf("Using GCP Project ID: %s and Project Number: %s", gcpProjectID, gcpProjectNumber)
+	} else if azureSubscriptionID != "" {
+		accountMessage = fmt.Sprintf("Using Azure Subscription ID: %s and Tenant ID: %s", azureSubscriptionID, azureTenantID)
 	}
-	if gcpProjectID != "" {
-		fmt.Printf("Using GCP Project ID: %s and Project Number: %s\n", gcpProjectID, gcpProjectNumber)
-		
+	
+	if accountMessage != "" {
+		spinner.UpdateMessage(accountMessage + " - Account linked and READY")
+	} else {
+		spinner.UpdateMessage("Account linked and READY")
 	}
-	if azureSubscriptionID != "" {
-		fmt.Printf("Using Azure Subscription ID: %s and Tenant ID: %s\n", azureSubscriptionID, azureTenantID)
-	}
-	spinner.UpdateMessage("Specified account is linked and READY")
 	spinner.Complete()
 
 
@@ -715,13 +761,9 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 			utils.HandleSpinnerError(spinner, sm, err)
 			return err
 	}
-	
-
 
 	}
 	
-
-
 
 	// Dry-run exit point
 	if dryRun {
@@ -901,15 +943,22 @@ func executeDeploymentWorkflow(cmd *cobra.Command, sm ysmrr.SpinnerManager, toke
 	if err != nil {
 		return err
 	}
-
+	
+	
 		// If deployment type is BYOA, create cloud account instances first
 	if deploymentType == "byoa" &&  formattedParams["cloud_provider_account_config_id"] == nil{
+		// Initialize formattedParams if it's nil
+		if formattedParams == nil {
+			formattedParams = make(map[string]any)
+		}
+
 		fmt.Printf("BYOA deployment detected. Creating cloud account instances...\n")
-		cloudAccountInstanceID, err := createCloudAccountInstances(cmd.Context(), token, serviceID, environmentID, planID, cloudProvider, sm)
+		cloudAccountInstanceID, targetCloudProvider, err := createCloudAccountInstances(cmd.Context(), token, serviceID, environmentID, planID, sm)
 		if err != nil {
 			fmt.Printf("Warning: Failed to create cloud account instances: %v\n", err)
 		}
-		fmt.Printf("cloud account id: %s\n", cloudAccountInstanceID)
+		cloudProvider = targetCloudProvider
+		fmt.Printf("cloud account id: %s, %s\n",targetCloudProvider, cloudAccountInstanceID)
 		formattedParams["cloud_provider_account_config_id"] = cloudAccountInstanceID
 		
 	}
@@ -1447,6 +1496,14 @@ func extractCloudAccountsFromProcessedData(processedData []byte) (awsAccountID, 
 		return "", "", "", "", "", "", "", ""
 	}
 
+	// Helper to validate and set deployment type
+	setDeploymentType := func(deployType string) {
+		if deployType == "hosted" || deployType == "byoa" {
+			extractDeploymentType = deployType
+		}
+		// Invalid deployment types are ignored, keeping the previous valid value or empty string
+	}
+
 	// Simple helper to get string value with multiple key variations
 	getFirstString := func(m map[string]interface{}, keys ...string) string {
 		for _, key := range keys {
@@ -1489,13 +1546,13 @@ func extractCloudAccountsFromProcessedData(processedData []byte) (awsAccountID, 
 	processDeploymentMap := func(depMap map[string]interface{}) {
 		if hosted, exists := depMap["hostedDeployment"]; exists {
 			if hostedMap, ok := hosted.(map[string]interface{}); ok {
-				extractDeploymentType = "hosted"
+				setDeploymentType("hosted")
 				extractAccountDetails(hostedMap)
 			}
 		}
 		if byoa, exists := depMap["byoaDeployment"]; exists {
 			if byoaMap, ok := byoa.(map[string]interface{}); ok {
-				extractDeploymentType = "byoa"
+				setDeploymentType("byoa")
 				extractAccountDetails(byoaMap)
 			}
 		}
@@ -1510,13 +1567,13 @@ func extractCloudAccountsFromProcessedData(processedData []byte) (awsAccountID, 
 	// Check direct x-omnistrate-byoa/hosted keys
 	if byoa, exists := yamlContent["x-omnistrate-byoa"]; exists {
 		if byoaMap, ok := byoa.(map[string]interface{}); ok {
-			extractDeploymentType = "byoa"
+			setDeploymentType("byoa")
 			extractAccountDetails(byoaMap)
 		}
 	}
 	if hosted, exists := yamlContent["x-omnistrate-hosted"]; exists {
 		if hostedMap, ok := hosted.(map[string]interface{}); ok {
-			extractDeploymentType = "hosted"
+			setDeploymentType("hosted")
 			extractAccountDetails(hostedMap)
 		}
 	}
@@ -1671,6 +1728,12 @@ func createDeploymentYAML(
 	azureSubscriptionID string,
 	azureTenantID string,
 ) map[string]interface{} {
+	// Validate deployment type
+	if deploymentType != "hosted" && deploymentType != "byoa" {
+		fmt.Printf("Warning: Invalid deployment type '%s'. Using default 'hosted'. Valid values are: hosted, byoa\n", deploymentType)
+		deploymentType = "hosted"
+	}
+
 	yamlDoc := make(map[string]interface{}) // Initialize yamlDoc as an empty map
 
 	if awsAccountID != "" && awsBootstrapRoleARN == "" {
@@ -1952,9 +2015,20 @@ type CloudInstanceStatus struct {
 	Provider  string
 }
 
-func createCloudAccountInstances(ctx context.Context, token, serviceID, environmentID, planID, cloudProvider string, sm ysmrr.SpinnerManager) (string, error) {
+func createCloudAccountInstances(ctx context.Context, token, serviceID, environmentID, planID string,  sm ysmrr.SpinnerManager) (string,string, error) {
+	
+	sm.Stop()
+	// Determine which cloud provider to use and get credentials
+	targetCloudProvider := ""
+	if targetCloudProvider == "" {
+		targetCloudProvider = promptForCloudProvider()
+	}
+
+	sm.Start()
 	spinnerMsg := "Checking for existing cloud account instances"
 	spinner := sm.AddSpinner(spinnerMsg)
+
+
 	
 	
 	// Get existing cloud account instances grouped by cloud provider and status
@@ -1963,7 +2037,7 @@ func createCloudAccountInstances(ctx context.Context, token, serviceID, environm
 		spinner.UpdateMessage(spinnerMsg + ": Failed (" + err.Error() + ")")
 		spinner.Error()
 		sm.Stop()
-		return "", fmt.Errorf("failed to list cloud account instances: %w", err)
+		return "", targetCloudProvider, fmt.Errorf("failed to list cloud account instances: %w", err)
 	}
 
 	// Check for READY instances by cloud provider
@@ -1979,38 +2053,33 @@ func createCloudAccountInstances(ctx context.Context, token, serviceID, environm
 	// If we have READY instances for any cloud provider, use the first one from the preferred provider
 	if len(readyInstances) > 0 {
 		// Prefer the specified cloudProvider if it has READY instances
-		if cloudProvider != "" && len(readyInstances[cloudProvider]) > 0 {
-			fmt.Printf("Using existing READY %s cloud account instance: %s\n", cloudProvider, readyInstances[cloudProvider][0])
-			return readyInstances[cloudProvider][0], nil
+		if targetCloudProvider != "" && len(readyInstances[targetCloudProvider]) > 0 {
+			fmt.Printf("Using existing READY %s cloud account instance: %s\n", targetCloudProvider, readyInstances[targetCloudProvider][0])
+			return readyInstances[targetCloudProvider][0], targetCloudProvider, nil
 		}
 		
-		// Otherwise, use the first available READY instance from any provider
-		for provider, instances := range readyInstances {
-			fmt.Printf("Using existing READY %s cloud account instance: %s\n", provider, instances[0])
-			return instances[0], nil
-		}
+		// // Otherwise, use the first available READY instance from any provider
+		// for provider, instances := range readyInstances {
+		// 	fmt.Printf("Using existing READY %s cloud account instance: %s\n", provider, instances[0])
+		// 	return instances[0],targetCloudProvider, nil
+		// }
 	}
 
 	// No READY instances found, create a new one
 	sm.Stop()
 	fmt.Println("No READY cloud account instances found. Creating a new one.")
 	
-	// Determine which cloud provider to use and get credentials
-	targetCloudProvider := cloudProvider
-	if targetCloudProvider == "" {
-		targetCloudProvider = promptForCloudProvider()
-	}
-
+	
 	// Get cloud-specific credentials
 	params, err := promptForCloudCredentials(targetCloudProvider)
 	if err != nil {
-		return "", fmt.Errorf("failed to get cloud credentials: %w", err)
+		return "", targetCloudProvider, fmt.Errorf("failed to get cloud credentials: %w", err)
 	}
 
 	// Format parameters
 	formattedParams, err := common.FormatParams(params, "")
 	if err != nil {
-		return "", err
+		return "", targetCloudProvider, err
 	}
 
 	// Restart spinner for instance creation
@@ -2021,7 +2090,7 @@ func createCloudAccountInstances(ctx context.Context, token, serviceID, environm
 	if err != nil {
 		spinner.UpdateMessage("Creating cloud account instance: Failed (" + err.Error() + ")")
 		spinner.Error()
-		return "", err
+		return "", targetCloudProvider, err
 	}
 
 	spinner.UpdateMessage(fmt.Sprintf("Creating cloud account instance: Success (ID: %s)", createdInstanceID))
@@ -2030,19 +2099,18 @@ func createCloudAccountInstances(ctx context.Context, token, serviceID, environm
 	// Stop spinner to show instructions
 	sm.Stop()
 
-	// Show cloud-specific setup instructions
-	showCloudSetupInstructions(targetCloudProvider, createdInstanceID)
+	
 
 	// Start polling for account verification
-	fmt.Println("\n🔄 Waiting for account verification...")
-	accountID, err := waitForAccountVerification(ctx, token, serviceID, environmentID, planID, createdInstanceID)
+	fmt.Println("\n🔄 check for account verification...")
+	accountID, err := waitForAccountVerification(ctx, token, serviceID, environmentID, planID, createdInstanceID,targetCloudProvider)
 	if err != nil {
 		fmt.Printf("❌ Account verification failed: %v\n", err)
-		return createdInstanceID, err
+		return createdInstanceID, targetCloudProvider, err
 	}
 
 	fmt.Printf("✅ Account verified successfully (ID: %s)\n", accountID)
-	return createdInstanceID, nil
+	return createdInstanceID, targetCloudProvider, nil
 }
 
 // listCloudAccountInstancesByProvider lists cloud account instances grouped by cloud provider and status
@@ -2208,7 +2276,7 @@ func showCloudSetupInstructions(cloudProvider, instanceID string) {
 		fmt.Printf(dataaccess.NextStepVerifyAccountMsgTemplateAWS,
 			"https://console.aws.amazon.com/cloudformation/",
 			dataaccess.AwsCloudFormationGuideURL,
-			"",
+			dataaccess.AwsGcpTerraformScriptsURL,
 			instanceID,
 			dataaccess.AwsGcpTerraformGuideURL)
 	case "gcp":
@@ -2224,9 +2292,10 @@ func showCloudSetupInstructions(cloudProvider, instanceID string) {
 
 // waitForAccountVerification polls for account status changes from NOT_READY to READY
 func waitForAccountVerification(ctx context.Context, token, serviceID,
-		environmentID, planID, instanceID string) (string, error) {
+		environmentID, planID, instanceID, targetCloudProvider string) (string, error) {
 	maxRetries := 60 // 10 minutes with 10-second intervals
 	retryInterval := 10 * time.Second
+	showCloudSetupInstruction := false
 	
 	for i := 0; i < maxRetries; i++ {
 		// Get all accounts for the cloud provider
@@ -2238,7 +2307,7 @@ func waitForAccountVerification(ctx context.Context, token, serviceID,
 		}
 
 		for _, instance := range existingInstances {
-			if instance.instanceID == instanceID {
+			if instance.instanceID == instanceID && instance.cloudProvider == targetCloudProvider {
 				switch instance.status {
 				case "READY":
 					return instance.instanceID, nil
@@ -2250,8 +2319,13 @@ func waitForAccountVerification(ctx context.Context, token, serviceID,
 		
 		// Still not ready, continue polling
 		
-		if i%3 == 0 { // Show progress every 30 seconds
+		if i%3 == 0 && i > 2 { // Show progress every 30 seconds
 			fmt.Printf("⏳ Still waiting for account verification... (%d/%d)\n", i+1, maxRetries)
+			// Show cloud-specific setup instructions
+			if !showCloudSetupInstruction {
+				showCloudSetupInstructions(targetCloudProvider, instanceID)
+				showCloudSetupInstruction = true
+			}
 		}
 		
 		time.Sleep(retryInterval)
