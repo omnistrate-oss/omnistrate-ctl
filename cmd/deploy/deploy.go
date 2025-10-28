@@ -18,7 +18,7 @@ import (
 	"github.com/chelnak/ysmrr"
 	"github.com/omnistrate-oss/omnistrate-ctl/cmd/build"
 	"github.com/omnistrate-oss/omnistrate-ctl/cmd/common"
-	"github.com/omnistrate-oss/omnistrate-ctl/cmd/instance" // Import the correct package for instancecmd
+	"github.com/omnistrate-oss/omnistrate-ctl/cmd/instance"
 	"github.com/omnistrate-oss/omnistrate-ctl/internal/config"
 	"github.com/omnistrate-oss/omnistrate-ctl/internal/dataaccess"
 	openapiclientfleet "github.com/omnistrate-oss/omnistrate-sdk-go/fleet"
@@ -201,7 +201,6 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 	}
 
 	environmentTypeUpper := strings.ToUpper(environmentType)
-
 
 
 	environment, err := cmd.Flags().GetString("environment")
