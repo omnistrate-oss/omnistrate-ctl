@@ -67,7 +67,7 @@ nav:
       - helm: "omnistrate-ctl_helm.md"
       - inspect: "omnistrate-ctl_inspect.md"
       - instance: "omnistrate-ctl_instance.md"
-      - operation: "omnistrate-ctl_operation.md"
+      - operations: "omnistrate-ctl_operations.md"
       - secret: "omnistrate-ctl_secret.md"
       - service-plan: "omnistrate-ctl_service-plan.md"
       - service: "omnistrate-ctl_service.md"
