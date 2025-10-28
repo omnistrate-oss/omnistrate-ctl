@@ -141,14 +141,14 @@ func runUpdateTemplate(cmd *cobra.Command, args []string) error {
 
 func updateOrganizationTemplate(ctx context.Context, token string, environment string, cloudProvider string, configFile string) error {
 	// Validate required flags
-	if environment == "" {
-		err := fmt.Errorf("environment flag is required for organization template updates")
+	if cloudProvider == "" {
+		err := fmt.Errorf("cloud flag is required for organization template updates")
 		utils.PrintError(err)
 		return err
 	}
 
-	if cloudProvider == "" {
-		err := fmt.Errorf("cloud flag is required for organization template updates")
+	if environment == "" {
+		err := fmt.Errorf("environment flag is required for organization template updates")
 		utils.PrintError(err)
 		return err
 	}

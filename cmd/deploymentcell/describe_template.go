@@ -30,7 +30,7 @@ Examples:
   omnistrate-ctl deployment-cell describe-config-template --cloud aws
 
   # Describe organization template for all environments and AWS
-  omnistrate-ctl deployment-cell describe-config-template --environment GLOBAL --cloud aws
+  omnistrate-ctl deployment-cell describe-config-template --cloud aws
 
   # Describe organization template for PROD environment and AWS
   omnistrate-ctl deployment-cell describe-config-template --environment PROD --cloud aws
@@ -39,10 +39,10 @@ Examples:
   omnistrate-ctl deployment-cell describe-config-template --id hc-12345
 
   # Get JSON output format
-  omnistrate-ctl deployment-cell describe-config-template --environment GLOBAL --cloud aws --output json
+  omnistrate-ctl deployment-cell describe-config-template --cloud aws --output json
 
   # Generate YAML template to local file
-  omnistrate-ctl deployment-cell describe-config-template --environment GLOBAL --cloud aws --output-file template.yaml
+  omnistrate-ctl deployment-cell describe-config-template --cloud aws --output-file template.yaml
 
   # Generate template for specific deployment cell to file
   omnistrate-ctl deployment-cell describe-config-template --id hc-12345 --output-file deployment-cell-config.yaml`,
@@ -120,14 +120,14 @@ func runDescribeTemplate(cmd *cobra.Command, args []string) error {
 		return describeDeploymentCellConfiguration(ctx, token, id, output, file)
 	} else {
 		// Validate required flags for organization template
-		if environment == "" {
-			err := fmt.Errorf("environment flag is required when not specifying a deployment cell ID")
+		if cloudProvider == "" {
+			err := fmt.Errorf("cloud flag is required when not specifying a deployment cell ID")
 			utils.PrintError(err)
 			return err
 		}
 
-		if cloudProvider == "" {
-			err := fmt.Errorf("cloud flag is required when not specifying a deployment cell ID")
+		if environment == "" {
+			err := fmt.Errorf("environment flag is required when not specifying a deployment cell ID")
 			utils.PrintError(err)
 			return err
 		}

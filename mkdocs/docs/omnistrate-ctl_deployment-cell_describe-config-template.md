@@ -13,17 +13,23 @@ You can also describe the configuration of a specific deployment cell by providi
 its ID as an argument.
 
 Examples:
+  # Describe organization template for all environments and AWS
+  omnistrate-ctl deployment-cell describe-config-template --cloud aws
+
+  # Describe organization template for all environments and AWS
+  omnistrate-ctl deployment-cell describe-config-template --environment GLOBAL --cloud aws
+
   # Describe organization template for PROD environment and AWS
-  omnistrate-ctl deployment-cell describe-config-template -e PROD --cloud aws
+  omnistrate-ctl deployment-cell describe-config-template --environment PROD --cloud aws
 
   # Describe specific deployment cell configuration
   omnistrate-ctl deployment-cell describe-config-template --id hc-12345
 
   # Get JSON output format
-  omnistrate-ctl deployment-cell describe-config-template -e PROD --cloud aws --output json
+  omnistrate-ctl deployment-cell describe-config-template --environment GLOBAL --cloud aws --output json
 
   # Generate YAML template to local file
-  omnistrate-ctl deployment-cell describe-config-template -e PROD --cloud aws --output-file template.yaml
+  omnistrate-ctl deployment-cell describe-config-template --environment GLOBAL --cloud aws --output-file template.yaml
 
   # Generate template for specific deployment cell to file
   omnistrate-ctl deployment-cell describe-config-template --id hc-12345 --output-file deployment-cell-config.yaml
@@ -35,8 +41,8 @@ omnistrate-ctl deployment-cell describe-config-template [flags]
 ### Options
 
 ```
-  -c, --cloud string         Cloud provider (aws, azure, gcp)
-  -e, --environment string   Environment type (e.g., PROD, STAGING)
+  -c, --cloud string         Cloud provider (e.g., aws, azure, gcp) - required for organization template updates
+  -e, --environment string   Environment type (e.g., GLOBAL, PROD, STAGING) - optional for organization template update, defaults to GLOBAL
   -h, --help                 help for describe-config-template
   -i, --id string            Deployment cell ID
   -o, --output string        Output format (yaml, json, table) (default "yaml")

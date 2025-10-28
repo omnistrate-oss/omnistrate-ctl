@@ -15,8 +15,15 @@ When updating the organization template, you must specify the environment and cl
 When updating a specific deployment cell, provide the deployment cell ID as an argument or use the --id flag.
 
 Examples:
+
+  # Update organization template for all environments and AWS
+  omnistrate-ctl deployment-cell update-config-template - --cloud aws -f template-aws.yaml
+
+  # Update organization template for all environment and AWS
+  omnistrate-ctl deployment-cell update-config-template --environment GLOBAL --cloud aws -f template-aws.yaml
+
   # Update organization template for PROD environment and AWS
-  omnistrate-ctl deployment-cell update-config-template -e PROD --cloud aws -f template-aws.yaml
+  omnistrate-ctl deployment-cell update-config-template --environment PROD --cloud aws -f template-aws.yaml
 
   # Update specific deployment cell with configuration file using flag
   omnistrate-ctl deployment-cell update-config-template --id hc-12345 -f deployment-cell-config.yaml
@@ -31,8 +38,8 @@ omnistrate-ctl deployment-cell update-config-template [flags]
 ### Options
 
 ```
-  -c, --cloud string         Cloud provider (aws, azure, gcp) - required for organization template updates
-  -e, --environment string   Environment type (e.g., PROD, STAGING) - required for organization template updates
+  -c, --cloud string         Cloud provider (e.g., aws, azure, gcp) - required for organization template updates
+  -e, --environment string   Environment type (e.g., GLOBAL, PROD, STAGING) - optional for organization template update, defaults to GLOBAL
   -f, --file string          Configuration file path (YAML format)
   -h, --help                 help for update-config-template
   -i, --id string            Deployment cell ID
