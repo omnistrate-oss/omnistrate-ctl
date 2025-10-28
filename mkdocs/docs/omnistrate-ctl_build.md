@@ -74,7 +74,7 @@ omctl build --image docker.io/namespace/my-image:v1.2 --product-name "My Service
   -d, --dry-run                             Simulate building the service without actually creating resources
       --environment string                  Name of the environment to build the service in (default "Dev")
       --environment-type string             Type of environment. Valid options include: 'dev', 'prod', 'qa', 'canary', 'staging', 'private') (default "dev")
-  -f, --file string                         Path to the docker compose file (defaults to compose.yaml or spec.yaml)
+  -f, --file string                         Path to the docker compose file (defaults to docker-compose.yaml or spec.yaml)
       --force-create-service-plan-version   Force create a new service plan version on release.
   -h, --help                                help for build
   -i, --interactive                         Interactive mode

@@ -2054,19 +2054,11 @@ type CloudInstanceStatus struct {
 
 func createCloudAccountInstances(ctx context.Context, token, serviceID, environmentID, planID, cloudProvider string, sm ysmrr.SpinnerManager) (string, string, error) {
 	
-	sm.Stop()
-	// Determine which cloud provider to use and get credentials
-	targetCloudProvider := cloudProvider
-	if targetCloudProvider == "" {
-		targetCloudProvider = promptForCloudProvider()
-	}
-
-	sm.Start()
+	
 	spinnerMsg := "Checking for existing cloud account instances"
 	spinner := sm.AddSpinner(spinnerMsg)
+	targetCloudProvider := cloudProvider
 
-
-	
 	
 	// Get existing cloud account instances grouped by cloud provider and status
 	cloudInstancesByProvider, err := listCloudAccountInstancesByProvider(ctx, token, serviceID, environmentID, planID)
@@ -2085,27 +2077,66 @@ func createCloudAccountInstances(ctx context.Context, token, serviceID, environm
 		}
 	}
 
+
+
 	spinner.Complete()
 
-	// If we have READY instances for any cloud provider, use the first one from the preferred provider
+	// If we have READY instances for any cloud provider, show them and let user choose
 	if len(readyInstances) > 0 {
-		// Prefer the specified cloudProvider if it has READY instances
-		if targetCloudProvider != "" && len(readyInstances[targetCloudProvider]) > 0 {
-			fmt.Printf("Using existing READY %s cloud account instance: %s\n", targetCloudProvider, readyInstances[targetCloudProvider][0])
-			return readyInstances[targetCloudProvider][0], targetCloudProvider, nil
+		sm.Stop()
+		fmt.Println("Available READY cloud account instances:")
+		
+		// Create a list of all available instances with their providers
+		var instanceOptions []struct {
+			provider   string
+			instanceID string
 		}
 		
-		// // Otherwise, use the first available READY instance from any provider
-		// for provider, instances := range readyInstances {
-		// 	fmt.Printf("Using existing READY %s cloud account instance: %s\n", provider, instances[0])
-		// 	return instances[0],targetCloudProvider, nil
-		// }
+		for provider, instances := range readyInstances {
+			for _, instanceID := range instances {
+				instanceOptions = append(instanceOptions, struct {
+					provider   string
+					instanceID string
+				}{provider, instanceID})
+			}
+		}
+		
+		// Display options
+		for i, option := range instanceOptions {
+			fmt.Printf("  %d. %s cloud account instance: %s\n", i+1, strings.ToUpper(option.provider), option.instanceID)
+		}
+		fmt.Println("  0. Create a new cloud account instance")
+		
+		var choice int
+		for {
+			fmt.Printf("Select cloud account instance (0-%d): ", len(instanceOptions))
+			if _, err := fmt.Scanln(&choice); err == nil && choice >= 0 && choice <= len(instanceOptions) {
+				break
+			}
+			fmt.Println("Invalid selection. Please enter a valid number.")
+		}
+		
+		if choice == 0 {
+			// User chose to create a new instance - continue with creation logic below
+			sm.Start()
+		} else {
+			// User selected an existing instance
+			selected := instanceOptions[choice-1]
+			fmt.Printf("Using existing READY %s cloud account instance: %s\n", strings.ToUpper(selected.provider), selected.instanceID)
+			return selected.instanceID, selected.provider, nil
+		}
 	}
 
 	// No READY instances found, create a new one
 	sm.Stop()
 	fmt.Println("No READY cloud account instances found. Creating a new one.")
-	
+
+
+	// Determine which cloud provider to use and get credentials
+	if targetCloudProvider == "" {
+		targetCloudProvider = promptForCloudProvider()
+	}
+
 	
 	// Get cloud-specific credentials
 	params, err := promptForCloudCredentials(targetCloudProvider)
@@ -2122,6 +2153,13 @@ func createCloudAccountInstances(ctx context.Context, token, serviceID, environm
 	// Restart spinner for instance creation
 	sm.Start()
 	spinner = sm.AddSpinner("Creating new cloud account instance")
+	sm.Stop()
+	// Determine which cloud provider to use and get credentials
+	if targetCloudProvider == "" {
+		targetCloudProvider = promptForCloudProvider()
+	}
+
+	sm.Start()
 
 	createdInstanceID, err := createInstanceUnified(ctx, token, serviceID, planID, targetCloudProvider, "", "", "cloudAccount", formattedParams, sm)
 	if err != nil {
