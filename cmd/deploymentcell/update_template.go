@@ -3,8 +3,9 @@ package deploymentcell
 import (
 	"context"
 	"fmt"
-	"github.com/omnistrate-oss/omnistrate-sdk-go/fleet"
 	"os"
+
+	"github.com/omnistrate-oss/omnistrate-sdk-go/fleet"
 
 	"github.com/omnistrate-oss/omnistrate-ctl/cmd/common"
 	"github.com/omnistrate-oss/omnistrate-ctl/internal/config"
@@ -99,20 +100,9 @@ func runUpdateTemplate(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("invalid arguments")
 	}
 
-	// Validate environment if provided
-	if environment != "" {
-		if !isValidEnvironment(environment) {
-			utils.PrintError(fmt.Errorf("invalid environment '%s'. Valid values are: %v", environment, validEnvironments))
-			return fmt.Errorf("invalid environment type")
-		}
-	}
-
-	// Validate cloud provider if provided
-	if cloudProvider != "" {
-		if !isValidCloudProvider(cloudProvider) {
-			utils.PrintError(fmt.Errorf("invalid cloud provider '%s'. Valid values are: aws, azure, gcp", cloudProvider))
-			return fmt.Errorf("invalid cloud provider")
-		}
+	// Set default environment if not provided
+	if environment != "" && cloudProvider != "" {
+		environment = defaultEnvironment
 	}
 
 	ctx := context.Background()

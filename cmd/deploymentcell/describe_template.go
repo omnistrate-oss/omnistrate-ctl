@@ -30,16 +30,16 @@ Examples:
   omnistrate-ctl deployment-cell describe-config-template --cloud aws
 
   # Describe organization template for all environment and AWS
-  omnistrate-ctl deployment-cell describe-config-template -e GLOBAL --cloud aws
+  omnistrate-ctl deployment-cell describe-config-template --environment GLOBAL --cloud aws
 
   # Describe specific deployment cell configuration
   omnistrate-ctl deployment-cell describe-config-template --id hc-12345
 
   # Get JSON output format
-  omnistrate-ctl deployment-cell describe-config-template -environment GLOBAL --cloud aws --output json
+  omnistrate-ctl deployment-cell describe-config-template --environment GLOBAL --cloud aws --output json
 
   # Generate YAML template to local file
-  omnistrate-ctl deployment-cell describe-config-template -environment GLOBAL --cloud aws --output-file template.yaml
+  omnistrate-ctl deployment-cell describe-config-template --environment GLOBAL --cloud aws --output-file template.yaml
 
   # Generate template for specific deployment cell to file
   omnistrate-ctl deployment-cell describe-config-template --id hc-12345 --output-file deployment-cell-config.yaml
