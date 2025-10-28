@@ -43,7 +43,6 @@ Examples:
 
   # Generate template for specific deployment cell to file
   omnistrate-ctl deployment-cell describe-config-template --id hc-12345 --output-file deployment-cell-config.yaml
-  
   # Describe organization template for PROD environment and AWS
   omnistrate-ctl deployment-cell describe-config-template --environment PROD --cloud aws`,
 	RunE:         runDescribeTemplate,
