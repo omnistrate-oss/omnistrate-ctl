@@ -544,7 +544,7 @@ key2: value2
 nested:
   key3: value3`
 		includeFile := filepath.Join(tempDir, "include.yaml")
-		err := os.WriteFile(includeFile, []byte(includeContent), 0644)
+		err := os.WriteFile(includeFile, []byte(includeContent), 0600)
 		require.NoError(t, err)
 
 		templateContent := `  config: {{ $file:include.yaml }}`
