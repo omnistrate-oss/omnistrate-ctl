@@ -2,6 +2,8 @@ package instance
 
 import (
 	"errors"
+	"fmt"
+	"time"
 
 	"github.com/chelnak/ysmrr"
 	"github.com/omnistrate-oss/omnistrate-ctl/cmd/common"
@@ -27,6 +29,22 @@ var listSnapshotsCmd = &cobra.Command{
 
 func init() {
 	listSnapshotsCmd.Args = cobra.ExactArgs(1) // Require exactly one argument
+}
+
+const snapshotDisplayTimeLayout = "2006-01-02 15:04:05 MST"
+
+type SnapshotDetail struct {
+	SnapshotID       string `json:"snapshotId"`
+	Status           string `json:"status"`
+	Region           string `json:"region"`
+	SnapshotType     string `json:"snapshotType"`
+	Progress         string `json:"progress"`
+	CreatedAt        string `json:"createdAt"`
+	CompletedAt      string `json:"completedAt"`
+	SourceInstanceID string `json:"sourceInstanceId"`
+	ProductTierID    string `json:"productTierId"`
+	ProductTierVer   string `json:"productTierVersion"`
+	Encrypted        bool   `json:"encrypted"`
 }
 
 func runListSnapshots(cmd *cobra.Command, args []string) error {
@@ -81,10 +99,44 @@ func runListSnapshots(cmd *cobra.Command, args []string) error {
 
 	utils.HandleSpinnerSuccess(spinner, sm, "Successfully listed snapshots")
 
-	// Print output
-	if err = utils.PrintTextTableJsonOutput(output, result); err != nil {
-		return err
+	if output == "json" {
+		return utils.PrintTextTableJsonOutput(output, result)
 	}
 
-	return nil
+	if result == nil || len(result.Snapshots) == 0 {
+		utils.PrintInfo(fmt.Sprintf("No snapshots found for instance %s.", instanceID))
+		return nil
+	}
+
+	summaries := make([]SnapshotDetail, 0, len(result.Snapshots))
+	for _, snapshot := range result.Snapshots {
+		summaries = append(summaries, SnapshotDetail{
+			SnapshotID:       snapshot.SnapshotId,
+			Status:           snapshot.Status,
+			Region:           snapshot.Region,
+			SnapshotType:     snapshot.SnapshotType,
+			Progress:         fmt.Sprintf("%d%%", snapshot.Progress),
+			CreatedAt:        formatSnapshotDisplayTime(snapshot.CreatedTime),
+			CompletedAt:      formatSnapshotDisplayTime(snapshot.CompleteTime),
+			SourceInstanceID: snapshot.SourceInstanceId,
+			ProductTierID:    snapshot.ProductTierId,
+			ProductTierVer:   snapshot.ProductTierVersion,
+			Encrypted:        snapshot.Encrypted,
+		})
+	}
+
+	return utils.PrintTextTableJsonArrayOutput(output, summaries)
+}
+
+func formatSnapshotDisplayTime(raw string) string {
+	if raw == "" {
+		return ""
+	}
+
+	parsed, err := time.Parse(time.RFC3339, raw)
+	if err != nil {
+		return raw
+	}
+
+	return parsed.UTC().Format(snapshotDisplayTimeLayout)
 }
