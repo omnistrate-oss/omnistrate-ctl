@@ -482,7 +482,7 @@ func runBuild(cmd *cobra.Command, args []string) error {
 
 	var undefinedResources map[string]string
 	var isNewVersionCreated bool
-	ServiceID, EnvironmentID, ProductTierID, undefinedResources, isNewVersionCreated, err = buildService(
+	ServiceID, EnvironmentID, ProductTierID, undefinedResources, isNewVersionCreated, err = BuildService(
 		cmd.Context(),
 		fileData,
 		token,
@@ -718,7 +718,7 @@ func runBuild(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
-func buildService(ctx context.Context, fileData []byte, token, name, specType string, description, serviceLogoURL, environment, environmentType *string, release,
+func BuildService(ctx context.Context, fileData []byte, token, name, specType string, description, serviceLogoURL, environment, environmentType *string, release,
 	releaseAsPreferred bool, releaseName *string, dryRun bool, forceCreateNewServicePlanVersion bool) (serviceID string, environmentID string, productTierID string, undefinedResources map[string]string, isNewVersionCreated bool, err error) {
 	if name == "" {
 		return "", "", "", make(map[string]string), false, errors.New("name is required")

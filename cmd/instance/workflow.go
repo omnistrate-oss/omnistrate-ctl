@@ -19,7 +19,7 @@ type ResourceSpinner struct {
 }
 
 // displayWorkflowResourceDataWithSpinners creates individual spinners for each resource and updates them dynamically
-func displayWorkflowResourceDataWithSpinners(ctx context.Context, token, instanceID, actionType string) error {
+func DisplayWorkflowResourceDataWithSpinners(ctx context.Context, token, instanceID, actionType string) error {
 	// Search for the instance to get service details
 	searchRes, err := dataaccess.SearchInventory(ctx, token, fmt.Sprintf("resourceinstance:%s", instanceID))
 	if err != nil {
