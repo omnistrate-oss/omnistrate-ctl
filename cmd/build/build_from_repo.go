@@ -85,9 +85,8 @@ func init() {
 	BuildFromRepoCmd.Flags().String("azure-subscription-id", "", "Azure subscription ID. Must be used with --azure-tenant-id and --deployment-type")
 	BuildFromRepoCmd.Flags().String("azure-tenant-id", "", "Azure tenant ID. Must be used with --azure-subscription-id and --deployment-type")
 	BuildFromRepoCmd.Flags().Bool("reset-pat", false, "Reset the GitHub Personal Access Token (PAT) for the current user.")
-	BuildFromRepoCmd.Flags().String("github-username", "", "GitHub username to use if GitHub API fails to retrieve it automatically")
 	BuildFromRepoCmd.Flags().StringP("output", "o", "text", "Output format. Only text is supported")
-	BuildFromRepoCmd.Flags().StringP("file", "f", OmnistrateComposeFileName, "Specify the compose file to read and write to")
+	BuildFromRepoCmd.Flags().StringP("file", "f", ComposeFileName, "Specify the compose file to read and write to")
 	BuildFromRepoCmd.Flags().String("service-name", "", "Specify a custom service name. If not provided, the repository name will be used.")
 	BuildFromRepoCmd.Flags().String("product-name", "", "Specify a custom service name. If not provided, the repository name will be used.")
 
@@ -153,6 +152,7 @@ func runBuildFromRepo(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
+
 	azureSubscriptionID, err := cmd.Flags().GetString("azure-subscription-id")
 	if err != nil {
 		return err
@@ -238,9 +238,6 @@ func runBuildFromRepo(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-
-
-
 	// Use product-name if provided, otherwise use service-name
 	// Since flags are mutually exclusive, only one will be set
 	if productName != "" {
@@ -282,19 +279,17 @@ func runBuildFromRepo(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-
 	// Get the platforms defined in flag
 	platforms, err := cmd.Flags().GetStringArray("platforms")
 	if err != nil {
 		err = errors.New("only text output format is supported")
 		utils.PrintError(err)
-		return err	}
-
-
+		return err
+	}
 
 	// Validate deployment type and cloud provider account details
 	if deploymentType != "" {
-		if deploymentType != "hosted" && deploymentType != "byoa" {
+		if deploymentType != DeploymentTypeHosted && deploymentType != DeploymentTypeByoa {
 			err = errors.New("invalid deployment type. Options: 'hosted' or 'byoa'")
 			utils.PrintError(err)
 			return err
@@ -329,8 +324,6 @@ func runBuildFromRepo(cmd *cobra.Command, args []string) error {
 	sm = ysmrr.NewSpinnerManager()
 	sm.Start()
 
-
-
 	// Initialize required variables for BuildServiceFromRepository
 	token, err := common.GetTokenWithLogin()
 	if err != nil {
@@ -338,7 +331,7 @@ func runBuildFromRepo(cmd *cobra.Command, args []string) error {
 		return err
 	}
 	// Pass all required arguments including the SpinnerManager
-	serviceID, devEnvironmentID, devPlanID,_, err := BuildServiceFromRepository(
+	serviceID, devEnvironmentID, devPlanID, _, err := BuildServiceFromRepository(
 		cmd,
 		cmd.Context(),
 		token,
@@ -365,7 +358,6 @@ func runBuildFromRepo(cmd *cobra.Command, args []string) error {
 		utils.PrintError(err)
 		return err
 	}
-
 
 	// Skip environment promotion if flag is set
 	var prodEnvironmentID string
@@ -534,7 +526,7 @@ func runBuildFromRepo(cmd *cobra.Command, args []string) error {
 				gcpAccountUnverified = true
 				unverifiedGcpAccountConfigID = account.Id
 			}
-			
+
 			if account.Status == model.Verifying.String() && account.AzureSubscriptionID != nil && *account.AzureSubscriptionID == azureSubscriptionID {
 				azureAccountUnverified = true
 				unverifiedAzureAccountConfigID = account.Id
@@ -581,7 +573,6 @@ func runBuildFromRepo(cmd *cobra.Command, args []string) error {
 			}
 		}
 
-
 		fmt.Printf("2. After account verified, play around with the SaaS Portal! Subscribe to your service and create instance deployments.\n")
 		fmt.Printf("3. A compose spec has been generated from the Docker image. You can customize it further by editing the %s file. Refer to the documentation %s for more information.\n", filepath.Base(file), urlMsg("https://docs.omnistrate.com/getting-started/compose-spec/"))
 		fmt.Printf("4. Push any changes to the repository and automatically update the service by running 'omctl build-from-repo' again.\n")
@@ -595,17 +586,12 @@ func runBuildFromRepo(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
-
-
 func BuildServiceFromRepository(cmd *cobra.Command, ctx context.Context, token, serviceName, releaseDescription string, resetPAT, dryRun, skipDockerBuild, skipServiceBuild bool, deploymentType, awsAccountID, gcpProjectID, gcpProjectNumber, azureSubscriptionID, azureTenantID string, sm ysmrr.SpinnerManager, file string, envVars, platforms []string, forceCreateServicePlanVersion bool) (serviceID, devEnvironmentID, devPlanID string, undefinedResources map[string]string, err error) {
-
 
 	// Step 0: Validate user is currently logged in
 	spinner := sm.AddSpinner("Checking if user is logged in")
 	spinner.Complete()
 	sm.Stop()
-
-
 
 	sm = ysmrr.NewSpinnerManager()
 	sm.Start()
@@ -751,14 +737,14 @@ func BuildServiceFromRepository(cmd *cobra.Command, ctx context.Context, token, 
 						utils.HandleSpinnerError(spinner, sm, err)
 						return "", "", "", nil, err
 					}
-					
+
 					// Parse JSON response to extract login field
 					var response map[string]interface{}
 					if err := json.Unmarshal(ghUsernameOutput, &response); err != nil {
 						utils.HandleSpinnerError(spinner, sm, fmt.Errorf("failed to parse GitHub API response: %v, response: %s", err, string(ghUsernameOutput)))
 						return "", "", "", nil, err
 					}
-					
+
 					// Check if the API returned an error (like bad credentials)
 					if message, exists := response["message"]; exists {
 						// Try to use the GitHub username flag as a fallback
@@ -779,7 +765,7 @@ func BuildServiceFromRepository(cmd *cobra.Command, ctx context.Context, token, 
 							}
 
 							sm.Start()
-							
+
 							if inputUsername != "" {
 								ghUsername = inputUsername
 								spinner = sm.AddSpinner(fmt.Sprintf("Using provided GitHub username: %s", ghUsername))
@@ -873,14 +859,14 @@ func BuildServiceFromRepository(cmd *cobra.Command, ctx context.Context, token, 
 					utils.HandleSpinnerError(spinner, sm, err)
 					return "", "", "", nil, err
 				}
-				
+
 				// Parse JSON response to extract login field
 				var response map[string]interface{}
 				if err := json.Unmarshal(ghUsernameOutput, &response); err != nil {
 					utils.HandleSpinnerError(spinner, sm, fmt.Errorf("failed to parse GitHub API response: %v, response: %s", err, string(ghUsernameOutput)))
 					return "", "", "", nil, err
 				}
-				
+
 				// Check if the API returned an error (like bad credentials)
 				if message, exists := response["message"]; exists {
 					// Try to use the GitHub username flag as a fallback
@@ -894,14 +880,14 @@ func BuildServiceFromRepository(cmd *cobra.Command, ctx context.Context, token, 
 						sm.Stop()
 
 						fmt.Println()
-						
+
 						fmt.Print("Enter your GitHub username: ")
 						var inputUsername string
 						if _, err := fmt.Scanln(&inputUsername); err != nil {
 							utils.HandleSpinnerError(spinner, sm, fmt.Errorf("failed to read GitHub username: %w", err))
 							return "", "", "", nil, fmt.Errorf("failed to read GitHub username: %w", err)
 						}
-						
+
 						if inputUsername != "" {
 							ghUsername = inputUsername
 							spinner = sm.AddSpinner(fmt.Sprintf("Using provided GitHub username: %s", ghUsername))
@@ -996,11 +982,8 @@ func BuildServiceFromRepository(cmd *cobra.Command, ctx context.Context, token, 
 				spinner.Complete()
 				sm.Stop()
 
-				
-
 				// Join the platforms list with comma as separator
 				platformsStr := strings.Join(platforms, ",")
-
 
 				buildCmd := exec.Command("docker", "buildx", "build", "--pull", "--platform", platformsStr, ".", "-f", dockerfilePath, "-t", imageUrl, "--load")
 
@@ -1185,10 +1168,10 @@ func BuildServiceFromRepository(cmd *cobra.Command, ctx context.Context, token, 
 
 			// Append the deployment section to the compose spec
 			switch deploymentType {
-			case "hosted":
+			case DeploymentTypeHosted:
 				fileData = append(fileData, []byte("  deployment:\n")...)
 				fileData = append(fileData, []byte("    hostedDeployment:\n")...)
-			case "byoa":
+			case DeploymentTypeByoa:
 				fileData = append(fileData, []byte("  deployment:\n")...)
 				fileData = append(fileData, []byte("    byoaDeployment:\n")...)
 			}
@@ -1228,10 +1211,10 @@ func BuildServiceFromRepository(cmd *cobra.Command, ctx context.Context, token, 
 			// Append the deployment section to the compose spec if it doesn't exist
 			if !strings.Contains(string(fileData), "deployment:") {
 				switch deploymentType {
-				case "hosted":
+				case DeploymentTypeHosted:
 					fileData = append(fileData, []byte("  deployment:\n")...)
 					fileData = append(fileData, []byte("    hostedDeployment:\n")...)
-				case "byoa":
+				case DeploymentTypeByoa:
 					fileData = append(fileData, []byte("  deployment:\n")...)
 					fileData = append(fileData, []byte("    byoaDeployment:\n")...)
 				}
@@ -1389,15 +1372,9 @@ x-omnistrate-image-registry-attributes:
 	spinner.UpdateMessage(fmt.Sprintf("Building service from the compose spec: built service %s (service ID: %s)", serviceNameToUse, serviceID))
 	spinner.Complete()
 
-return serviceID, devEnvironmentID, devPlanID, undefinedResources, nil
-	
+	return serviceID, devEnvironmentID, devPlanID, undefinedResources, nil
+
 }
-
-
-
-
-
-
 
 // Helper functions
 

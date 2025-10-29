@@ -146,8 +146,6 @@ func ListResourceInstance(ctx context.Context, token string, serviceID, environm
 	return
 }
 
-
-
 func ListResourceInstanceSnapshots(ctx context.Context, token string, serviceID, environmentID, instanceID string) (res *openapiclientfleet.FleetListInstanceSnapshotResult, err error) {
 	ctxWithToken := context.WithValue(ctx, openapiclientfleet.ContextAccessToken, token)
 	apiClient := getFleetClient()

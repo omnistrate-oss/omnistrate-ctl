@@ -165,7 +165,7 @@ services:
 	})
 }
 
-// DTYPE-* Test Cases: Deployment Type Validation  
+// DTYPE-* Test Cases: Deployment Type Validation
 func TestDeploymentTypeValidation(t *testing.T) {
 	tests := []struct {
 		name           string
@@ -220,7 +220,7 @@ func TestDeploymentTypeValidation(t *testing.T) {
 
 // SVC-* Test Cases: Service Name Handling
 func TestServiceNameHandling(t *testing.T) {
-	// SVC-001: Custom service name provided  
+	// SVC-001: Custom service name provided
 	t.Run("SVC-001_CustomServiceName", func(t *testing.T) {
 		serviceName := "my-service"
 		sanitized := sanitizeServiceName(serviceName)
@@ -265,7 +265,7 @@ func TestEnvironmentManagement(t *testing.T) {
 		// Test default environment behavior
 		defaultEnv := "Prod"
 		defaultEnvType := "prod"
-		
+
 		assert.Equal(t, "Prod", defaultEnv)
 		assert.Equal(t, "prod", defaultEnvType)
 	})
@@ -274,7 +274,7 @@ func TestEnvironmentManagement(t *testing.T) {
 		// Test custom environment
 		customEnv := "MyEnv"
 		customEnvType := "staging"
-		
+
 		assert.Equal(t, "MyEnv", customEnv)
 		assert.Equal(t, "staging", customEnvType)
 	})
@@ -291,7 +291,7 @@ func TestDryRunMode(t *testing.T) {
 		// Test dry run with invalid spec
 		dryRun := true
 		invalidSpec := true // Simulate invalid spec
-		
+
 		if dryRun && invalidSpec {
 			// Should show validation errors but not proceed
 			assert.True(t, true, "Should handle invalid spec in dry run")
@@ -299,7 +299,7 @@ func TestDryRunMode(t *testing.T) {
 	})
 }
 
-// INST-* Test Cases: Instance Management  
+// INST-* Test Cases: Instance Management
 func TestInstanceManagement(t *testing.T) {
 	t.Run("INST-001_NoExistingInstances", func(t *testing.T) {
 		instances := []string{}
@@ -321,7 +321,7 @@ func TestInstanceManagement(t *testing.T) {
 			"key":   "value",
 			"count": 3,
 		}
-		
+
 		jsonParams, err := json.Marshal(params)
 		assert.NoError(t, err)
 		assert.Contains(t, string(jsonParams), "key")
@@ -347,7 +347,7 @@ func TestResourceManagement(t *testing.T) {
 			"postgres": "res123",
 			"redis":    "res456",
 		}
-		
+
 		assert.Contains(t, resources, "postgres")
 		assert.Equal(t, resourceID, resources["postgres"])
 	})
@@ -355,10 +355,10 @@ func TestResourceManagement(t *testing.T) {
 	t.Run("RES-004_InvalidResourceID", func(t *testing.T) {
 		resourceID := "invalid"
 		resources := map[string]string{
-			"postgres": "res123", 
+			"postgres": "res123",
 			"redis":    "res456",
 		}
-		
+
 		found := false
 		for _, id := range resources {
 			if id == resourceID {
@@ -375,7 +375,7 @@ func TestCloudProviderSpecific(t *testing.T) {
 	t.Run("CP-001_AWS_AllParameters", func(t *testing.T) {
 		cloudProvider := "aws"
 		region := "us-east-1"
-		
+
 		assert.Equal(t, "aws", cloudProvider)
 		assert.Equal(t, "us-east-1", region)
 	})
@@ -383,7 +383,7 @@ func TestCloudProviderSpecific(t *testing.T) {
 	t.Run("CP-002_GCP_AllParameters", func(t *testing.T) {
 		cloudProvider := "gcp"
 		region := "us-central1"
-		
+
 		assert.Equal(t, "gcp", cloudProvider)
 		assert.Equal(t, "us-central1", region)
 	})
@@ -391,7 +391,7 @@ func TestCloudProviderSpecific(t *testing.T) {
 	t.Run("CP-003_Azure_AllParameters", func(t *testing.T) {
 		cloudProvider := "azure"
 		region := "eastus"
-		
+
 		assert.Equal(t, "azure", cloudProvider)
 		assert.Equal(t, "eastus", region)
 	})
@@ -399,17 +399,17 @@ func TestCloudProviderSpecific(t *testing.T) {
 	t.Run("CP-004_InvalidCloudProvider", func(t *testing.T) {
 		cloudProvider := "invalid"
 		validProviders := []string{"aws", "gcp", "azure"}
-		
+
 		assert.NotContains(t, validProviders, cloudProvider)
 	})
 
 	t.Run("CP-005_InvalidRegionForProvider", func(t *testing.T) {
 		cloudProvider := "aws"
 		region := "invalid-region"
-		
+
 		// AWS regions typically follow us-*, eu-*, ap-* patterns
 		validRegionPrefixes := []string{"us-", "eu-", "ap-", "ca-", "sa-"}
-		
+
 		isValid := false
 		for _, prefix := range validRegionPrefixes {
 			if strings.HasPrefix(region, prefix) {
@@ -418,7 +418,7 @@ func TestCloudProviderSpecific(t *testing.T) {
 			}
 		}
 		assert.False(t, isValid, "Invalid region should not match valid patterns")
-		
+
 		// Ensure we use the cloudProvider variable to avoid unused variable error
 		assert.Equal(t, "aws", cloudProvider)
 	})
@@ -429,7 +429,7 @@ func TestBYOASpecific(t *testing.T) {
 	t.Run("BYOA-001_WithoutCloudAccountInstances", func(t *testing.T) {
 		cloudAccountInstances := []string{}
 		deploymentType := "byoa"
-		
+
 		assert.Equal(t, "byoa", deploymentType)
 		assert.Empty(t, cloudAccountInstances, "Should have no cloud account instances")
 	})
@@ -437,7 +437,7 @@ func TestBYOASpecific(t *testing.T) {
 	t.Run("BYOA-002_WithExistingCloudAccount", func(t *testing.T) {
 		cloudAccountInstances := []string{"account-123"}
 		deploymentType := "byoa"
-		
+
 		assert.Equal(t, "byoa", deploymentType)
 		assert.NotEmpty(t, cloudAccountInstances, "Should have existing cloud account")
 	})
@@ -450,7 +450,7 @@ func TestBYOASpecific(t *testing.T) {
 			"account_configuration_method": "CloudFormation",
 			"cloud_provider":               "aws",
 		}
-		
+
 		assert.Contains(t, credentials, "aws_account_id")
 		assert.Contains(t, credentials, "cloud_provider")
 		assert.Equal(t, "aws", credentials["cloud_provider"])
@@ -461,10 +461,10 @@ func TestBYOASpecific(t *testing.T) {
 func TestParameterValidation(t *testing.T) {
 	t.Run("PARAM-001_ValidJSONParameters", func(t *testing.T) {
 		paramJSON := `{"key":"value","count":3,"enabled":true}`
-		
+
 		var params map[string]interface{}
 		err := json.Unmarshal([]byte(paramJSON), &params)
-		
+
 		assert.NoError(t, err)
 		assert.Equal(t, "value", params["key"])
 		assert.Equal(t, float64(3), params["count"]) // JSON numbers are float64
@@ -473,10 +473,10 @@ func TestParameterValidation(t *testing.T) {
 
 	t.Run("PARAM-002_InvalidJSONParameters", func(t *testing.T) {
 		invalidJSON := `{"key":"value","count":}`
-		
+
 		var params map[string]interface{}
 		err := json.Unmarshal([]byte(invalidJSON), &params)
-		
+
 		assert.Error(t, err, "Should fail to parse invalid JSON")
 	})
 
@@ -503,7 +503,7 @@ func TestParameterValidation(t *testing.T) {
 
 	t.Run("PARAM-004_MissingParameterFile", func(t *testing.T) {
 		nonExistentFile := "/tmp/missing-params.json"
-		
+
 		_, err := os.ReadFile(nonExistentFile)
 		assert.Error(t, err, "Should fail to read missing file")
 		assert.True(t, os.IsNotExist(err), "Should be file not found error")
@@ -511,10 +511,10 @@ func TestParameterValidation(t *testing.T) {
 
 	t.Run("PARAM-006_EmptyParameters", func(t *testing.T) {
 		emptyParams := `{}`
-		
+
 		var params map[string]interface{}
 		err := json.Unmarshal([]byte(emptyParams), &params)
-		
+
 		assert.NoError(t, err)
 		assert.Empty(t, params, "Should have empty parameters")
 	})
@@ -530,7 +530,7 @@ func TestTemplateProcessingAdvanced(t *testing.T) {
 	// TMPL-003: Missing template file
 	t.Run("TMPL-003_MissingTemplateFile", func(t *testing.T) {
 		templateContent := `config: {{ $file:missing.yaml }}`
-		
+
 		_, err := processTemplateExpressions([]byte(templateContent), tempDir)
 		assert.Error(t, err, "Should fail with missing template file")
 		assert.Contains(t, err.Error(), "failed to read file")
@@ -548,7 +548,7 @@ nested:
 		require.NoError(t, err)
 
 		templateContent := `  config: {{ $file:include.yaml }}`
-		
+
 		result, err := processTemplateExpressions([]byte(templateContent), tempDir)
 		require.NoError(t, err)
 
@@ -568,12 +568,12 @@ func TestErrorHandling(t *testing.T) {
 		for i := 0; i < 1000; i++ {
 			largeContent += fmt.Sprintf("  service%d:\n    image: nginx:latest\n", i)
 		}
-		
+
 		// Test that large content can be processed
 		var yamlContent map[string]interface{}
 		err := yaml.Unmarshal([]byte(largeContent), &yamlContent)
 		assert.NoError(t, err, "Should handle large YAML files")
-		
+
 		services, ok := yamlContent["services"].(map[string]interface{})
 		assert.True(t, ok)
 		assert.Equal(t, 1000, len(services), "Should have all 1000 services")
@@ -595,7 +595,7 @@ services:
 		var parsed map[string]interface{}
 		err := yaml.Unmarshal([]byte(yamlContent), &parsed)
 		assert.NoError(t, err, "YAML should parse successfully")
-		
+
 		// Note: Actual circular dependency detection would be in deployment logic
 		services := parsed["services"].(map[string]interface{})
 		assert.Contains(t, services, "service1")
@@ -851,7 +851,7 @@ services:
     image: redis:latest
 `
 	data := []byte(yamlContent)
-	
+
 	for i := 0; i < b.N; i++ {
 		extractCloudAccountsFromProcessedData(data)
 	}

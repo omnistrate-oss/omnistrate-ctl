@@ -42,4 +42,3 @@ RUN apk update && apk add --no-cache ca-certificates curl jq
 COPY --from=builder /go/src/ctl/dist/omnistrate-ctl-${TARGETOS}-${TARGETARCH} /usr/local/bin/omnistrate-ctl
 WORKDIR /omnistrate
 ENTRYPOINT [ "/usr/local/bin/omnistrate-ctl" ]
-
