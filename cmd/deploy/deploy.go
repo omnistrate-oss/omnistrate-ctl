@@ -1210,7 +1210,7 @@ func createInstanceUnified(ctx context.Context, token, serviceID, productTierID,
 
 		   // If not found in any provider, return error
 		   if cloudProvider == "" {
-			   return "", fmt.Errorf("unknown region '%s'. Please specify a valid cloud provider.", region)
+			   return "", fmt.Errorf("unknown region '%s'. Please specify a valid cloud provider", region)
 		   }
 	   }
 
