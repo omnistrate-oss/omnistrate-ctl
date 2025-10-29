@@ -21,7 +21,7 @@ omctl deploy spec.yaml
 omctl deploy spec.yaml --product-name "My Service"
 
 # Build service from an existing compose spec in the repository
-omctl deploy --file omnistrate-compose.yaml
+omctl deploy --file compose.yaml
 
 # Build service with a custom service name
 omctl deploy --product-name my-custom-service
@@ -60,7 +60,7 @@ omctl deploy --platforms linux/amd64 --platforms linux/arm64
       --dry-run                   Perform validation checks without actually deploying
   -e, --environment string        Name of the environment to build the service in (default: Prod) (default "Prod")
   -t, --environment-type string   Type of environment. Valid options include: 'dev', 'prod', 'qa', 'canary', 'staging', 'private' (default: prod) (default "prod")
-  -f, --file string               Path to the docker compose file (defaults to omnistrate-compose.yaml)
+  -f, --file string               Path to the docker compose file (defaults to compose.yaml)
       --github-username string    GitHub username to use if GitHub API fails to retrieve it automatically
   -h, --help                      help for deploy
       --instance-id string        Specify the instance ID to use when multiple deployments exist.

@@ -234,7 +234,7 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 			// Auto-detect compose file in current directory if present
 			if files, err := os.ReadDir("."); err == nil {
 				for _, f := range files {
-					if !f.IsDir() && (f.Name() == build.ComposeFileName || f.Name() == build.ComposeFileName) {
+					if !f.IsDir() && (f.Name() == build.ComposeFileName) {
 						specFile = f.Name()
 						break
 					}
