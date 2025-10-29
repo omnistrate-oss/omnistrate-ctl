@@ -5,6 +5,8 @@ const (
 	ServicePlanSpecType   = "ServicePlanSpec"
 	ComposeFileName       = "compose.yaml"
 	PlanSpecFileName      = "spec.yaml"
+	DeploymentTypeHosted  = "hosted"
+	DeploymentTypeByoa    = "byoa"
 )
 
 var (

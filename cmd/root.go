@@ -16,6 +16,7 @@ import (
 	"github.com/omnistrate-oss/omnistrate-ctl/cmd/build"
 	"github.com/omnistrate-oss/omnistrate-ctl/cmd/cost"
 	"github.com/omnistrate-oss/omnistrate-ctl/cmd/customnetwork"
+	"github.com/omnistrate-oss/omnistrate-ctl/cmd/deploy"
 	"github.com/omnistrate-oss/omnistrate-ctl/cmd/deploymentcell"
 	"github.com/omnistrate-oss/omnistrate-ctl/cmd/docs"
 	"github.com/omnistrate-oss/omnistrate-ctl/cmd/domain"
@@ -116,6 +117,7 @@ func init() {
 
 	RootCmd.AddCommand(build.BuildCmd)
 	RootCmd.AddCommand(build.BuildFromRepoCmd)
+	RootCmd.AddCommand(deploy.DeployCmd)
 
 	RootCmd.AddCommand(service.Cmd)
 	RootCmd.AddCommand(account.Cmd)

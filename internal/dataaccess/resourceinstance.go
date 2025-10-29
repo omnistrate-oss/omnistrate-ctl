@@ -106,6 +106,46 @@ func DescribeResourceInstanceSnapshot(ctx context.Context, token string, service
 	return
 }
 
+// ListResourceInstanceOptions contains all optional parameters for ListResourceInstance
+type ListResourceInstanceOptions struct {
+	Filter        *string
+	ProductTierId *string
+}
+
+func ListResourceInstance(ctx context.Context, token string, serviceID, environmentID string, options *ListResourceInstanceOptions) (res *openapiclientfleet.ListFleetResourceInstancesResultInternal, err error) {
+	ctxWithToken := context.WithValue(ctx, openapiclientfleet.ContextAccessToken, token)
+	apiClient := getFleetClient()
+
+	req := apiClient.InventoryApiAPI.InventoryApiListResourceInstances(
+		ctxWithToken,
+		serviceID,
+		environmentID,
+	)
+
+	// Apply optional parameters with compile-time safety
+	if options != nil {
+		if options.Filter != nil {
+			req = req.Filter(*options.Filter)
+		}
+		if options.ProductTierId != nil {
+			req = req.ProductTierId(*options.ProductTierId)
+		}
+	}
+
+	var r *http.Response
+	defer func() {
+		if r != nil {
+			_ = r.Body.Close()
+		}
+	}()
+
+	res, r, err = req.Execute()
+	if err != nil {
+		return nil, handleFleetError(err)
+	}
+	return
+}
+
 func ListResourceInstanceSnapshots(ctx context.Context, token string, serviceID, environmentID, instanceID string) (res *openapiclientfleet.FleetListInstanceSnapshotResult, err error) {
 	ctxWithToken := context.WithValue(ctx, openapiclientfleet.ContextAccessToken, token)
 	apiClient := getFleetClient()
