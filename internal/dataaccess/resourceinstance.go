@@ -198,6 +198,39 @@ func TriggerResourceInstanceAutoBackup(ctx context.Context, token string, servic
 	return
 }
 
+func CopyResourceInstanceSnapshot(ctx context.Context, token string, serviceID, environmentID, instanceID, sourceSnapshotID, targetRegion string) (res *openapiclientfleet.FleetCopyResourceInstanceSnapshotResult, err error) {
+	ctxWithToken := context.WithValue(ctx, openapiclientfleet.ContextAccessToken, token)
+	apiClient := getFleetClient()
+
+	reqBody := openapiclientfleet.FleetCopyResourceInstanceSnapshotRequest2{
+		TargetRegion: targetRegion,
+	}
+
+	if sourceSnapshotID != "" {
+		reqBody.SetSourceSnapshotId(sourceSnapshotID)
+	}
+
+	req := apiClient.InventoryApiAPI.InventoryApiCopyResourceInstanceSnapshot(
+		ctxWithToken,
+		serviceID,
+		environmentID,
+		instanceID,
+	).FleetCopyResourceInstanceSnapshotRequest2(reqBody)
+
+	var r *http.Response
+	defer func() {
+		if r != nil {
+			_ = r.Body.Close()
+		}
+	}()
+
+	res, r, err = req.Execute()
+	if err != nil {
+		return nil, handleFleetError(err)
+	}
+	return
+}
+
 func DeleteResourceInstance(ctx context.Context, token, serviceID, environmentID, resourceID, instanceID string) (err error) {
 	ctxWithToken := context.WithValue(ctx, openapiclientfleet.ContextAccessToken, token)
 	apiClient := getFleetClient()

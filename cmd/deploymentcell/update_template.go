@@ -3,8 +3,9 @@ package deploymentcell
 import (
 	"context"
 	"fmt"
-	"github.com/omnistrate-oss/omnistrate-sdk-go/fleet"
 	"os"
+
+	"github.com/omnistrate-oss/omnistrate-sdk-go/fleet"
 
 	"github.com/omnistrate-oss/omnistrate-ctl/cmd/common"
 	"github.com/omnistrate-oss/omnistrate-ctl/internal/config"
@@ -29,8 +30,15 @@ When updating the organization template, you must specify the environment and cl
 When updating a specific deployment cell, provide the deployment cell ID as an argument or use the --id flag.
 
 Examples:
+
+  # Update organization template for all environments and AWS
+  omnistrate-ctl deployment-cell update-config-template - --cloud aws -f template-aws.yaml
+
+  # Update organization template for all environments and AWS
+  omnistrate-ctl deployment-cell update-config-template --environment GLOBAL --cloud aws -f template-aws.yaml
+
   # Update organization template for PROD environment and AWS
-  omnistrate-ctl deployment-cell update-config-template -e PROD --cloud aws -f template-aws.yaml
+  omnistrate-ctl deployment-cell update-config-template --environment PROD --cloud aws -f template-aws.yaml
 
   # Update specific deployment cell with configuration file using flag
   omnistrate-ctl deployment-cell update-config-template --id hc-12345 -f deployment-cell-config.yaml
@@ -42,8 +50,8 @@ Examples:
 }
 
 func init() {
-	updateTemplateCmd.Flags().StringP("environment", "e", "", "Environment type (e.g., PROD, STAGING) - required for organization template updates")
-	updateTemplateCmd.Flags().StringP("cloud", "c", "", "Cloud provider (aws, azure, gcp) - required for organization template updates")
+	updateTemplateCmd.Flags().StringP("environment", "e", "", "Environment type (e.g., GLOBAL, PROD, STAGING) - optional for organization template update, defaults to GLOBAL")
+	updateTemplateCmd.Flags().StringP("cloud", "c", "", "Cloud provider (e.g., aws, azure, gcp) - required for organization template updates")
 	updateTemplateCmd.Flags().StringP("file", "f", "", "Configuration file path (YAML format)")
 	updateTemplateCmd.Flags().StringP("id", "i", "", "Deployment cell ID")
 	updateTemplateCmd.Flags().Bool("sync-with-template", false, "Sync deployment cell with organization template")
@@ -99,20 +107,15 @@ func runUpdateTemplate(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("invalid arguments")
 	}
 
-	// Validate environment if provided
-	if environment != "" {
-		if !isValidEnvironment(environment) {
-			utils.PrintError(fmt.Errorf("invalid environment '%s'. Valid values are: %v", environment, validEnvironments))
-			return fmt.Errorf("invalid environment type")
-		}
+	// Set default environment if not provided
+	if environment == "" && cloudProvider != "" {
+		environment = defaultEnvironment
 	}
 
-	// Validate cloud provider if provided
-	if cloudProvider != "" {
-		if !isValidCloudProvider(cloudProvider) {
-			utils.PrintError(fmt.Errorf("invalid cloud provider '%s'. Valid values are: aws, azure, gcp", cloudProvider))
-			return fmt.Errorf("invalid cloud provider")
-		}
+	// Validate arguments
+	if environment != "" && cloudProvider == "" {
+		utils.PrintError(fmt.Errorf("cloud provider is required when specifying environment"))
+		return fmt.Errorf("invalid arguments")
 	}
 
 	ctx := context.Background()
@@ -138,14 +141,14 @@ func runUpdateTemplate(cmd *cobra.Command, args []string) error {
 
 func updateOrganizationTemplate(ctx context.Context, token string, environment string, cloudProvider string, configFile string) error {
 	// Validate required flags
-	if environment == "" {
-		err := fmt.Errorf("environment flag is required for organization template updates")
+	if cloudProvider == "" {
+		err := fmt.Errorf("cloud flag is required for organization template updates")
 		utils.PrintError(err)
 		return err
 	}
 
-	if cloudProvider == "" {
-		err := fmt.Errorf("cloud flag is required for organization template updates")
+	if environment == "" {
+		err := fmt.Errorf("environment flag is required for organization template updates")
 		utils.PrintError(err)
 		return err
 	}
