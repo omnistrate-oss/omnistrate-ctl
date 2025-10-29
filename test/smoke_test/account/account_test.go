@@ -42,7 +42,7 @@ func Test_account_basic(t *testing.T) {
 	require.NoError(err)
 
 	// PASS: create gcp account
-	cmd.RootCmd.SetArgs([]string{"account", "create", gcpAccountName, "--gcp-project-id", fmt.Sprintf("project-id-%d", rand12DigitsNum), "--gcp-project-number", "project-number"})
+	cmd.RootCmd.SetArgs([]string{"account", "create", gcpAccountName, "--gcp-project-id", fmt.Sprintf("project-id-%d", rand12DigitsNum), "--gcp-project-number", fmt.Sprintf("project-number-%d", rand12DigitsNum)})
 	err = cmd.RootCmd.ExecuteContext(ctx)
 	require.NoError(err)
 
