@@ -791,7 +791,6 @@ func executeDeploymentWorkflow(cmd *cobra.Command, sm ysmrr.SpinnerManager, toke
 	spinner = sm.AddSpinner(spinnerMsg)
 
 	if instanceID != "" {
-
 		spinnerMsg = "Checking for existing instances"
 		spinner.UpdateMessage(spinnerMsg)
 
@@ -818,7 +817,7 @@ func executeDeploymentWorkflow(cmd *cobra.Command, sm ysmrr.SpinnerManager, toke
 
 		} else {
 
-			spinner.UpdateMessage(fmt.Sprintf("%s: No existing instance found (provider instance not match)", spinnerMsg))
+			spinner.UpdateMessage(fmt.Sprintf("%s: No existing instance found (provider instance does not match)", spinnerMsg))
 			spinner.Complete()
 			
 
