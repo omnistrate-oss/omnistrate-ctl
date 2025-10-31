@@ -787,79 +787,49 @@ func executeDeploymentWorkflow(cmd *cobra.Command, sm ysmrr.SpinnerManager, toke
 	var finalInstanceID string
 	instanceActionType := "create"
 
-	spinnerMsg := "Checking for existing instances"
+	spinnerMsg := "Deployment instances"
 	spinner = sm.AddSpinner(spinnerMsg)
 
-	var existingInstanceIDs []string
-	existingInstanceIDs, _, err = listInstances(cmd.Context(), token, serviceID, environmentID, planID, "", "excludeCloudAccounts")
-	if err != nil {
-		spinner.UpdateMessage(spinnerMsg + ": Failed (" + err.Error() + ")")
-		spinner.Error()
-		existingInstanceIDs = []string{} // Reset to create new instance
-		sm.Stop()
-	}
+	if instanceID != "" {
+		spinnerMsg = "Checking for existing instances"
+		spinner.UpdateMessage(spinnerMsg)
 
-	// Display automatic instance handling message
-	if len(existingInstanceIDs) > 0 {
-		if instanceID != "" {
-			// If user specified an instance ID, check if it exists in the list
-			if !containsString(existingInstanceIDs, instanceID) {
-				// If not, reset to create a new instance
-				existingInstanceIDs = []string{}
-			} else {
-				// If it exists, use the specified instance ID
-				finalInstanceID = instanceID
-			}
+		var existingInstanceIDs []string
+		existingInstanceIDs, _, err = listInstances(cmd.Context(), token, serviceID, environmentID, planID, instanceID, "excludeCloudAccounts")
+		if err != nil {
+			spinner.UpdateMessage(spinnerMsg + ": Failed (" + err.Error() + ")")
+			spinner.Error()
+			existingInstanceIDs = []string{} // Reset to create new instance
+			sm.Stop()
+		}
+
+		// Display automatic instance handling message
+		if len(existingInstanceIDs) > 0  {
+			
+				finalInstanceID = existingInstanceIDs[0]
+				spinner.UpdateMessage(fmt.Sprintf("%s: Found %d existing instances", spinnerMsg, len(existingInstanceIDs)))
+				spinner.Complete()
+
+				// Stop spinner manager temporarily to show the note
+				sm.Stop()
+				fmt.Printf("📝 Note: Instance upgrade is automatic.\n")
+				fmt.Printf("   Existing Instances: %v\n", finalInstanceID)
+
 		} else {
-			spinner.Complete()
-			sm.Stop()
-			// Prompt user to select an instance or create a new one
-			fmt.Println("Multiple existing instances found:")
-			for idx, id := range existingInstanceIDs {
-				fmt.Printf("  %d. Instance ID: %s\n", idx+1, id)
-			}
-			fmt.Println("  0. Create a new instance")
-			var choice int
-			for {
-				fmt.Print("Enter your choice (instance number or 0 for new): ")
-				_, err := fmt.Scanln(&choice)
-				if err == nil && choice >= 0 && choice <= len(existingInstanceIDs) {
-					break
-				}
-				fmt.Println("Invalid selection. Please enter a valid number.")
-			}
-			if choice == 0 {
-				// User chose to create a new instance
-				existingInstanceIDs = []string{}
-			} else {
-				// User selected an existing instance
-				finalInstanceID = existingInstanceIDs[choice-1]
-			}
-			// Restart spinner manager
-			sm.Start()
-		}
 
-		if finalInstanceID != "" {
-			spinner.UpdateMessage(fmt.Sprintf("%s: Found %d existing instances", spinnerMsg, len(existingInstanceIDs)))
+			spinner.UpdateMessage(fmt.Sprintf("%s: No existing instance found (provider instance does not match)", spinnerMsg))
 			spinner.Complete()
-
-			// Stop spinner manager temporarily to show the note
-			sm.Stop()
-			fmt.Printf("📝 Note: Instance upgrade is automatic.\n")
-			fmt.Printf("   Existing Instances: %v\n", finalInstanceID)
+			
 
 		}
-
 	} else {
-
-		spinner.UpdateMessage(fmt.Sprintf("%s: No existing instances found", spinnerMsg))
-		spinner.Complete()
 
 		// Stop spinner manager temporarily to show the note
 		sm.Stop()
-		fmt.Printf("📝 Note: Instance creation is automatic.\n")
+			fmt.Printf("📝 Note: Instance creation is automatic.\n")
 
-	}
+		}
+
 
 	if finalInstanceID != "" {
 
@@ -906,9 +876,7 @@ func executeDeploymentWorkflow(cmd *cobra.Command, sm ysmrr.SpinnerManager, toke
 
 		}
 
-		noFoundMsg := spinnerMsg + ": No existing instances found"
-		spinner.UpdateMessage(noFoundMsg)
-		spinner.Complete()
+		
 
 		createMsg := "Creating new instance deployment"
 
@@ -1271,7 +1239,6 @@ func createInstanceUnified(ctx context.Context, token, serviceID, productTierID,
 		request.ProductTierVersion = &version
 	}
 
-	fmt.Printf("Creating instance with parameters: %v\n", request)
 
 	//    Create the instance
 	instance, err := dataaccess.CreateResourceInstance(ctx, token,
