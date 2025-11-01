@@ -27,6 +27,10 @@ func init() {
 	Cmd.AddCommand(describeTemplateCmd)
 	Cmd.AddCommand(updateTemplateCmd)
 	Cmd.AddCommand(debugCmd)
+	Cmd.AddCommand(listNodepoolsCmd)
+	Cmd.AddCommand(describeNodepoolCmd)
+	Cmd.AddCommand(configureNodepoolCmd)
+	Cmd.AddCommand(deleteNodepoolCmd)
 }
 
 func run(cmd *cobra.Command, args []string) {
