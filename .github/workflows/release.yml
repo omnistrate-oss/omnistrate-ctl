@@ -89,7 +89,7 @@ jobs:
 
       - name: Upload compressed artifacts
         timeout-minutes: 5
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: ${{ steps.calc_binary_name.outputs.binary_name }}-compressed
           path: |
