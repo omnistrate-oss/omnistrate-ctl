@@ -272,83 +272,24 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 		// Check for omnistrate-specific configurations
 		var planCheck map[string]interface{}
 		if err := yaml.Unmarshal(processedData, &planCheck); err == nil {
-			// Helper: recursively search for any x-omnistrate key
-			var containsOmnistrateKey func(m map[string]interface{}) bool
-			containsOmnistrateKey = func(m map[string]interface{}) bool {
-				for k, v := range m {
-					// Check for any x-omnistrate key
-					if strings.HasPrefix(k, "x-omnistrate-") {
-						return true
-					}
-					// Recurse into nested maps
-					if sub, ok := v.(map[string]interface{}); ok {
-						if containsOmnistrateKey(sub) {
-							return true
-						}
-					}
-					// Recurse into slices of maps
-					if arr, ok := v.([]interface{}); ok {
-						for _, item := range arr {
-							if subm, ok := item.(map[string]interface{}); ok {
-								if containsOmnistrateKey(subm) {
-									return true
-								}
-							}
-						}
-					}
-				}
-				return false
-			}
-
 			// Check if this is an omnistrate spec file
-			isOmnistrate := containsOmnistrateKey(planCheck)
+			isOmnistrate := build.ContainsOmnistrateKey(planCheck)
 			if !isOmnistrate {
 				utils.PrintWarning(fmt.Sprintf("Spec file '%s' doesn't contain omnistrate-specific configurations (x-omnistrate-* keys)", specFile))
 				utils.PrintWarning("This might be a standard docker-compose file. Consider adding omnistrate configurations for better service definition.")
 			}
 
-			// Improved: Recursively check for plan spec keys at any level
-			planKeyGroups := [][]string{
-				{"helm", "helmChart", "helmChartConfiguration"},
-				{"operator", "operatorCRDConfiguration"},
-				{"terraform", "terraformConfigurations"},
-				{"kustomize", "kustomizeConfiguration"},
-			}
-			// Helper: recursively search for any key in keys in a map
-			var containsAnyKey func(m map[string]interface{}, keys []string) bool
-			containsAnyKey = func(m map[string]interface{}, keys []string) bool {
-				for k, v := range m {
-					for _, key := range keys {
-						if k == key {
-							return true
-						}
-					}
-					// Recurse into nested maps
-					if sub, ok := v.(map[string]interface{}); ok {
-						if containsAnyKey(sub, keys) {
-							return true
-						}
-					}
-					// Recurse into slices of maps
-					if arr, ok := v.([]interface{}); ok {
-						for _, item := range arr {
-							if subm, ok := item.(map[string]interface{}); ok {
-								if containsAnyKey(subm, keys) {
-									return true
-								}
-							}
-						}
-					}
-				}
-				return false
-			}
-			for _, keys := range planKeyGroups {
-				if containsAnyKey(planCheck, keys) {
+			// Use the common function to detect spec type
+			specType = build.DetectSpecType(planCheck)
+		}else {
+				// Fallback to file extension based detection
+				fileToRead := filepath.Base(absSpecFile)
+				if fileToRead == build.PlanSpecFileName {
 					specType = build.ServicePlanSpecType
-					break
+				} else {
+					specType = build.DockerComposeSpecType
 				}
 			}
-		}
 	}
 
 	spinner.UpdateMessage("Checking cloud provider accounts...\n")
