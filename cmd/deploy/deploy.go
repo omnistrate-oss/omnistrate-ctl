@@ -275,13 +275,13 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 			// Check if this is an omnistrate spec file
 			isOmnistrate := build.ContainsOmnistrateKey(planCheck)
 			if !isOmnistrate {
-				utils.PrintError(errors.New(fmt.Sprintf("Spec file '%s' doesn't contain omnistrate-specific configurations (x-omnistrate-* keys). This might be a standard docker-compose file. Consider adding omnistrate configurations for better service definition.", specFile)))
+				utils.PrintError(fmt.Errorf("Spec file '%s' doesn't contain omnistrate-specific configurations (x-omnistrate-* keys). This might be a standard docker-compose file. Consider adding omnistrate configurations for better service definition.", specFile))
 			return nil
 			}
 
 			// Use the common function to detect spec type
 			specType = build.DetectSpecType(planCheck)
-		}else {
+		} else {
 				// Fallback to file extension based detection
 				fileToRead := filepath.Base(absSpecFile)
 				if fileToRead == build.PlanSpecFileName {
@@ -744,24 +744,22 @@ func executeDeploymentWorkflow(cmd *cobra.Command, sm ysmrr.SpinnerManager, toke
 			sm.Stop()
 		}
 
-		if instanceID != "" && len(existingInstanceIDs) == 0  {
+		if instanceID != "" && len(existingInstanceIDs) == 0 {
 			spinner.UpdateMessage(fmt.Sprintf("%s: No existing instance found for instance ID: %s (provider instance does not match)", spinnerMsg, instanceID))
 			spinner.Error()
 			return nil
-			
 		}
 
 		// Display automatic instance handling message
-		if len(existingInstanceIDs) > 0  {
-			
-				finalInstanceID = existingInstanceIDs[0]
-				spinner.UpdateMessage(fmt.Sprintf("%s: Found %d existing instances", spinnerMsg, len(existingInstanceIDs)))
-				spinner.Complete()
+		if len(existingInstanceIDs) > 0 {
+			finalInstanceID = existingInstanceIDs[0]
+			spinner.UpdateMessage(fmt.Sprintf("%s: Found %d existing instances", spinnerMsg, len(existingInstanceIDs)))
+			spinner.Complete()
 
-				// Stop spinner manager temporarily to show the note
-				sm.Stop()
-				fmt.Printf("📝 Note: Instance upgrade is automatic.\n")
-				fmt.Printf("   Existing Instances: %v\n", finalInstanceID)
+			// Stop spinner manager temporarily to show the note
+			sm.Stop()
+			fmt.Printf("📝 Note: Instance upgrade is automatic.\n")
+			fmt.Printf("   Existing Instances: %v\n", finalInstanceID)
 
 		} else {
 

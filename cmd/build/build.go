@@ -305,11 +305,12 @@ func runBuild(cmd *cobra.Command, args []string) error {
 		}
 
 		// Read and analyze file content for spec type detection
-		if fileToRead != "" && fileToRead != file {
-			file = fileToRead // Update file variable if auto-detected
-		}
-		
 		if fileToRead != "" {
+			// Update file variable if auto-detected
+			if fileToRead != file {
+				file = fileToRead
+			}
+			
 			if _, err := os.Stat(fileToRead); err == nil {
 				tempFileData, err := os.ReadFile(filepath.Clean(fileToRead))
 				if err == nil {
