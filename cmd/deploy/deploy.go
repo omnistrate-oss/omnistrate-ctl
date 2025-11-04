@@ -36,7 +36,7 @@ omctl deploy spec.yaml
 omctl deploy spec.yaml --product-name "My Service"
 
 # Build service from an existing compose spec in the repository
-omctl deploy --file compose.yaml
+omctl deploy --file omnistrate-compose.yaml
 
 # Build service with a custom service name
 omctl deploy --product-name my-custom-service
@@ -221,6 +221,7 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 	// Improved spec file detection: prefer service plan, then docker compose, else repo
 	var specFile string
 	var specType = build.DockerComposeSpecType
+	var buildFromRepo = false
 
 	// 1. If user provided a file via --file or arg, use it
 	if fileExplicit && file != "" {
@@ -228,18 +229,16 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 	} else if len(args) > 0 && args[0] != "" {
 		specFile = args[0]
 	} else if specFile == "" {
-		if _, err := os.Stat(build.ComposeFileName); err == nil {
-			specFile = build.ComposeFileName
+		// Check for omnistrate-compose.yaml first (preferred)
+		if _, err := os.Stat(build.OmnistrateComposeFileName); err == nil {
+			specFile = build.OmnistrateComposeFileName
 		} else {
-			// Auto-detect compose file in current directory if present
-			if files, err := os.ReadDir("."); err == nil {
-				for _, f := range files {
-					if !f.IsDir() && (f.Name() == build.ComposeFileName) {
-						specFile = f.Name()
-						break
-					}
-				}
+			// If omnistrate-compose.yaml not found, check for docker-compose.yaml and error out
+			if _, err := os.Stat(build.DockerComposeFileName); err == nil {
+				return fmt.Errorf("found docker-compose.yaml but omnistrate-compose.yaml is required. Please rename your docker-compose.yaml to omnistrate-compose.yaml or add omnistrate-specific configurations (x-omnistrate-* keys). For new projects from a Dockerfile, use 'omctl build-from-repo' command instead")
 			}
+			buildFromRepo = true
+			
 		}
 	}
 
@@ -557,7 +556,7 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 	var serviceID, environmentID, planID string
 	var undefinedResources map[string]string
 
-	if specType == build.DockerComposeSpecType && !skipDockerBuild {
+	if specType == build.DockerComposeSpecType  && buildFromRepo {
 		serviceID, environmentID, planID, undefinedResources, err = build.BuildServiceFromRepository(
 			cmd,
 			cmd.Context(),
