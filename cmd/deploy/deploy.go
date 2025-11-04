@@ -275,8 +275,8 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 			// Check if this is an omnistrate spec file
 			isOmnistrate := build.ContainsOmnistrateKey(planCheck)
 			if !isOmnistrate {
-				utils.PrintWarning(fmt.Sprintf("Spec file '%s' doesn't contain omnistrate-specific configurations (x-omnistrate-* keys)", specFile))
-				utils.PrintWarning("This might be a standard docker-compose file. Consider adding omnistrate configurations for better service definition.")
+				utils.PrintError(errors.New(fmt.Sprintf("Spec file '%s' doesn't contain omnistrate-specific configurations (x-omnistrate-* keys). This might be a standard docker-compose file. Consider adding omnistrate configurations for better service definition.", specFile)))
+			return nil
 			}
 
 			// Use the common function to detect spec type
@@ -742,6 +742,13 @@ func executeDeploymentWorkflow(cmd *cobra.Command, sm ysmrr.SpinnerManager, toke
 			spinner.Error()
 			existingInstanceIDs = []string{} // Reset to create new instance
 			sm.Stop()
+		}
+
+		if instanceID != "" && len(existingInstanceIDs) == 0  {
+			spinner.UpdateMessage(fmt.Sprintf("%s: No existing instance found for instance ID: %s (provider instance does not match)", spinnerMsg, instanceID))
+			spinner.Error()
+			return nil
+			
 		}
 
 		// Display automatic instance handling message
@@ -1260,7 +1267,7 @@ func listInstances(ctx context.Context, token, serviceID, environmentID, service
 				exitInstanceIDs = append(exitInstanceIDs, idStr)
 				seenIDs[idStr] = true
 			}
-		} else {
+		} else if instanceID == "" {
 			if idStr != "" && !seenIDs[idStr] {
 				exitInstanceIDs = append(exitInstanceIDs, idStr)
 				seenIDs[idStr] = true

@@ -7,11 +7,6 @@ import (
 // DetectSpecType analyzes YAML content to determine if it contains service plan specifications
 // Returns ServicePlanSpecType if plan-specific keys are found, otherwise DockerComposeSpecType
 func DetectSpecType(yamlContent map[string]interface{}) string {
-	// Check for omnistrate-specific configurations first
-	if !ContainsOmnistrateKey(yamlContent) {
-		return DockerComposeSpecType
-	}
-
 	// Improved: Recursively check for plan spec keys at any level
 	planKeyGroups := [][]string{
 		{"helm", "helmChart", "helmChartConfiguration"},
