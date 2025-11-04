@@ -272,14 +272,12 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 		// Check for omnistrate-specific configurations
 		var planCheck map[string]interface{}
 		if err := yaml.Unmarshal(processedData, &planCheck); err == nil {
-			// Check if this is an omnistrate spec file
-			isOmnistrate := build.ContainsOmnistrateKey(planCheck)
-			if !isOmnistrate {
-				utils.PrintError(fmt.Errorf("Spec file '%s' doesn't contain omnistrate-specific configurations (x-omnistrate-* keys). This might be a standard docker-compose file. Consider adding omnistrate configurations for better service definition.", specFile))
-			return nil
-			}
-
-			// Use the common function to detect spec type
+		// Check if this is an omnistrate spec file
+		isOmnistrate := build.ContainsOmnistrateKey(planCheck)
+		if !isOmnistrate {
+			utils.PrintError(fmt.Errorf("spec file '%s' doesn't contain omnistrate-specific configurations (x-omnistrate-* keys). This might be a standard docker-compose file. Consider adding omnistrate configurations for better service definition", specFile))
+		return nil
+		}			// Use the common function to detect spec type
 			specType = build.DetectSpecType(planCheck)
 		} else {
 				// Fallback to file extension based detection
