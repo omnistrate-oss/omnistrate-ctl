@@ -2318,10 +2318,6 @@ func waitForAccountVerification(ctx context.Context, token, serviceID,
 	return "", fmt.Errorf("account verification timed out after %d attempts", maxRetries)
 }
 
-
-
-
-
 // waitForAccountReady polls for account status to become READY, up to 10 minutes
 func waitForAccountReady(ctx context.Context, token, accountID string) error {
 	timeout := time.After(10 * time.Minute)
