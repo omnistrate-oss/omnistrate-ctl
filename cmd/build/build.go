@@ -96,7 +96,7 @@ var BuildCmd = &cobra.Command{
 }
 
 func init() {
-	BuildCmd.Flags().StringP("file", "f", "", "Path to the docker compose file (defaults to omnistrate-compose.yaml, docker-compose.yaml, compose.yaml, or spec.yaml in that order)")
+	BuildCmd.Flags().StringP("file", "f", "", "Path to the docker compose file (defaults to omnistrate-compose.yaml, docker-compose.yaml or spec.yaml in that order).If docker-compose.yaml is found, it is detected but not supported; please convert it to omnistrate-compose.yaml")
 	BuildCmd.Flags().StringP("spec-type", "s", "", "Spec type (will infer from file if not provided). Valid options include: 'DockerCompose', 'ServicePlanSpec'")
 	BuildCmd.Flags().BoolP("dry-run", "d", false, "Simulate building the service without actually creating resources")
 	BuildCmd.Flags().StringP("product-name", "", "", "Name of the service. A service can have multiple service plans. The build command will build a new or existing service plan inside the specified service.")
@@ -316,14 +316,14 @@ func runBuild(cmd *cobra.Command, args []string) error {
 				return err
 			}
 		} else {
-				// Check for omnistrate-compose.yaml first (preferred)
-				file = OmnistrateComposeFileName
-				specType = DockerComposeSpecType
-				if _, err := os.Stat(file); os.IsNotExist(err) {
+			// Check for omnistrate-compose.yaml first (preferred)
+			file = OmnistrateComposeFileName
+			specType = DockerComposeSpecType
+			if _, err := os.Stat(file); os.IsNotExist(err) {
 
-					// If omnistrate-compose.yaml not found, check for docker-compose.yaml and error out
-					if _, err := os.Stat(DockerComposeFileName); err == nil {
-						errMsg := fmt.Sprintf(`Deployment failed: Required file missing — %s
+				// If omnistrate-compose.yaml not found, check for docker-compose.yaml and error out
+				if _, err := os.Stat(DockerComposeFileName); err == nil {
+					errMsg := fmt.Sprintf(`Deployment failed: Required file missing — %s
 
 → Found: %s  
 → Expected: %s
@@ -332,26 +332,26 @@ Tip: You can convert your docker-compose.yaml into Omnistrate's native format us
 You may even invoke it through AI agents like Claude, Gemini, or others.
 
 Learn more: https://docs.omnistrate.com/getting-started/mcp-server/#using-skills`, 
-							OmnistrateComposeFileName, DockerComposeFileName, OmnistrateComposeFileName)
-						utils.PrintError(errors.New(errMsg))
-						return fmt.Errorf("required file %s not found", OmnistrateComposeFileName)
-					}
+						OmnistrateComposeFileName, DockerComposeFileName, OmnistrateComposeFileName)
+					utils.PrintError(errors.New(errMsg))
+					return fmt.Errorf("required file %s not found", OmnistrateComposeFileName)
+				}
 
-					// Check for spec.yaml
-					file = PlanSpecFileName
-					specType = ServicePlanSpecType
-					if _, err := os.Stat(file); os.IsNotExist(err) {
-						// Check if Dockerfile exists to suggest build-from-repo
-						if _, err := os.Stat("Dockerfile"); err == nil {
-							err = fmt.Errorf("no omnistrate-compose.yaml found, but Dockerfile exists. Please use 'omctl build-from-repo' command to build from your Dockerfile, or create an omnistrate-compose.yaml file")
-							utils.PrintError(err)
-							return err
-						}
-						err = fmt.Errorf("no omnistrate-compose.yaml or spec.yaml found in current directory. Please provide a valid file using --file flag, or use 'omctl build-from-repo' if you have a Dockerfile")
+				// Check for spec.yaml
+				file = PlanSpecFileName
+				specType = ServicePlanSpecType
+				if _, err := os.Stat(file); os.IsNotExist(err) {
+					// Check if Dockerfile exists to suggest build-from-repo
+					if _, err := os.Stat("Dockerfile"); err == nil {
+						err = fmt.Errorf("no omnistrate-compose.yaml found, but Dockerfile exists. Please use 'omctl build-from-repo' command to build from your Dockerfile, or create an omnistrate-compose.yaml file")
 						utils.PrintError(err)
 						return err
 					}
+					err = fmt.Errorf("no omnistrate-compose.yaml or spec.yaml found in current directory. Please provide a valid file using --file flag, or use 'omctl build-from-repo' if you have a Dockerfile")
+					utils.PrintError(err)
+					return err
 				}
+			}
 		}
 
 		var err error

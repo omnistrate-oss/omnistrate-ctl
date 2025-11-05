@@ -248,8 +248,7 @@ Learn more: https://docs.omnistrate.com/getting-started/mcp-server/#using-skills
 				utils.PrintError(fmt.Errorf(errMsg))
 				return fmt.Errorf("required file %s not found", build.OmnistrateComposeFileName)
 			}
-			buildFromRepo = true
-			
+			buildFromRepo = true	
 		}
 	}
 
@@ -567,7 +566,7 @@ Learn more: https://docs.omnistrate.com/getting-started/mcp-server/#using-skills
 	var serviceID, environmentID, planID string
 	var undefinedResources map[string]string
 
-	if specType == build.DockerComposeSpecType  && buildFromRepo {
+	if specType == build.DockerComposeSpecType && buildFromRepo {
 		serviceID, environmentID, planID, undefinedResources, err = build.BuildServiceFromRepository(
 			cmd,
 			cmd.Context(),
