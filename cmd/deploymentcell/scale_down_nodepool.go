@@ -15,10 +15,10 @@ import (
 var scaleDownNodepoolCmd = &cobra.Command{
 	Use:   "scale-down-nodepool",
 	Short: "Scale down a nodepool to minimum size",
-	Long: fmt.Sprintf(`Scale down a nodepool to minimum size by setting max size to %d.
+	Long: fmt.Sprintf(`Scale down a nodepool by setting max size to %d.
 
-This will evict all nodes in the nodepool and can be used as a cost saving measure.
-The nodepool will remain configured but will have no running nodes.`, DefaultMinNodepoolSize),
+This can be used as a cost saving measure to reduce the nodepool capacity.
+When set to 0, the nodepool will remain configured but will have no running nodes.`, DefaultMinNodepoolSize),
 	RunE:         runScaleDownNodepool,
 	SilenceUsage: true,
 }
