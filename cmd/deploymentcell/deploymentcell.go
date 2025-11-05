@@ -7,9 +7,9 @@ import (
 )
 
 const (
-	defaultEnvironment        = "GLOBAL"
-	DefaultMaxNodepoolSize    = 450
-	DefaultMinNodepoolSize    = 0
+	defaultEnvironment     = "GLOBAL"
+	DefaultMaxNodepoolSize = 450
+	DefaultMinNodepoolSize = 0
 )
 
 var Cmd = &cobra.Command{
