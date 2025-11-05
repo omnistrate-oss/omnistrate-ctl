@@ -87,7 +87,7 @@ jobs:
       - name: Unit test
         timeout-minutes: 20
         run: |
-          gotestsum --format github-actions -- ./... -skip test
+           gotestsum --rerun-fails --format github-actions --format-hide-empty-pkg --format-icons hivis --packages=./...
 
   integration-tests:
     environment: Dev-us-west-2
@@ -118,7 +118,7 @@ jobs:
       - name: Gotestsum installer
         uses: autero1/action-gotestsum@v2.0.0
         with:
-          gotestsum_version: 1.11.0
+          gotestsum_version: 1.13.0
 
       - name: Integraiton test
         timeout-minutes: 30
@@ -128,7 +128,7 @@ jobs:
           TEST_PASSWORD: ${{ secrets.SMOKE_TEST_PASSWORD}}
           OMNISTRATE_ROOT_DOMAIN: ${{ vars.OMNISTRATE_ROOT_DOMAIN}}
           OMNISTRATE_DRY_RUN: true
-        run: gotestsum --format github-actions -- ./test/integration_test/... -timeout 1800s -p 1 -p 1 -v
+        run:  gotestsum --rerun-fails --format github-actions --format-hide-empty-pkg --format-icons hivis --packages=./test/integration_test/...
 
   smoke-tests:
     if: github.event_name != 'push'

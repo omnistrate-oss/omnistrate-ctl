@@ -65,7 +65,7 @@ jobs:
       - name: Gotestsum installer
         uses: autero1/action-gotestsum@v2.0.0
         with:
-          gotestsum_version: 1.11.0
+          gotestsum_version: 1.13.0
 
       - name: Smoke test ${{ matrix.test-group }}
         timeout-minutes: 30
@@ -76,7 +76,7 @@ jobs:
           OMNISTRATE_ROOT_DOMAIN: ${{ vars.OMNISTRATE_ROOT_DOMAIN}}
           OMNISTRATE_LOG_LEVEL: debug
           OMNISTRATE_DRY_RUN: true
-        run: gotestsum --format github-actions -- ./test/smoke_test/${{ matrix.test-group }} -timeout 1800s -p 1 -p 1 -v
+        run:  gotestsum --rerun-fails --format github-actions --format-hide-empty-pkg --format-icons hivis --packages=./test/smoke_test/${{ matrix.test-group }}
 
   smoke-tests-with-provisioning:
     environment: ${{ inputs.environment }}
@@ -115,7 +115,7 @@ jobs:
       - name: Gotestsum installer
         uses: autero1/action-gotestsum@v2.0.0
         with:
-          gotestsum_version: 1.11.0
+          gotestsum_version: 1.13.0
 
       - name: Smoke test ${{ matrix.test-group }}
         timeout-minutes: 30
@@ -126,5 +126,5 @@ jobs:
           OMNISTRATE_ROOT_DOMAIN: ${{ vars.OMNISTRATE_ROOT_DOMAIN}}
           OMNISTRATE_LOG_LEVEL: debug
           OMNISTRATE_DRY_RUN: true
-        run: gotestsum --format github-actions -- ./test/smoke_test/${{ matrix.test-group }} -timeout 1800s -p 1 -p 1 -v
+        run:  gotestsum --rerun-fails --format github-actions --format-hide-empty-pkg --format-icons hivis --packages=./test/smoke_test/${{ matrix.test-group }}
 
