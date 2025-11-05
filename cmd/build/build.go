@@ -323,17 +323,16 @@ func runBuild(cmd *cobra.Command, args []string) error {
 
 				// If omnistrate-compose.yaml not found, check for docker-compose.yaml and error out
 				if _, err := os.Stat(DockerComposeFileName); err == nil {
-					errMsg := fmt.Sprintf(`Deployment failed: Required file missing — %s
+						utils.PrintError(fmt.Errorf(`Deployment failed: Required file missing — %s
 
 → Found: %s  
 → Expected: %s
 
 Tip: You can convert your docker-compose.yaml into Omnistrate's native format using the omnistrate-fde skill via the Omnistrate MCP Server  
-You may even invoke it through AI agents like Claude, Gemini, or others.
+You may even invoke it through AI agents like Claude, Gemini or others.
 
 Learn more: https://docs.omnistrate.com/getting-started/mcp-server/#using-skills`, 
-						OmnistrateComposeFileName, DockerComposeFileName, OmnistrateComposeFileName)
-					utils.PrintError(errors.New(errMsg))
+					OmnistrateComposeFileName, DockerComposeFileName, OmnistrateComposeFileName))
 					return fmt.Errorf("required file %s not found", OmnistrateComposeFileName)
 				}
 
