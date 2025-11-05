@@ -366,8 +366,9 @@ func ListNodepools(ctx context.Context, token string, hostClusterID string) ([]m
 		return nil, nil, handleFleetError(err)
 	}
 
-	var nodepools []model.NodepoolTableView
 	entities := result.GetEntities()
+
+	var nodepools []model.NodepoolTableView
 	for _, entity := range entities {
 		nodepool := formatNodepoolForTable(entity, hostCluster.GetCloudProvider(), false)
 		nodepools = append(nodepools, nodepool)
@@ -402,11 +403,6 @@ func formatNodepoolForTable(entity openapiclientfleet.Entity, cloudProvider stri
 			// Describe response: properties.applyRequest.node_pool.*
 			if applyRequest, applyOk := properties["applyRequest"].(map[string]interface{}); applyOk {
 				nodePoolMap, ok = applyRequest["node_pool"].(map[string]interface{})
-
-				// Also get currentNodeCount from top level
-				if currentNodeCount, countOk := properties["currentNodeCount"].(float64); countOk {
-					tableView.CurrentNodes = int64(currentNodeCount)
-				}
 			}
 		} else {
 			// List response: properties.node_pool.*
@@ -417,21 +413,8 @@ func formatNodepoolForTable(entity openapiclientfleet.Entity, cloudProvider stri
 			if machineType, ok := nodePoolMap["machine_type"].(string); ok {
 				tableView.MachineType = machineType
 			}
-			if diskSize, ok := nodePoolMap["disk_size_gb"].(float64); ok {
-				tableView.DiskSizeGB = int64(diskSize)
-			}
-			if diskType, ok := nodePoolMap["disk_type"].(string); ok {
-				tableView.DiskType = diskType
-			}
 			if imageType, ok := nodePoolMap["image_type"].(string); ok {
 				tableView.ImageType = imageType
-			}
-
-			// For list response, use initial_node_count if currentNodeCount not set
-			if tableView.CurrentNodes == 0 {
-				if initialCount, ok := nodePoolMap["initial_node_count"].(float64); ok {
-					tableView.CurrentNodes = int64(initialCount)
-				}
 			}
 
 			if autoscaling, ok := nodePoolMap["autoscaling"].(map[string]interface{}); ok {
@@ -455,14 +438,8 @@ func formatNodepoolForTable(entity openapiclientfleet.Entity, cloudProvider stri
 					tableView.AutoUpgrade = autoUpgrade
 				}
 			}
+			// Extract privateSubnet from labels without storing all labels
 			if labels, ok := nodePoolMap["labels"].(map[string]interface{}); ok {
-				tableView.Labels = make(map[string]string)
-				for k, v := range labels {
-					if strVal, ok := v.(string); ok {
-						tableView.Labels[k] = strVal
-					}
-				}
-				// Extract privateSubnet from labels
 				if privateSubnetStr, ok := labels["omnistrate.com/private-subnet"].(string); ok {
 					tableView.PrivateSubnet = (privateSubnetStr == "true")
 				}
@@ -477,11 +454,6 @@ func formatNodepoolForTable(entity openapiclientfleet.Entity, cloudProvider stri
 			// Describe response: properties.applyRequest.nodegroup_spec.*
 			if applyRequest, applyOk := properties["applyRequest"].(map[string]interface{}); applyOk {
 				nodegroupSpec, ok = applyRequest["nodegroup_spec"].(map[string]interface{})
-
-				// Also get currentNodeCount from top level
-				if currentNodeCount, countOk := properties["currentNodeCount"].(float64); countOk {
-					tableView.CurrentNodes = int64(currentNodeCount)
-				}
 			}
 		} else {
 			// List response: properties.nodegroup_spec.*
@@ -503,9 +475,6 @@ func formatNodepoolForTable(entity openapiclientfleet.Entity, cloudProvider stri
 				if maxSize, ok := scalingConfig["max_size"].(float64); ok {
 					tableView.MaxNodes = int64(maxSize)
 				}
-				if desiredSize, ok := scalingConfig["desired_size"].(float64); ok {
-					tableView.DesiredNodes = int64(desiredSize)
-				}
 			}
 
 			if subnets, ok := nodegroupSpec["subnets"].([]interface{}); ok && len(subnets) > 0 {
@@ -514,14 +483,8 @@ func formatNodepoolForTable(entity openapiclientfleet.Entity, cloudProvider stri
 				}
 			}
 
+			// Extract privateSubnet from labels without storing all labels
 			if labels, ok := nodegroupSpec["labels"].(map[string]interface{}); ok {
-				tableView.Labels = make(map[string]string)
-				for k, v := range labels {
-					if strVal, ok := v.(string); ok {
-						tableView.Labels[k] = strVal
-					}
-				}
-				// Extract privateSubnet from labels
 				if privateSubnetStr, ok := labels["omnistrate.com/private-subnet"].(string); ok {
 					tableView.PrivateSubnet = (privateSubnetStr == "true")
 				}
@@ -557,11 +520,6 @@ func formatNodepoolForTable(entity openapiclientfleet.Entity, cloudProvider stri
 			// Describe response: properties.applyRequest.node_pool_spec.*
 			if applyRequest, applyOk := properties["applyRequest"].(map[string]interface{}); applyOk {
 				nodePoolSpec, ok = applyRequest["node_pool_spec"].(map[string]interface{})
-
-				// Also get currentNodeCount from top level
-				if currentNodeCount, countOk := properties["currentNodeCount"].(float64); countOk {
-					tableView.CurrentNodes = int64(currentNodeCount)
-				}
 			}
 		} else {
 			// List response: properties.node_pool_spec.*
@@ -571,12 +529,6 @@ func formatNodepoolForTable(entity openapiclientfleet.Entity, cloudProvider stri
 		if ok {
 			if vmSize, ok := nodePoolSpec["vm_size"].(string); ok {
 				tableView.MachineType = vmSize
-			}
-			if diskSize, ok := nodePoolSpec["os_disk_size_gb"].(float64); ok {
-				tableView.DiskSizeGB = int64(diskSize)
-			}
-			if diskType, ok := nodePoolSpec["os_disk_type"].(string); ok {
-				tableView.DiskType = diskType
 			}
 
 			if minCount, ok := nodePoolSpec["min_count"].(float64); ok {
@@ -599,15 +551,6 @@ func formatNodepoolForTable(entity openapiclientfleet.Entity, cloudProvider stri
 			if enableNodePublicIP, ok := nodePoolSpec["enable_node_public_ip"].(bool); ok {
 				tableView.PrivateSubnet = !enableNodePublicIP
 			}
-
-			if nodeLabels, ok := nodePoolSpec["node_labels"].(map[string]interface{}); ok {
-				tableView.Labels = make(map[string]string)
-				for k, v := range nodeLabels {
-					if strVal, ok := v.(string); ok {
-						tableView.Labels[k] = strVal
-					}
-				}
-			}
 		}
 	}
 
@@ -615,7 +558,7 @@ func formatNodepoolForTable(entity openapiclientfleet.Entity, cloudProvider stri
 }
 
 // DescribeNodepool describes a specific nodepool in a deployment cell
-func DescribeNodepool(ctx context.Context, token string, hostClusterID string, nodepoolName string) (*model.NodepoolTableView, *openapiclientfleet.Entity, error) {
+func DescribeNodepool(ctx context.Context, token string, hostClusterID string, nodepoolName string) (*model.NodepoolDescribeView, *openapiclientfleet.Entity, error) {
 	ctxWithToken := context.WithValue(ctx, openapiclientfleet.ContextAccessToken, token)
 	apiClient := getFleetClient()
 
@@ -652,7 +595,30 @@ func DescribeNodepool(ctx context.Context, token string, hostClusterID string, n
 	}
 
 	tableView := formatNodepoolForTable(*entity, cloudProvider, true)
-	return &tableView, entity, nil
+
+	// Get currentNodeCount for describe response
+	var currentNodes int64
+	properties := entity.GetProperties()
+
+	if currentNodeCount, ok := properties["currentNodeCount"].(float64); ok {
+		currentNodes = int64(currentNodeCount)
+	}
+
+	describeView := model.NodepoolDescribeView{
+		Name:          tableView.Name,
+		Type:          tableView.Type,
+		MachineType:   tableView.MachineType,
+		ImageType:     tableView.ImageType,
+		MinNodes:      tableView.MinNodes,
+		MaxNodes:      tableView.MaxNodes,
+		CurrentNodes:  currentNodes,
+		Location:      tableView.Location,
+		AutoRepair:    tableView.AutoRepair,
+		AutoUpgrade:   tableView.AutoUpgrade,
+		CapacityType:  tableView.CapacityType,
+		PrivateSubnet: tableView.PrivateSubnet,
+	}
+	return &describeView, entity, nil
 }
 
 // ConfigureNodepool configures a nodepool in a deployment cell
