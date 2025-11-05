@@ -36,7 +36,7 @@ omnistrate-ctl deployment-cell [operation] [flags]
 * [omnistrate-ctl deployment-cell generate-config-template](omnistrate-ctl_deployment-cell_generate-config-template.md)	 - Generate deployment cell configuration template
 * [omnistrate-ctl deployment-cell list](omnistrate-ctl_deployment-cell_list.md)	 - List all deployment cells
 * [omnistrate-ctl deployment-cell list-nodepools](omnistrate-ctl_deployment-cell_list-nodepools.md)	 - List all nodepools in a deployment cell
-* [omnistrate-ctl deployment-cell scale-down-nodepool](omnistrate-ctl_deployment-cell_scale-down-nodepool.md)	 - Scale down a nodepool to zero nodes
+* [omnistrate-ctl deployment-cell scale-down-nodepool](omnistrate-ctl_deployment-cell_scale-down-nodepool.md)	 - Scale down a nodepool to minimum size
 * [omnistrate-ctl deployment-cell scale-up-nodepool](omnistrate-ctl_deployment-cell_scale-up-nodepool.md)	 - Scale up a nodepool to the default maximum size
 * [omnistrate-ctl deployment-cell status](omnistrate-ctl_deployment-cell_status.md)	 - Get status of a deployment cell
 * [omnistrate-ctl deployment-cell update-config-template](omnistrate-ctl_deployment-cell_update-config-template.md)	 - Update deployment cell configuration template
