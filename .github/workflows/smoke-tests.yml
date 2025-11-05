@@ -76,7 +76,8 @@ jobs:
           OMNISTRATE_ROOT_DOMAIN: ${{ vars.OMNISTRATE_ROOT_DOMAIN}}
           OMNISTRATE_LOG_LEVEL: debug
           OMNISTRATE_DRY_RUN: true
-        run:  gotestsum --rerun-fails --format github-actions --format-hide-empty-pkg --format-icons hivis --packages=./test/smoke_test/${{ matrix.test-group }}
+        run:  | 
+          gotestsum --rerun-fails --format github-actions --format-hide-empty-pkg --format-icons hivis --packages=./test/smoke_test/${{ matrix.test-group }}
 
   smoke-tests-with-provisioning:
     environment: ${{ inputs.environment }}
@@ -93,8 +94,8 @@ jobs:
       matrix:
         test-group:
           [
-            "instance/...",
-            "upgrade/...",
+            "instance",
+            "upgrade",
           ]
 
     steps:
@@ -117,7 +118,7 @@ jobs:
         with:
           gotestsum_version: 1.13.0
 
-      - name: Smoke test ${{ matrix.test-group }}
+      - name: Smoke test ${{ matrix.test-group }}/...
         timeout-minutes: 30
         env:
           ENABLE_SMOKE_TEST: true
@@ -126,5 +127,7 @@ jobs:
           OMNISTRATE_ROOT_DOMAIN: ${{ vars.OMNISTRATE_ROOT_DOMAIN}}
           OMNISTRATE_LOG_LEVEL: debug
           OMNISTRATE_DRY_RUN: true
-        run:  gotestsum --rerun-fails --format github-actions --format-hide-empty-pkg --format-icons hivis --packages=./test/smoke_test/${{ matrix.test-group }}
+          TEST_DIRECTORY: ${{ github.workspace }}/test/smoke_test/${{ matrix.test-group }}
+        run: |
+          gotestsum --rerun-fails --format github-actions --format-hide-empty-pkg --format-icons hivis --packages=./test/smoke_test/${{ matrix.test-group }}/...
 
