@@ -6,7 +6,11 @@ import (
 	"github.com/spf13/cobra"
 )
 
-const defaultEnvironment = "GLOBAL"
+const (
+	defaultEnvironment        = "GLOBAL"
+	DefaultMaxNodepoolSize    = 450
+	DefaultMinNodepoolSize    = 0
+)
 
 var Cmd = &cobra.Command{
 	Use:          "deployment-cell [operation] [flags]",

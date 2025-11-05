@@ -15,10 +15,10 @@ import (
 var scaleUpNodepoolCmd = &cobra.Command{
 	Use:   "scale-up-nodepool",
 	Short: "Scale up a nodepool to the default maximum size",
-	Long: `Scale up a nodepool to the default maximum size of 450 nodes.
+	Long: fmt.Sprintf(`Scale up a nodepool to the default maximum size of %d nodes.
 
 This restores the nodepool to its default capacity after being scaled down.
-Nodes will be provisioned as needed by the autoscaler.`,
+Nodes will be provisioned as needed by the autoscaler.`, DefaultMaxNodepoolSize),
 	RunE:         runScaleUpNodepool,
 	SilenceUsage: true,
 }
@@ -52,13 +52,13 @@ func runScaleUpNodepool(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	// Scale up to 450 nodes (default max size)
-	err = dataaccess.ConfigureNodepool(ctx, token, deploymentCellID, nodepoolName, 450)
+	// Scale up to default max size
+	err = dataaccess.ConfigureNodepool(ctx, token, deploymentCellID, nodepoolName, DefaultMaxNodepoolSize)
 	if err != nil {
 		utils.PrintError(err)
 		return err
 	}
 
-	utils.PrintSuccess(fmt.Sprintf("Successfully scaled up nodepool '%s' in deployment cell '%s' to 450 max nodes", nodepoolName, deploymentCellID))
+	utils.PrintSuccess(fmt.Sprintf("Successfully scaled up nodepool '%s' in deployment cell '%s' to %d max nodes", nodepoolName, deploymentCellID, DefaultMaxNodepoolSize))
 	return nil
 }

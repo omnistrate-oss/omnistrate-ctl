@@ -545,9 +545,9 @@ func formatNodepoolForTable(entity openapiclientfleet.Entity, cloudProvider stri
 				}
 			}
 
-			if enableAutoScaling, ok := nodePoolSpec["enable_auto_scaling"].(bool); ok {
-				tableView.AutoScaling = enableAutoScaling
-			}
+// 			if enableAutoScaling, ok := nodePoolSpec["enable_auto_scaling"].(bool); ok {
+// 				tableView.AutoScaling = enableAutoScaling
+// 			}
 
 			if enableNodePublicIP, ok := nodePoolSpec["enable_node_public_ip"].(bool); ok {
 				tableView.PrivateSubnet = !enableNodePublicIP

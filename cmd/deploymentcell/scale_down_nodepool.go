@@ -15,10 +15,10 @@ import (
 var scaleDownNodepoolCmd = &cobra.Command{
 	Use:   "scale-down-nodepool",
 	Short: "Scale down a nodepool to zero nodes",
-	Long: `Scale down a nodepool to zero nodes by setting max size to 0.
+	Long: fmt.Sprintf(`Scale down a nodepool to zero nodes by setting max size to %d.
 
 This will evict all nodes in the nodepool and can be used as a cost saving measure.
-The nodepool will remain configured but will have no running nodes.`,
+The nodepool will remain configured but will have no running nodes.`, DefaultMinNodepoolSize),
 	RunE:         runScaleDownNodepool,
 	SilenceUsage: true,
 }
@@ -52,13 +52,13 @@ func runScaleDownNodepool(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	// Scale down to 0 nodes
-	err = dataaccess.ConfigureNodepool(ctx, token, deploymentCellID, nodepoolName, 0)
+	// Scale down to minimum size
+	err = dataaccess.ConfigureNodepool(ctx, token, deploymentCellID, nodepoolName, DefaultMinNodepoolSize)
 	if err != nil {
 		utils.PrintError(err)
 		return err
 	}
 
-	utils.PrintSuccess(fmt.Sprintf("Successfully scaled down nodepool '%s' in deployment cell '%s' to 0 nodes", nodepoolName, deploymentCellID))
+	utils.PrintSuccess(fmt.Sprintf("Successfully scaled down nodepool '%s' in deployment cell '%s' to %d nodes", nodepoolName, deploymentCellID, DefaultMinNodepoolSize))
 	return nil
 }
