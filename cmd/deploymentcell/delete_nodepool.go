@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/chelnak/ysmrr"
 	"github.com/spf13/cobra"
 
 	"github.com/omnistrate-oss/omnistrate-ctl/cmd/common"
@@ -49,12 +50,18 @@ func runDeleteNodepool(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
+	// Show spinner while deleting (can take up to 10 minutes)
+	sm := ysmrr.NewSpinnerManager()
+	spinner := sm.AddSpinner(fmt.Sprintf("Deleting nodepool '%s' from deployment cell '%s'...", nodepoolName, deploymentCellID))
+	sm.Start()
+
 	err = dataaccess.DeleteNodepool(ctx, token, deploymentCellID, nodepoolName)
+
 	if err != nil {
-		utils.PrintError(err)
+		utils.HandleSpinnerError(spinner, sm, err)
 		return err
 	}
 
-	fmt.Printf("Successfully deleted nodepool '%s' from deployment cell '%s'\n", nodepoolName, deploymentCellID)
+	utils.HandleSpinnerSuccess(spinner, sm, fmt.Sprintf("Successfully deleted nodepool '%s' from deployment cell '%s'", nodepoolName, deploymentCellID))
 	return nil
 }

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/omnistrate-oss/omnistrate-ctl/internal/model"
 	"github.com/omnistrate-oss/omnistrate-ctl/internal/utils"
@@ -652,9 +653,13 @@ func ConfigureNodepool(ctx context.Context, token string, hostClusterID string, 
 	return nil
 }
 
-// DeleteNodepool deletes a nodepool from a deployment cell
+// DeleteNodepool deletes a nodepool from a deployment cell (can take up to 10 minutes)
 func DeleteNodepool(ctx context.Context, token string, hostClusterID string, nodepoolName string) error {
-	ctxWithToken := context.WithValue(ctx, openapiclientfleet.ContextAccessToken, token)
+	// Create a context with a 15 minute timeout for delete operations
+	ctxWithTimeout, cancel := context.WithTimeout(ctx, 15*time.Minute)
+	defer cancel()
+
+	ctxWithToken := context.WithValue(ctxWithTimeout, openapiclientfleet.ContextAccessToken, token)
 	apiClient := getFleetClient()
 
 	// Describe the host cluster first to get the cloud provider
@@ -684,7 +689,13 @@ func DeleteNodepool(ctx context.Context, token string, hostClusterID string, nod
 
 	r, err = req.Execute()
 	if err != nil {
-		return handleFleetError(err)
+		fleetErr := handleFleetError(err)
+		// Simplify not found errors
+		errMsg := fleetErr.Error()
+		if strings.Contains(errMsg, "not_found") || strings.Contains(errMsg, "Not found") || strings.Contains(errMsg, "notFound") || strings.Contains(errMsg, "404") {
+			return fmt.Errorf("nodepool '%s' not found in deployment cell '%s'", nodepoolName, hostClusterID)
+		}
+		return fleetErr
 	}
 
 	return nil
