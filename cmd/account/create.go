@@ -1,6 +1,7 @@
 package account
 
 import (
+	"context"
 	"fmt"
 
 	"github.com/omnistrate-oss/omnistrate-ctl/cmd/common"
@@ -9,9 +10,8 @@ import (
 	"github.com/omnistrate-oss/omnistrate-ctl/internal/config"
 	"github.com/omnistrate-oss/omnistrate-ctl/internal/dataaccess"
 	"github.com/omnistrate-oss/omnistrate-ctl/internal/utils"
-	"github.com/spf13/cobra"
-
 	openapiclient "github.com/omnistrate-oss/omnistrate-sdk-go/v1"
+	"github.com/spf13/cobra"
 )
 
 const (
@@ -87,71 +87,21 @@ func runCreate(cmd *cobra.Command, args []string) error {
 		sm.Start()
 	}
 
-	// Prepare request
-	request := openapiclient.CreateAccountConfigRequest2{
-		Name: name,
+	// Create account using helper function
+	params := CloudAccountParams{
+		Name:                name,
+		AwsAccountID:        awsAccountID,
+		GcpProjectID:        gcpProjectID,
+		GcpProjectNumber:    gcpProjectNumber,
+		AzureSubscriptionID: azureSubscriptionID,
+		AzureTenantID:       azureTenantID,
 	}
 
-	if awsAccountID != "" {
-		// Get aws cloud provider id
-		cloudProviderID, err := dataaccess.GetCloudProviderByName(cmd.Context(), token, "aws")
-		if err != nil {
-			utils.HandleSpinnerError(spinner, sm, err)
-			return err
-		}
-
-		request.CloudProviderId = cloudProviderID
-		request.AwsAccountID = &awsAccountID
-		request.AwsBootstrapRoleARN = utils.ToPtr("arn:aws:iam::" + awsAccountID + ":role/omnistrate-bootstrap-role")
-		request.Description = "AWS Account" + awsAccountID
-	} else if gcpProjectID != "" {
-		// Get organization id
-		user, err := dataaccess.DescribeUser(cmd.Context(), token)
-		if err != nil {
-			utils.HandleSpinnerError(spinner, sm, err)
-			return err
-		}
-
-		// Get gcp cloud provider id
-		cloudProviderID, err := dataaccess.GetCloudProviderByName(cmd.Context(), token, "gcp")
-		if err != nil {
-			utils.HandleSpinnerError(spinner, sm, err)
-			return err
-		}
-
-		request.CloudProviderId = cloudProviderID
-		request.GcpProjectID = &gcpProjectID
-		request.GcpProjectNumber = &gcpProjectNumber
-		request.GcpServiceAccountEmail = utils.ToPtr(fmt.Sprintf("bootstrap-%s@%s.iam.gserviceaccount.com", *user.OrgId, gcpProjectID))
-		request.Description = "GCP Account" + gcpProjectID
-	} else {
-		// Get azure cloud provider id
-		cloudProviderID, err := dataaccess.GetCloudProviderByName(cmd.Context(), token, "azure")
-		if err != nil {
-			utils.HandleSpinnerError(spinner, sm, err)
-			return err
-		}
-
-		request.CloudProviderId = cloudProviderID
-		request.AzureSubscriptionID = &azureSubscriptionID
-		request.AzureTenantID = &azureTenantID
-		request.Description = "Azure Account" + azureSubscriptionID
-	}
-
-	// Create account
-	accountConfigID, err := dataaccess.CreateAccount(cmd.Context(), token, request)
+	account, err := CreateCloudAccount(cmd.Context(), token, params, spinner, sm)
 	if err != nil {
-		utils.HandleSpinnerError(spinner, sm, err)
 		return err
 	}
 	utils.HandleSpinnerSuccess(spinner, sm, "Successfully created account")
-
-	// Describe account
-	account, err := dataaccess.DescribeAccount(cmd.Context(), token, accountConfigID)
-	if err != nil {
-		utils.PrintError(err)
-		return err
-	}
 
 	// Print output
 	err = utils.PrintTextTableJsonOutput(output, account)
@@ -166,4 +116,88 @@ func runCreate(cmd *cobra.Command, args []string) error {
 	}
 
 	return nil
+}
+
+
+
+// CloudAccountParams holds the parameters for creating a cloud account
+type CloudAccountParams struct {
+	Name                string
+	AwsAccountID        string
+	GcpProjectID        string
+	GcpProjectNumber    string
+	AzureSubscriptionID string
+	AzureTenantID       string
+}
+
+// CreateCloudAccount creates a cloud provider account and returns the account config ID and account details
+// This function is reusable across different commands that need to create accounts
+func CreateCloudAccount(ctx context.Context, token string, params CloudAccountParams, spinner *ysmrr.Spinner, sm ysmrr.SpinnerManager) (account *openapiclient.DescribeAccountConfigResult, err error) {
+	// Prepare request
+	request := openapiclient.CreateAccountConfigRequest2{
+		Name: params.Name,
+	}
+
+	if params.AwsAccountID != "" {
+		// Get aws cloud provider id
+		cloudProviderID, err := dataaccess.GetCloudProviderByName(ctx, token, "aws")
+		if err != nil {
+			utils.HandleSpinnerError(spinner, sm, err)
+			return nil, err
+		}
+
+		request.CloudProviderId = cloudProviderID
+		request.AwsAccountID = &params.AwsAccountID
+		request.AwsBootstrapRoleARN = utils.ToPtr("arn:aws:iam::" + params.AwsAccountID + ":role/omnistrate-bootstrap-role")
+		request.Description = "AWS Account " + params.AwsAccountID
+	} else if params.GcpProjectID != "" {
+		// Get organization id
+		user, err := dataaccess.DescribeUser(ctx, token)
+		if err != nil {
+			utils.HandleSpinnerError(spinner, sm, err)
+			return nil, err
+		}
+
+		// Get gcp cloud provider id
+		cloudProviderID, err := dataaccess.GetCloudProviderByName(ctx, token, "gcp")
+		if err != nil {
+			utils.HandleSpinnerError(spinner, sm, err)
+			return nil, err
+		}
+
+		request.CloudProviderId = cloudProviderID
+		request.GcpProjectID = &params.GcpProjectID
+		request.GcpProjectNumber = &params.GcpProjectNumber
+		request.GcpServiceAccountEmail = utils.ToPtr(fmt.Sprintf("bootstrap-%s@%s.iam.gserviceaccount.com", *user.OrgId, params.GcpProjectID))
+		request.Description = "GCP Account " + params.GcpProjectID
+	} else if params.AzureSubscriptionID != "" {
+		// Get azure cloud provider id
+		cloudProviderID, err := dataaccess.GetCloudProviderByName(ctx, token, "azure")
+		if err != nil {
+			utils.HandleSpinnerError(spinner, sm, err)
+			return nil, err
+		}
+
+		request.CloudProviderId = cloudProviderID
+		request.AzureSubscriptionID = &params.AzureSubscriptionID
+		request.AzureTenantID = &params.AzureTenantID
+		request.Description = "Azure Account " + params.AzureSubscriptionID
+	} else {
+		return nil, fmt.Errorf("no cloud provider credentials provided")
+	}
+
+	// Create account
+	accountConfigID, err := dataaccess.CreateAccount(ctx, token, request)
+	if err != nil {
+		utils.HandleSpinnerError(spinner, sm, err)
+		return nil, err
+	}
+
+	// Describe account
+	account, err = dataaccess.DescribeAccount(ctx, token, accountConfigID)
+	if err != nil {
+		return  nil, err
+	}
+
+	return account, nil
 }

@@ -16,6 +16,7 @@ import (
 	"gopkg.in/yaml.v3"
 
 	"github.com/chelnak/ysmrr"
+	"github.com/omnistrate-oss/omnistrate-ctl/cmd/account"
 	"github.com/omnistrate-oss/omnistrate-ctl/cmd/build"
 	"github.com/omnistrate-oss/omnistrate-ctl/cmd/common"
 	"github.com/omnistrate-oss/omnistrate-ctl/cmd/instance"
@@ -66,6 +67,9 @@ omctl deploy --dry-run
 omctl deploy --platforms linux/amd64 --platforms linux/arm64
 `
 )
+
+
+
 
 // DeployCmd represents the deploy command
 var DeployCmd = &cobra.Command{
@@ -477,17 +481,68 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 						"   3. Create a new READY account: omctl account create",
 					len(allAccounts),
 				))
-				spinner.UpdateMessage(" deployment requires at least one READY cloud provider account")
+				spinner.UpdateMessage("deployment requires at least one READY cloud provider account")
 				spinner.Error()
 				return nil
 			} else {
-				utils.PrintError(fmt.Errorf(
-					"no cloud provider accounts found.\n" +
-						"💡 Create your first account: omctl account create",
-				))
-				spinner.UpdateMessage(" no cloud provider accounts linked. Please link at least one account using 'omctl account create' before deploying")
-				spinner.Error()
-				return nil
+				// Determine which cloud provider to use and get credentials
+				if cloudProvider == "" {
+					cloudProvider = promptForCloudProvider()
+				}
+
+				// Get cloud-specific credentials
+				paramsJSON, err := promptForCloudCredentials(cloudProvider)
+				if err != nil {
+					return fmt.Errorf("failed to get cloud credentials: %w", err)
+				}
+
+				// Parse the JSON to extract credentials
+				var paramsMap map[string]interface{}
+				if err := json.Unmarshal([]byte(paramsJSON), &paramsMap); err != nil {
+					return fmt.Errorf("failed to parse credentials: %w", err)
+				}
+
+				// Create account params based on cloud provider
+				accountParams := account.CloudAccountParams{
+					Name: fmt.Sprintf("%s-account-%d", cloudProvider, time.Now().Unix()),
+				}
+
+				switch cloudProvider {
+				case "aws":
+					if awsAccountID, ok := paramsMap["aws_account_id"].(string); ok {
+						accountParams.AwsAccountID = awsAccountID
+					}
+				case "gcp":
+					if gcpProjectID, ok := paramsMap["gcp_project_id"].(string); ok {
+						accountParams.GcpProjectID = gcpProjectID
+					}
+					if gcpProjectNumber, ok := paramsMap["gcp_project_number"].(string); ok {
+						accountParams.GcpProjectNumber = gcpProjectNumber
+					}
+				case "azure":
+					if azureSubscriptionID, ok := paramsMap["azure_subscription_id"].(string); ok {
+						accountParams.AzureSubscriptionID = azureSubscriptionID
+					}
+					if azureTenantID, ok := paramsMap["azure_tenant_id"].(string); ok {
+						accountParams.AzureTenantID = azureTenantID
+					}
+				}
+				// Create the cloud provider account
+				var accountData *openapiclient.DescribeAccountConfigResult = nil
+				 accountData, err = account.CreateCloudAccount(cmd.Context(), token, accountParams, spinner, sm)
+				if err != nil || accountData == nil {
+					utils.PrintError(fmt.Errorf("failed to create cloud provider account: %v", err))
+					return err
+				}
+				dataaccess.PrintNextStepVerifyAccountMsg(accountData)
+				// Wait for account to become READY (poll up to 10 min)
+				if accountData != nil {
+					err = waitForAccountReady(cmd.Context(), token, accountData.Id)
+					if err != nil {
+						utils.PrintError(fmt.Errorf("account did not become READY: %v", err))
+						return err
+					}
+				}
 			}
 		}
 
@@ -2262,3 +2317,33 @@ func waitForAccountVerification(ctx context.Context, token, serviceID,
 
 	return "", fmt.Errorf("account verification timed out after %d attempts", maxRetries)
 }
+
+
+
+
+
+// waitForAccountReady polls for account status to become READY, up to 10 minutes
+func waitForAccountReady(ctx context.Context, token, accountID string) error {
+	timeout := time.After(10 * time.Minute)
+	ticker := time.NewTicker(10 * time.Second)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-timeout:
+			return errors.New("timed out waiting for account to become READY")
+		case <-ticker.C:
+			account, err := dataaccess.DescribeAccount(ctx, token, accountID)
+			if err != nil {
+				return err
+			}
+			if account.Status == "READY" {
+				return nil
+			}
+		}
+	}
+}
+
+
+
+
+
