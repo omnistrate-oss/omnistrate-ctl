@@ -21,7 +21,7 @@ omctl deploy spec.yaml
 omctl deploy spec.yaml --product-name "My Service"
 
 # Build service from an existing compose spec in the repository
-omctl deploy --file compose.yaml
+omctl deploy --file omnistrate-compose.yaml
 
 # Build service with a custom service name
 omctl deploy --product-name my-custom-service

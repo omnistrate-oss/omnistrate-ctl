@@ -59,7 +59,7 @@ omctl build-from-repo
       --deployment-type string              Set the deployment type. Options: 'hosted' or 'byoa' (Bring Your Own Account). Only effective when no compose spec exists in the repo.
       --dry-run                             Run in dry-run mode: only build the Docker image locally without pushing, skip service creation, and write the generated spec to a local file with '-dry-run' suffix. Cannot be used with any --skip-* flags.
       --env-var stringArray                 Specify environment variables required for running the image. Effective only when the compose.yaml is absent. Use the format: --env-var key1=var1 --env-var key2=var2. Only effective when no compose spec exists in the repo.
-  -f, --file string                         Specify the compose file to read and write to (default "compose.yaml")
+  -f, --file string                         Specify the compose file to read and write to (default "omnistrate-compose.yaml")
       --force-create-service-plan-version   Force create a new service plan version on release.
       --gcp-project-id string               GCP project ID. Must be used with --gcp-project-number and --deployment-type
       --gcp-project-number string           GCP project number. Must be used with --gcp-project-id and --deployment-type
