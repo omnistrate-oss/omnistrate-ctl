@@ -591,7 +591,13 @@ func DescribeNodepool(ctx context.Context, token string, hostClusterID string, n
 
 	entity, r, err := req.Execute()
 	if err != nil {
-		return nil, nil, handleFleetError(err)
+		fleetErr := handleFleetError(err)
+		// Simplify not found errors
+		errMsg := fleetErr.Error()
+		if strings.Contains(errMsg, "not_found") || strings.Contains(errMsg, "Not found") || strings.Contains(errMsg, "notFound") || strings.Contains(errMsg, "404") {
+			return nil, nil, fmt.Errorf("nodepool '%s' not found in deployment cell '%s'", nodepoolName, hostClusterID)
+		}
+		return nil, nil, fleetErr
 	}
 
 	tableView := formatNodepoolForTable(*entity, cloudProvider, true)
