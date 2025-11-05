@@ -4,7 +4,7 @@ go 1.25.1
 
 require (
 	github.com/atotto/clipboard v0.1.4
-	github.com/blevesearch/bleve/v2 v2.5.3
+	github.com/blevesearch/bleve/v2 v2.5.4
 	github.com/cenkalti/backoff/v4 v4.3.0
 	github.com/chelnak/ysmrr v0.6.0
 	github.com/compose-spec/compose-go v1.20.2
@@ -14,11 +14,11 @@ require (
 	github.com/google/uuid v1.6.0
 	github.com/gorilla/websocket v1.5.4-0.20250319132907-e064f32e3674
 	github.com/hashicorp/go-retryablehttp v0.7.8
-	github.com/jedib0t/go-pretty/v6 v6.6.8
+	github.com/jedib0t/go-pretty/v6 v6.6.9
 	github.com/mitchellh/go-homedir v1.1.0
 	github.com/mitchellh/go-wordwrap v1.0.1
 	github.com/njayp/ophis v0.3.2
-	github.com/omnistrate-oss/omnistrate-sdk-go v0.0.82
+	github.com/omnistrate-oss/omnistrate-sdk-go v0.0.83
 	github.com/pkg/browser v0.0.0-20240102092130-5ac0b6a4141c
 	github.com/pkg/errors v0.9.1
 	github.com/rivo/tview v0.42.0
@@ -37,13 +37,13 @@ require (
 	github.com/aymanbagabas/go-osc52/v2 v2.0.1 // indirect
 	github.com/bahlo/generic-list-go v0.2.0 // indirect
 	github.com/bits-and-blooms/bitset v1.22.0 // indirect
-	github.com/blevesearch/bleve_index_api v1.2.8 // indirect
+	github.com/blevesearch/bleve_index_api v1.2.10 // indirect
 	github.com/blevesearch/geo v0.2.4 // indirect
 	github.com/blevesearch/go-faiss v1.0.25 // indirect
 	github.com/blevesearch/go-porterstemmer v1.0.3 // indirect
 	github.com/blevesearch/gtreap v0.1.1 // indirect
 	github.com/blevesearch/mmap-go v1.0.4 // indirect
-	github.com/blevesearch/scorch_segment_api/v2 v2.3.10 // indirect
+	github.com/blevesearch/scorch_segment_api/v2 v2.3.12 // indirect
 	github.com/blevesearch/segment v0.9.1 // indirect
 	github.com/blevesearch/snowballstem v0.9.0 // indirect
 	github.com/blevesearch/upsidedown_store_api v1.0.2 // indirect
@@ -53,7 +53,7 @@ require (
 	github.com/blevesearch/zapx/v13 v13.4.2 // indirect
 	github.com/blevesearch/zapx/v14 v14.4.2 // indirect
 	github.com/blevesearch/zapx/v15 v15.4.2 // indirect
-	github.com/blevesearch/zapx/v16 v16.2.4 // indirect
+	github.com/blevesearch/zapx/v16 v16.2.6 // indirect
 	github.com/buger/jsonparser v1.1.1 // indirect
 	github.com/charmbracelet/bubbles v0.21.0 // indirect
 	github.com/charmbracelet/bubbletea v1.3.5 // indirect
@@ -77,7 +77,6 @@ require (
 	github.com/go-openapi/jsonreference v0.21.0 // indirect
 	github.com/go-openapi/swag v0.23.1 // indirect
 	github.com/gogo/protobuf v1.3.2 // indirect
-	github.com/golang/protobuf v1.5.0 // indirect
 	github.com/golang/snappy v0.0.4 // indirect
 	github.com/google/gnostic-models v0.7.0 // indirect
 	github.com/hashicorp/go-cleanhttp v0.5.2 // indirect
