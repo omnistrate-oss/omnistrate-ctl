@@ -25,9 +25,24 @@ func NewTable(columns []any) (t *Table) {
 		columnsAsStrings = append(columnsAsStrings, fmt.Sprintf("%v", column))
 	}
 
-	// Sort the columns
+	// Sort the columns with "name" first, then alphabetically
 	t.columns = columnsAsStrings
-	slices.Sort(t.columns)
+	slices.SortFunc(t.columns, func(a, b string) int {
+		// "name" always comes first
+		if a == "name" {
+			return -1
+		}
+		if b == "name" {
+			return 1
+		}
+		// Then sort alphabetically
+		if a < b {
+			return -1
+		} else if a > b {
+			return 1
+		}
+		return 0
+	})
 
 	// Convert back to any
 	var columnsAsAny []any
