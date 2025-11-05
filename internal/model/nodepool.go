@@ -11,6 +11,7 @@ type NodepoolTableView struct {
 	Location      string `json:"location,omitempty"`
 	AutoRepair    bool   `json:"autoRepair,omitempty"`
 	AutoUpgrade   bool   `json:"autoUpgrade,omitempty"`
+	AutoScaling   bool   `json:"autoScaling,omitempty"`
 	CapacityType  string `json:"capacityType,omitempty"`
 	PrivateSubnet bool   `json:"privateSubnet,omitempty"`
 }
@@ -27,6 +28,7 @@ type NodepoolDescribeView struct {
 	Location      string `json:"location,omitempty"`
 	AutoRepair    bool   `json:"autoRepair,omitempty"`
 	AutoUpgrade   bool   `json:"autoUpgrade,omitempty"`
+	AutoScaling   bool   `json:"autoScaling,omitempty"`
 	CapacityType  string `json:"capacityType,omitempty"`
 	PrivateSubnet bool   `json:"privateSubnet,omitempty"`
 }
