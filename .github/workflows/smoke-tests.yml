@@ -88,6 +88,7 @@ jobs:
     concurrency:
       group: ${{ github.workflow }}-${{ inputs.environment }}-${{ matrix.test-group }}
       cancel-in-progress: true
+    name: smoke-tests-with-provisioning (${{ matrix.test-group }}/...)
 
     strategy:
       fail-fast: false
