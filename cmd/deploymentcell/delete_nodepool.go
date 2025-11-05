@@ -53,7 +53,7 @@ func runDeleteNodepool(cmd *cobra.Command, args []string) error {
 	// Show spinner while deleting (can take up to 10 minutes)
 	sm := ysmrr.NewSpinnerManager()
 	spinner := sm.AddSpinner(fmt.Sprintf("Deleting nodepool '%s' from deployment cell '%s'...", nodepoolName, deploymentCellID))
-	sm.Start()
+	utils.StartSpinnerWithCleanup(sm)
 
 	err = dataaccess.DeleteNodepool(ctx, token, deploymentCellID, nodepoolName)
 
