@@ -29,7 +29,8 @@ func init() {
 	Cmd.AddCommand(debugCmd)
 	Cmd.AddCommand(listNodepoolsCmd)
 	Cmd.AddCommand(describeNodepoolCmd)
-	Cmd.AddCommand(configureNodepoolCmd)
+	Cmd.AddCommand(scaleDownNodepoolCmd)
+	Cmd.AddCommand(scaleUpNodepoolCmd)
 	Cmd.AddCommand(deleteNodepoolCmd)
 }
 
