@@ -235,9 +235,18 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 		} else {
 			// If omnistrate-compose.yaml not found, check for docker-compose.yaml and error out
 			if _, err := os.Stat(build.DockerComposeFileName); err == nil {
-				err := fmt.Errorf("found docker-compose.yaml but omnistrate-compose.yaml is required. Please rename your docker-compose.yaml to omnistrate-compose.yaml or add omnistrate-specific configurations (x-omnistrate-* keys). For new projects from a Dockerfile, use 'omctl build-from-repo' command instead")
-				utils.PrintError(err)
-				return err
+				errMsg := fmt.Sprintf(`Deployment failed: Required file missing — %s
+
+→ Found: %s  
+→ Expected: %s
+
+Tip: You can convert your docker-compose.yaml into Omnistrate's native format using the omnistrate-fde skill via the Omnistrate MCP Server  
+You may even invoke it through AI agents like Claude, Gemini, or others.
+
+Learn more: https://docs.omnistrate.com/getting-started/mcp-server/#using-skills`, 
+					build.OmnistrateComposeFileName, build.DockerComposeFileName, build.OmnistrateComposeFileName)
+				utils.PrintError(fmt.Errorf(errMsg))
+				return fmt.Errorf("required file %s not found", build.OmnistrateComposeFileName)
 			}
 			buildFromRepo = true
 			
