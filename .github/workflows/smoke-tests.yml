@@ -76,6 +76,7 @@ jobs:
           OMNISTRATE_ROOT_DOMAIN: ${{ vars.OMNISTRATE_ROOT_DOMAIN}}
           OMNISTRATE_LOG_LEVEL: debug
           OMNISTRATE_DRY_RUN: true
+          TEST_DIRECTORY: ${{ github.workspace }}/test/smoke_test/${{ matrix.test-group }}
         run:  | 
           gotestsum --rerun-fails --format github-actions --format-hide-empty-pkg --format-icons hivis --packages=./test/smoke_test/${{ matrix.test-group }}
 
