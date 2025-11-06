@@ -68,7 +68,7 @@ jobs:
           gotestsum_version: 1.13.0
 
       - name: Smoke test ${{ matrix.test-group }}
-        timeout-minutes: 30
+        timeout-minutes: 15
         env:
           ENABLE_SMOKE_TEST: true
           TEST_EMAIL: ${{ secrets.SMOKE_TEST_EMAIL }}
@@ -78,7 +78,7 @@ jobs:
           OMNISTRATE_DRY_RUN: true
           TEST_DIRECTORY: ${{ github.workspace }}/test/smoke_test/${{ matrix.test-group }}
         run:  | 
-          gotestsum --rerun-fails --format github-actions --format-hide-empty-pkg --format-icons hivis --packages=./test/smoke_test/${{ matrix.test-group }}
+          gotestsum --format github-actions --format-hide-empty-pkg --format-icons hivis --packages=./test/smoke_test/${{ matrix.test-group }}
 
   smoke-tests-with-provisioning:
     environment: ${{ inputs.environment }}
@@ -121,7 +121,7 @@ jobs:
           gotestsum_version: 1.13.0
 
       - name: Smoke test ${{ matrix.test-group }}/...
-        timeout-minutes: 30
+        timeout-minutes: 15
         env:
           ENABLE_SMOKE_TEST: true
           TEST_EMAIL: ${{ secrets.SMOKE_TEST_EMAIL }}
@@ -131,5 +131,5 @@ jobs:
           OMNISTRATE_DRY_RUN: true
           TEST_DIRECTORY: ${{ github.workspace }}/test/smoke_test/${{ matrix.test-group }}
         run: |
-          gotestsum --rerun-fails --format github-actions --format-hide-empty-pkg --format-icons hivis --packages=./test/smoke_test/${{ matrix.test-group }}/...
+          gotestsum --format github-actions --format-hide-empty-pkg --format-icons hivis --packages=./test/smoke_test/${{ matrix.test-group }}/...
 
