@@ -16,12 +16,15 @@ func EnsureCursorRestoration() {
 func HandleSpinnerError(spinner *ysmrr.Spinner, sm ysmrr.SpinnerManager, err error) {
 	if spinner != nil {
 		spinner.Error()
-		EnsureCursorRestoration()
 	}
 	if sm != nil {
 		sm.Stop()
+	}
+
+	if spinner != nil || sm != nil {
 		EnsureCursorRestoration()
 	}
+
 	PrintError(err)
 }
 
@@ -29,10 +32,12 @@ func HandleSpinnerSuccess(spinner *ysmrr.Spinner, sm ysmrr.SpinnerManager, messa
 	if spinner != nil {
 		spinner.UpdateMessage(message)
 		spinner.Complete()
-		EnsureCursorRestoration()
 	}
 	if sm != nil {
 		sm.Stop()
+	}
+
+	if spinner != nil || sm != nil {
 		EnsureCursorRestoration()
 	}
 }
