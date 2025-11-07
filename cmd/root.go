@@ -45,7 +45,7 @@ var RootCmd = &cobra.Command{
 	Use:   "omnistrate-ctl",
 	Short: "Manage your Omnistrate SaaS from the command line",
 	Long: wordwrap.WrapString(`
-Omnistrate CTL is the command line interface to build manage and operate software or agent distributions anywhere - across clouds, regions, customer-controlled environments, and on-premises - using Omnistrate platform.
+Omnistrate CTL is the command line interface to build, manage, and operate software or agent distributions anywhere - across clouds, regions, customer-controlled environments, and on-premises - using Omnistrate platform.
 
 Key Features:
 - Build your software or agent distributions: Create service plan from code, docker images, docker compose, helm, terraform and more.
