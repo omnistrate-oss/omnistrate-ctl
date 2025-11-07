@@ -117,9 +117,6 @@ func runCreate(cmd *cobra.Command, args []string) error {
 
 	return nil
 }
-
-
-
 // CloudAccountParams holds the parameters for creating a cloud account
 type CloudAccountParams struct {
 	Name                string
@@ -196,7 +193,7 @@ func CreateCloudAccount(ctx context.Context, token string, params CloudAccountPa
 	// Describe account
 	account, err = dataaccess.DescribeAccount(ctx, token, accountConfigID)
 	if err != nil {
-		return  nil, err
+		return nil, err
 	}
 
 	return account, nil

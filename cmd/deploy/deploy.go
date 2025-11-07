@@ -67,10 +67,6 @@ omctl deploy --dry-run
 omctl deploy --platforms linux/amd64 --platforms linux/arm64
 `
 )
-
-
-
-
 // DeployCmd represents the deploy command
 var DeployCmd = &cobra.Command{
 	Use:     "deploy [spec-file]",
@@ -2337,8 +2333,3 @@ func waitForAccountReady(ctx context.Context, token, accountID string) error {
 		}
 	}
 }
-
-
-
-
-
