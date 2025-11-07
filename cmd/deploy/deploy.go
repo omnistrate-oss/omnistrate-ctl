@@ -763,17 +763,15 @@ func executeDeploymentWorkflow(cmd *cobra.Command, sm ysmrr.SpinnerManager, toke
 
 			spinner.UpdateMessage(fmt.Sprintf("%s: No existing instance found (provider instance does not match)", spinnerMsg))
 			spinner.Complete()
-			
 
 		}
 	} else {
 
 		// Stop spinner manager temporarily to show the note
 		sm.Stop()
-			fmt.Printf("📝 Note: Instance creation is automatic.\n")
+		fmt.Printf("📝 Note: Instance creation is automatic.\n")
 
-		}
-
+	}
 
 	if finalInstanceID != "" {
 
@@ -819,8 +817,6 @@ func executeDeploymentWorkflow(cmd *cobra.Command, sm ysmrr.SpinnerManager, toke
 			formattedParams["cloud_provider_account_config_id"] = cloudAccountInstanceID
 
 		}
-
-		
 
 		createMsg := "Creating new instance deployment"
 
@@ -1182,7 +1178,6 @@ func createInstanceUnified(ctx context.Context, token, serviceID, productTierID,
 		request.Region = &region
 		request.ProductTierVersion = &version
 	}
-
 
 	//    Create the instance
 	instance, err := dataaccess.CreateResourceInstance(ctx, token,
