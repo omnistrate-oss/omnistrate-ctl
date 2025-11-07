@@ -528,8 +528,7 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 					}
 				}
 				// Create the cloud provider account
-				var accountData *openapiclient.DescribeAccountConfigResult = nil
-				 accountData, err = account.CreateCloudAccount(cmd.Context(), token, accountParams, spinner, sm)
+				accountData, err := account.CreateCloudAccount(cmd.Context(), token, accountParams, spinner, sm)
 				if err != nil || accountData == nil {
 					utils.PrintError(fmt.Errorf("failed to create cloud provider account: %v", err))
 					return err
