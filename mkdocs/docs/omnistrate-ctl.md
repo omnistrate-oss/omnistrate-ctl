@@ -5,8 +5,9 @@ Manage your Omnistrate SaaS from the command line
 ### Synopsis
 
 
-Omnistrate CTL is a powerful command-line tool designed to simplify the creation, deployment, and
-management of your Omnistrate SaaS.
+Omnistrate CTL is the command line interface to build manage and operate software or agent
+distributions anywhere - across clouds, regions, customer-controlled environments, and on-premises -
+using Omnistrate platform.
 
 Key Features:
 - Build Services: Create services from images or compose specs.
@@ -14,7 +15,7 @@ Key Features:
 - Deploy Instances: Deploy and manage instances with ease.
 
 Resources:
-- CTL Manual: https://ctl.omnistrate.cloud/omnistrate-ctl/
+- CTL Manual: https://ctl.omnistrate.cloud/
 - Quick Start Guide: https://docs.omnistrate.com/getting-started/getting-started-with-ctl/
 
 Use the CTL commands below to begin managing your services effectively.
