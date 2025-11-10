@@ -5,10 +5,8 @@ import (
 	"strings"
 
 	"github.com/omnistrate-oss/omnistrate-ctl/cmd/common"
-	"github.com/omnistrate-oss/omnistrate-ctl/cmd/upgrade/manageupgradelifecycle"
 
 	"github.com/chelnak/ysmrr"
-	"github.com/omnistrate-oss/omnistrate-ctl/cmd/upgrade/status"
 	"github.com/omnistrate-oss/omnistrate-ctl/internal/config"
 	"github.com/omnistrate-oss/omnistrate-ctl/internal/dataaccess"
 	"github.com/omnistrate-oss/omnistrate-ctl/internal/model"
@@ -18,72 +16,45 @@ import (
 )
 
 const (
-	upgradeExample = `# Upgrade instances to a specific version
-omctl upgrade [instance1] [instance2] --version=2.0
+	createExample = `# Create upgrade for instances to a specific version
+omctl upgrade create [instance1] [instance2] --version=2.0
 
-# Upgrade instances to the latest version
-omctl upgrade [instance1] [instance2] --version=latest
+# Create upgrade for instances to the latest version
+omctl upgrade create [instance1] [instance2] --version=latest
 
- # Upgrade instances to the preferred version
-omctl upgrade [instance1] [instance2] --version=preferred
+# Create upgrade for instances to the preferred version
+omctl upgrade create [instance1] [instance2] --version=preferred
 
-# Upgrade instances to a specific version with version name
-omctl upgrade [instance1] [instance2] --version-name=v0.1.1
+# Create upgrade for instances to a specific version with version name
+omctl upgrade create [instance1] [instance2] --version-name=v0.1.1
 
-# Upgrade instance to a specific version with a schedule date in the future
-omctl upgrade [instance-id] --version=1.0 --scheduled-date="2023-12-01T00:00:00Z"
+# Create upgrade for instance to a specific version with a schedule date in the future
+omctl upgrade create [instance-id] --version=1.0 --scheduled-date="2023-12-01T00:00:00Z"
 
-# Upgrade instance with limited concurrent upgrades
-omctl upgrade [instance-id] --version=2.0 --max-concurrent-upgrades=5`
+# Create upgrade for instance with limited concurrent upgrades
+omctl upgrade create [instance-id] --version=2.0 --max-concurrent-upgrades=5`
 )
 
-var Cmd = &cobra.Command{
-	Use:          "upgrade --version=[version]",
-	Short:        "Upgrade Instance Deployments to a newer or older version",
-	Long:         `This command helps you upgrade Instance Deployments to a newer or older version.`,
-	Example:      upgradeExample,
-	RunE:         run,
+var createCmd = &cobra.Command{
+	Use:          "create [instance-id] [instance-id] ... --version=[version]",
+	Short:        "Create an upgrade path for one or more instances",
+	Long:         `This command creates an upgrade path for one or more Instance Deployments to a newer or older version.`,
+	Example:      createExample,
+	RunE:         runCreate,
 	SilenceUsage: true,
 }
 
 func init() {
-	Cmd.AddCommand(createCmd)
-	Cmd.AddCommand(listCmd)
-	Cmd.AddCommand(describeCmd)
-	Cmd.AddCommand(status.Cmd)
-	Cmd.AddCommand(manageupgradelifecycle.CancelCmd)
-	Cmd.AddCommand(manageupgradelifecycle.ResumeCmd)
-	Cmd.AddCommand(manageupgradelifecycle.PauseCmd)
-	Cmd.AddCommand(manageupgradelifecycle.NotifyCustomerCmd)
-	Cmd.AddCommand(manageupgradelifecycle.SkipInstancesCmd)
+	createCmd.Args = cobra.MinimumNArgs(1)
 
-	Cmd.Args = cobra.MinimumNArgs(1)
-
-	Cmd.Flags().StringP("version", "", "", "Specify the version number to upgrade to. Use 'latest' to upgrade to the latest version. Use 'preferred' to upgrade to the preferred version. Use either this flag or the --version-name flag to upgrade to a specific version.")
-	Cmd.Flags().StringP("version-name", "", "", "Specify the version name to upgrade to. Use either this flag or the --version flag to upgrade to a specific version.")
-	Cmd.Flags().StringP("scheduled-date", "", "", "Specify the scheduled date for the upgrade.")
-	Cmd.Flags().Bool("notify-customer", false, "Enable customer notifications for the upgrade")
-	Cmd.Flags().IntP("max-concurrent-upgrades", "", 0, "Maximum number of concurrent upgrades (1-25). If 0 or not specified, uses system default.")
+	createCmd.Flags().StringP("version", "", "", "Specify the version number to upgrade to. Use 'latest' to upgrade to the latest version. Use 'preferred' to upgrade to the preferred version. Use either this flag or the --version-name flag to upgrade to a specific version.")
+	createCmd.Flags().StringP("version-name", "", "", "Specify the version name to upgrade to. Use either this flag or the --version flag to upgrade to a specific version.")
+	createCmd.Flags().StringP("scheduled-date", "", "", "Specify the scheduled date for the upgrade.")
+	createCmd.Flags().Bool("notify-customer", false, "Enable customer notifications for the upgrade")
+	createCmd.Flags().IntP("max-concurrent-upgrades", "", 0, "Maximum number of concurrent upgrades (1-25). If 0 or not specified, uses system default.")
 }
 
-type Args struct {
-	ServiceID             string
-	ProductTierID         string
-	SourceVersion         string
-	TargetVersion         string
-	NotifyCustomer        bool
-	ScheduledDate         *string
-	MaxConcurrentUpgrades *int
-}
-
-var UpgradePathIDs []string
-
-type Res struct {
-	UpgradePathID string
-	InstanceIDs   []string
-}
-
-func run(cmd *cobra.Command, args []string) error {
+func runCreate(cmd *cobra.Command, args []string) error {
 	defer config.CleanupArgsAndFlags(cmd, &args)
 
 	// Retrieve flags
@@ -156,9 +127,9 @@ func run(cmd *cobra.Command, args []string) error {
 	var spinner *ysmrr.Spinner
 	if output != "json" {
 		sm = ysmrr.NewSpinnerManager()
-		msg := "Scheduling upgrade for all instances"
+		msg := "Creating upgrade for all instances"
 		if len(args) == 1 {
-			msg = fmt.Sprintf("Scheduling upgrade for %s", args[0])
+			msg = fmt.Sprintf("Creating upgrade for %s", args[0])
 		}
 		spinner = sm.AddSpinner(msg)
 		sm.Start()
@@ -308,7 +279,6 @@ func run(cmd *cobra.Command, args []string) error {
 	}
 
 	// Create upgrade path
-	UpgradePathIDs = make([]string, 0)
 	for upgradeArgs, upgradeRes := range upgrades {
 		upgradePathID, err := dataaccess.CreateUpgradePath(
 			cmd.Context(),
@@ -328,10 +298,9 @@ func run(cmd *cobra.Command, args []string) error {
 		}
 
 		upgrades[upgradeArgs].UpgradePathID = upgradePathID
-		UpgradePathIDs = append(UpgradePathIDs, upgradePathID)
 	}
 
-	utils.HandleSpinnerSuccess(spinner, sm, "Upgrade scheduled successfully")
+	utils.HandleSpinnerSuccess(spinner, sm, "Upgrade created successfully")
 
 	// Print output
 	formattedUpgrades := make([]model.Upgrade, 0)
@@ -350,7 +319,7 @@ func run(cmd *cobra.Command, args []string) error {
 	}
 
 	if output != "json" {
-		println("\nThe following upgrades have been scheduled:")
+		println("\nThe following upgrades have been created:")
 	}
 
 	err = utils.PrintTextTableJsonArrayOutput(output, formattedUpgrades)
