@@ -8,6 +8,8 @@ import (
 	"path/filepath"
 	"strings"
 
+	"gopkg.in/yaml.v3"
+
 	"github.com/omnistrate-oss/omnistrate-ctl/cmd/common"
 	"github.com/omnistrate-oss/omnistrate-ctl/internal/model"
 
@@ -191,14 +193,6 @@ func runBuild(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
-	// Check if spec-type was provided and default if not
-	if specType == "" {
-		if file == PlanSpecFileName {
-			specType = ServicePlanSpecType
-		} else {
-			specType = DockerComposeSpecType
-		}
-	}
 
 	name, err := cmd.Flags().GetString("name")
 	if err != nil {
@@ -291,6 +285,61 @@ func runBuild(cmd *cobra.Command, args []string) error {
 	forceCreateServicePlanVersion, err := cmd.Flags().GetBool("force-create-service-plan-version")
 	if err != nil {
 		return err
+	}
+
+	// Dynamic spec type detection for file-based builds
+	if imageUrl == "" && specType == "" {
+		// Determine file to read
+		fileToRead := file
+		if fileToRead == "" {
+			// check for compose file
+			fileToRead = ComposeFileName
+			if _, err := os.Stat(fileToRead); os.IsNotExist(err) {
+				// If the file doesn't exist, check if there is a spec file
+				fileToRead = PlanSpecFileName
+				if _, err := os.Stat(fileToRead); os.IsNotExist(err) {
+					// Will be handled later in file loading logic
+					fileToRead = ""
+				}
+			}
+		}
+
+		// Read and analyze file content for spec type detection
+		if fileToRead != "" {
+			// Update file variable if auto-detected
+			if fileToRead != file {
+				file = fileToRead
+			}
+			
+			if _, err := os.Stat(fileToRead); err == nil {
+				tempFileData, err := os.ReadFile(filepath.Clean(fileToRead))
+				if err == nil {
+					var planCheck map[string]interface{}
+					if err := yaml.Unmarshal(tempFileData, &planCheck); err == nil {
+						// Use the common function to detect spec type
+						specType = DetectSpecType(planCheck)
+					} else {
+						// Fallback to file extension based detection
+						if fileToRead == PlanSpecFileName {
+							specType = ServicePlanSpecType
+						} else {
+							specType = DockerComposeSpecType
+						}
+					}
+				}
+			}
+		}
+		
+		// Final fallback if still not determined
+		if specType == "" {
+			specType = DockerComposeSpecType
+		}
+	} else if imageUrl != "" {
+		// For image-based builds, always use DockerComposeSpecType
+		specType = DockerComposeSpecType
+	} else if specType == "" {
+		// Fallback for any other case
+		specType = DockerComposeSpecType
 	}
 
 	// Validate input arguments
