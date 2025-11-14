@@ -12,8 +12,18 @@ var config = &ophis.Config{
 		// Command filtering
 		tools.AddFilter(tools.Exclude([]string{
 			"mcp",
-			"agent install",
+			"cost cloud-provider",
+			"cost deployment-cell",
+			"cost region",
+			"cost user",
+			"agent init",
+			"audit",
 			"build",
+			"build-from-repo",
+			"custom-network create",
+			"custom-network delete",
+			"custom-network update",
+			"deploy",
 			"domain",
 			"alarms",
 			"inspect",
@@ -50,7 +60,6 @@ var config = &ophis.Config{
 			"service-plan enable-feature",
 			"service-plan release",
 			"service-plan set-default",
-			"build-from-repo", // we only want build from mcp
 		})),
 		// Exclude hidden commands
 		tools.AddFilter(tools.Hidden()),
