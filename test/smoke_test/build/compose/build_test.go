@@ -292,7 +292,7 @@ func Test_build_no_file(t *testing.T) {
 	cmd.RootCmd.SetArgs([]string{"build", "--product-name", "My Service" + uuid.NewString(), "--description", "My Service Description", "--service-logo-url", "https://freepnglogos.com/uploads/server-png/server-computer-database-network-vector-graphic-pixabay-31.png"})
 	err = cmd.RootCmd.ExecuteContext(ctx)
 	require.Error(err)
-	require.Contains(err.Error(), "no compose or spec file found")
+	require.Contains(err.Error(), "no omnistrate-compose.yaml or spec.yaml found")
 }
 
 func Test_build_create_no_name(t *testing.T) {
