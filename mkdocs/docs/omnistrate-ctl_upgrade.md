@@ -53,6 +53,7 @@ omctl upgrade [instance-id] --version=2.0 --max-concurrent-upgrades=5
 
 * [omnistrate-ctl](omnistrate-ctl.md)	 - Manage your Omnistrate SaaS from the command line
 * [omnistrate-ctl upgrade cancel](omnistrate-ctl_upgrade_cancel.md)	 - Cancel an uncompleted upgrade
+* [omnistrate-ctl upgrade create](omnistrate-ctl_upgrade_create.md)	 - Create an upgrade path for one or more instances
 * [omnistrate-ctl upgrade describe](omnistrate-ctl_upgrade_describe.md)	 - Describe an upgrade path
 * [omnistrate-ctl upgrade list](omnistrate-ctl_upgrade_list.md)	 - List upgrade paths
 * [omnistrate-ctl upgrade notify-customer](omnistrate-ctl_upgrade_notify-customer.md)	 - Enable customer notifications for a scheduled upgrade
