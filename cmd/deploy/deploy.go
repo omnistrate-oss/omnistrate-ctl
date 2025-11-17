@@ -71,7 +71,7 @@ omctl deploy --platforms linux/amd64 --platforms linux/arm64
 var DeployCmd = &cobra.Command{
 	Use:     "deploy [spec-file]",
 	Short:   "Deploy a service using a spec file",
-	Long:    "Deploy a service using a spec file. This command builds the service in DEV, creates/checks PROD environment, promotes to PROD, marks as preferred, subscribes, and automatically creates/upgrades instances.",
+	Long:    "Deploy a service using a spec file. This command builds the service in DEV, creates/checks PROD environment, promotes to PROD, marks as preferred, subscribes, and automatically creates/upgrades instances. This command may involve interactive prompts and should be run manually, not by AI agents or automation.",
 	Example: deployExample,
 	Args:    cobra.MaximumNArgs(1),
 	RunE:    runDeploy,
@@ -94,7 +94,7 @@ func init() {
 	// Additional flags from build command
 	DeployCmd.Flags().Bool("skip-docker-build", false, "Skip building and pushing the Docker image")
 	DeployCmd.Flags().StringArray("platforms", []string{"linux/amd64"}, "Specify the platforms to build for. Use the format: --platforms linux/amd64 --platforms linux/arm64. Default is linux/amd64.")
-	DeployCmd.Flags().String("deployment-type", "hosted", "Type of deployment. Valid values: hosted, byoa")
+	DeployCmd.Flags().String("deployment-type", "hosted", "Type of deployment. Valid values: hosted, byoa (default \"hosted\" i.e. the deployments are hosted in the service provider account)")
 	DeployCmd.Flags().String("github-username", "", "GitHub username to use if GitHub API fails to retrieve it automatically")
 
 	if err := DeployCmd.MarkFlagFilename("param-file"); err != nil {
