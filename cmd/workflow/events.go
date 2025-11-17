@@ -1,6 +1,8 @@
 package workflow
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"strings"
 	"time"
@@ -19,17 +21,24 @@ var eventsCmd = &cobra.Command{
 
 By default, shows a summary with:
 - Resources involved in the workflow
-- Workflow steps for each resource  
+- Workflow steps for each resource
 - Status of each step (success, failed, running, etc.)
 
-Use --detail to see full event details for each step.`,
+Use --detail to see full event details for each step. Duplicate events are automatically deduplicated to reduce output size.
+Use --max-events to limit the number of unique events shown per event type (default: 3, use 0 for unlimited).`,
 	Args: cobra.ExactArgs(1),
 	RunE: getWorkflowEvents,
 	Example: `  # Show workflow summary with step statuses
   omnistrate-ctl workflow events <workflow-id> -s <service-id> -e <env-id>
 
-  # Show detailed events for all steps
+  # Show detailed events for all steps (with deduplication, max 3 per event type)
   omnistrate-ctl workflow events <workflow-id> -s <service-id> -e <env-id> --detail
+
+  # Show detailed events with up to 5 events per event type
+  omnistrate-ctl workflow events <workflow-id> -s <service-id> -e <env-id> --detail --max-events 5
+
+  # Show all events without limiting by type
+  omnistrate-ctl workflow events <workflow-id> -s <service-id> -e <env-id> --detail --max-events 0
 
   # Filter to specific resource and show details
   omnistrate-ctl workflow events <workflow-id> -s <service-id> -e <env-id> --resource-key mydb --detail
@@ -48,6 +57,7 @@ func init() {
 	eventsCmd.Flags().String("resource-key", "", "Filter to specific resource by key/name")
 	eventsCmd.Flags().StringSlice("step-names", []string{}, "Filter by step names (e.g., Bootstrap, Compute, Deployment, Network, Storage, Monitoring)")
 	eventsCmd.Flags().Bool("detail", false, "Show detailed events for each step (default: show step summary with status only)")
+	eventsCmd.Flags().Int("max-events", 3, "Maximum number of events to show per event type within each step (0 = unlimited)")
 	eventsCmd.Flags().String("since", "", "Show events after this time (RFC3339 format, e.g. 2024-01-15T10:00:00Z)")
 	eventsCmd.Flags().String("until", "", "Show events before this time (RFC3339 format, e.g. 2024-01-15T11:00:00Z)")
 
@@ -65,6 +75,7 @@ func getWorkflowEvents(cmd *cobra.Command, args []string) error {
 	resourceKey, _ := cmd.Flags().GetString("resource-key")
 	stepNames, _ := cmd.Flags().GetStringSlice("step-names")
 	detail, _ := cmd.Flags().GetBool("detail")
+	maxEvents, _ := cmd.Flags().GetInt("max-events")
 	since, _ := cmd.Flags().GetString("since")
 	until, _ := cmd.Flags().GetString("until")
 
@@ -89,6 +100,7 @@ func getWorkflowEvents(cmd *cobra.Command, args []string) error {
 		ResourceKey: resourceKey,
 		StepNames:   stepNames,
 		Detail:      detail,
+		MaxEvents:   maxEvents,
 		Since:       since,
 		Until:       until,
 	}
@@ -108,18 +120,35 @@ type WorkflowEventFilterOptions struct {
 	ResourceKey string
 	StepNames   []string
 	Detail      bool
+	MaxEvents   int
 	Since       string
 	Until       string
 }
 
+// DedupedWorkflowEvent represents a workflow event with deduplication info
+type DedupedWorkflowEvent struct {
+	EventTime   string `json:"eventTime"`
+	EventType   string `json:"eventType"`
+	Message     string `json:"message"`
+	Occurrences int    `json:"occurrences,omitempty"`
+	FirstSeen   string `json:"firstSeen,omitempty"`
+	LastSeen    string `json:"lastSeen,omitempty"`
+}
+
+// DetailedStepWithDedupedEvents contains a step with deduplicated events
+type DetailedStepWithDedupedEvents struct {
+	StepName string                 `json:"stepName"`
+	Events   []DedupedWorkflowEvent `json:"events"`
+}
+
 // WorkflowStepSummary represents a simplified view of a workflow step with status
 type WorkflowStepSummary struct {
-	StepName     string                       `json:"stepName"`
-	Status       string                       `json:"status"`
-	StartTime    string                       `json:"startTime,omitempty"`
-	EndTime      string                       `json:"endTime,omitempty"`
-	EventCount   int                          `json:"eventCount"`
-	DetailedStep *fleet.EventsPerWorkflowStep `json:"detailedStep,omitempty"`
+	StepName     string                         `json:"stepName"`
+	Status       string                         `json:"status"`
+	StartTime    string                         `json:"startTime,omitempty"`
+	EndTime      string                         `json:"endTime,omitempty"`
+	EventCount   int                            `json:"eventCount"`
+	DetailedStep *DetailedStepWithDedupedEvents `json:"detailedStep,omitempty"`
 }
 
 // WorkflowResourceSummary represents a simplified view of resource workflow execution
@@ -219,10 +248,13 @@ func filterWorkflowEvents(result *fleet.GetWorkflowEventsResult, options Workflo
 				}
 
 				// Include detailed step info if --detail flag is used
+				// Apply deduplication to reduce output size
 				if options.Detail {
-					detailedStep := step
-					detailedStep.Events = relevantEvents
-					stepSummary.DetailedStep = &detailedStep
+					dedupedEvents := deduplicateEvents(relevantEvents, options.MaxEvents)
+					stepSummary.DetailedStep = &DetailedStepWithDedupedEvents{
+						StepName: step.StepName,
+						Events:   dedupedEvents,
+					}
 				}
 
 				summarySteps = append(summarySteps, stepSummary)
@@ -364,4 +396,109 @@ func determineStepStatus(events []fleet.WorkflowEvent) string {
 	}
 
 	return "unknown"
+}
+
+// deduplicateEvents takes a list of workflow events and deduplicates consecutive similar events
+// Events are considered similar if they have the same eventType and message content
+// maxEventsPerType limits the number of unique events per eventType, keeping the latest events (0 = unlimited)
+func deduplicateEvents(events []fleet.WorkflowEvent, maxEventsPerType int) []DedupedWorkflowEvent {
+	if len(events) == 0 {
+		return []DedupedWorkflowEvent{}
+	}
+
+	// First pass: deduplicate events
+	eventMap := make(map[string]*DedupedWorkflowEvent)
+	eventOrder := []string{}
+
+	for _, event := range events {
+		// Create a hash key based on eventType and message content
+		hashKey := hashEventContent(event.EventType, event.Message)
+
+		if existing, found := eventMap[hashKey]; found {
+			// Update existing event with last seen time and increment count
+			existing.Occurrences++
+			existing.LastSeen = event.EventTime
+		} else {
+			// New unique event
+			dedupedEvent := DedupedWorkflowEvent{
+				EventTime:   event.EventTime,
+				EventType:   event.EventType,
+				Message:     event.Message,
+				Occurrences: 1,
+				FirstSeen:   event.EventTime,
+			}
+			eventMap[hashKey] = &dedupedEvent
+			eventOrder = append(eventOrder, hashKey)
+		}
+	}
+
+	// Second pass: if maxEventsPerType is set, keep only the latest N events per type
+	var dedupedEvents []DedupedWorkflowEvent
+	if maxEventsPerType > 0 {
+		// Group events by type and keep track of their order
+		eventsByType := make(map[string][]struct {
+			key   string
+			index int
+		})
+		for i, key := range eventOrder {
+			event := eventMap[key]
+			eventsByType[event.EventType] = append(eventsByType[event.EventType], struct {
+				key   string
+				index int
+			}{key, i})
+		}
+
+		// For each type, keep only the latest N events (last N in the order)
+		keysToInclude := make(map[string]bool)
+		for _, eventsOfType := range eventsByType {
+			startIdx := 0
+			if len(eventsOfType) > maxEventsPerType {
+				startIdx = len(eventsOfType) - maxEventsPerType
+			}
+			for i := startIdx; i < len(eventsOfType); i++ {
+				keysToInclude[eventsOfType[i].key] = true
+			}
+		}
+
+		// Build result in original order, only including selected events
+		for _, key := range eventOrder {
+			if keysToInclude[key] {
+				event := eventMap[key]
+				if event.Occurrences > 1 {
+					dedupedEvents = append(dedupedEvents, *event)
+				} else {
+					// For single occurrences, don't include the dedup fields
+					dedupedEvents = append(dedupedEvents, DedupedWorkflowEvent{
+						EventTime: event.EventTime,
+						EventType: event.EventType,
+						Message:   event.Message,
+					})
+				}
+			}
+		}
+	} else {
+		// No limit, include all events in original order
+		for _, key := range eventOrder {
+			event := eventMap[key]
+			if event.Occurrences > 1 {
+				dedupedEvents = append(dedupedEvents, *event)
+			} else {
+				// For single occurrences, don't include the dedup fields
+				dedupedEvents = append(dedupedEvents, DedupedWorkflowEvent{
+					EventTime: event.EventTime,
+					EventType: event.EventType,
+					Message:   event.Message,
+				})
+			}
+		}
+	}
+
+	return dedupedEvents
+}
+
+// hashEventContent creates a hash of event type and message for deduplication
+func hashEventContent(eventType, message string) string {
+	h := sha256.New()
+	h.Write([]byte(eventType + "|" + message))
+	return hex.EncodeToString(h.Sum(nil))
 }

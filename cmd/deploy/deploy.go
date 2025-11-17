@@ -71,7 +71,7 @@ omctl deploy --platforms linux/amd64 --platforms linux/arm64
 var DeployCmd = &cobra.Command{
 	Use:     "deploy [spec-file]",
 	Short:   "Deploy a service using a spec file",
-	Long:    "Deploy a service using a spec file. This command builds the service in DEV, creates/checks PROD environment, promotes to PROD, marks as preferred, subscribes, and automatically creates/upgrades instances.",
+	Long:    "Deploy a service using a spec file. This command builds the service in DEV, creates/checks PROD environment, promotes to PROD, marks as preferred, subscribes, and automatically creates/upgrades instances. This command may involve interactive prompts and should be run manually, not by AI agents or automation.",
 	Example: deployExample,
 	Args:    cobra.MaximumNArgs(1),
 	RunE:    runDeploy,
@@ -94,7 +94,7 @@ func init() {
 	// Additional flags from build command
 	DeployCmd.Flags().Bool("skip-docker-build", false, "Skip building and pushing the Docker image")
 	DeployCmd.Flags().StringArray("platforms", []string{"linux/amd64"}, "Specify the platforms to build for. Use the format: --platforms linux/amd64 --platforms linux/arm64. Default is linux/amd64.")
-	DeployCmd.Flags().String("deployment-type", "hosted", "Type of deployment. Valid values: hosted, byoa")
+	DeployCmd.Flags().String("deployment-type", "hosted", "Type of deployment. Valid values: hosted, byoa (default \"hosted\" i.e. the deployments are hosted in the service provider account)")
 	DeployCmd.Flags().String("github-username", "", "GitHub username to use if GitHub API fails to retrieve it automatically")
 
 	if err := DeployCmd.MarkFlagFilename("param-file"); err != nil {
@@ -272,83 +272,22 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 		// Check for omnistrate-specific configurations
 		var planCheck map[string]interface{}
 		if err := yaml.Unmarshal(processedData, &planCheck); err == nil {
-			// Helper: recursively search for any x-omnistrate key
-			var containsOmnistrateKey func(m map[string]interface{}) bool
-			containsOmnistrateKey = func(m map[string]interface{}) bool {
-				for k, v := range m {
-					// Check for any x-omnistrate key
-					if strings.HasPrefix(k, "x-omnistrate-") {
-						return true
-					}
-					// Recurse into nested maps
-					if sub, ok := v.(map[string]interface{}); ok {
-						if containsOmnistrateKey(sub) {
-							return true
-						}
-					}
-					// Recurse into slices of maps
-					if arr, ok := v.([]interface{}); ok {
-						for _, item := range arr {
-							if subm, ok := item.(map[string]interface{}); ok {
-								if containsOmnistrateKey(subm) {
-									return true
-								}
-							}
-						}
-					}
-				}
-				return false
-			}
-
-			// Check if this is an omnistrate spec file
-			isOmnistrate := containsOmnistrateKey(planCheck)
-			if !isOmnistrate {
-				utils.PrintWarning(fmt.Sprintf("Spec file '%s' doesn't contain omnistrate-specific configurations (x-omnistrate-* keys)", specFile))
-				utils.PrintWarning("This might be a standard docker-compose file. Consider adding omnistrate configurations for better service definition.")
-			}
-
-			// Improved: Recursively check for plan spec keys at any level
-			planKeyGroups := [][]string{
-				{"helm", "helmChart", "helmChartConfiguration"},
-				{"operator", "operatorCRDConfiguration"},
-				{"terraform", "terraformConfigurations"},
-				{"kustomize", "kustomizeConfiguration"},
-			}
-			// Helper: recursively search for any key in keys in a map
-			var containsAnyKey func(m map[string]interface{}, keys []string) bool
-			containsAnyKey = func(m map[string]interface{}, keys []string) bool {
-				for k, v := range m {
-					for _, key := range keys {
-						if k == key {
-							return true
-						}
-					}
-					// Recurse into nested maps
-					if sub, ok := v.(map[string]interface{}); ok {
-						if containsAnyKey(sub, keys) {
-							return true
-						}
-					}
-					// Recurse into slices of maps
-					if arr, ok := v.([]interface{}); ok {
-						for _, item := range arr {
-							if subm, ok := item.(map[string]interface{}); ok {
-								if containsAnyKey(subm, keys) {
-									return true
-								}
-							}
-						}
-					}
-				}
-				return false
-			}
-			for _, keys := range planKeyGroups {
-				if containsAnyKey(planCheck, keys) {
+		// Check if this is an omnistrate spec file
+		isOmnistrate := build.ContainsOmnistrateKey(planCheck)
+		if !isOmnistrate {
+			utils.PrintError(fmt.Errorf("spec file '%s' doesn't contain omnistrate-specific configurations (x-omnistrate-* keys). This might be a standard docker-compose file. Consider adding omnistrate configurations for better service definition", specFile))
+		return nil
+		}			// Use the common function to detect spec type
+			specType = build.DetectSpecType(planCheck)
+		} else {
+				// Fallback to file extension based detection
+				fileToRead := filepath.Base(absSpecFile)
+				if fileToRead == build.PlanSpecFileName {
 					specType = build.ServicePlanSpecType
-					break
+				} else {
+					specType = build.DockerComposeSpecType
 				}
 			}
-		}
 	}
 
 	spinner.UpdateMessage("Checking cloud provider accounts...\n")
@@ -853,33 +792,36 @@ func executeDeploymentWorkflow(cmd *cobra.Command, sm ysmrr.SpinnerManager, toke
 			sm.Stop()
 		}
 
-		// Display automatic instance handling message
-		if len(existingInstanceIDs) > 0  {
-			
-				finalInstanceID = existingInstanceIDs[0]
-				spinner.UpdateMessage(fmt.Sprintf("%s: Found %d existing instances", spinnerMsg, len(existingInstanceIDs)))
-				spinner.Complete()
+		if instanceID != "" && len(existingInstanceIDs) == 0 {
+			spinner.UpdateMessage(fmt.Sprintf("%s: No existing instance found for instance ID: %s (provider instance does not match)", spinnerMsg, instanceID))
+			spinner.Error()
+			return nil
+		}
 
-				// Stop spinner manager temporarily to show the note
-				sm.Stop()
-				fmt.Printf("📝 Note: Instance upgrade is automatic.\n")
-				fmt.Printf("   Existing Instances: %v\n", finalInstanceID)
+		// Display automatic instance handling message
+		if len(existingInstanceIDs) > 0 {
+			finalInstanceID = existingInstanceIDs[0]
+			spinner.UpdateMessage(fmt.Sprintf("%s: Found %d existing instances", spinnerMsg, len(existingInstanceIDs)))
+			spinner.Complete()
+
+			// Stop spinner manager temporarily to show the note
+			sm.Stop()
+			fmt.Printf("📝 Note: Instance upgrade is automatic.\n")
+			fmt.Printf("   Existing Instances: %v\n", finalInstanceID)
 
 		} else {
 
 			spinner.UpdateMessage(fmt.Sprintf("%s: No existing instance found (provider instance does not match)", spinnerMsg))
 			spinner.Complete()
-			
 
 		}
 	} else {
 
 		// Stop spinner manager temporarily to show the note
 		sm.Stop()
-			fmt.Printf("📝 Note: Instance creation is automatic.\n")
+		fmt.Printf("📝 Note: Instance creation is automatic.\n")
 
-		}
-
+	}
 
 	if finalInstanceID != "" {
 
@@ -925,8 +867,6 @@ func executeDeploymentWorkflow(cmd *cobra.Command, sm ysmrr.SpinnerManager, toke
 			formattedParams["cloud_provider_account_config_id"] = cloudAccountInstanceID
 
 		}
-
-		
 
 		createMsg := "Creating new instance deployment"
 
@@ -1289,7 +1229,6 @@ func createInstanceUnified(ctx context.Context, token, serviceID, productTierID,
 		request.ProductTierVersion = &version
 	}
 
-
 	//    Create the instance
 	instance, err := dataaccess.CreateResourceInstance(ctx, token,
 		res.ConsumptionDescribeServiceOfferingResult.ServiceProviderId,
@@ -1369,7 +1308,7 @@ func listInstances(ctx context.Context, token, serviceID, environmentID, service
 				exitInstanceIDs = append(exitInstanceIDs, idStr)
 				seenIDs[idStr] = true
 			}
-		} else {
+		} else if instanceID == "" {
 			if idStr != "" && !seenIDs[idStr] {
 				exitInstanceIDs = append(exitInstanceIDs, idStr)
 				seenIDs[idStr] = true
