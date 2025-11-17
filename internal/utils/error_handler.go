@@ -3,8 +3,6 @@ package utils
 import (
 	"fmt"
 	"os"
-	"os/signal"
-	"syscall"
 
 	"github.com/chelnak/ysmrr"
 )
@@ -15,21 +13,6 @@ func EnsureCursorRestoration() {
 	os.Stdout.Sync()
 }
 
-// StartSpinnerWithCleanup starts a spinner and sets up cleanup handlers for all exit paths
-func StartSpinnerWithCleanup(sm ysmrr.SpinnerManager) {
-	// Set up signal handler to restore cursor on interrupt (Ctrl+C)
-	sigChan := make(chan os.Signal, 1)
-	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
-	go func() {
-		<-sigChan
-		sm.Stop()
-		EnsureCursorRestoration()
-		os.Exit(130) // Standard exit code for SIGINT
-	}()
-
-	sm.Start()
-}
-
 func HandleSpinnerError(spinner *ysmrr.Spinner, sm ysmrr.SpinnerManager, err error) {
 	if spinner != nil {
 		spinner.Error()
@@ -37,7 +20,11 @@ func HandleSpinnerError(spinner *ysmrr.Spinner, sm ysmrr.SpinnerManager, err err
 	if sm != nil {
 		sm.Stop()
 	}
-	EnsureCursorRestoration()
+
+	if spinner != nil || sm != nil {
+		EnsureCursorRestoration()
+	}
+
 	PrintError(err)
 }
 
@@ -49,5 +36,8 @@ func HandleSpinnerSuccess(spinner *ysmrr.Spinner, sm ysmrr.SpinnerManager, messa
 	if sm != nil {
 		sm.Stop()
 	}
-	EnsureCursorRestoration()
+
+	if spinner != nil || sm != nil {
+		EnsureCursorRestoration()
+	}
 }

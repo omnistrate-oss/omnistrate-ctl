@@ -14,7 +14,7 @@ omnistrate-ctl cost deployment-cell [flags]
 
 ```
       --end-date string            End date for cost analysis (RFC3339 format) (required)
-  -e, --environment-type string    Environment type (required)
+  -e, --environment-type string    Environment type (valid: dev, qa, staging, canary, prod, private) (required)
       --exclude-cells string       Deployment cell IDs to exclude (comma-separated)
       --exclude-instances string   Instance IDs to exclude (comma-separated)
       --exclude-providers string   Cloud provider IDs to exclude (comma-separated)

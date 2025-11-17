@@ -89,7 +89,7 @@ jobs:
 
       - name: Upload compressed artifacts
         timeout-minutes: 5
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: ${{ steps.calc_binary_name.outputs.binary_name }}-compressed
           path: |
@@ -111,7 +111,7 @@ jobs:
     steps:
       - name: Download build artifacts
         timeout-minutes: 5
-        uses: actions/download-artifact@v5
+        uses: actions/download-artifact@v6
 
       - name: Display structure of downloaded files
         timeout-minutes: 1
@@ -217,7 +217,7 @@ jobs:
 
       - name: Download build artifacts
         timeout-minutes: 5
-        uses: actions/download-artifact@v5
+        uses: actions/download-artifact@v6
 
       - name: Display structure of downloaded files
         timeout-minutes: 1
@@ -270,7 +270,7 @@ jobs:
 
       - name: Download build artifacts
         timeout-minutes: 5
-        uses: actions/download-artifact@v5
+        uses: actions/download-artifact@v6
 
       - name: Display structure of downloaded files
         timeout-minutes: 1
