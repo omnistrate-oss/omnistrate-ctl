@@ -310,7 +310,7 @@ func runBuild(cmd *cobra.Command, args []string) error {
 			if fileToRead != file {
 				file = fileToRead
 			}
-			
+
 			if _, err := os.Stat(fileToRead); err == nil {
 				tempFileData, err := os.ReadFile(filepath.Clean(fileToRead))
 				if err == nil {
@@ -329,7 +329,7 @@ func runBuild(cmd *cobra.Command, args []string) error {
 				}
 			}
 		}
-		
+
 		// Final fallback if still not determined
 		if specType == "" {
 			specType = DockerComposeSpecType
