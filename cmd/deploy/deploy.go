@@ -67,6 +67,7 @@ omctl deploy --dry-run
 omctl deploy --platforms linux/amd64 --platforms linux/arm64
 `
 )
+
 // DeployCmd represents the deploy command
 var DeployCmd = &cobra.Command{
 	Use:     "deploy [spec-file]",
@@ -272,22 +273,22 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 		// Check for omnistrate-specific configurations
 		var planCheck map[string]interface{}
 		if err := yaml.Unmarshal(processedData, &planCheck); err == nil {
-		// Check if this is an omnistrate spec file
-		isOmnistrate := build.ContainsOmnistrateKey(planCheck)
-		if !isOmnistrate {
-			utils.PrintError(fmt.Errorf("spec file '%s' doesn't contain omnistrate-specific configurations (x-omnistrate-* keys). This might be a standard docker-compose file. Consider adding omnistrate configurations for better service definition", specFile))
-		return nil
-		}			// Use the common function to detect spec type
+			// Check if this is an omnistrate spec file
+			isOmnistrate := build.ContainsOmnistrateKey(planCheck)
+			if !isOmnistrate {
+				utils.PrintError(fmt.Errorf("spec file '%s' doesn't contain omnistrate-specific configurations (x-omnistrate-* keys). This might be a standard docker-compose file. Consider adding omnistrate configurations for better service definition", specFile))
+				return nil
+			} // Use the common function to detect spec type
 			specType = build.DetectSpecType(planCheck)
 		} else {
-				// Fallback to file extension based detection
-				fileToRead := filepath.Base(absSpecFile)
-				if fileToRead == build.PlanSpecFileName {
-					specType = build.ServicePlanSpecType
-				} else {
-					specType = build.DockerComposeSpecType
-				}
+			// Fallback to file extension based detection
+			fileToRead := filepath.Base(absSpecFile)
+			if fileToRead == build.PlanSpecFileName {
+				specType = build.ServicePlanSpecType
+			} else {
+				specType = build.DockerComposeSpecType
 			}
+		}
 	}
 
 	spinner.UpdateMessage("Checking cloud provider accounts...\n")
