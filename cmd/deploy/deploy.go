@@ -28,6 +28,13 @@ import (
 	"github.com/spf13/cobra"
 )
 
+var (
+	// ServiceID stores the service ID from the last deploy operation (for testing)
+	ServiceID string
+	// InstanceID stores the instance ID from the last deploy operation (for testing)
+	InstanceID string
+)
+
 const (
 	deployExample = `
 # Deploy a service using a spec file (automatically creates/upgrades instances)
@@ -473,12 +480,10 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 				}
 				dataaccess.PrintNextStepVerifyAccountMsg(accountData)
 				// Wait for account to become READY (poll up to 10 min)
-				if accountData != nil {
-					err = waitForAccountReady(cmd.Context(), token, accountData.Id)
-					if err != nil {
-						utils.PrintError(fmt.Errorf("account did not become READY: %v", err))
-						return err
-					}
+				err = waitForAccountReady(cmd.Context(), token, accountData.Id)
+				if err != nil {
+					utils.PrintError(fmt.Errorf("account did not become READY: %v", err))
+					return err
 				}
 			}
 		}
@@ -743,6 +748,9 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 		sm.Start()
 	}
 
+	// Store service ID for testing
+	ServiceID = serviceID
+
 	// Execute post-service-build deployment workflow
 	err = executeDeploymentWorkflow(cmd, sm, token, serviceID, environmentID, planID, serviceNameToUse, environment, environmentTypeUpper, instanceID, cloudProvider, region, param, paramFile, resourceID, deploymentType)
 	if err != nil {
@@ -891,6 +899,11 @@ func executeDeploymentWorkflow(cmd *cobra.Command, sm ysmrr.SpinnerManager, toke
 	}
 
 	sm.Stop()
+
+	// Store instance ID for testing
+	if finalInstanceID != "" {
+		InstanceID = finalInstanceID
+	}
 
 	// Success message
 	fmt.Println()
