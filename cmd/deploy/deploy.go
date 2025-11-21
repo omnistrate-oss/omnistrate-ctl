@@ -242,7 +242,7 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 				utils.PrintError(errors.New(errMsg))
 				return errors.Wrap(err, errMsg)
 			}
-			buildFromRepo = true	
+			buildFromRepo = true
 		}
 	}
 

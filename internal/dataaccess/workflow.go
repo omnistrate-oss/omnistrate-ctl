@@ -379,3 +379,78 @@ func workflowStepName(stepName string) string {
 
 	return "unknown"
 }
+
+// ListDeploymentCellWorkflowsOptions contains options for listing deployment cell workflows
+type ListDeploymentCellWorkflowsOptions struct {
+	StartDate     *time.Time
+	EndDate       *time.Time
+	PageSize      *int64
+	NextPageToken string
+}
+
+// ListDeploymentCellWorkflows lists workflows for a deployment cell
+func ListDeploymentCellWorkflows(ctx context.Context, token string, hostClusterID string, opts *ListDeploymentCellWorkflowsOptions) (res *openapiclientfleet.ListDeploymentCellWorkflowsResult, err error) {
+	ctxWithToken := context.WithValue(ctx, openapiclientfleet.ContextAccessToken, token)
+	apiClient := getFleetClient()
+
+	// Create the request body
+	reqBody := openapiclientfleet.NewListDeploymentCellWorkflowsRequest2()
+
+	if opts != nil {
+		if opts.StartDate != nil {
+			reqBody.SetStartDate(*opts.StartDate)
+		}
+		if opts.EndDate != nil {
+			reqBody.SetEndDate(*opts.EndDate)
+		}
+		if opts.PageSize != nil {
+			reqBody.SetPageSize(*opts.PageSize)
+		}
+		if opts.NextPageToken != "" {
+			reqBody.SetNextPageToken(opts.NextPageToken)
+		}
+	}
+
+	req := apiClient.HostclusterApiAPI.HostclusterApiListDeploymentCellWorkflows(
+		ctxWithToken,
+		hostClusterID,
+	).ListDeploymentCellWorkflowsRequest2(*reqBody)
+
+	var r *http.Response
+	defer func() {
+		if r != nil {
+			_ = r.Body.Close()
+		}
+	}()
+
+	res, r, err = req.Execute()
+	if err != nil {
+		return nil, handleFleetError(err)
+	}
+	return
+}
+
+// DescribeDeploymentCellWorkflow describes a specific deployment cell workflow
+func DescribeDeploymentCellWorkflow(ctx context.Context, token string, hostClusterID, workflowID string) (res *openapiclientfleet.DescribeDeploymentCellWorkflowResult, err error) {
+	ctxWithToken := context.WithValue(ctx, openapiclientfleet.ContextAccessToken, token)
+	apiClient := getFleetClient()
+
+	req := apiClient.HostclusterApiAPI.HostclusterApiDescribeDeploymentCellWorkflow(
+		ctxWithToken,
+		hostClusterID,
+		workflowID,
+	)
+
+	var r *http.Response
+	defer func() {
+		if r != nil {
+			_ = r.Body.Close()
+		}
+	}()
+
+	res, r, err = req.Execute()
+	if err != nil {
+		return nil, handleFleetError(err)
+	}
+	return
+}
