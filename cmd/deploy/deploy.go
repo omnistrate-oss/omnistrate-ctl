@@ -76,6 +76,7 @@ var DeployCmd = &cobra.Command{
 	Example: deployExample,
 	Args:    cobra.MaximumNArgs(1),
 	RunE:    runDeploy,
+	SilenceUsage: true,
 }
 
 func init() {
@@ -120,6 +121,8 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
+
+	
 	// Retrieve flags
 	file, err := cmd.Flags().GetString("file")
 	if err != nil {
@@ -242,7 +245,7 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 				utils.PrintError(errors.New(errMsg))
 				return errors.Wrap(err, errMsg)
 			}
-			buildFromRepo = true	
+			buildFromRepo = true
 		}
 	}
 
@@ -293,7 +296,7 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	spinner.UpdateMessage("Checking cloud provider accounts...\n")
+	spinner.UpdateMessage("Checking cloud provider accounts...")
 	isAccountId := false
 	awsAccountID, awsBootstrapRoleARN, gcpProjectID, gcpProjectNumber, gcpServiceAccountEmail, azureSubscriptionID, azureTenantID, extractDeploymentType := extractCloudAccountsFromProcessedData(processedData)
 	if awsAccountID != "" || gcpProjectID != "" || azureSubscriptionID != "" {
@@ -377,8 +380,8 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 			}
 		}
 	}
+	if !foundMatchingAccount && (awsAccountID != "" || gcpProjectID != "" || azureSubscriptionID != "") {
 
-	if !foundMatchingAccount {
 		var errorMessage string
 		if awsAccountID != "" {
 			errorMessage = fmt.Sprintf("AWS account ID %s is not linked. Please link it using 'omctl account create'.", awsAccountID)
@@ -390,7 +393,8 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 		spinner.UpdateMessage(errorMessage)
 		spinner.Error()
 		return nil
-	} else if accountStatus != "READY" {
+	} else if accountStatus != "READY" && (awsAccountID != "" || gcpProjectID != "" || azureSubscriptionID != "") {
+
 		var errorMessage string
 		if awsAccountID != "" {
 			errorMessage = fmt.Sprintf("AWS account ID %s is linked but has status '%s'. Complete onboarding if required.", awsAccountID, accountStatus)
@@ -473,12 +477,10 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 				}
 				dataaccess.PrintNextStepVerifyAccountMsg(accountData)
 				// Wait for account to become READY (poll up to 10 min)
-				if accountData != nil {
-					err = waitForAccountReady(cmd.Context(), token, accountData.Id)
-					if err != nil {
-						utils.PrintError(fmt.Errorf("account did not become READY: %v", err))
-						return err
-					}
+				err = waitForAccountReady(cmd.Context(), token, accountData.Id)
+				if err != nil {
+					utils.PrintError(fmt.Errorf("account did not become READY: %v", err))
+					return err
 				}
 			}
 		}
@@ -495,10 +497,10 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 
 	if accountMessage != "" {
 		spinner.UpdateMessage(accountMessage + " - Account linked and READY")
-	} else {
-		spinner.UpdateMessage("Account linked and READY")
-	}
+	} 
 	spinner.Complete()
+
+	// Pre-check 2: Determine service name
 
 	spinner = sm.AddSpinner("Determining service name")
 
