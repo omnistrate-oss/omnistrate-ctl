@@ -70,12 +70,12 @@ omctl deploy --platforms linux/amd64 --platforms linux/arm64
 
 // DeployCmd represents the deploy command
 var DeployCmd = &cobra.Command{
-	Use:     "deploy [spec-file]",
-	Short:   "Deploy a service using a spec file",
-	Long:    "Deploy a service using a spec file. This command builds the service in DEV, creates/checks PROD environment, promotes to PROD, marks as preferred, subscribes, and automatically creates/upgrades instances. This command may involve interactive prompts and should be run manually, not by AI agents or automation.",
-	Example: deployExample,
-	Args:    cobra.MaximumNArgs(1),
-	RunE:    runDeploy,
+	Use:          "deploy [spec-file]",
+	Short:        "Deploy a service using a spec file",
+	Long:         "Deploy a service using a spec file. This command builds the service in DEV, creates/checks PROD environment, promotes to PROD, marks as preferred, subscribes, and automatically creates/upgrades instances. This command may involve interactive prompts and should be run manually, not by AI agents or automation.",
+	Example:      deployExample,
+	Args:         cobra.MaximumNArgs(1),
+	RunE:         runDeploy,
 	SilenceUsage: true,
 }
 
@@ -383,10 +383,10 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 		var errorMessage string
 		if awsAccountID != "" {
 			errorMessage += fmt.Sprintf("AWS account ID %s is not linked. Please link it using 'omctl account create'.\n", awsAccountID)
-		} 
+		}
 		if gcpProjectID != "" {
 			errorMessage += fmt.Sprintf("GCP project %s/%s is not linked. Please link it using 'omctl account create'.\n", gcpProjectID, gcpProjectNumber)
-		} 
+		}
 		if azureSubscriptionID != "" {
 			errorMessage += fmt.Sprintf("Azure subscription %s/%s is not linked. Please link it using 'omctl account create'.", azureSubscriptionID, azureTenantID)
 		}
@@ -398,10 +398,10 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 		var errorMessage string
 		if awsAccountID != "" {
 			errorMessage += fmt.Sprintf("AWS account ID %s is linked but has status '%s'. Complete onboarding if required.\n", awsAccountID, accountStatus)
-		} 
+		}
 		if gcpProjectID != "" {
 			errorMessage += fmt.Sprintf("GCP project %s/%s is linked but has status '%s'. Complete onboarding if required.\n", gcpProjectID, gcpProjectNumber, accountStatus)
-		} 
+		}
 		if azureSubscriptionID != "" {
 			errorMessage += fmt.Sprintf("Azure subscription %s/%s is linked but has status '%s'. Complete onboarding if required.", azureSubscriptionID, azureTenantID, accountStatus)
 		}
@@ -491,17 +491,17 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 	var accountMessage string
 	if awsAccountID != "" {
 		accountMessage += fmt.Sprintf("Using AWS Account ID: %s\n", awsAccountID)
-	} 
+	}
 	if gcpProjectID != "" {
 		accountMessage += fmt.Sprintf("Using GCP Project ID: %s and Project Number: %s\n", gcpProjectID, gcpProjectNumber)
-	} 
+	}
 	if azureSubscriptionID != "" {
 		accountMessage += fmt.Sprintf("Using Azure Subscription ID: %s and Tenant ID: %s", azureSubscriptionID, azureTenantID)
 	}
 
 	if accountMessage != "" {
-		spinner.UpdateMessage(accountMessage + " - Account linked and READY")	
-	} 
+		spinner.UpdateMessage(accountMessage + " - Account linked and READY")
+	}
 	spinner.Complete()
 
 	// Pre-check 2: Determine service name
