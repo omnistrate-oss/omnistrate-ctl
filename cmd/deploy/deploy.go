@@ -486,22 +486,26 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 		}
 
 	}
-	var accountMessage string
+	var accountMessage string = ""
 	if awsAccountID != "" {
-		accountMessage = fmt.Sprintf("Using AWS Account ID: %s", awsAccountID)
-	} else if gcpProjectID != "" {
-		accountMessage = fmt.Sprintf("Using GCP Project ID: %s and Project Number: %s", gcpProjectID, gcpProjectNumber)
-	} else if azureSubscriptionID != "" {
-		accountMessage = fmt.Sprintf("Using Azure Subscription ID: %s and Tenant ID: %s", azureSubscriptionID, azureTenantID)
+		accountMessage += fmt.Sprintf("Using AWS Account ID: %s\n", awsAccountID)
+		
+	} 
+	if gcpProjectID != "" {
+		accountMessage += fmt.Sprintf("Using GCP Project ID: %s and Project Number: %s\n", gcpProjectID, gcpProjectNumber)
+	} 
+	if azureSubscriptionID != "" {
+		accountMessage += fmt.Sprintf("Using Azure Subscription ID: %s and Tenant ID: %s", azureSubscriptionID, azureTenantID)
 	}
 
 	if accountMessage != "" {
 		spinner.UpdateMessage(accountMessage + " - Account linked and READY")
-	} 
-	spinner.Complete()
+		spinner.Complete()
+	} else {
+		spinner.Complete()
+	}
 
 	// Pre-check 2: Determine service name
-
 	spinner = sm.AddSpinner("Determining service name")
 
 	var serviceNameToUse string
@@ -546,7 +550,6 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 
 	// Step 3: Build service in DEV environment with release-as-preferred
 	spinner = sm.AddSpinner("Building service")
-	spinner.Complete()
 
 	var serviceID, environmentID, planID string
 	var undefinedResources map[string]string
@@ -1713,12 +1716,12 @@ func createDeploymentYAML(
 		} else {
 			sp := getServicePlan()
 			hosted := make(map[string]interface{})
-			// if awsAccountID != "" {
-			// 	hosted["awsAccountId"] = awsAccountID
-			// 	if awsBootstrapRoleARN != "" {
-			// 		hosted["awsBootstrapRoleAccountArn"] = awsBootstrapRoleARN
-			// 	}
-			// }
+			if awsAccountID != "" {
+				hosted["awsAccountId"] = awsAccountID
+				if awsBootstrapRoleARN != "" {
+					hosted["awsBootstrapRoleAccountArn"] = awsBootstrapRoleARN
+				}
+			}
 			if gcpProjectID != "" {
 				hosted["gcpProjectId"] = gcpProjectID
 				if gcpProjectNumber != "" {
