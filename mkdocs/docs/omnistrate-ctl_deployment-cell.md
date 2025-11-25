@@ -41,4 +41,5 @@ omnistrate-ctl deployment-cell [operation] [flags]
 * [omnistrate-ctl deployment-cell status](omnistrate-ctl_deployment-cell_status.md)	 - Get status of a deployment cell
 * [omnistrate-ctl deployment-cell update-config-template](omnistrate-ctl_deployment-cell_update-config-template.md)	 - Update deployment cell configuration template
 * [omnistrate-ctl deployment-cell update-kubeconfig](omnistrate-ctl_deployment-cell_update-kubeconfig.md)	 - Update kubeconfig for a deployment cell
+* [omnistrate-ctl deployment-cell workflow](omnistrate-ctl_deployment-cell_workflow.md)	 - Manage deployment cell workflows
 

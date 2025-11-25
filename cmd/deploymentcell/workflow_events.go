@@ -166,7 +166,7 @@ func getEarliestEventTime(step openapiclientfleet.DeploymentCellEventsPerWorkflo
 }
 
 func formatMetadata(metadata map[string]interface{}) string {
-	if metadata == nil || len(metadata) == 0 {
+	if len(metadata) == 0 {
 		return ""
 	}
 
