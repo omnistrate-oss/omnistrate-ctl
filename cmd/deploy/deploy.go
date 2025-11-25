@@ -121,8 +121,6 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-
-	
 	// Retrieve flags
 	file, err := cmd.Flags().GetString("file")
 	if err != nil {
@@ -384,11 +382,13 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 
 		var errorMessage string
 		if awsAccountID != "" {
-			errorMessage = fmt.Sprintf("AWS account ID %s is not linked. Please link it using 'omctl account create'.", awsAccountID)
-		} else if gcpProjectID != "" {
-			errorMessage = fmt.Sprintf("GCP project %s/%s is not linked. Please link it using 'omctl account create'.", gcpProjectID, gcpProjectNumber)
-		} else if azureSubscriptionID != "" {
-			errorMessage = fmt.Sprintf("Azure subscription %s/%s is not linked. Please link it using 'omctl account create'.", azureSubscriptionID, azureTenantID)
+			errorMessage += fmt.Sprintf("AWS account ID %s is not linked. Please link it using 'omctl account create'.\n", awsAccountID)
+		} 
+		if gcpProjectID != "" {
+			errorMessage += fmt.Sprintf("GCP project %s/%s is not linked. Please link it using 'omctl account create'.\n", gcpProjectID, gcpProjectNumber)
+		} 
+		if azureSubscriptionID != "" {
+			errorMessage += fmt.Sprintf("Azure subscription %s/%s is not linked. Please link it using 'omctl account create'.", azureSubscriptionID, azureTenantID)
 		}
 		spinner.UpdateMessage(errorMessage)
 		spinner.Error()
@@ -397,11 +397,13 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 
 		var errorMessage string
 		if awsAccountID != "" {
-			errorMessage = fmt.Sprintf("AWS account ID %s is linked but has status '%s'. Complete onboarding if required.", awsAccountID, accountStatus)
-		} else if gcpProjectID != "" {
-			errorMessage = fmt.Sprintf("GCP project %s/%s is linked but has status '%s'. Complete onboarding if required.", gcpProjectID, gcpProjectNumber, accountStatus)
-		} else if azureSubscriptionID != "" {
-			errorMessage = fmt.Sprintf("Azure subscription %s/%s is linked but has status '%s'. Complete onboarding if required.", azureSubscriptionID, azureTenantID, accountStatus)
+			errorMessage += fmt.Sprintf("AWS account ID %s is linked but has status '%s'. Complete onboarding if required.\n", awsAccountID, accountStatus)
+		} 
+		if gcpProjectID != "" {
+			errorMessage += fmt.Sprintf("GCP project %s/%s is linked but has status '%s'. Complete onboarding if required.\n", gcpProjectID, gcpProjectNumber, accountStatus)
+		} 
+		if azureSubscriptionID != "" {
+			errorMessage += fmt.Sprintf("Azure subscription %s/%s is linked but has status '%s'. Complete onboarding if required.", azureSubscriptionID, azureTenantID, accountStatus)
 		}
 		spinner.UpdateMessage(errorMessage)
 		spinner.Error()
@@ -500,10 +502,9 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 
 	if accountMessage != "" {
 		spinner.UpdateMessage(accountMessage + " - Account linked and READY")
-		spinner.Complete()
-	} else {
-		spinner.Complete()
-	}
+		
+	} 
+	spinner.Complete()
 
 	// Pre-check 2: Determine service name
 	spinner = sm.AddSpinner("Determining service name")
