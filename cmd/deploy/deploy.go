@@ -488,7 +488,7 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 		}
 
 	}
-	var accountMessage string = ""
+	var accountMessage string
 	if awsAccountID != "" {
 		accountMessage += fmt.Sprintf("Using AWS Account ID: %s\n", awsAccountID)
 		
