@@ -491,7 +491,6 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 	var accountMessage string
 	if awsAccountID != "" {
 		accountMessage += fmt.Sprintf("Using AWS Account ID: %s\n", awsAccountID)
-		
 	} 
 	if gcpProjectID != "" {
 		accountMessage += fmt.Sprintf("Using GCP Project ID: %s and Project Number: %s\n", gcpProjectID, gcpProjectNumber)
@@ -501,8 +500,7 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 	}
 
 	if accountMessage != "" {
-		spinner.UpdateMessage(accountMessage + " - Account linked and READY")
-		
+		spinner.UpdateMessage(accountMessage + " - Account linked and READY")	
 	} 
 	spinner.Complete()
 
