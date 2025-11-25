@@ -15,6 +15,7 @@ var workflowCmd = &cobra.Command{
 func init() {
 	workflowCmd.AddCommand(workflowListCmd)
 	workflowCmd.AddCommand(workflowDescribeCmd)
+	workflowCmd.AddCommand(workflowEventsCmd)
 }
 
 func runWorkflow(cmd *cobra.Command, args []string) {

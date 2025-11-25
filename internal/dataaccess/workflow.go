@@ -454,3 +454,28 @@ func DescribeDeploymentCellWorkflow(ctx context.Context, token string, hostClust
 	}
 	return
 }
+
+// GetDeploymentCellWorkflowEvents gets events for a deployment cell workflow
+func GetDeploymentCellWorkflowEvents(ctx context.Context, token string, hostClusterID, workflowID string) (res *openapiclientfleet.GetDeploymentCellWorkflowEventsResult, err error) {
+	ctxWithToken := context.WithValue(ctx, openapiclientfleet.ContextAccessToken, token)
+	apiClient := getFleetClient()
+
+	req := apiClient.HostclusterApiAPI.HostclusterApiGetDeploymentCellWorkflowEvents(
+		ctxWithToken,
+		hostClusterID,
+		workflowID,
+	)
+
+	var r *http.Response
+	defer func() {
+		if r != nil {
+			_ = r.Body.Close()
+		}
+	}()
+
+	res, r, err = req.Execute()
+	if err != nil {
+		return nil, handleFleetError(err)
+	}
+	return
+}
