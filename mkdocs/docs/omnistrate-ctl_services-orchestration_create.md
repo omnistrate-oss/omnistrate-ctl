@@ -1,10 +1,10 @@
 ## omnistrate-ctl services-orchestration create
 
-Create a services orchestration deployment
+DEPRECATED - Create a services orchestration deployment
 
 ### Synopsis
 
-This command helps you create a services orchestration deployment, coordinating the creation of multiple services.
+DEPRECATED - This command helps you create a services orchestration deployment, coordinating the creation of multiple services.
 
 ```
 omnistrate-ctl services-orchestration create --dsl-file=[file-path] [flags]
@@ -33,5 +33,5 @@ omctl services-orchestration create --dsl-file /path/to/dsl.yaml
 
 ### SEE ALSO
 
-* [omnistrate-ctl services-orchestration](omnistrate-ctl_services-orchestration.md)	 - Manage Services Orchestration Deployments across services
+* [omnistrate-ctl services-orchestration](omnistrate-ctl_services-orchestration.md)	 - DEPRECATED - Manage Services Orchestration Deployments across services
 

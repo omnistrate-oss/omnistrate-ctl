@@ -1,10 +1,10 @@
 ## omnistrate-ctl services-orchestration list
 
-List services orchestration deployments
+DEPRECATED - List services orchestration deployments
 
 ### Synopsis
 
-This command helps you list services orchestration deployments.
+DEPRECATED - This command helps you list services orchestration deployments.
 
 ```
 omnistrate-ctl services-orchestration list [flags]
@@ -33,5 +33,5 @@ omctl services-orchestration list --environment-type=prod
 
 ### SEE ALSO
 
-* [omnistrate-ctl services-orchestration](omnistrate-ctl_services-orchestration.md)	 - Manage Services Orchestration Deployments across services
+* [omnistrate-ctl services-orchestration](omnistrate-ctl_services-orchestration.md)	 - DEPRECATED - Manage Services Orchestration Deployments across services
 

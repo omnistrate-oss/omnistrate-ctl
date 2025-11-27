@@ -1,10 +1,10 @@
 ## omnistrate-ctl services-orchestration delete
 
-Delete a services orchestration deployment
+DEPRECATED - Delete a services orchestration deployment
 
 ### Synopsis
 
-This command helps you delete a services orchestration deployment from your account.
+DEPRECATED - This command helps you delete a services orchestration deployment from your account.
 
 ```
 omnistrate-ctl services-orchestration delete [services-orchestration-id] [flags]
@@ -33,5 +33,5 @@ omctl services-orchestration delete so-abcd1234
 
 ### SEE ALSO
 
-* [omnistrate-ctl services-orchestration](omnistrate-ctl_services-orchestration.md)	 - Manage Services Orchestration Deployments across services
+* [omnistrate-ctl services-orchestration](omnistrate-ctl_services-orchestration.md)	 - DEPRECATED - Manage Services Orchestration Deployments across services
 
