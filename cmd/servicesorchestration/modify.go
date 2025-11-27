@@ -18,8 +18,8 @@ omctl services-orchestration modify so-abcd1234 --dsl-file /path/to/dsl.yaml`
 
 var modifyCmd = &cobra.Command{
 	Use:          "modify [so-id] -dsl-file=[file-path]",
-	Short:        "Modify a services orchestration deployment",
-	Long:         `This command helps you modify a services orchestration deployment, coordinating the modification of multiple services.`,
+	Short:        "DEPRECATED - Modify a services orchestration deployment",
+	Long:         `DEPRECATED - This command helps you modify a services orchestration deployment, coordinating the modification of multiple services.`,
 	Example:      modifyExample,
 	RunE:         runModify,
 	SilenceUsage: true,

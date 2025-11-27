@@ -19,8 +19,8 @@ omctl services-orchestration describe so-abcd1234`
 
 var describeCmd = &cobra.Command{
 	Use:          "describe [so-id]",
-	Short:        "Describe an services orchestration deployment",
-	Long:         `This command helps you describe a services orchestration deployment.`,
+	Short:        "DEPRECATED - Describe an services orchestration deployment",
+	Long:         `DEPRECATED - This command helps you describe a services orchestration deployment.`,
 	Example:      describeExample,
 	RunE:         runDescribe,
 	SilenceUsage: true,
