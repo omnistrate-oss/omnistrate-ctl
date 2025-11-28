@@ -16,6 +16,7 @@ import (
 	"gopkg.in/yaml.v3"
 
 	"github.com/chelnak/ysmrr"
+	"github.com/omnistrate-oss/omnistrate-ctl/cmd/account"
 	"github.com/omnistrate-oss/omnistrate-ctl/cmd/build"
 	"github.com/omnistrate-oss/omnistrate-ctl/cmd/common"
 	"github.com/omnistrate-oss/omnistrate-ctl/cmd/instance"
@@ -36,7 +37,7 @@ omctl deploy spec.yaml
 omctl deploy spec.yaml --product-name "My Service"
 
 # Build service from an existing compose spec in the repository
-omctl deploy --file compose.yaml
+omctl deploy --file omnistrate-compose.yaml
 
 # Build service with a custom service name
 omctl deploy --product-name my-custom-service
@@ -69,12 +70,13 @@ omctl deploy --platforms linux/amd64 --platforms linux/arm64
 
 // DeployCmd represents the deploy command
 var DeployCmd = &cobra.Command{
-	Use:     "deploy [spec-file]",
-	Short:   "Deploy a service using a spec file",
-	Long:    "Deploy a service using a spec file. This command builds the service in DEV, creates/checks PROD environment, promotes to PROD, marks as preferred, subscribes, and automatically creates/upgrades instances.",
-	Example: deployExample,
-	Args:    cobra.MaximumNArgs(1),
-	RunE:    runDeploy,
+	Use:          "deploy [spec-file]",
+	Short:        "Deploy a service using a spec file",
+	Long:         "Deploy a service using a spec file. This command builds the service in DEV, creates/checks PROD environment, promotes to PROD, marks as preferred, subscribes, and automatically creates/upgrades instances. This command may involve interactive prompts and should be run manually, not by AI agents or automation.",
+	Example:      deployExample,
+	Args:         cobra.MaximumNArgs(1),
+	RunE:         runDeploy,
+	SilenceUsage: true,
 }
 
 func init() {
@@ -94,7 +96,7 @@ func init() {
 	// Additional flags from build command
 	DeployCmd.Flags().Bool("skip-docker-build", false, "Skip building and pushing the Docker image")
 	DeployCmd.Flags().StringArray("platforms", []string{"linux/amd64"}, "Specify the platforms to build for. Use the format: --platforms linux/amd64 --platforms linux/arm64. Default is linux/amd64.")
-	DeployCmd.Flags().String("deployment-type", "hosted", "Type of deployment. Valid values: hosted, byoa")
+	DeployCmd.Flags().String("deployment-type", "hosted", "Type of deployment. Valid values: hosted, byoa (default \"hosted\" i.e. the deployments are hosted in the service provider account)")
 	DeployCmd.Flags().String("github-username", "", "GitHub username to use if GitHub API fails to retrieve it automatically")
 
 	if err := DeployCmd.MarkFlagFilename("param-file"); err != nil {
@@ -221,6 +223,7 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 	// Improved spec file detection: prefer service plan, then docker compose, else repo
 	var specFile string
 	var specType = build.DockerComposeSpecType
+	var buildFromRepo = false
 
 	// 1. If user provided a file via --file or arg, use it
 	if fileExplicit && file != "" {
@@ -228,18 +231,19 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 	} else if len(args) > 0 && args[0] != "" {
 		specFile = args[0]
 	} else if specFile == "" {
-		if _, err := os.Stat(build.ComposeFileName); err == nil {
-			specFile = build.ComposeFileName
+		// Check for omnistrate-compose.yaml first (preferred)
+		if _, err := os.Stat(build.OmnistrateComposeFileName); err == nil {
+			specFile = build.OmnistrateComposeFileName
 		} else {
-			// Auto-detect compose file in current directory if present
-			if files, err := os.ReadDir("."); err == nil {
-				for _, f := range files {
-					if !f.IsDir() && (f.Name() == build.ComposeFileName) {
-						specFile = f.Name()
-						break
-					}
-				}
+			// If omnistrate-compose.yaml not found, check for docker-compose.yaml and error out
+			if _, err := os.Stat(build.DockerComposeFileName); err == nil {
+				spinner.Error()
+				errMsg := fmt.Sprintf("Deployment failed: Required file missing — %s\n\n→ Found: %s\n→ Expected: %s\n\nTip: You can convert your docker-compose.yaml into Omnistrate's native format using the omnistrate-fde skill via the Omnistrate MCP Server\nYou may even invoke it through AI agents like Claude, Gemini or others.\n\nLearn more: https://docs.omnistrate.com/getting-started/mcp-server/#using-skills",
+					build.OmnistrateComposeFileName, build.DockerComposeFileName, build.OmnistrateComposeFileName)
+				utils.PrintError(errors.New(errMsg))
+				return errors.Wrap(err, errMsg)
 			}
+			buildFromRepo = true
 		}
 	}
 
@@ -272,86 +276,25 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 		// Check for omnistrate-specific configurations
 		var planCheck map[string]interface{}
 		if err := yaml.Unmarshal(processedData, &planCheck); err == nil {
-			// Helper: recursively search for any x-omnistrate key
-			var containsOmnistrateKey func(m map[string]interface{}) bool
-			containsOmnistrateKey = func(m map[string]interface{}) bool {
-				for k, v := range m {
-					// Check for any x-omnistrate key
-					if strings.HasPrefix(k, "x-omnistrate-") {
-						return true
-					}
-					// Recurse into nested maps
-					if sub, ok := v.(map[string]interface{}); ok {
-						if containsOmnistrateKey(sub) {
-							return true
-						}
-					}
-					// Recurse into slices of maps
-					if arr, ok := v.([]interface{}); ok {
-						for _, item := range arr {
-							if subm, ok := item.(map[string]interface{}); ok {
-								if containsOmnistrateKey(subm) {
-									return true
-								}
-							}
-						}
-					}
-				}
-				return false
-			}
-
 			// Check if this is an omnistrate spec file
-			isOmnistrate := containsOmnistrateKey(planCheck)
+			isOmnistrate := build.ContainsOmnistrateKey(planCheck)
 			if !isOmnistrate {
-				utils.PrintWarning(fmt.Sprintf("Spec file '%s' doesn't contain omnistrate-specific configurations (x-omnistrate-* keys)", specFile))
-				utils.PrintWarning("This might be a standard docker-compose file. Consider adding omnistrate configurations for better service definition.")
-			}
-
-			// Improved: Recursively check for plan spec keys at any level
-			planKeyGroups := [][]string{
-				{"helm", "helmChart", "helmChartConfiguration"},
-				{"operator", "operatorCRDConfiguration"},
-				{"terraform", "terraformConfigurations"},
-				{"kustomize", "kustomizeConfiguration"},
-			}
-			// Helper: recursively search for any key in keys in a map
-			var containsAnyKey func(m map[string]interface{}, keys []string) bool
-			containsAnyKey = func(m map[string]interface{}, keys []string) bool {
-				for k, v := range m {
-					for _, key := range keys {
-						if k == key {
-							return true
-						}
-					}
-					// Recurse into nested maps
-					if sub, ok := v.(map[string]interface{}); ok {
-						if containsAnyKey(sub, keys) {
-							return true
-						}
-					}
-					// Recurse into slices of maps
-					if arr, ok := v.([]interface{}); ok {
-						for _, item := range arr {
-							if subm, ok := item.(map[string]interface{}); ok {
-								if containsAnyKey(subm, keys) {
-									return true
-								}
-							}
-						}
-					}
-				}
-				return false
-			}
-			for _, keys := range planKeyGroups {
-				if containsAnyKey(planCheck, keys) {
-					specType = build.ServicePlanSpecType
-					break
-				}
+				utils.PrintError(fmt.Errorf("spec file '%s' doesn't contain omnistrate-specific configurations (x-omnistrate-* keys). This might be a standard docker-compose file. Consider adding omnistrate configurations for better service definition", specFile))
+				return nil
+			} // Use the common function to detect spec type
+			specType = build.DetectSpecType(planCheck)
+		} else {
+			// Fallback to file extension based detection
+			fileToRead := filepath.Base(absSpecFile)
+			if fileToRead == build.PlanSpecFileName {
+				specType = build.ServicePlanSpecType
+			} else {
+				specType = build.DockerComposeSpecType
 			}
 		}
 	}
 
-	spinner.UpdateMessage("Checking cloud provider accounts...\n")
+	spinner.UpdateMessage("Checking cloud provider accounts...")
 	isAccountId := false
 	awsAccountID, awsBootstrapRoleARN, gcpProjectID, gcpProjectNumber, gcpServiceAccountEmail, azureSubscriptionID, azureTenantID, extractDeploymentType := extractCloudAccountsFromProcessedData(processedData)
 	if awsAccountID != "" || gcpProjectID != "" || azureSubscriptionID != "" {
@@ -435,27 +378,32 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 			}
 		}
 	}
+	if !foundMatchingAccount && (awsAccountID != "" || gcpProjectID != "" || azureSubscriptionID != "") {
 
-	if !foundMatchingAccount {
 		var errorMessage string
 		if awsAccountID != "" {
-			errorMessage = fmt.Sprintf("AWS account ID %s is not linked. Please link it using 'omctl account create'.", awsAccountID)
-		} else if gcpProjectID != "" {
-			errorMessage = fmt.Sprintf("GCP project %s/%s is not linked. Please link it using 'omctl account create'.", gcpProjectID, gcpProjectNumber)
-		} else if azureSubscriptionID != "" {
-			errorMessage = fmt.Sprintf("Azure subscription %s/%s is not linked. Please link it using 'omctl account create'.", azureSubscriptionID, azureTenantID)
+			errorMessage += fmt.Sprintf("AWS account ID %s is not linked. Please link it using 'omctl account create'.\n", awsAccountID)
+		}
+		if gcpProjectID != "" {
+			errorMessage += fmt.Sprintf("GCP project %s/%s is not linked. Please link it using 'omctl account create'.\n", gcpProjectID, gcpProjectNumber)
+		}
+		if azureSubscriptionID != "" {
+			errorMessage += fmt.Sprintf("Azure subscription %s/%s is not linked. Please link it using 'omctl account create'.", azureSubscriptionID, azureTenantID)
 		}
 		spinner.UpdateMessage(errorMessage)
 		spinner.Error()
 		return nil
-	} else if accountStatus != "READY" {
+	} else if accountStatus != "READY" && (awsAccountID != "" || gcpProjectID != "" || azureSubscriptionID != "") {
+
 		var errorMessage string
 		if awsAccountID != "" {
-			errorMessage = fmt.Sprintf("AWS account ID %s is linked but has status '%s'. Complete onboarding if required.", awsAccountID, accountStatus)
-		} else if gcpProjectID != "" {
-			errorMessage = fmt.Sprintf("GCP project %s/%s is linked but has status '%s'. Complete onboarding if required.", gcpProjectID, gcpProjectNumber, accountStatus)
-		} else if azureSubscriptionID != "" {
-			errorMessage = fmt.Sprintf("Azure subscription %s/%s is linked but has status '%s'. Complete onboarding if required.", azureSubscriptionID, azureTenantID, accountStatus)
+			errorMessage += fmt.Sprintf("AWS account ID %s is linked but has status '%s'. Complete onboarding if required.\n", awsAccountID, accountStatus)
+		}
+		if gcpProjectID != "" {
+			errorMessage += fmt.Sprintf("GCP project %s/%s is linked but has status '%s'. Complete onboarding if required.\n", gcpProjectID, gcpProjectNumber, accountStatus)
+		}
+		if azureSubscriptionID != "" {
+			errorMessage += fmt.Sprintf("Azure subscription %s/%s is linked but has status '%s'. Complete onboarding if required.", azureSubscriptionID, azureTenantID, accountStatus)
 		}
 		spinner.UpdateMessage(errorMessage)
 		spinner.Error()
@@ -477,37 +425,86 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 						"   3. Create a new READY account: omctl account create",
 					len(allAccounts),
 				))
-				spinner.UpdateMessage(" deployment requires at least one READY cloud provider account")
+				spinner.UpdateMessage("deployment requires at least one READY cloud provider account")
 				spinner.Error()
 				return nil
 			} else {
-				utils.PrintError(fmt.Errorf(
-					"no cloud provider accounts found.\n" +
-						"💡 Create your first account: omctl account create",
-				))
-				spinner.UpdateMessage(" no cloud provider accounts linked. Please link at least one account using 'omctl account create' before deploying")
-				spinner.Error()
-				return nil
+				// Determine which cloud provider to use and get credentials
+				if cloudProvider == "" {
+					cloudProvider = promptForCloudProvider()
+				}
+
+				// Get cloud-specific credentials
+				paramsJSON, err := promptForCloudCredentials(cloudProvider)
+				if err != nil {
+					return fmt.Errorf("failed to get cloud credentials: %w", err)
+				}
+
+				// Parse the JSON to extract credentials
+				var paramsMap map[string]interface{}
+				if err := json.Unmarshal([]byte(paramsJSON), &paramsMap); err != nil {
+					return fmt.Errorf("failed to parse credentials: %w", err)
+				}
+
+				// Create account params based on cloud provider
+				accountParams := account.CloudAccountParams{
+					Name: fmt.Sprintf("%s-account-%d", cloudProvider, time.Now().Unix()),
+				}
+
+				switch cloudProvider {
+				case "aws":
+					if awsAccountID, ok := paramsMap["aws_account_id"].(string); ok {
+						accountParams.AwsAccountID = awsAccountID
+					}
+				case "gcp":
+					if gcpProjectID, ok := paramsMap["gcp_project_id"].(string); ok {
+						accountParams.GcpProjectID = gcpProjectID
+					}
+					if gcpProjectNumber, ok := paramsMap["gcp_project_number"].(string); ok {
+						accountParams.GcpProjectNumber = gcpProjectNumber
+					}
+				case "azure":
+					if azureSubscriptionID, ok := paramsMap["azure_subscription_id"].(string); ok {
+						accountParams.AzureSubscriptionID = azureSubscriptionID
+					}
+					if azureTenantID, ok := paramsMap["azure_tenant_id"].(string); ok {
+						accountParams.AzureTenantID = azureTenantID
+					}
+				}
+				// Create the cloud provider account
+				accountData, err := account.CreateCloudAccount(cmd.Context(), token, accountParams, spinner, sm)
+				if err != nil || accountData == nil {
+					utils.PrintError(fmt.Errorf("failed to create cloud provider account: %v", err))
+					return err
+				}
+				dataaccess.PrintNextStepVerifyAccountMsg(accountData)
+				// Wait for account to become READY (poll up to 10 min)
+				err = waitForAccountReady(cmd.Context(), token, accountData.Id)
+				if err != nil {
+					utils.PrintError(fmt.Errorf("account did not become READY: %v", err))
+					return err
+				}
 			}
 		}
 
 	}
 	var accountMessage string
 	if awsAccountID != "" {
-		accountMessage = fmt.Sprintf("Using AWS Account ID: %s", awsAccountID)
-	} else if gcpProjectID != "" {
-		accountMessage = fmt.Sprintf("Using GCP Project ID: %s and Project Number: %s", gcpProjectID, gcpProjectNumber)
-	} else if azureSubscriptionID != "" {
-		accountMessage = fmt.Sprintf("Using Azure Subscription ID: %s and Tenant ID: %s", azureSubscriptionID, azureTenantID)
+		accountMessage += fmt.Sprintf("Using AWS Account ID: %s\n", awsAccountID)
+	}
+	if gcpProjectID != "" {
+		accountMessage += fmt.Sprintf("Using GCP Project ID: %s and Project Number: %s\n", gcpProjectID, gcpProjectNumber)
+	}
+	if azureSubscriptionID != "" {
+		accountMessage += fmt.Sprintf("Using Azure Subscription ID: %s and Tenant ID: %s", azureSubscriptionID, azureTenantID)
 	}
 
 	if accountMessage != "" {
 		spinner.UpdateMessage(accountMessage + " - Account linked and READY")
-	} else {
-		spinner.UpdateMessage("Account linked and READY")
 	}
 	spinner.Complete()
 
+	// Pre-check 2: Determine service name
 	spinner = sm.AddSpinner("Determining service name")
 
 	var serviceNameToUse string
@@ -552,12 +549,11 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 
 	// Step 3: Build service in DEV environment with release-as-preferred
 	spinner = sm.AddSpinner("Building service")
-	spinner.Complete()
 
 	var serviceID, environmentID, planID string
 	var undefinedResources map[string]string
 
-	if specType == build.DockerComposeSpecType && !skipDockerBuild {
+	if specType == build.DockerComposeSpecType && buildFromRepo {
 		serviceID, environmentID, planID, undefinedResources, err = build.BuildServiceFromRepository(
 			cmd,
 			cmd.Context(),
@@ -803,9 +799,14 @@ func executeDeploymentWorkflow(cmd *cobra.Command, sm ysmrr.SpinnerManager, toke
 			sm.Stop()
 		}
 
+		if instanceID != "" && len(existingInstanceIDs) == 0 {
+			spinner.UpdateMessage(fmt.Sprintf("%s: No existing instance found for instance ID: %s (provider instance does not match)", spinnerMsg, instanceID))
+			spinner.Error()
+			return nil
+		}
+
 		// Display automatic instance handling message
 		if len(existingInstanceIDs) > 0 {
-
 			finalInstanceID = existingInstanceIDs[0]
 			spinner.UpdateMessage(fmt.Sprintf("%s: Found %d existing instances", spinnerMsg, len(existingInstanceIDs)))
 			spinner.Complete()
@@ -1314,7 +1315,7 @@ func listInstances(ctx context.Context, token, serviceID, environmentID, service
 				exitInstanceIDs = append(exitInstanceIDs, idStr)
 				seenIDs[idStr] = true
 			}
-		} else {
+		} else if instanceID == "" {
 			if idStr != "" && !seenIDs[idStr] {
 				exitInstanceIDs = append(exitInstanceIDs, idStr)
 				seenIDs[idStr] = true
@@ -1714,12 +1715,12 @@ func createDeploymentYAML(
 		} else {
 			sp := getServicePlan()
 			hosted := make(map[string]interface{})
-			// if awsAccountID != "" {
-			// 	hosted["awsAccountId"] = awsAccountID
-			// 	if awsBootstrapRoleARN != "" {
-			// 		hosted["awsBootstrapRoleAccountArn"] = awsBootstrapRoleARN
-			// 	}
-			// }
+			if awsAccountID != "" {
+				hosted["awsAccountId"] = awsAccountID
+				if awsBootstrapRoleARN != "" {
+					hosted["awsBootstrapRoleAccountArn"] = awsBootstrapRoleARN
+				}
+			}
 			if gcpProjectID != "" {
 				hosted["gcpProjectId"] = gcpProjectID
 				if gcpProjectNumber != "" {
@@ -2256,4 +2257,25 @@ func waitForAccountVerification(ctx context.Context, token, serviceID,
 	}
 
 	return "", fmt.Errorf("account verification timed out after %d attempts", maxRetries)
+}
+
+// waitForAccountReady polls for account status to become READY, up to 10 minutes
+func waitForAccountReady(ctx context.Context, token, accountID string) error {
+	timeout := time.After(10 * time.Minute)
+	ticker := time.NewTicker(10 * time.Second)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-timeout:
+			return errors.New("timed out waiting for account to become READY")
+		case <-ticker.C:
+			account, err := dataaccess.DescribeAccount(ctx, token, accountID)
+			if err != nil {
+				return err
+			}
+			if account.Status == "READY" {
+				return nil
+			}
+		}
+	}
 }

@@ -30,22 +30,22 @@ omnistrate-ctl build [--file=file] [--spec-type=spec-type] [--product-name=servi
 omctl build --product-name "My Service"
 
 # Build service with compose spec in dev environment
-omctl build --file compose.yaml --product-name "My Service"
+omctl build --file omnistrate-compose.yaml --product-name "My Service"
 
 # Build service with compose spec in prod environment
-omctl build --file compose.yaml --product-name "My Service" --environment prod --environment-type prod
+omctl build --file omnistrate-compose.yaml --product-name "My Service" --environment prod --environment-type prod
 
 # Build service with compose spec and release the service with a release description
-omctl build --file compose.yaml --product-name "My Service" --release --release-description "v1.0.0-alpha"
+omctl build --file omnistrate-compose.yaml --product-name "My Service" --release --release-description "v1.0.0-alpha"
 
 # Build service with compose spec and release the service as preferred with a release description
-omctl build --file compose.yaml --product-name "My Service" --release-as-preferred --release-description "v1.0.0-alpha"
+omctl build --file omnistrate-compose.yaml --product-name "My Service" --release-as-preferred --release-description "v1.0.0-alpha"
 
 # Build service with compose spec interactively
-omctl build --file compose.yaml --product-name "My Service" --interactive
+omctl build --file omnistrate-compose.yaml --product-name "My Service" --interactive
 
 # Build service with compose spec with service description and service logo
-omctl build --file compose.yaml --product-name "My Service" --description "My Service Description" --service-logo-url "https://example.com/logo.png"
+omctl build --file omnistrate-compose.yaml --product-name "My Service" --description "My Service Description" --service-logo-url "https://example.com/logo.png"
 
 # Build service with service specification for Helm, Operator or Kustomize in dev environment
 omctl build --spec-type ServicePlanSpec --file spec.yaml --product-name "My Service"
@@ -74,7 +74,7 @@ omctl build --image docker.io/namespace/my-image:v1.2 --product-name "My Service
   -d, --dry-run                             Simulate building the service without actually creating resources
       --environment string                  Name of the environment to build the service in (default "Dev")
       --environment-type string             Type of environment. Valid options include: 'dev', 'prod', 'qa', 'canary', 'staging', 'private') (default "dev")
-  -f, --file string                         Path to the docker compose file (defaults to compose.yaml or spec.yaml)
+  -f, --file string                         Path to the docker compose file (defaults to omnistrate-compose.yaml, docker-compose.yaml or spec.yaml in that order).If docker-compose.yaml is found, it is detected but not supported; please convert it to omnistrate-compose.yaml
       --force-create-service-plan-version   Force create a new service plan version on release.
   -h, --help                                help for build
   -i, --interactive                         Interactive mode

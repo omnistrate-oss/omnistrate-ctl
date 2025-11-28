@@ -2,6 +2,7 @@ package cost
 
 import (
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/omnistrate-oss/omnistrate-ctl/cmd/common"
@@ -20,7 +21,7 @@ var deploymentCellCmd = &cobra.Command{
 func init() {
 	deploymentCellCmd.Flags().String("start-date", "", "Start date for cost analysis (RFC3339 format) (required)")
 	deploymentCellCmd.Flags().String("end-date", "", "End date for cost analysis (RFC3339 format) (required)")
-	deploymentCellCmd.Flags().StringP("environment-type", "e", "", "Environment type (required)")
+	deploymentCellCmd.Flags().StringP("environment-type", "e", "", "Environment type (valid: dev, qa, staging, canary, prod, private) (required)")
 	deploymentCellCmd.Flags().StringP("frequency", "f", "daily", "Frequency of cost data (daily, weekly, monthly)")
 	deploymentCellCmd.Flags().String("include-providers", "", "Cloud provider IDs to include (comma-separated)")
 	deploymentCellCmd.Flags().String("exclude-providers", "", "Cloud provider IDs to exclude (comma-separated)")
@@ -49,6 +50,9 @@ func getDeploymentCellCost(cmd *cobra.Command, args []string) error {
 	includeInstances, _ := cmd.Flags().GetString("include-instances")
 	excludeInstances, _ := cmd.Flags().GetString("exclude-instances")
 	topNInstances, _ := cmd.Flags().GetInt64("top-n-instances")
+
+	// Environment type must be uppercase for the API
+	environmentType = strings.ToUpper(environmentType)
 
 	startDate, err := time.Parse(time.RFC3339, startDateStr)
 	if err != nil {

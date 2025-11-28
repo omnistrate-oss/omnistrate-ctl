@@ -8,6 +8,8 @@ import (
 	"path/filepath"
 	"strings"
 
+	"gopkg.in/yaml.v3"
+
 	"github.com/omnistrate-oss/omnistrate-ctl/cmd/common"
 	"github.com/omnistrate-oss/omnistrate-ctl/internal/model"
 
@@ -34,22 +36,22 @@ const (
 omctl build --product-name "My Service"
 
 # Build service with compose spec in dev environment
-omctl build --file compose.yaml --product-name "My Service"
+omctl build --file omnistrate-compose.yaml --product-name "My Service"
 
 # Build service with compose spec in prod environment
-omctl build --file compose.yaml --product-name "My Service" --environment prod --environment-type prod
+omctl build --file omnistrate-compose.yaml --product-name "My Service" --environment prod --environment-type prod
 
 # Build service with compose spec and release the service with a release description
-omctl build --file compose.yaml --product-name "My Service" --release --release-description "v1.0.0-alpha"
+omctl build --file omnistrate-compose.yaml --product-name "My Service" --release --release-description "v1.0.0-alpha"
 
 # Build service with compose spec and release the service as preferred with a release description
-omctl build --file compose.yaml --product-name "My Service" --release-as-preferred --release-description "v1.0.0-alpha"
+omctl build --file omnistrate-compose.yaml --product-name "My Service" --release-as-preferred --release-description "v1.0.0-alpha"
 
 # Build service with compose spec interactively
-omctl build --file compose.yaml --product-name "My Service" --interactive
+omctl build --file omnistrate-compose.yaml --product-name "My Service" --interactive
 
 # Build service with compose spec with service description and service logo
-omctl build --file compose.yaml --product-name "My Service" --description "My Service Description" --service-logo-url "https://example.com/logo.png"
+omctl build --file omnistrate-compose.yaml --product-name "My Service" --description "My Service Description" --service-logo-url "https://example.com/logo.png"
 
 # Build service with service specification for Helm, Operator or Kustomize in dev environment
 omctl build --spec-type ServicePlanSpec --file spec.yaml --product-name "My Service"
@@ -96,7 +98,7 @@ var BuildCmd = &cobra.Command{
 }
 
 func init() {
-	BuildCmd.Flags().StringP("file", "f", "", "Path to the docker compose file (defaults to compose.yaml or spec.yaml)")
+	BuildCmd.Flags().StringP("file", "f", "", "Path to the docker compose file (defaults to omnistrate-compose.yaml, docker-compose.yaml or spec.yaml in that order).If docker-compose.yaml is found, it is detected but not supported; please convert it to omnistrate-compose.yaml")
 	BuildCmd.Flags().StringP("spec-type", "s", "", "Spec type (will infer from file if not provided). Valid options include: 'DockerCompose', 'ServicePlanSpec'")
 	BuildCmd.Flags().BoolP("dry-run", "d", false, "Simulate building the service without actually creating resources")
 	BuildCmd.Flags().StringP("product-name", "", "", "Name of the service. A service can have multiple service plans. The build command will build a new or existing service plan inside the specified service.")
@@ -190,14 +192,6 @@ func runBuild(cmd *cobra.Command, args []string) error {
 	specType, err := cmd.Flags().GetString("spec-type")
 	if err != nil {
 		return err
-	}
-	// Check if spec-type was provided and default if not
-	if specType == "" {
-		if file == PlanSpecFileName {
-			specType = ServicePlanSpecType
-		} else {
-			specType = DockerComposeSpecType
-		}
 	}
 
 	name, err := cmd.Flags().GetString("name")
@@ -293,6 +287,61 @@ func runBuild(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
+	// Dynamic spec type detection for file-based builds
+	if imageUrl == "" && specType == "" {
+		// Determine file to read
+		fileToRead := file
+		if fileToRead == "" {
+			// check for compose file
+			fileToRead = ComposeFileName
+			if _, err := os.Stat(fileToRead); os.IsNotExist(err) {
+				// If the file doesn't exist, check if there is a spec file
+				fileToRead = PlanSpecFileName
+				if _, err := os.Stat(fileToRead); os.IsNotExist(err) {
+					// Will be handled later in file loading logic
+					fileToRead = ""
+				}
+			}
+		}
+
+		// Read and analyze file content for spec type detection
+		if fileToRead != "" {
+			// Update file variable if auto-detected
+			if fileToRead != file {
+				file = fileToRead
+			}
+
+			if _, err := os.Stat(fileToRead); err == nil {
+				tempFileData, err := os.ReadFile(filepath.Clean(fileToRead))
+				if err == nil {
+					var planCheck map[string]interface{}
+					if err := yaml.Unmarshal(tempFileData, &planCheck); err == nil {
+						// Use the common function to detect spec type
+						specType = DetectSpecType(planCheck)
+					} else {
+						// Fallback to file extension based detection
+						if fileToRead == PlanSpecFileName {
+							specType = ServicePlanSpecType
+						} else {
+							specType = DockerComposeSpecType
+						}
+					}
+				}
+			}
+		}
+
+		// Final fallback if still not determined
+		if specType == "" {
+			specType = DockerComposeSpecType
+		}
+	} else if imageUrl != "" {
+		// For image-based builds, always use DockerComposeSpecType
+		specType = DockerComposeSpecType
+	} else if specType == "" {
+		// Fallback for any other case
+		specType = DockerComposeSpecType
+	}
+
 	// Validate input arguments
 	if file != "" && imageUrl != "" {
 		err := errors.New("only one of file or image can be provided")
@@ -316,15 +365,30 @@ func runBuild(cmd *cobra.Command, args []string) error {
 				return err
 			}
 		} else {
-			// check for compose file
-			file = ComposeFileName
+			// Check for omnistrate-compose.yaml first (preferred)
+			file = OmnistrateComposeFileName
 			specType = DockerComposeSpecType
 			if _, err := os.Stat(file); os.IsNotExist(err) {
-				// If the file doesn't exist and wasn't explicitly provided, we check if there is a spec file
+
+				// If omnistrate-compose.yaml not found, check for docker-compose.yaml and error out
+				if _, err := os.Stat(DockerComposeFileName); err == nil {
+					errMsg := fmt.Sprintf("Deployment failed: Required file missing — %s\n\n→ Found: %s\n→ Expected: %s\n\nTip: You can convert your docker-compose.yaml into Omnistrate's native format using the omnistrate-fde skill via the Omnistrate MCP Server\nYou may even invoke it through AI agents like Claude, Gemini or others.\n\nLearn more: https://docs.omnistrate.com/getting-started/mcp-server/#using-skills",
+						OmnistrateComposeFileName, DockerComposeFileName, OmnistrateComposeFileName)
+					utils.PrintError(errors.New(errMsg))
+					return err
+				}
+
+				// Check for spec.yaml
 				file = PlanSpecFileName
 				specType = ServicePlanSpecType
 				if _, err := os.Stat(file); os.IsNotExist(err) {
-					err = errors.New("no compose or spec file found, please provide a valid file using --file flag")
+					// Check if Dockerfile exists to suggest build-from-repo
+					if _, err := os.Stat("Dockerfile"); err == nil {
+						err = fmt.Errorf("no omnistrate-compose.yaml found, but Dockerfile exists. Please use 'omctl build-from-repo' command to build from your Dockerfile, or create an omnistrate-compose.yaml file")
+						utils.PrintError(err)
+						return err
+					}
+					err = fmt.Errorf("no omnistrate-compose.yaml or spec.yaml found in current directory. Please provide a valid file using --file flag, or use 'omctl build-from-repo' if you have a Dockerfile")
 					utils.PrintError(err)
 					return err
 				}

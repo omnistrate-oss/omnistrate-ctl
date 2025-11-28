@@ -2,6 +2,7 @@ package cost
 
 import (
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/omnistrate-oss/omnistrate-ctl/cmd/common"
@@ -20,7 +21,7 @@ var regionCmd = &cobra.Command{
 func init() {
 	regionCmd.Flags().String("start-date", "", "Start date for cost analysis (RFC3339 format) (required)")
 	regionCmd.Flags().String("end-date", "", "End date for cost analysis (RFC3339 format) (required)")
-	regionCmd.Flags().StringP("environment-type", "e", "", "Environment type (required)")
+	regionCmd.Flags().StringP("environment-type", "e", "", "Environment type (valid: dev, qa, staging, canary, prod, private) (required)")
 	regionCmd.Flags().StringP("frequency", "f", "daily", "Frequency of cost data (daily, weekly, monthly)")
 	regionCmd.Flags().String("include-providers", "", "Cloud provider IDs to include (comma-separated)")
 	regionCmd.Flags().String("exclude-providers", "", "Cloud provider IDs to exclude (comma-separated)")
@@ -43,6 +44,9 @@ func getRegionCost(cmd *cobra.Command, args []string) error {
 	excludeProviders, _ := cmd.Flags().GetString("exclude-providers")
 	includeRegions, _ := cmd.Flags().GetString("include-regions")
 	excludeRegions, _ := cmd.Flags().GetString("exclude-regions")
+
+	// Environment type must be uppercase for the API
+	environmentType = strings.ToUpper(environmentType)
 
 	startDate, err := time.Parse(time.RFC3339, startDateStr)
 	if err != nil {

@@ -4,7 +4,7 @@ Deploy a service using a spec file
 
 ### Synopsis
 
-Deploy a service using a spec file. This command builds the service in DEV, creates/checks PROD environment, promotes to PROD, marks as preferred, subscribes, and automatically creates/upgrades instances.
+Deploy a service using a spec file. This command builds the service in DEV, creates/checks PROD environment, promotes to PROD, marks as preferred, subscribes, and automatically creates/upgrades instances. This command may involve interactive prompts and should be run manually, not by AI agents or automation.
 
 ```
 omnistrate-ctl deploy [spec-file] [flags]
@@ -21,7 +21,7 @@ omctl deploy spec.yaml
 omctl deploy spec.yaml --product-name "My Service"
 
 # Build service from an existing compose spec in the repository
-omctl deploy --file compose.yaml
+omctl deploy --file omnistrate-compose.yaml
 
 # Build service with a custom service name
 omctl deploy --product-name my-custom-service
@@ -56,7 +56,7 @@ omctl deploy --platforms linux/amd64 --platforms linux/arm64
 
 ```
       --cloud-provider string     Cloud provider (aws|gcp|azure)
-      --deployment-type string    Type of deployment. Valid values: hosted, byoa (default "hosted")
+      --deployment-type string    Type of deployment. Valid values: hosted, byoa (default "hosted" i.e. the deployments are hosted in the service provider account) (default "hosted")
       --dry-run                   Perform validation checks without actually deploying
   -e, --environment string        Name of the environment to build the service in (default: Prod) (default "Prod")
   -t, --environment-type string   Type of environment. Valid options include: 'dev', 'prod', 'qa', 'canary', 'staging', 'private' (default: prod) (default "prod")

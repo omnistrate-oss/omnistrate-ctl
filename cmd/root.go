@@ -45,18 +45,21 @@ var RootCmd = &cobra.Command{
 	Use:   "omnistrate-ctl",
 	Short: "Manage your Omnistrate SaaS from the command line",
 	Long: wordwrap.WrapString(`
-Omnistrate CTL is a powerful command-line tool designed to simplify the creation, deployment, and management of your Omnistrate SaaS.
+Omnistrate CTL is the command line interface to build, manage, and operate software or agent distributions anywhere - across clouds, regions, customer-controlled environments, and on-premises - using Omnistrate platform.
 
 Key Features:
-- Build Services: Create services from images or compose specs.
-- Manage Service Plans: Efficiently handle your service plans.
-- Deploy Instances: Deploy and manage instances with ease.
+- Build your software or agent distributions: Create service plan from code, docker images, docker compose, helm, terraform and more.
+- Debug and Test your service deployments: Easily debug and test your service deployments in your development environment.
+- Automate your CI/CD pipelines: Integrate Omnistrate CTL into your CI/CD pipelines to automate the build, deployment, and management of your service plans.
+- Operate at Scale: Manage large-scale deployments with robust tools and automation.
 
 Resources:
-- CTL Manual: https://ctl.omnistrate.cloud/omnistrate-ctl/
-- Quick Start Guide: https://docs.omnistrate.com/getting-started/getting-started-with-ctl/
+- Getting Started: https://docs.omnistrate.com/getting-started/
+- Quick Start: https://docs.omnistrate.com/getting-started/getting-started-with-ctl/
+- AI Agent Setup: https://docs.omnistrate.com/getting-started/mcp-server/
+- CTL Manual: https://ctl.omnistrate.cloud/
 
-Use the CTL commands below to begin managing your services effectively.
+Available Commands:
 
 `, 100),
 	Run:               runRoot,

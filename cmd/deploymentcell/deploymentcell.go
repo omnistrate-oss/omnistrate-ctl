@@ -32,6 +32,7 @@ func init() {
 	Cmd.AddCommand(scaleDownNodepoolCmd)
 	Cmd.AddCommand(scaleUpNodepoolCmd)
 	Cmd.AddCommand(deleteNodepoolCmd)
+	Cmd.AddCommand(workflowCmd)
 }
 
 func run(cmd *cobra.Command, args []string) {
