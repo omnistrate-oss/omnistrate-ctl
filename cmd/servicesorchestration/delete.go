@@ -25,6 +25,7 @@ var deleteCmd = &cobra.Command{
 	Use:          "delete [services-orchestration-id] [flags]",
 	Short:        "Delete a services orchestration deployment",
 	Long:         `This command helps you delete a services orchestration deployment from your account.`,
+	Deprecated:   "This command is deprecated and will be removed in a future release.",
 	Example:      deleteExample,
 	RunE:         runDelete,
 	SilenceUsage: true,

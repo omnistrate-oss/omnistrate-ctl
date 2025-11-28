@@ -20,6 +20,7 @@ var modifyCmd = &cobra.Command{
 	Use:          "modify [so-id] -dsl-file=[file-path]",
 	Short:        "Modify a services orchestration deployment",
 	Long:         `This command helps you modify a services orchestration deployment, coordinating the modification of multiple services.`,
+	Deprecated:   "This command is deprecated and will be removed in a future release.",
 	Example:      modifyExample,
 	RunE:         runModify,
 	SilenceUsage: true,

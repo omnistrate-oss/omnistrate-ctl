@@ -21,6 +21,7 @@ var describeCmd = &cobra.Command{
 	Use:          "describe [so-id]",
 	Short:        "Describe an services orchestration deployment",
 	Long:         `This command helps you describe a services orchestration deployment.`,
+	Deprecated:   "This command is deprecated and will be removed in a future release.",
 	Example:      describeExample,
 	RunE:         runDescribe,
 	SilenceUsage: true,

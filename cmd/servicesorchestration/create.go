@@ -19,6 +19,7 @@ var createCmd = &cobra.Command{
 	Use:          "create --dsl-file=[file-path]",
 	Short:        "Create a services orchestration deployment",
 	Long:         `This command helps you create a services orchestration deployment, coordinating the creation of multiple services.`,
+	Deprecated:   "This command is deprecated and will be removed in a future release.",
 	Example:      createExample,
 	RunE:         runCreate,
 	SilenceUsage: true,
