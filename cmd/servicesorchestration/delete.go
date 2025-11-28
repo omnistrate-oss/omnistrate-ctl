@@ -23,8 +23,9 @@ omctl services-orchestration delete so-abcd1234`
 
 var deleteCmd = &cobra.Command{
 	Use:          "delete [services-orchestration-id] [flags]",
-	Short:        "DEPRECATED - Delete a services orchestration deployment",
-	Long:         `DEPRECATED - This command helps you delete a services orchestration deployment from your account.`,
+	Short:        "Delete a services orchestration deployment",
+	Long:         `This command helps you delete a services orchestration deployment from your account.`,
+	Deprecated:   "This command is deprecated and will be removed in a future release.",
 	Example:      deleteExample,
 	RunE:         runDelete,
 	SilenceUsage: true,

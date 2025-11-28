@@ -17,8 +17,9 @@ omctl services-orchestration list --environment-type=prod`
 
 var listCmd = &cobra.Command{
 	Use:          "list [flags]",
-	Short:        "DEPRECATED - List services orchestration deployments",
-	Long:         `DEPRECATED - This command helps you list services orchestration deployments.`,
+	Short:        "List services orchestration deployments",
+	Long:         `This command helps you list services orchestration deployments.`,
+	Deprecated:   "This command is deprecated and will be removed in a future release.",
 	Example:      listExample,
 	RunE:         runList,
 	SilenceUsage: true,

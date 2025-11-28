@@ -6,8 +6,9 @@ import (
 
 var Cmd = &cobra.Command{
 	Use:          "services-orchestration [operation] [flags]",
-	Short:        "DEPRECATED - Manage Services Orchestration Deployments across services",
-	Long:         `DEPRECATED - This command helps you manage orchestration of deployment across multiple services.`,
+	Short:        "Manage Services Orchestration Deployments across services",
+	Long:         `This command helps you manage orchestration of deployment across multiple services.`,
+	Deprecated:   "This command is deprecated and will be removed in a future release.",
 	Run:          run,
 	SilenceUsage: true,
 }

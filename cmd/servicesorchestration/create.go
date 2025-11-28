@@ -17,8 +17,9 @@ omctl services-orchestration create --dsl-file /path/to/dsl.yaml`
 
 var createCmd = &cobra.Command{
 	Use:          "create --dsl-file=[file-path]",
-	Short:        "DEPRECATED - Create a services orchestration deployment",
-	Long:         `DEPRECATED - This command helps you create a services orchestration deployment, coordinating the creation of multiple services.`,
+	Short:        "Create a services orchestration deployment",
+	Long:         `This command helps you create a services orchestration deployment, coordinating the creation of multiple services.`,
+	Deprecated:   "This command is deprecated and will be removed in a future release.",
 	Example:      createExample,
 	RunE:         runCreate,
 	SilenceUsage: true,
