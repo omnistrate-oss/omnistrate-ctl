@@ -294,7 +294,9 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	spinner.UpdateMessage("Checking cloud provider accounts...")
+	spinner.Complete()
+
+	spinner = sm.AddSpinner("Checking cloud provider accounts...")
 	isAccountId := false
 	awsAccountID, awsBootstrapRoleARN, gcpProjectID, gcpProjectNumber, gcpServiceAccountEmail, azureSubscriptionID, azureTenantID, extractDeploymentType := extractCloudAccountsFromProcessedData(processedData)
 	if awsAccountID != "" || gcpProjectID != "" || azureSubscriptionID != "" {
@@ -502,6 +504,7 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 	if accountMessage != "" {
 		spinner.UpdateMessage(accountMessage + " - Account linked and READY")
 	}
+	time.Sleep(500 * time.Millisecond)
 	spinner.Complete()
 
 	// Pre-check 2: Determine service name
@@ -528,10 +531,11 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 	}
 
 	spinner.UpdateMessage(fmt.Sprintf("Determining service name: %s", serviceNameToUse))
+	time.Sleep(500 * time.Millisecond)
 	spinner.Complete()
 
 	// Pre-check 3: Check if service exists and validate service plan count
-	spinner.UpdateMessage(fmt.Sprintf("Checking existing service... %s", serviceNameToUse))
+	spinner = sm.AddSpinner(fmt.Sprintf("Checking existing service... %s", serviceNameToUse))
 	existingServiceID, err := findExistingService(cmd.Context(), token, serviceNameToUse)
 	if err != nil {
 		spinner.UpdateMessage(fmt.Sprintf("Error: failed to check existing service: %v", err))
@@ -541,9 +545,11 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 
 	if existingServiceID != "" {
 		spinner.UpdateMessage(fmt.Sprintf("Checking existing service: %s (ID: %s)\n", serviceNameToUse, existingServiceID))
+		time.Sleep(500 * time.Millisecond)
 		spinner.Complete()
 	} else {
 		spinner.UpdateMessage(fmt.Sprintf("New service create: %s", serviceNameToUse))
+		time.Sleep(500 * time.Millisecond)
 		spinner.Complete()
 	}
 
@@ -733,6 +739,7 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 	fmt.Println()
 
 	spinner.UpdateMessage(fmt.Sprintf("Building service in %s environment and %s environment type: built service %s (ID: %s)", environment, environmentTypeUpper, serviceNameToUse, serviceID))
+	time.Sleep(500 * time.Millisecond)
 	spinner.Complete()
 
 	// Print warning if there are any undefined resources
