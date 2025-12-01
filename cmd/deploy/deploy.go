@@ -309,7 +309,22 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 	}
 
 	// If no cloud provider is set, assume all providers are available
-	allCloudProviders := []string{"aws", "gcp", "azure"}
+	// Determine which cloud providers to check based on spec configuration
+	var cloudProvidersToCheck []string
+	if awsAccountID != "" {
+		cloudProvidersToCheck = append(cloudProvidersToCheck, "aws")
+	}
+	if gcpProjectID != "" {
+		cloudProvidersToCheck = append(cloudProvidersToCheck, "gcp")
+	}
+	if azureSubscriptionID != "" {
+		cloudProvidersToCheck = append(cloudProvidersToCheck, "azure")
+	}
+	
+	// If no specific cloud provider is configured in spec, check all providers
+	if len(cloudProvidersToCheck) == 0 {
+		cloudProvidersToCheck = []string{"aws", "gcp", "azure"}
+	}
 
 	allAccounts := []*openapiclient.DescribeAccountConfigResult{}
 	// Filter for READY accounts and collect status information
@@ -318,7 +333,7 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 	var foundMatchingAccount bool
 	var accountStatus string
 
-	for _, cp := range allCloudProviders {
+	for _, cp := range cloudProvidersToCheck {
 		// Pre-check 1: Check for linked cloud provider accounts
 		accounts, err := dataaccess.ListAccounts(cmd.Context(), token, cp)
 		if err != nil {
@@ -330,7 +345,8 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 			allAccounts = append(allAccounts, &acc)
 			if acc.Status == "READY" {
 				readyAccounts = append(readyAccounts, &acc)
-				if awsAccountID == "" && acc.AwsAccountID != nil {
+				// Only auto-assign if no account ID was specified in spec for this provider
+				if awsAccountID == "" && acc.AwsAccountID != nil && cp == "aws" {
 					awsAccountID = *acc.AwsAccountID
 					if acc.AwsBootstrapRoleARN != nil {
 						awsBootstrapRoleARN = *acc.AwsBootstrapRoleARN
@@ -339,7 +355,7 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 					accountStatus = acc.Status
 				}
 
-				if gcpProjectID == "" && acc.GcpProjectID != nil {
+				if gcpProjectID == "" && acc.GcpProjectID != nil && cp == "gcp" {
 					gcpProjectID = *acc.GcpProjectID
 					gcpProjectNumber = *acc.GcpProjectNumber
 					if acc.GcpServiceAccountEmail != nil {
@@ -349,7 +365,7 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 					accountStatus = acc.Status
 
 				}
-				if azureSubscriptionID == "" && acc.AzureSubscriptionID != nil {
+				if azureSubscriptionID == "" && acc.AzureSubscriptionID != nil && cp == "azure" {
 					azureSubscriptionID = *acc.AzureSubscriptionID
 					azureTenantID = *acc.AzureTenantID
 					foundMatchingAccount = true
