@@ -43,7 +43,7 @@ jobs:
 
       - name: golangci-lint
         timeout-minutes: 20
-        uses: golangci/golangci-lint-action@v8
+        uses: golangci/golangci-lint-action@v9
         with:
           version: ${{ env.GOLANG_CI_VERSION }}
           args: ./...
