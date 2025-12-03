@@ -431,8 +431,8 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 				spinner.Error()
 				return errors.New("deployment requires at least one READY cloud provider account")
 			} else {
-				spinner.UpdateMessage("Create cloud provider account")
 				sm.Stop()
+				fmt.Println("No cloud provider accounts found. Starting account creation flow...")
 
 				// Determine which cloud provider to use and get credentials
 				if cloudProvider == "" {
@@ -840,7 +840,7 @@ func executeDeploymentWorkflow(cmd *cobra.Command, sm ysmrr.SpinnerManager, toke
 		// instanceActionType is already "create" from initialization
 		if err != nil {
 			utils.HandleSpinnerError(spinner, sm, err)
-			spinner.UpdateMessage(fmt.Sprintf("%s: Failed (%s)", createMsg, err))
+			spinner.UpdateMessage(fmt.Sprintf("%s: Failed (%s)", createMsg, err.Error()))
 			spinner.Error()
 			sm.Stop()
 			return err
@@ -867,7 +867,7 @@ func executeDeploymentWorkflow(cmd *cobra.Command, sm ysmrr.SpinnerManager, toke
 	if finalInstanceID != "" {
 		err = instance.DisplayWorkflowResourceDataWithSpinners(cmd.Context(), token, finalInstanceID, instanceActionType) // Use the correct package alias
 		if err != nil {
-			fmt.Printf("❌ Deployment failed-- %s\n", err)
+			fmt.Printf("❌ Deployment failed: %s\n", err)
 			return err
 		} else {
 			fmt.Println("✅ Deployment successful")
