@@ -294,9 +294,7 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	spinner.Complete()
-
-	spinner = sm.AddSpinner("Checking cloud provider accounts...")
+	spinner.UpdateMessage("Checking cloud provider accounts...")
 	isAccountId := false
 	awsAccountID, awsBootstrapRoleARN, gcpProjectID, gcpProjectNumber, gcpServiceAccountEmail, azureSubscriptionID, azureTenantID, extractDeploymentType := extractCloudAccountsFromProcessedData(processedData)
 	if awsAccountID != "" || gcpProjectID != "" || azureSubscriptionID != "" {
@@ -309,22 +307,7 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 	}
 
 	// If no cloud provider is set, assume all providers are available
-	// Determine which cloud providers to check based on spec configuration
-	var cloudProvidersToCheck []string
-	if awsAccountID != "" {
-		cloudProvidersToCheck = append(cloudProvidersToCheck, "aws")
-	}
-	if gcpProjectID != "" {
-		cloudProvidersToCheck = append(cloudProvidersToCheck, "gcp")
-	}
-	if azureSubscriptionID != "" {
-		cloudProvidersToCheck = append(cloudProvidersToCheck, "azure")
-	}
-	
-	// If no specific cloud provider is configured in spec, check all providers
-	if len(cloudProvidersToCheck) == 0 {
-		cloudProvidersToCheck = []string{"aws", "gcp", "azure"}
-	}
+	allCloudProviders := []string{"aws", "gcp", "azure"}
 
 	allAccounts := []*openapiclient.DescribeAccountConfigResult{}
 	// Filter for READY accounts and collect status information
@@ -333,7 +316,7 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 	var foundMatchingAccount bool
 	var accountStatus string
 
-	for _, cp := range cloudProvidersToCheck {
+	for _, cp := range allCloudProviders {
 		// Pre-check 1: Check for linked cloud provider accounts
 		accounts, err := dataaccess.ListAccounts(cmd.Context(), token, cp)
 		if err != nil {
@@ -345,8 +328,7 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 			allAccounts = append(allAccounts, &acc)
 			if acc.Status == "READY" {
 				readyAccounts = append(readyAccounts, &acc)
-				// Only auto-assign if no account ID was specified in spec for this provider
-				if awsAccountID == "" && acc.AwsAccountID != nil && cp == "aws" {
+				if awsAccountID == "" && acc.AwsAccountID != nil {
 					awsAccountID = *acc.AwsAccountID
 					if acc.AwsBootstrapRoleARN != nil {
 						awsBootstrapRoleARN = *acc.AwsBootstrapRoleARN
@@ -355,7 +337,7 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 					accountStatus = acc.Status
 				}
 
-				if gcpProjectID == "" && acc.GcpProjectID != nil && cp == "gcp" {
+				if gcpProjectID == "" && acc.GcpProjectID != nil {
 					gcpProjectID = *acc.GcpProjectID
 					gcpProjectNumber = *acc.GcpProjectNumber
 					if acc.GcpServiceAccountEmail != nil {
@@ -365,7 +347,7 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 					accountStatus = acc.Status
 
 				}
-				if azureSubscriptionID == "" && acc.AzureSubscriptionID != nil && cp == "azure" {
+				if azureSubscriptionID == "" && acc.AzureSubscriptionID != nil {
 					azureSubscriptionID = *acc.AzureSubscriptionID
 					azureTenantID = *acc.AzureTenantID
 					foundMatchingAccount = true
@@ -408,9 +390,10 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 		if azureSubscriptionID != "" {
 			errorMessage += fmt.Sprintf("Azure subscription %s/%s is not linked. Please link it using 'omctl account create'.", azureSubscriptionID, azureTenantID)
 		}
+		
 		spinner.UpdateMessage(errorMessage)
 		spinner.Error()
-		return nil
+		return errors.New(errorMessage)
 	} else if accountStatus != "READY" && (awsAccountID != "" || gcpProjectID != "" || azureSubscriptionID != "") {
 
 		var errorMessage string
@@ -425,7 +408,7 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 		}
 		spinner.UpdateMessage(errorMessage)
 		spinner.Error()
-		return nil
+		return errors.New(errorMessage)
 	}
 
 	if awsAccountID == "" && gcpProjectID == "" && azureSubscriptionID == "" {
@@ -443,10 +426,14 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 						"   3. Create a new READY account: omctl account create",
 					len(allAccounts),
 				))
+				utils.HandleSpinnerError(spinner, sm, err)
 				spinner.UpdateMessage("deployment requires at least one READY cloud provider account")
 				spinner.Error()
-				return nil
+				return errors.New("deployment requires at least one READY cloud provider account")
 			} else {
+				spinner.UpdateMessage("Create cloud provider account")
+				sm.Stop()
+
 				// Determine which cloud provider to use and get credentials
 				if cloudProvider == "" {
 					cloudProvider = promptForCloudProvider()
@@ -520,7 +507,6 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 	if accountMessage != "" {
 		spinner.UpdateMessage(accountMessage + " - Account linked and READY")
 	}
-	time.Sleep(500 * time.Millisecond)
 	spinner.Complete()
 
 	// Pre-check 2: Determine service name
@@ -533,7 +519,7 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 			// Use current directory name for repository-based builds
 			cwd, err := os.Getwd()
 			if err != nil {
-				return err
+				return  err
 			}
 			serviceNameToUse = sanitizeServiceName(filepath.Base(cwd))
 		} else {
@@ -547,25 +533,23 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 	}
 
 	spinner.UpdateMessage(fmt.Sprintf("Determining service name: %s", serviceNameToUse))
-	time.Sleep(500 * time.Millisecond)
 	spinner.Complete()
 
 	// Pre-check 3: Check if service exists and validate service plan count
-	spinner = sm.AddSpinner(fmt.Sprintf("Checking existing service... %s", serviceNameToUse))
+	spinner.UpdateMessage(fmt.Sprintf("Checking existing service... %s", serviceNameToUse))
 	existingServiceID, err := findExistingService(cmd.Context(), token, serviceNameToUse)
 	if err != nil {
 		spinner.UpdateMessage(fmt.Sprintf("Error: failed to check existing service: %v", err))
 		spinner.Error()
-		return nil
+		utils.PrintError(fmt.Errorf("failed to check existing service: %v", err))
+		return err
 	}
 
 	if existingServiceID != "" {
 		spinner.UpdateMessage(fmt.Sprintf("Checking existing service: %s (ID: %s)\n", serviceNameToUse, existingServiceID))
-		time.Sleep(500 * time.Millisecond)
 		spinner.Complete()
 	} else {
 		spinner.UpdateMessage(fmt.Sprintf("New service create: %s", serviceNameToUse))
-		time.Sleep(500 * time.Millisecond)
 		spinner.Complete()
 	}
 
@@ -605,60 +589,7 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 
 	} else {
 
-		hasMultipleResources, allInternal, passiveResource, err := AnalyzeComposeResources(processedData)
-		if err != nil {
-			return errors.Wrap(err, "failed to Analyze final compose YAML")
-		}
-
-		// If passiveResource is needed, inject it into the services section and create a backup
-		if passiveResource != nil && !allInternal && hasMultipleResources {
-			var composeMap map[string]interface{}
-			if err := yaml.Unmarshal(processedData, &composeMap); err == nil {
-				// Backup original file
-				if specFile != "" {
-					backupFile := specFile + ".bak"
-					if err := os.WriteFile(backupFile, processedData, 0600); err == nil {
-						fmt.Printf("Backup created: %s\n", backupFile)
-					} else {
-						fmt.Printf("Failed to create backup: %v\n", err)
-					}
-				}
-				// Inject passive resource into services
-				if services, ok := composeMap["services"].(map[string]interface{}); ok {
-					services["Cluster"] = passiveResource
-					// Set x-omnistrate-mode-internal: true for all other resources
-					for name, svc := range services {
-						if name == "Cluster" {
-							continue
-						}
-						svcMap, ok := svc.(map[string]interface{})
-						if ok {
-							svcMap["x-omnistrate-mode-internal"] = true
-							services[name] = svcMap
-						}
-					}
-					composeMap["services"] = services
-					composeMap["x-omnistrate-integrations"] = []interface{}{
-						"omnistrateLogging",
-						"omnistrateMetrics",
-					}
-
-					// Marshal back to YAML
-					updatedYAML, err := yaml.Marshal(composeMap)
-					if err == nil && specFile != "" {
-						// Write updated YAML to original file
-						if err := os.WriteFile(specFile, updatedYAML, 0600); err == nil {
-							fmt.Printf("Updated YAML written to: %s\n", specFile)
-							// Use updated YAML for further processing
-							processedData = updatedYAML
-						} else {
-							fmt.Printf("Failed to write updated YAML: %v\n", err)
-						}
-					}
-				}
-			}
-		}
-
+	
 		if !isAccountId {
 			// Use createDeploymentYAML to generate the deployment section
 			deploymentSection := createDeploymentYAML(
@@ -755,7 +686,6 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 	fmt.Println()
 
 	spinner.UpdateMessage(fmt.Sprintf("Building service in %s environment and %s environment type: built service %s (ID: %s)", environment, environmentTypeUpper, serviceNameToUse, serviceID))
-	time.Sleep(500 * time.Millisecond)
 	spinner.Complete()
 
 	// Print warning if there are any undefined resources
@@ -816,10 +746,11 @@ func executeDeploymentWorkflow(cmd *cobra.Command, sm ysmrr.SpinnerManager, toke
 		var existingInstanceIDs []string
 		existingInstanceIDs, _, err = listInstances(cmd.Context(), token, serviceID, environmentID, planID, instanceID, "excludeCloudAccounts")
 		if err != nil {
+			utils.HandleSpinnerError(spinner, sm, err)
 			spinner.UpdateMessage(spinnerMsg + ": Failed (" + err.Error() + ")")
 			spinner.Error()
-			existingInstanceIDs = []string{} // Reset to create new instance
 			sm.Stop()
+			return err
 		}
 
 		if instanceID != "" && len(existingInstanceIDs) == 0 {
@@ -863,9 +794,11 @@ func executeDeploymentWorkflow(cmd *cobra.Command, sm ysmrr.SpinnerManager, toke
 		upgradeErr := upgradeExistingInstance(cmd.Context(), token, []string{finalInstanceID}, serviceID, planID)
 		instanceActionType = "upgrade"
 		if upgradeErr != nil {
+			utils.HandleSpinnerError(spinner, sm, upgradeErr)
 			spinner.UpdateMessage(fmt.Sprintf("Upgrading existing instance: Failed (%s)", upgradeErr.Error()))
 			spinner.Error()
 			sm.Stop()
+			return upgradeErr
 		} else {
 
 			spinner.UpdateMessage(fmt.Sprintf("Upgrading existing instance: Success (ID: %s)", finalInstanceID))
@@ -906,15 +839,15 @@ func executeDeploymentWorkflow(cmd *cobra.Command, sm ysmrr.SpinnerManager, toke
 		finalInstanceID = createdInstanceID
 		// instanceActionType is already "create" from initialization
 		if err != nil {
-			spinner.UpdateMessage(fmt.Sprintf("%s: Failed (%s)", createMsg, err.Error()))
+			utils.HandleSpinnerError(spinner, sm, err)
+			spinner.UpdateMessage(fmt.Sprintf("%s: Failed (%s)", createMsg, err))
 			spinner.Error()
 			sm.Stop()
-
-		} else {
-
-			spinner.UpdateMessage(fmt.Sprintf("%s: Success (ID: %s)", createMsg, finalInstanceID))
-			spinner.Complete()
+			return err
 		}
+
+		spinner.UpdateMessage(fmt.Sprintf("%s: Success (ID: %s)", createMsg, finalInstanceID))
+		spinner.Complete()
 	}
 
 	sm.Stop()
@@ -935,6 +868,7 @@ func executeDeploymentWorkflow(cmd *cobra.Command, sm ysmrr.SpinnerManager, toke
 		err = instance.DisplayWorkflowResourceDataWithSpinners(cmd.Context(), token, finalInstanceID, instanceActionType) // Use the correct package alias
 		if err != nil {
 			fmt.Printf("❌ Deployment failed-- %s\n", err)
+			return err
 		} else {
 			fmt.Println("✅ Deployment successful")
 		}
@@ -1766,154 +1700,6 @@ func createDeploymentYAML(
 		}
 	}
 	return yamlDoc
-}
-
-// AnalyzeComposeResources inspects processed YAML data for resource structure and internal mode
-// If any service is missing x-omnistrate-mode-internal: true, creates a passive resource (Cluster)
-func AnalyzeComposeResources(processedData []byte) (hasMultipleResources bool, allInternal bool, passiveResource map[string]interface{}, err error) {
-	var compose map[string]interface{}
-	if err := yaml.Unmarshal(processedData, &compose); err != nil {
-		return false, false, nil, fmt.Errorf("failed to parse compose YAML: %w", err)
-	}
-
-	services, ok := compose["services"].(map[string]interface{})
-	if !ok || len(services) == 0 {
-		return false, false, nil, fmt.Errorf("no services found in compose spec")
-	}
-
-	hasMultipleResources = len(services) > 1
-	allInternal = false
-	for _, svc := range services {
-		svcMap, ok := svc.(map[string]interface{})
-		if !ok {
-			continue
-		}
-		// If any resource has the tag, do NOT create passive resource
-		if _, exists := svcMap["x-omnistrate-mode-internal"]; exists {
-			allInternal = true
-			break
-		}
-	}
-
-	// If not all internal, create passive resource (Cluster)
-	if !allInternal {
-		// Collect all parameters from all services and build dependency maps
-		paramMap := map[string]interface{}{}
-		paramDeps := map[string]map[string]string{} // paramKey -> resourceName -> resourceParamKey
-		dependsOn := []string{}
-		for name, svc := range services {
-			svcMap, ok := svc.(map[string]interface{})
-			if !ok {
-				continue
-			}
-			if name == "Cluster" {
-				// Ensure Cluster is marked as external
-				svcMap["x-omnistrate-mode-internal"] = false
-				services[name] = svcMap
-				continue // Skip self-reference for param collection
-			}
-			dependsOn = append(dependsOn, name)
-			if params, ok := svcMap["x-omnistrate-api-params"].([]interface{}); ok {
-				for _, p := range params {
-					pMap, ok := p.(map[string]interface{})
-					if !ok {
-						continue
-					}
-					key, _ := pMap["key"].(string)
-					def := pMap["defaultValue"]
-					paramMap[key] = def
-					// Build dependency map for this param
-					if _, exists := paramDeps[key]; !exists {
-						paramDeps[key] = map[string]string{}
-					}
-					paramDeps[key][name] = key
-				}
-			}
-			// Set x-omnistrate-mode-internal: true for all except Cluster
-			svcMap["x-omnistrate-mode-internal"] = true
-			services[name] = svcMap
-		}
-		// Build dynamic dependency mapping for each param
-		paramDependencyMaps := map[string]map[string]string{} // paramKey -> resourceName -> resourceParamKey
-		for k := range paramMap {
-			depMap := map[string]string{}
-			for resName, svc := range services {
-				svcMap, ok := svc.(map[string]interface{})
-				if !ok {
-					continue
-				}
-				if resName == "Cluster" {
-					continue // Skip self-reference
-				}
-				if params, ok := svcMap["x-omnistrate-api-params"].([]interface{}); ok {
-					for _, p := range params {
-						pMap, ok := p.(map[string]interface{})
-						if !ok {
-							continue
-						}
-						// If param in resource matches cluster param, or is a known mapping
-						if pMap["key"] == k {
-							depMap[resName] = k
-						} else if strings.HasSuffix(pMap["key"].(string), k) || strings.HasPrefix(pMap["key"].(string), k) || strings.Contains(pMap["key"].(string), k) {
-							// Try to match by normalized name (e.g., instanceType <-> writerInstanceType)
-							depMap[resName] = pMap["key"].(string)
-						}
-					}
-				}
-			}
-			if len(depMap) > 0 {
-				paramDependencyMaps[k] = depMap
-			}
-		}
-		// Create passive resource
-		cluster := map[string]interface{}{
-			"image":                      "omnistrate/noop",
-			"x-omnistrate-api-params":    []interface{}{},
-			"depends_on":                 dependsOn,
-			"x-omnistrate-mode-internal": false,
-		}
-		// Add parameters to cluster
-		for k, v := range paramMap {
-			param := map[string]interface{}{
-				"key":          k,
-				"defaultValue": v,
-			}
-			// Copy metadata from first matching param in any service
-			for resName, svc := range services {
-				svcMap, ok := svc.(map[string]interface{})
-				if !ok {
-					continue
-				}
-				if resName == "Cluster" {
-					continue // Skip self-reference
-				}
-				if params, ok := svcMap["x-omnistrate-api-params"].([]interface{}); ok {
-					for _, p := range params {
-						pMap, ok := p.(map[string]interface{})
-						if !ok {
-							continue
-						}
-						if pMap["key"] == k {
-							for metaKey, metaVal := range pMap {
-								if metaKey != "key" && metaKey != "defaultValue" {
-									param[metaKey] = metaVal
-								}
-							}
-							break
-						}
-					}
-				}
-			}
-			// Attach dynamic parameterDependencyMap if exists
-			if depMap, ok := paramDependencyMaps[k]; ok && len(depMap) > 0 {
-				param["parameterDependencyMap"] = depMap
-			}
-			cluster["x-omnistrate-api-params"] = append(cluster["x-omnistrate-api-params"].([]interface{}), param)
-		}
-		passiveResource = cluster
-	}
-
-	return hasMultipleResources, allInternal, passiveResource, nil
 }
 
 // containsString checks if a slice of strings contains a specific string.
