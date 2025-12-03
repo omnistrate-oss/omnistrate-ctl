@@ -1056,7 +1056,7 @@ func createInstanceUnified(ctx context.Context, token, serviceID,environmentID, 
 				}
 			}
 
-			// If not found in GCP, check AWS regions
+			// check AWS regions
 			if cloudProvider == "" {
 				for _, awsRegion := range awsRegions {
 					if awsRegion == region {
@@ -1066,7 +1066,7 @@ func createInstanceUnified(ctx context.Context, token, serviceID,environmentID, 
 				}
 			}
 
-			// If not found in AWS, check Azure regions
+			// check Azure regions
 			if cloudProvider == "" {
 				for _, azureRegion := range azureRegions {
 					if azureRegion == region {
@@ -1098,6 +1098,10 @@ func createInstanceUnified(ctx context.Context, token, serviceID,environmentID, 
 					found = true
 					break
 				}
+			}
+			if region == "" && len(regions) > 0 {
+				found = true // skip check if region is not specified
+				region = regions[0]
 			}
 			if !found && len(regions) > 0 {
 				return "", fmt.Errorf("region '%s' is not supported for cloud provider '%s'. Supported regions: %v", region, cloudProvider, regions)
