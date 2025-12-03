@@ -699,7 +699,7 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 	fmt.Println()
-
+	spinner.Complete()
 	spinner.UpdateMessage(fmt.Sprintf("Building service in %s environment and %s environment type: built service %s (ID: %s)", environment, environmentTypeUpper, serviceNameToUse, serviceID))
 	spinner.Complete()
 
@@ -850,7 +850,7 @@ func executeDeploymentWorkflow(cmd *cobra.Command, sm ysmrr.SpinnerManager, toke
 
 		spinner = sm.AddSpinner(createMsg)
 		createdInstanceID, err := "", error(nil)
-		createdInstanceID, err = createInstanceUnified(cmd.Context(), token, serviceID, planID, cloudProvider, region, resourceID, "resourceInstance", formattedParams, sm)
+		createdInstanceID, err = createInstanceUnified(cmd.Context(), token, serviceID,environmentID, planID, cloudProvider, region, resourceID, "resourceInstance", formattedParams, sm)
 		finalInstanceID = createdInstanceID
 		// instanceActionType is already "create" from initialization
 		if err != nil {
@@ -893,7 +893,7 @@ func executeDeploymentWorkflow(cmd *cobra.Command, sm ysmrr.SpinnerManager, toke
 }
 
 // createInstanceUnified creates an instance with or without subscription, removing duplicate code
-func createInstanceUnified(ctx context.Context, token, serviceID, productTierID, cloudProvider, region, resourceID, instanceType string, formattedParams map[string]interface{}, sm ysmrr.SpinnerManager) (string, error) {
+func createInstanceUnified(ctx context.Context, token, serviceID,environmentID, productTierID, cloudProvider, region, resourceID, instanceType string, formattedParams map[string]interface{}, sm ysmrr.SpinnerManager) (string, error) {
 
 	// Get the latest version
 	version, err := dataaccess.FindLatestVersion(ctx, token, serviceID, productTierID)
@@ -902,16 +902,16 @@ func createInstanceUnified(ctx context.Context, token, serviceID, productTierID,
 	}
 
 	// Describe service offering
-	res, err := dataaccess.DescribeServiceOffering(ctx, token, serviceID, productTierID, version)
+	res, err := dataaccess.ExternalDescribeServiceOffering(ctx, token, serviceID,environmentID, productTierID)
 	if err != nil {
 		return "", fmt.Errorf("failed to describe service offering: %w", err)
 	}
 
-	if len(res.ConsumptionDescribeServiceOfferingResult.Offerings) == 0 {
+	if len(res.Offerings) == 0 {
 		return "", fmt.Errorf("no service offerings found")
 	}
 
-	offering := res.ConsumptionDescribeServiceOfferingResult.Offerings[0]
+	offering := res.Offerings[0]
 
 	// Create default parameters with common sensible defaults
 	defaultParams := map[string]interface{}{}
@@ -921,7 +921,7 @@ func createInstanceUnified(ctx context.Context, token, serviceID, productTierID,
 		defaultParams = formattedParams
 
 		// For cloud account instances, find the injected account config resource
-		var accountConfigResource *openapiclientfleet.ResourceEntity
+		var accountConfigResource *openapiclient.ResourceEntity
 		for _, param := range offering.ResourceParameters {
 			if strings.HasPrefix(param.ResourceId, "r-injectedaccountconfig") {
 				accountConfigResource = &param
@@ -1210,8 +1210,8 @@ func createInstanceUnified(ctx context.Context, token, serviceID, productTierID,
 
 	//    Create the instance
 	instance, err := dataaccess.CreateResourceInstance(ctx, token,
-		res.ConsumptionDescribeServiceOfferingResult.ServiceProviderId,
-		res.ConsumptionDescribeServiceOfferingResult.ServiceURLKey,
+		res.ServiceProviderId,
+		res.ServiceURLKey,
 		offering.ServiceAPIVersion,
 		offering.ServiceEnvironmentURLKey,
 		offering.ServiceModelURLKey,
@@ -1837,7 +1837,7 @@ func createCloudAccountInstances(ctx context.Context, token, serviceID, environm
 
 	sm.Start()
 
-	createdInstanceID, err := createInstanceUnified(ctx, token, serviceID, planID, targetCloudProvider, "", "", "cloudAccount", formattedParams, sm)
+	createdInstanceID, err := createInstanceUnified(ctx, token, serviceID,environmentID, planID, targetCloudProvider, "", "", "cloudAccount", formattedParams, sm)
 	if err != nil {
 		spinner.UpdateMessage("Creating cloud account instance: Failed (" + err.Error() + ")")
 		spinner.Error()
