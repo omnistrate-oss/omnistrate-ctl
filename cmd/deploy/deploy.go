@@ -307,7 +307,22 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 	}
 
 	// If no cloud provider is set, assume all providers are available
-	allCloudProviders := []string{"aws", "gcp", "azure"}
+	// Determine which cloud providers to check based on spec configuration
+	var cloudProvidersToCheck []string
+	if awsAccountID != "" {
+		cloudProvidersToCheck = append(cloudProvidersToCheck, "aws")
+	}
+	if gcpProjectID != "" {
+		cloudProvidersToCheck = append(cloudProvidersToCheck, "gcp")
+	}
+	if azureSubscriptionID != "" {
+		cloudProvidersToCheck = append(cloudProvidersToCheck, "azure")
+	}
+	
+	// If no specific cloud provider is configured in spec, check all providers
+	if len(cloudProvidersToCheck) == 0 {
+		cloudProvidersToCheck = []string{"aws", "gcp", "azure"}
+	}
 
 	allAccounts := []*openapiclient.DescribeAccountConfigResult{}
 	// Filter for READY accounts and collect status information
@@ -316,7 +331,7 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 	var foundMatchingAccount bool
 	var accountStatus string
 
-	for _, cp := range allCloudProviders {
+	for _, cp := range cloudProvidersToCheck {
 		// Pre-check 1: Check for linked cloud provider accounts
 		accounts, err := dataaccess.ListAccounts(cmd.Context(), token, cp)
 		if err != nil {
