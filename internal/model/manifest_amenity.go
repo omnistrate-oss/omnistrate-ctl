@@ -10,8 +10,8 @@ import (
 )
 
 const (
-	// AmenityTypeManifest is the type identifier for Kubernetes manifest amenities
-	AmenityTypeManifest = "manifest"
+	// AmenityTypeKubernetesManifest is the type identifier for Kubernetes manifest amenities
+	AmenityTypeKubernetesManifest = "KubernetesManifest"
 )
 
 // ManifestEntry represents a single manifest entry which can be either a file reference or an inline definition
@@ -72,7 +72,7 @@ func ProcessManifestAmenities(amenities []Amenity, baseDir string) ([]Amenity, e
 // if it's a manifest type amenity
 func processAmenity(amenity Amenity, baseDir string) (Amenity, error) {
 	// Only process manifest type amenities
-	if amenity.Type == nil || *amenity.Type != AmenityTypeManifest {
+	if amenity.Type == nil || *amenity.Type != AmenityTypeKubernetesManifest {
 		return amenity, nil
 	}
 

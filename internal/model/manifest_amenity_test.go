@@ -26,7 +26,7 @@ spec:
 	}
 
 	// Create an amenity with a file reference
-	manifestType := AmenityTypeManifest
+	manifestType := AmenityTypeKubernetesManifest
 	amenities := []Amenity{
 		{
 			Name: "test-secrets",
@@ -81,7 +81,7 @@ spec:
 
 func TestProcessManifestAmenities_InlineDefinition(t *testing.T) {
 	// Create an amenity with an inline definition as a map
-	manifestType := AmenityTypeManifest
+	manifestType := AmenityTypeKubernetesManifest
 	inlineDef := map[string]interface{}{
 		"apiVersion": "v1",
 		"kind":       "ConfigMap",
@@ -160,7 +160,7 @@ metadata:
 	}
 
 	// Create an amenity with mixed entries
-	manifestType := AmenityTypeManifest
+	manifestType := AmenityTypeKubernetesManifest
 	amenities := []Amenity{
 		{
 			Name: "mixed-secrets",
@@ -235,7 +235,7 @@ func TestProcessManifestAmenities_NonManifestType(t *testing.T) {
 }
 
 func TestProcessManifestAmenities_FileNotFound(t *testing.T) {
-	manifestType := AmenityTypeManifest
+	manifestType := AmenityTypeKubernetesManifest
 	amenities := []Amenity{
 		{
 			Name: "missing-file",
@@ -256,7 +256,7 @@ func TestProcessManifestAmenities_FileNotFound(t *testing.T) {
 }
 
 func TestProcessManifestAmenities_InvalidEntry(t *testing.T) {
-	manifestType := AmenityTypeManifest
+	manifestType := AmenityTypeKubernetesManifest
 	amenities := []Amenity{
 		{
 			Name: "invalid-entry",
@@ -277,7 +277,7 @@ func TestProcessManifestAmenities_InvalidEntry(t *testing.T) {
 }
 
 func TestProcessManifestAmenities_BothFileAndDef(t *testing.T) {
-	manifestType := AmenityTypeManifest
+	manifestType := AmenityTypeKubernetesManifest
 	amenities := []Amenity{
 		{
 			Name: "both-file-and-def",
@@ -304,7 +304,7 @@ func TestProcessManifestAmenities_BothFileAndDef(t *testing.T) {
 }
 
 func TestProcessManifestAmenities_EmptyManifests(t *testing.T) {
-	manifestType := AmenityTypeManifest
+	manifestType := AmenityTypeKubernetesManifest
 	amenities := []Amenity{
 		{
 			Name: "empty-manifests",
@@ -332,7 +332,7 @@ func TestProcessManifestAmenities_InvalidYAML(t *testing.T) {
 		t.Fatalf("failed to create invalid.yaml: %v", err)
 	}
 
-	manifestType := AmenityTypeManifest
+	manifestType := AmenityTypeKubernetesManifest
 	amenities := []Amenity{
 		{
 			Name: "invalid-yaml",
