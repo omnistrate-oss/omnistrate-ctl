@@ -78,8 +78,7 @@ func DescribeServiceOffering(ctx context.Context, token, serviceID, productTierI
 	return res, nil
 }
 
-
-func ExternalDescribeServiceOffering(ctx context.Context, token, serviceID,environmentID, productTierID string) (res *openapiclientv1.DescribeServiceOfferingResult, err error) {
+func ExternalDescribeServiceOffering(ctx context.Context, token, serviceID, environmentID, productTierID string) (res *openapiclientv1.DescribeServiceOfferingResult, err error) {
 	ctxWithToken := context.WithValue(ctx, openapiclientv1.ContextAccessToken, token)
 	apiClient := getV1Client()
 
@@ -100,18 +99,18 @@ func ExternalDescribeServiceOffering(ctx context.Context, token, serviceID,envir
 	// Filter offerings array after API call
 	if res != nil && len(res.Offerings) > 0 {
 		filteredOfferings := []openapiclientv1.ServiceOffering{}
-		
+
 		for _, offering := range res.Offerings {
 			// Check if offering matches the filters
 			matchesEnvironment := environmentID == "" || offering.ServiceEnvironmentID == environmentID
 			matchesProductTier := productTierID == "" || offering.ProductTierID == productTierID
-			
+
 			// Include offering if it matches all provided filters
 			if matchesEnvironment && matchesProductTier {
 				filteredOfferings = append(filteredOfferings, offering)
 			}
 		}
-		
+
 		// Update the result with filtered offerings
 		res.Offerings = filteredOfferings
 	}
