@@ -21,7 +21,7 @@ spec:
     image: nginx:latest`
 
 	manifestFile := filepath.Join(tmpDir, "test-manifest.yaml")
-	if err := os.WriteFile(manifestFile, []byte(testManifest), 0644); err != nil {
+	if err := os.WriteFile(manifestFile, []byte(testManifest), 0600); err != nil {
 		t.Fatalf("failed to create test manifest file: %v", err)
 	}
 
@@ -143,10 +143,10 @@ kind: Secret
 metadata:
   name: secret2`
 
-	if err := os.WriteFile(filepath.Join(tmpDir, "secret1.yaml"), []byte(manifest1), 0644); err != nil {
+	if err := os.WriteFile(filepath.Join(tmpDir, "secret1.yaml"), []byte(manifest1), 0600); err != nil {
 		t.Fatalf("failed to create secret1.yaml: %v", err)
 	}
-	if err := os.WriteFile(filepath.Join(tmpDir, "secret2.yaml"), []byte(manifest2), 0644); err != nil {
+	if err := os.WriteFile(filepath.Join(tmpDir, "secret2.yaml"), []byte(manifest2), 0600); err != nil {
 		t.Fatalf("failed to create secret2.yaml: %v", err)
 	}
 
@@ -328,7 +328,7 @@ func TestProcessManifestAmenities_InvalidYAML(t *testing.T) {
 
 	// Create an invalid YAML file
 	invalidYAML := `this is not valid yaml: [unclosed bracket`
-	if err := os.WriteFile(filepath.Join(tmpDir, "invalid.yaml"), []byte(invalidYAML), 0644); err != nil {
+	if err := os.WriteFile(filepath.Join(tmpDir, "invalid.yaml"), []byte(invalidYAML), 0600); err != nil {
 		t.Fatalf("failed to create invalid.yaml: %v", err)
 	}
 
