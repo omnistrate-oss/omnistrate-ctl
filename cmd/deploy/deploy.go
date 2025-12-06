@@ -318,7 +318,7 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 	if azureSubscriptionID != "" {
 		cloudProvidersToCheck = append(cloudProvidersToCheck, "azure")
 	}
-	
+
 	// If no specific cloud provider is configured in spec, check all providers
 	if len(cloudProvidersToCheck) == 0 {
 		cloudProvidersToCheck = []string{"aws", "gcp", "azure"}
@@ -405,7 +405,7 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 		if azureSubscriptionID != "" {
 			errorMessage += fmt.Sprintf("Azure subscription %s/%s is not linked. Please link it using 'omctl account create'.", azureSubscriptionID, azureTenantID)
 		}
-		
+
 		spinner.UpdateMessage(errorMessage)
 		spinner.Error()
 		return errors.New(errorMessage)
@@ -534,7 +534,7 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 			// Use current directory name for repository-based builds
 			cwd, err := os.Getwd()
 			if err != nil {
-				return  err
+				return err
 			}
 			serviceNameToUse = sanitizeServiceName(filepath.Base(cwd))
 		} else {
@@ -604,7 +604,6 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 
 	} else {
 
-	
 		if !isAccountId {
 			// Use createDeploymentYAML to generate the deployment section
 			deploymentSection := createDeploymentYAML(
@@ -850,7 +849,7 @@ func executeDeploymentWorkflow(cmd *cobra.Command, sm ysmrr.SpinnerManager, toke
 
 		spinner = sm.AddSpinner(createMsg)
 		createdInstanceID, err := "", error(nil)
-		createdInstanceID, err = createInstanceUnified(cmd.Context(), token, serviceID,environmentID, planID, cloudProvider, region, resourceID, "resourceInstance", formattedParams, sm)
+		createdInstanceID, err = createInstanceUnified(cmd.Context(), token, serviceID, environmentID, planID, cloudProvider, region, resourceID, "resourceInstance", formattedParams, sm)
 		finalInstanceID = createdInstanceID
 		// instanceActionType is already "create" from initialization
 		if err != nil {
@@ -893,7 +892,7 @@ func executeDeploymentWorkflow(cmd *cobra.Command, sm ysmrr.SpinnerManager, toke
 }
 
 // createInstanceUnified creates an instance with or without subscription, removing duplicate code
-func createInstanceUnified(ctx context.Context, token, serviceID,environmentID, productTierID, cloudProvider, region, resourceID, instanceType string, formattedParams map[string]interface{}, sm ysmrr.SpinnerManager) (string, error) {
+func createInstanceUnified(ctx context.Context, token, serviceID, environmentID, productTierID, cloudProvider, region, resourceID, instanceType string, formattedParams map[string]interface{}, sm ysmrr.SpinnerManager) (string, error) {
 
 	// Get the latest version
 	version, err := dataaccess.FindLatestVersion(ctx, token, serviceID, productTierID)
@@ -902,7 +901,7 @@ func createInstanceUnified(ctx context.Context, token, serviceID,environmentID, 
 	}
 
 	// Describe service offering
-	res, err := dataaccess.ExternalDescribeServiceOffering(ctx, token, serviceID,environmentID, productTierID)
+	res, err := dataaccess.ExternalDescribeServiceOffering(ctx, token, serviceID, environmentID, productTierID)
 	if err != nil {
 		return "", fmt.Errorf("failed to describe service offering: %w", err)
 	}
@@ -1841,7 +1840,7 @@ func createCloudAccountInstances(ctx context.Context, token, serviceID, environm
 
 	sm.Start()
 
-	createdInstanceID, err := createInstanceUnified(ctx, token, serviceID,environmentID, planID, targetCloudProvider, "", "", "cloudAccount", formattedParams, sm)
+	createdInstanceID, err := createInstanceUnified(ctx, token, serviceID, environmentID, planID, targetCloudProvider, "", "", "cloudAccount", formattedParams, sm)
 	if err != nil {
 		spinner.UpdateMessage("Creating cloud account instance: Failed (" + err.Error() + ")")
 		spinner.Error()
