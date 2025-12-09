@@ -344,7 +344,7 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 						"This looks like a plain docker-compose or non-Omnistrate YAML file.\n\n"+
 						"Next steps:\n"+
 						"  - Add x-omnistrate-* keys to your spec, or\n"+
-						"  - Convert your compose file using Omnistrate tools as described in the docs.",
+						"  - Convert your compose file using Omnistrate tools as described in the docs",
 					specFile,
 				)
 				utils.PrintError(err)
