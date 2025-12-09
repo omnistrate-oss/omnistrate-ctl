@@ -13,6 +13,8 @@ import (
 
 	"github.com/omnistrate-oss/omnistrate-ctl/internal/utils"
 
+	"golang.org/x/text/cases"
+	"golang.org/x/text/language"
 	"gopkg.in/yaml.v3"
 
 	"github.com/chelnak/ysmrr"
@@ -37,7 +39,7 @@ omctl deploy
 # Deploy using a specific Omnistrate spec
 omctl deploy --file omnistrate-compose.yaml
 
-# Build and deploy with a sspecifcpecifc product name
+# Build and deploy with a specific product name
 omctl deploy --product-name "My Service"
 
 # Build and deploy to a specific cloud and region
@@ -295,7 +297,7 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 						"  like Claude or Gemini).\n",
 					build.OmnistrateComposeFileName, build.DockerComposeFileName, build.OmnistrateComposeFileName,
 				)
-				utils.PrintError(fmt.Errorf(errMsg))
+				utils.PrintError(fmt.Errorf("%s", errMsg))
 				return pkgerrors.Wrap(err, errMsg)
 			}
 			// No spec files found – proceed with repo-based build
@@ -485,7 +487,7 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 
 		spinner.Error()
 		utils.PrintError(fmt.Errorf("cloud account mismatch:\n%s", errorMessage))
-		return fmt.Errorf(errorMessage)
+		return fmt.Errorf("cloud account mismatch: %s", errorMessage)
 	} else if accountStatus != "READY" && (awsAccountID != "" || gcpProjectID != "" || azureSubscriptionID != "") {
 
 		var errorMessage string
@@ -500,7 +502,7 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 		}
 		spinner.Error()
 		utils.PrintError(fmt.Errorf("cloud account not ready:\n%s", errorMessage))
-		return fmt.Errorf(errorMessage)
+		return fmt.Errorf("cloud account not ready: %s", errorMessage)
 	}
 
 	if awsAccountID == "" && gcpProjectID == "" && azureSubscriptionID == "" {
@@ -598,20 +600,17 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 		spinner.Complete()
 
 		if awsAccountID != "" {
-			accountMessage := fmt.Sprintf("  - Using AWS Account ID: %s", awsAccountID)
-			spinner = sm.AddSpinner(accountMessage)
+			spinner = sm.AddSpinner(fmt.Sprintf("  - Using AWS Account ID: %s", awsAccountID))
 			spinner.Complete()
 
 		}
 		if gcpProjectID != "" {
-			accountMessage := fmt.Sprintf("  - Using GCP Project ID: %s and Project Number: %s", gcpProjectID, gcpProjectNumber)
-			spinner = sm.AddSpinner(accountMessage)
+			spinner = sm.AddSpinner(fmt.Sprintf("  - Using GCP Project ID: %s and Project Number: %s", gcpProjectID, gcpProjectNumber))
 			spinner.Complete()
 
 		}
 		if azureSubscriptionID != "" {
-			accountMessage := fmt.Sprintf("  - Using Azure Subscription ID: %s and Tenant ID: %s", azureSubscriptionID, azureTenantID)
-			spinner = sm.AddSpinner(accountMessage)
+			spinner = sm.AddSpinner(fmt.Sprintf("  - Using Azure Subscription ID: %s and Tenant ID: %s", azureSubscriptionID, azureTenantID))
 			spinner.Complete()
 
 		}
@@ -940,7 +939,7 @@ func executeDeploymentWorkflow(cmd *cobra.Command, sm ysmrr.SpinnerManager, toke
 
 		}
 
-		createMsg := "Step 2/2: Deplying a new instance"
+		createMsg := "Step 2/2: Deploying a new instance"
 		spinner = sm.AddSpinner(createMsg)
 		createdInstanceID, err := "", error(nil)
 		createdInstanceID, err = createInstanceUnified(cmd.Context(), token, serviceID, environmentID, planID, cloudProvider, region, resourceID, "resourceInstance", formattedParams, sm)
@@ -2224,17 +2223,18 @@ func printAuthError() {
 			"  You are not logged in or your session has expired.\n\n" +
 			"Next steps:\n" +
 			"  1. Run:  omctl login\n" +
-			"  2. Re-run your previous omctl deploy command.\n",
+			"  2. Re-run your previous omctl deploy command",
 	))
 }
 
 func printBackendError(context string, err error) {
+	contextTitle := cases.Title(language.English).String(context)
 	utils.PrintError(fmt.Errorf(
 		"❌ %s failed\n\n  %v\n\n"+
 			"Next steps:\n"+
-			"  - Retry the command in a few minutes.\n"+
-			"  - If the problem persists, contact Omnistrate support and share this error.\n",
-		strings.Title(context), err,
+			"  - Retry the command in a few minutes\n"+
+			"  - If the problem persists, contact Omnistrate support and share this error",
+		contextTitle, err,
 	))
 }
 

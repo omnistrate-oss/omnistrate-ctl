@@ -50,7 +50,7 @@ omnistrate-ctl [flags]
 * [omnistrate-ctl build-from-repo](omnistrate-ctl_build-from-repo.md)	 - Build Service from Git Repository
 * [omnistrate-ctl cost](omnistrate-ctl_cost.md)	 - Manage cost analytics for your services
 * [omnistrate-ctl custom-network](omnistrate-ctl_custom-network.md)	 - List and describe custom networks of your customers
-* [omnistrate-ctl deploy](omnistrate-ctl_deploy.md)	 - Deploy a service using a spec file
+* [omnistrate-ctl deploy](omnistrate-ctl_deploy.md)	 - Build or update a service and deploy or upgrade an instance
 * [omnistrate-ctl deployment-cell](omnistrate-ctl_deployment-cell.md)	 - Manage Deployment Cells
 * [omnistrate-ctl docs](omnistrate-ctl_docs.md)	 - Search and access documentation
 * [omnistrate-ctl domain](omnistrate-ctl_domain.md)	 - Manage Customer Domains for your service
