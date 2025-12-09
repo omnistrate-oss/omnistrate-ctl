@@ -875,35 +875,32 @@ func executeDeploymentWorkflow(cmd *cobra.Command, sm ysmrr.SpinnerManager, toke
 		// Display automatic instance handling message
 		if len(existingInstanceIDs) > 0 {
 			finalInstanceID = existingInstanceIDs[0]
-			spinner.UpdateMessage(fmt.Sprintf("%s: Found %d existing instance(s)", spinnerMsg, len(existingInstanceIDs)))
+			spinner.UpdateMessage(fmt.Sprintf("Step 2/2: %s: Found %d existing instance(s)", spinnerMsg, len(existingInstanceIDs)))
 			spinner.Complete()
 
 		// Show the note directly without stopping spinner manager
-		spinner = sm.AddSpinner(fmt.Sprintf("📝 Note: Existing instance detected. An upgrade will be performed.\n   Instance ID: %s\n\n", finalInstanceID))
+		spinner = sm.AddSpinner(fmt.Sprintf("Step 2/2: 📝 Note: Existing instance found. An upgrade will be performed. (Instance ID: %s)", finalInstanceID))
 		spinner.Complete()
 
 		} else {
 
-			spinner.UpdateMessage(fmt.Sprintf("%s: No existing instance found (provider instance does not match)", spinnerMsg))
+			spinner.UpdateMessage(fmt.Sprintf("Step 2/2: %s: No existing instance found (provider instance does not match)", spinnerMsg))
 			spinner.Complete()
 
 		}
 	} else {
 		spinner.Complete()
 		// Show the note directly
-		spinner = sm.AddSpinner("📝 Note: No existing instance specified. A new instance will be created automatically.")
+		spinner = sm.AddSpinner("Step 2/2: 📝 Note: No existing instance specified. A new instance will be created automatically.")
 		spinner.Complete()
 		
 	}
 
 	if finalInstanceID != "" {
 
-		foundMsg := "Step 2/2: Existing instance found"
-		spinner = sm.AddSpinner(foundMsg)
-		spinner.UpdateMessage(foundMsg)
-		spinner.Complete()
-
 		spinner = sm.AddSpinner(fmt.Sprintf("Step 2/2: Upgrading existing instance %s to latest version...", finalInstanceID))
+		spinner.Complete()
+		spinner = sm.AddSpinner("Step 2/2: Upgrading existing instance")
 		upgradeErr := upgradeExistingInstance(cmd.Context(), token, []string{finalInstanceID}, serviceID, planID)
 		instanceActionType = "upgrade"
 		if upgradeErr != nil {
