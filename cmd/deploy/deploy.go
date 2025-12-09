@@ -2269,7 +2269,7 @@ func printMissingParamsGuidance(err error) {
 			"Next steps:\n"+
 			"  - Provide values using --param, for example:\n"+
 			"      omctl deploy --param '{\"key\":\"value\",...}'\n"+
-			"  - Or provide a JSON file with --param-file.\n",
+			"  - Or provide a JSON file with --param-file",
 		err.Error(),
 	))
 }
