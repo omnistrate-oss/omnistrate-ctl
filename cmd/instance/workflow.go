@@ -14,6 +14,8 @@ import (
 
 // ResourceSpinner holds spinner information for a resource
 type ResourceSpinner struct {
+	ResourceId   string
+	ResourceKey  string
 	ResourceName string
 	Spinner      *ysmrr.Spinner
 }
@@ -36,24 +38,29 @@ func DisplayWorkflowResourceDataWithSpinners(ctx context.Context, token, instanc
 	sm := ysmrr.NewSpinnerManager()
 
 	// Track resource spinners
-	var resourceSpinners []ResourceSpinner
+	var resourceSpinners map[string]ResourceSpinner = make(map[string]ResourceSpinner)
 
 	// Function to create or update spinners for each resource
 	createOrUpdateSpinners := func(resourcesData []dataaccess.ResourceWorkflowDebugEvents) {
 		// If this is the first time, create spinners for each resource
-		if len(resourceSpinners) == 0 {
-			for _, resourceData := range resourcesData {
+
+		for _, resourceData := range resourcesData {
+			if _, exists := resourceSpinners[resourceData.ResourceID]; !exists {
 				spinner := sm.AddSpinner(fmt.Sprintf("%s: Initializing...", resourceData.ResourceName))
-				resourceSpinners = append(resourceSpinners, ResourceSpinner{
+				resourceSpinners[resourceData.ResourceID] = ResourceSpinner{
+					ResourceId:   resourceData.ResourceID,
+					ResourceKey:  resourceData.ResourceKey,
 					ResourceName: resourceData.ResourceName,
 					Spinner:      spinner,
-				})
+				}
 			}
+		}
+		if !sm.Running() {
 			sm.Start()
 		}
 
 		// Update each resource spinner with current status
-		for i, resourceData := range resourcesData {
+		for _, resourceData := range resourcesData {
 			// Dynamically get all available workflow steps and their status
 			workflowStepStatuses := getDynamicWorkflowStepStatuses(resourceData.EventsByWorkflowStep)
 
@@ -67,15 +74,15 @@ func DisplayWorkflowResourceDataWithSpinners(ctx context.Context, token, instanc
 			message := fmt.Sprintf("%s - %s", resourceData.ResourceName, strings.Join(messageParts, " | "))
 
 			// Update spinner message
-			resourceSpinners[i].Spinner.UpdateMessage(message)
+			resourceSpinners[resourceData.ResourceID].Spinner.UpdateMessage(message)
 
 			// Use getResourceStatusFromEvents for status
 			resourceStatus := getResourceStatusFromEvents(resourceData.EventsByWorkflowStep)
 			switch resourceStatus {
 			case model.ResourceStatusFailed:
-				resourceSpinners[i].Spinner.Error()
+				resourceSpinners[resourceData.ResourceID].Spinner.Error()
 			case model.ResourceStatusCompleted:
-				resourceSpinners[i].Spinner.Complete()
+				resourceSpinners[resourceData.ResourceID].Spinner.Complete()
 			}
 		}
 	}
@@ -85,7 +92,7 @@ func DisplayWorkflowResourceDataWithSpinners(ctx context.Context, token, instanc
 		hasFailures := false
 		workflowFailed := strings.ToLower(workflowInfo.WorkflowStatus) == "failed" || strings.ToLower(workflowInfo.WorkflowStatus) == "cancelled"
 		workflowSucceeded := strings.ToLower(workflowInfo.WorkflowStatus) == "success"
-		for i, resourceData := range resourcesData {
+		for _, resourceData := range resourcesData {
 			var resourceStatus model.WorkflowStatus
 			if resourceData.WorkflowStatus != nil {
 				resourceStatus = mapResourceStatus(*resourceData.WorkflowStatus)
@@ -100,15 +107,15 @@ func DisplayWorkflowResourceDataWithSpinners(ctx context.Context, token, instanc
 			// Set spinner state based on resource and workflow status
 			switch resourceStatus {
 			case model.WorkflowStatusCompleted:
-				resourceSpinners[i].Spinner.Complete()
+				resourceSpinners[resourceData.ResourceID].Spinner.Complete()
 			case model.WorkflowStatusFailed:
-				resourceSpinners[i].Spinner.Error()
+				resourceSpinners[resourceData.ResourceID].Spinner.Error()
 			default:
 				// For any non-completed/non-failed resource, force final state based on workflow
 				if workflowSucceeded {
-					resourceSpinners[i].Spinner.Complete()
+					resourceSpinners[resourceData.ResourceID].Spinner.Complete()
 				} else if workflowFailed {
-					resourceSpinners[i].Spinner.Error()
+					resourceSpinners[resourceData.ResourceID].Spinner.Error()
 					hasFailures = true
 				}
 			}
