@@ -840,9 +840,7 @@ func executeDeploymentWorkflow(cmd *cobra.Command, sm ysmrr.SpinnerManager, toke
 	spinner.Complete()
 
 	// Step 9: Create or upgrade instance deployment automatically
-	fmt.Println()
-	fmt.Println("Step 2/2: Instance deployment")
-
+	
 	var finalInstanceID string
 	instanceActionType := "create"
 
@@ -859,7 +857,6 @@ func executeDeploymentWorkflow(cmd *cobra.Command, sm ysmrr.SpinnerManager, toke
 			utils.HandleSpinnerError(spinner, sm, err)
 			spinner.UpdateMessage(spinnerMsg + ": Failed (" + err.Error() + ")")
 			spinner.Error()
-			sm.Stop()
 			return err
 		}
 
@@ -881,11 +878,9 @@ func executeDeploymentWorkflow(cmd *cobra.Command, sm ysmrr.SpinnerManager, toke
 			spinner.UpdateMessage(fmt.Sprintf("%s: Found %d existing instance(s)", spinnerMsg, len(existingInstanceIDs)))
 			spinner.Complete()
 
-			// Stop spinner manager temporarily to show the note
-			sm.Stop()
-			fmt.Println("📝 Note: Existing instance detected. An upgrade will be performed.")
-			fmt.Printf("   Instance ID: %s\n\n", finalInstanceID)
-			sm.Start()
+		// Show the note directly without stopping spinner manager
+		spinner = sm.AddSpinner(fmt.Sprintf("📝 Note: Existing instance detected. An upgrade will be performed.\n   Instance ID: %s\n\n", finalInstanceID))
+		spinner.Complete()
 
 		} else {
 
@@ -895,10 +890,10 @@ func executeDeploymentWorkflow(cmd *cobra.Command, sm ysmrr.SpinnerManager, toke
 		}
 	} else {
 		spinner.Complete()
-		// Stop spinner manager temporarily to show the note
-		fmt.Println("📝 Note: No existing instance specified. A new instance will be created automatically.")
-		fmt.Println()
-		sm.Start()
+		// Show the note directly
+		spinner = sm.AddSpinner("📝 Note: No existing instance specified. A new instance will be created automatically.")
+		spinner.Complete()
+		
 	}
 
 	if finalInstanceID != "" {
@@ -915,7 +910,6 @@ func executeDeploymentWorkflow(cmd *cobra.Command, sm ysmrr.SpinnerManager, toke
 			utils.HandleSpinnerError(spinner, sm, upgradeErr)
 			spinner.UpdateMessage(fmt.Sprintf("Step 2/2: Upgrading existing instance: Failed (%s)", upgradeErr.Error()))
 			spinner.Error()
-			sm.Stop()
 			return upgradeErr
 		} else {
 
@@ -962,16 +956,18 @@ func executeDeploymentWorkflow(cmd *cobra.Command, sm ysmrr.SpinnerManager, toke
 				printMissingParamsGuidance(err)
 			}
 			spinner.Error()
-			sm.Stop()
 			return err
 		}
 
 		spinner.UpdateMessage(fmt.Sprintf("%s: Success (ID: %s)", createMsg, finalInstanceID))
 		spinner.Complete()
 	}
-
+	spinner = sm.AddSpinner("Step 2/2: Instance deployment preparation complete")
+	spinner.Complete()
+	
+	// Stop spinner manager before printing summary
 	sm.Stop()
-
+	
 	// Success summary
 	fmt.Println()
 	fmt.Println("✅ Deployment summary")
