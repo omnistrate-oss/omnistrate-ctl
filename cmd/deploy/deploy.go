@@ -2244,16 +2244,16 @@ func wrapAndPrintServiceBuildError(err error) {
 		utils.PrintError(fmt.Errorf(
 			"❌ Environment conflict during service creation\n\n" +
 				"  The service already has a public environment in this account and a new conflicting\n" +
-				"  environment cannot be created automatically.\n\n" +
+				"  environment cannot be created automatically\n\n" +
 				"Next steps:\n" +
-				"  - To update the existing service and environment, re-run with the same service name.\n" +
-				"  - To create a new service, use a different name with --product-name.\n",
+				"  - To update the existing service and environment, re-run with the same service name\n" +
+				"  - To create a new service, use a different name with --product-name",
 		))
 		return
 	}
 	utils.PrintError(fmt.Errorf(
 		"❌ Service creation failed\n\n  %v\n\n"+
-			"Step 1/2 (service creation) failed. No instance was created.\n",
+			"Step 1/2 (service creation) failed. No instance was created",
 		err,
 	))
 }
