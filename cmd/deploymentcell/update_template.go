@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"path/filepath"
 
 	"github.com/omnistrate-oss/omnistrate-sdk-go/fleet"
 
@@ -174,6 +175,14 @@ func updateOrganizationTemplate(ctx context.Context, token string, environment s
 		return err
 	}
 
+	// Process manifest amenities to convert file references to inline definitions
+	baseDir := filepath.Dir(configFile)
+	templateConfig, err = processManifestAmenitiesInTemplate(templateConfig, baseDir)
+	if err != nil {
+		utils.PrintError(fmt.Errorf("failed to process manifest amenities: %w", err))
+		return err
+	}
+
 	err = dataaccess.UpdateServiceProviderOrganization(ctx, token, templateConfig, environment, cloudProvider)
 	if err != nil {
 		utils.PrintError(fmt.Errorf("failed to update organization template: %w", err))
@@ -306,6 +315,14 @@ func updateDeploymentCellFromFile(ctx context.Context, token string, deploymentC
 		}
 	}
 
+	// Process manifest amenities to convert file references to inline definitions
+	baseDir := filepath.Dir(configFile)
+	templateConfig, err = processManifestAmenitiesInTemplate(templateConfig, baseDir)
+	if err != nil {
+		utils.PrintError(fmt.Errorf("failed to process manifest amenities: %w", err))
+		return err
+	}
+
 	// Update deployment cell configuration
 	var pendingChanges []fleet.Amenity
 
@@ -358,4 +375,24 @@ func updateDeploymentCellFromFile(ctx context.Context, token string, deploymentC
 	fmt.Printf("ID: %s\n", hc.GetId())
 
 	return nil
+}
+
+// processManifestAmenitiesInTemplate processes manifest amenities in a deployment cell template,
+// converting file references to inline definitions
+func processManifestAmenitiesInTemplate(template model.DeploymentCellTemplate, baseDir string) (model.DeploymentCellTemplate, error) {
+	var err error
+
+	// Process managed amenities
+	template.ManagedAmenities, err = model.ProcessManifestAmenities(template.ManagedAmenities, baseDir)
+	if err != nil {
+		return template, fmt.Errorf("failed to process managed amenities: %w", err)
+	}
+
+	// Process custom amenities
+	template.CustomAmenities, err = model.ProcessManifestAmenities(template.CustomAmenities, baseDir)
+	if err != nil {
+		return template, fmt.Errorf("failed to process custom amenities: %w", err)
+	}
+
+	return template, nil
 }

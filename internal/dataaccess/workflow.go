@@ -393,28 +393,25 @@ func ListDeploymentCellWorkflows(ctx context.Context, token string, hostClusterI
 	ctxWithToken := context.WithValue(ctx, openapiclientfleet.ContextAccessToken, token)
 	apiClient := getFleetClient()
 
-	// Create the request body
-	reqBody := openapiclientfleet.NewListDeploymentCellWorkflowsRequest2()
-
-	if opts != nil {
-		if opts.StartDate != nil {
-			reqBody.SetStartDate(*opts.StartDate)
-		}
-		if opts.EndDate != nil {
-			reqBody.SetEndDate(*opts.EndDate)
-		}
-		if opts.PageSize != nil {
-			reqBody.SetPageSize(*opts.PageSize)
-		}
-		if opts.NextPageToken != "" {
-			reqBody.SetNextPageToken(opts.NextPageToken)
-		}
-	}
-
 	req := apiClient.HostclusterApiAPI.HostclusterApiListDeploymentCellWorkflows(
 		ctxWithToken,
 		hostClusterID,
-	).ListDeploymentCellWorkflowsRequest2(*reqBody)
+	)
+
+	if opts != nil {
+		if opts.StartDate != nil {
+			req = req.StartDate(*opts.StartDate)
+		}
+		if opts.EndDate != nil {
+			req = req.EndDate(*opts.EndDate)
+		}
+		if opts.PageSize != nil {
+			req = req.PageSize(*opts.PageSize)
+		}
+		if opts.NextPageToken != "" {
+			req = req.NextPageToken(opts.NextPageToken)
+		}
+	}
 
 	var r *http.Response
 	defer func() {
