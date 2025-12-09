@@ -496,7 +496,7 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 			errorMessage += fmt.Sprintf("GCP project %s/%s is linked but has status '%s'. Complete onboarding if required.\n", gcpProjectID, gcpProjectNumber, accountStatus)
 		}
 		if azureSubscriptionID != "" {
-			errorMessage += fmt.Sprintf("Azure subscription %s/%s is linked but has status '%s'. Complete onboarding if required.", azureSubscriptionID, azureTenantID)
+			errorMessage += fmt.Sprintf("Azure subscription %s/%s is linked but has status '%s'. Complete onboarding if required.", azureSubscriptionID, azureTenantID, accountStatus)
 		}
 		spinner.Error()
 		utils.PrintError(fmt.Errorf("cloud account not ready:\n%s", errorMessage))
@@ -592,7 +592,7 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 		}
 
 	}
-	if(awsAccountID != "" || gcpProjectID != "" || azureSubscriptionID != "")  {
+	if awsAccountID != "" || gcpProjectID != "" || azureSubscriptionID != "" {
 		spinner.Complete()
 		spinner = sm.AddSpinner("Cloud account(s) linked and READY")
 		spinner.Complete()
@@ -616,10 +616,10 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 
 		}
 
-	spinner = sm.AddSpinner("Step 1/2: Cloud provider account check complete")
-	spinner.Complete()
+		spinner = sm.AddSpinner("Step 1/2: Cloud provider account check complete")
+		spinner.Complete()
 
-}
+	}
 
 	// Pre-check 2: Determine service name
 	spinner = sm.AddSpinner("Step 1/2: Determining service name...")
@@ -840,7 +840,7 @@ func executeDeploymentWorkflow(cmd *cobra.Command, sm ysmrr.SpinnerManager, toke
 	spinner.Complete()
 
 	// Step 9: Create or upgrade instance deployment automatically
-	
+
 	var finalInstanceID string
 	instanceActionType := "create"
 
@@ -878,9 +878,9 @@ func executeDeploymentWorkflow(cmd *cobra.Command, sm ysmrr.SpinnerManager, toke
 			spinner.UpdateMessage(fmt.Sprintf("Step 2/2: %s: Found %d existing instance(s)", spinnerMsg, len(existingInstanceIDs)))
 			spinner.Complete()
 
-		// Show the note directly without stopping spinner manager
-		spinner = sm.AddSpinner(fmt.Sprintf("Step 2/2: 📝 Note: Existing instance found. An upgrade will be performed. (Instance ID: %s)", finalInstanceID))
-		spinner.Complete()
+			// Show the note directly without stopping spinner manager
+			spinner = sm.AddSpinner(fmt.Sprintf("Step 2/2: 📝 Note: Existing instance found. An upgrade will be performed. (Instance ID: %s)", finalInstanceID))
+			spinner.Complete()
 
 		} else {
 
@@ -893,7 +893,7 @@ func executeDeploymentWorkflow(cmd *cobra.Command, sm ysmrr.SpinnerManager, toke
 		// Show the note directly
 		spinner = sm.AddSpinner("Step 2/2: 📝 Note: No existing instance specified. A new instance will be created automatically.")
 		spinner.Complete()
-		
+
 	}
 
 	if finalInstanceID != "" {
@@ -961,10 +961,10 @@ func executeDeploymentWorkflow(cmd *cobra.Command, sm ysmrr.SpinnerManager, toke
 	}
 	spinner = sm.AddSpinner("Step 2/2: Instance deployment preparation complete")
 	spinner.Complete()
-	
+
 	// Stop spinner manager before printing summary
 	sm.Stop()
-	
+
 	// Success summary
 	fmt.Println()
 	fmt.Println("✅ Deployment summary")
@@ -2242,11 +2242,11 @@ func wrapAndPrintServiceBuildError(err error) {
 	msg := err.Error()
 	if strings.Contains(msg, "public service environment already exists") {
 		utils.PrintError(fmt.Errorf(
-			"❌ Environment conflict during service creation\n\n"+
-				"  The service already has a public environment in this account and a new conflicting\n"+
-				"  environment cannot be created automatically.\n\n"+
-				"Next steps:\n"+
-				"  - To update the existing service and environment, re-run with the same service name.\n"+
+			"❌ Environment conflict during service creation\n\n" +
+				"  The service already has a public environment in this account and a new conflicting\n" +
+				"  environment cannot be created automatically.\n\n" +
+				"Next steps:\n" +
+				"  - To update the existing service and environment, re-run with the same service name.\n" +
 				"  - To create a new service, use a different name with --product-name.\n",
 		))
 		return
