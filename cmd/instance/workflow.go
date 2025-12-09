@@ -38,7 +38,7 @@ func DisplayWorkflowResourceDataWithSpinners(ctx context.Context, token, instanc
 	sm := ysmrr.NewSpinnerManager()
 
 	// Track resource spinners
-	var resourceSpinners map[string]ResourceSpinner = make(map[string]ResourceSpinner)
+	resourceSpinners := make(map[string]ResourceSpinner)
 
 	// Function to create or update spinners for each resource
 	createOrUpdateSpinners := func(resourcesData []dataaccess.ResourceWorkflowDebugEvents) {
