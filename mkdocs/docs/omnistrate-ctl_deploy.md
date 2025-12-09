@@ -96,7 +96,7 @@ omctl deploy --platforms "linux/amd64,linux/arm64"
       --dry-run                   Perform validation checks without actually building or deploying
   -e, --environment string        Name of the environment to build the service in (default: Prod) (default "Prod")
   -t, --environment-type string   Type of environment. Valid options: dev, prod, qa, canary, staging, private (default: prod) (default "prod")
-  -f, --file string               Path to the Omnistrate spec or compose file (defaults to compose.yaml)
+  -f, --file string               Path to the Omnistrate spec or compose file (defaults to omnistrate-compose.yaml)
       --github-username string    GitHub username to use if GitHub API fails to retrieve it automatically
   -h, --help                      help for deploy
       --instance-id string        Specify the instance ID to use when multiple deployments exist.
