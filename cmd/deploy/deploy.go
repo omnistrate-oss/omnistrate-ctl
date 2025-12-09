@@ -120,7 +120,7 @@ var DeployCmd = &cobra.Command{
 }
 
 func init() {
-	DeployCmd.Flags().StringP("file", "f", "", fmt.Sprintf("Path to the Omnistrate spec or compose file (defaults to %s)", build.ComposeFileName))
+	DeployCmd.Flags().StringP("file", "f", "", fmt.Sprintf("Path to the Omnistrate spec or compose file (defaults to %s)", build.OmnistrateComposeFileName))
 	DeployCmd.Flags().String("product-name", "", "Specify a custom service name. If not provided, the directory name will be used.")
 	DeployCmd.Flags().Bool("dry-run", false, "Perform validation checks without actually building or deploying")
 	DeployCmd.Flags().String("resource-id", "", "Specify the resource ID to use when multiple resources exist.")
