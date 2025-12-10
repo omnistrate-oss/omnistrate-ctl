@@ -1,54 +1,90 @@
 ## omnistrate-ctl deploy
 
-Deploy a service using a spec file
+Build or update a service and deploy or upgrade an instance
 
 ### Synopsis
 
-Deploy a service using a spec file. This command builds the service in DEV, creates/checks PROD environment, promotes to PROD, marks as preferred, subscribes, and automatically creates/upgrades instances. This command may involve interactive prompts and should be run manually, not by AI agents or automation.
+Deploy command is the unified entry point to build (or update) a service and then
+deploy or upgrade an instance of that service.
+
+It automatically handles:
+  - Building from repository when no spec file is found
+  - Building from an Omnistrate spec (such as omnistrate-compose.yaml)
+  - Creating or updating the service version
+  - Determining deployment type (hosted or BYOA)
+  - Selecting cloud and region
+  - Selecting or onboarding cloud accounts for BYOA deployments
+  - Collecting instance parameters
+  - Launching a new instance or upgrading an existing instance
+
+Main modes of operation:
+
+  - Build from repository and deploy
+      Triggered when no spec file is provided and no supported spec is found in
+      the current directory. The command detects a Dockerfile, builds an image,
+      creates the service, generates the Omnistrate spec, and deploys an instance.
+
+  - Build from Omnistrate spec and deploy
+      Triggered when a supported spec (with x-omnistrate metadata) is provided or
+      discovered. The command creates or updates the service version and deploys.
+
+  - Upgrade an existing instance
+      If --instance-id is provided, deploy builds the service version and upgrades
+      the specified instance directly.
+
+Instance selection and deployment:
+
+  - If instances already exist in the target environment, the command can prompt
+    to upgrade an existing instance or create a new one.
+
+  - If no instances exist, a new one will be created automatically.
+
+  - When creating a new instance, deploy determines the cloud, region, resource
+    (if applicable), BYOA account (if applicable), and any required parameters.
+
+Dry run:
+
+  - With --dry-run, deploy performs full validation and build steps but stops
+    before launching or upgrading an instance.
 
 ```
-omnistrate-ctl deploy [spec-file] [flags]
+omnistrate-ctl deploy [--file=file] [--product-name=service-name] [--dry-run] [--deployment-type=deployment-type] [--spec-type=spec-type] [--cloud-provider=cloud] [--region=region] [--env-type=type] [--env-name=name] [--skip-docker-build] [--platforms=platforms] [--param key=value] [--param-file=file] [--instance-id=id] [--resource-id=id] [--github-user-name=username] [flags]
 ```
 
 ### Examples
 
 ```
 
-# Deploy a service using a spec file (automatically creates/upgrades instances)
-omctl deploy spec.yaml
+# Build and deploy using the default spec in the current directory
+# Looks for omnistrate-compose.yaml, if no spec file is found, deploy falls back to build-from-repo.
+omctl deploy
 
-# Deploy a service with a custom product name
-omctl deploy spec.yaml --product-name "My Service"
-
-# Build service from an existing compose spec in the repository
+# Deploy using a specific Omnistrate spec
 omctl deploy --file omnistrate-compose.yaml
 
-# Build service with a custom service name
-omctl deploy --product-name my-custom-service
+# Build and deploy with a specific product name
+omctl deploy --product-name "My Service"
 
-# Build service with service specification for Helm, Operator or Kustomize in prod environment
-omctl deploy --file spec.yaml --product-name "My Service" --environment prod --environment-type prod
+# Build and deploy to a specific cloud and region
+omctl deploy --cloud-provider aws --region us-east-1
 
-# Skip building and pushing Docker image
-omctl deploy --skip-docker-build
+# Build and deploy using BYOA (Bring Your Own Account)
+omctl deploy --deployment-type byoa
 
-# Create an deploy deployment, cloud provider and region
-omctl deploy --cloud-provider=aws --region=ca-central-1 --param '{"databaseName":"default","password":"a_secure_password","rootPassword":"a_secure_root_password","username":"user"}'
+# Build and deploy with instance parameters supplied inline
+omctl deploy --param '{"disk_size:20Gi, nodes:3"}'
 
-# Create an deploy deployment with parameters from a file, cloud provider and region
-omctl deploy --cloud-provider=aws --region=ca-central-1 --param-file /path/to/params.json
+# Build and deploy with parameters loaded from a file
+omctl deploy --param-file params.yaml
 
-# Create an deploy with instance id
-omctl deploy --instance-id <instance-id>
+# Build and upgrade an existing instance
+omctl deploy --instance-id inst-12345
 
-# Create an deploy with resource-id
-omctl deploy --resource-id <resource-id>
+# Build from repository but skip Docker build (use pre-built image) and then deploy
+omctl deploy --skip-docker-build --product-name "My Service"
 
-# Run in dry-run mode (build image locally but don't push or create service)
-omctl deploy --dry-run
-
-# Build for multiple platforms
-omctl deploy --platforms linux/amd64 --platforms linux/arm64
+# Multi-arch build from repo and deploy
+omctl deploy --platforms "linux/amd64,linux/arm64"
 
 ```
 
@@ -56,18 +92,18 @@ omctl deploy --platforms linux/amd64 --platforms linux/arm64
 
 ```
       --cloud-provider string     Cloud provider (aws|gcp|azure)
-      --deployment-type string    Type of deployment. Valid values: hosted, byoa (default "hosted" i.e. the deployments are hosted in the service provider account) (default "hosted")
-      --dry-run                   Perform validation checks without actually deploying
+      --deployment-type string    Type of deployment. Valid values: hosted, byoa (default "hosted" i.e. deployments are hosted in the service provider account) (default "hosted")
+      --dry-run                   Perform validation checks without actually building or deploying
   -e, --environment string        Name of the environment to build the service in (default: Prod) (default "Prod")
-  -t, --environment-type string   Type of environment. Valid options include: 'dev', 'prod', 'qa', 'canary', 'staging', 'private' (default: prod) (default "prod")
-  -f, --file string               Path to the docker compose file (defaults to compose.yaml)
+  -t, --environment-type string   Type of environment. Valid options: dev, prod, qa, canary, staging, private (default: prod) (default "prod")
+  -f, --file string               Path to the Omnistrate spec or compose file (defaults to omnistrate-compose.yaml)
       --github-username string    GitHub username to use if GitHub API fails to retrieve it automatically
   -h, --help                      help for deploy
       --instance-id string        Specify the instance ID to use when multiple deployments exist.
-      --param string              Parameters for the instance deployment
-      --param-file string         Json file containing parameters for the instance deployment
-      --platforms stringArray     Specify the platforms to build for. Use the format: --platforms linux/amd64 --platforms linux/arm64. Default is linux/amd64. (default [linux/amd64])
-      --product-name string       Specify a custom service name. If not provided, directory name will be used.
+      --param string              JSON parameters for the instance deployment
+      --param-file string         JSON file containing parameters for the instance deployment
+      --platforms stringArray     Specify the platforms to build for. Example: --platforms linux/amd64 --platforms linux/arm64 (default [linux/amd64])
+      --product-name string       Specify a custom service name. If not provided, the directory name will be used.
       --region string             Region code (e.g. us-east-2, us-central1)
       --resource-id string        Specify the resource ID to use when multiple resources exist.
       --skip-docker-build         Skip building and pushing the Docker image

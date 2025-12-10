@@ -13,6 +13,8 @@ import (
 
 	"github.com/omnistrate-oss/omnistrate-ctl/internal/utils"
 
+	"golang.org/x/text/cases"
+	"golang.org/x/text/language"
 	"gopkg.in/yaml.v3"
 
 	"github.com/chelnak/ysmrr"
@@ -24,55 +26,93 @@ import (
 	"github.com/omnistrate-oss/omnistrate-ctl/internal/dataaccess"
 	openapiclientfleet "github.com/omnistrate-oss/omnistrate-sdk-go/fleet"
 	openapiclient "github.com/omnistrate-oss/omnistrate-sdk-go/v1"
-	"github.com/pkg/errors"
+	pkgerrors "github.com/pkg/errors"
 	"github.com/spf13/cobra"
 )
 
 const (
 	deployExample = `
-# Deploy a service using a spec file (automatically creates/upgrades instances)
-omctl deploy spec.yaml
+# Build and deploy using the default spec in the current directory
+# Looks for omnistrate-compose.yaml, if no spec file is found, deploy falls back to build-from-repo.
+omctl deploy
 
-# Deploy a service with a custom product name
-omctl deploy spec.yaml --product-name "My Service"
-
-# Build service from an existing compose spec in the repository
+# Deploy using a specific Omnistrate spec
 omctl deploy --file omnistrate-compose.yaml
 
-# Build service with a custom service name
-omctl deploy --product-name my-custom-service
+# Build and deploy with a specific product name
+omctl deploy --product-name "My Service"
 
-# Build service with service specification for Helm, Operator or Kustomize in prod environment
-omctl deploy --file spec.yaml --product-name "My Service" --environment prod --environment-type prod
+# Build and deploy to a specific cloud and region
+omctl deploy --cloud-provider aws --region us-east-1
 
-# Skip building and pushing Docker image
-omctl deploy --skip-docker-build
+# Build and deploy using BYOA (Bring Your Own Account)
+omctl deploy --deployment-type byoa
 
-# Create an deploy deployment, cloud provider and region
-omctl deploy --cloud-provider=aws --region=ca-central-1 --param '{"databaseName":"default","password":"a_secure_password","rootPassword":"a_secure_root_password","username":"user"}'
+# Build and deploy with instance parameters supplied inline
+omctl deploy --param '{"disk_size:20Gi, nodes:3"}'
 
-# Create an deploy deployment with parameters from a file, cloud provider and region
-omctl deploy --cloud-provider=aws --region=ca-central-1 --param-file /path/to/params.json
+# Build and deploy with parameters loaded from a file
+omctl deploy --param-file params.yaml
 
-# Create an deploy with instance id
-omctl deploy --instance-id <instance-id>
+# Build and upgrade an existing instance
+omctl deploy --instance-id inst-12345
 
-# Create an deploy with resource-id
-omctl deploy --resource-id <resource-id>
+# Build from repository but skip Docker build (use pre-built image) and then deploy
+omctl deploy --skip-docker-build --product-name "My Service"
 
-# Run in dry-run mode (build image locally but don't push or create service)
-omctl deploy --dry-run
-
-# Build for multiple platforms
-omctl deploy --platforms linux/amd64 --platforms linux/arm64
+# Multi-arch build from repo and deploy
+omctl deploy --platforms "linux/amd64,linux/arm64"
 `
+
+	deployLong = `Deploy command is the unified entry point to build (or update) a service and then
+deploy or upgrade an instance of that service.
+
+It automatically handles:
+  - Building from repository when no spec file is found
+  - Building from an Omnistrate spec (such as omnistrate-compose.yaml)
+  - Creating or updating the service version
+  - Determining deployment type (hosted or BYOA)
+  - Selecting cloud and region
+  - Selecting or onboarding cloud accounts for BYOA deployments
+  - Collecting instance parameters
+  - Launching a new instance or upgrading an existing instance
+
+Main modes of operation:
+
+  - Build from repository and deploy
+      Triggered when no spec file is provided and no supported spec is found in
+      the current directory. The command detects a Dockerfile, builds an image,
+      creates the service, generates the Omnistrate spec, and deploys an instance.
+
+  - Build from Omnistrate spec and deploy
+      Triggered when a supported spec (with x-omnistrate metadata) is provided or
+      discovered. The command creates or updates the service version and deploys.
+
+  - Upgrade an existing instance
+      If --instance-id is provided, deploy builds the service version and upgrades
+      the specified instance directly.
+
+Instance selection and deployment:
+
+  - If instances already exist in the target environment, the command can prompt
+    to upgrade an existing instance or create a new one.
+
+  - If no instances exist, a new one will be created automatically.
+
+  - When creating a new instance, deploy determines the cloud, region, resource
+    (if applicable), BYOA account (if applicable), and any required parameters.
+
+Dry run:
+
+  - With --dry-run, deploy performs full validation and build steps but stops
+    before launching or upgrading an instance.`
 )
 
 // DeployCmd represents the deploy command
 var DeployCmd = &cobra.Command{
-	Use:          "deploy [spec-file]",
-	Short:        "Deploy a service using a spec file",
-	Long:         "Deploy a service using a spec file. This command builds the service in DEV, creates/checks PROD environment, promotes to PROD, marks as preferred, subscribes, and automatically creates/upgrades instances. This command may involve interactive prompts and should be run manually, not by AI agents or automation.",
+	Use:          "deploy [--file=file] [--product-name=service-name] [--dry-run] [--deployment-type=deployment-type] [--spec-type=spec-type] [--cloud-provider=cloud] [--region=region] [--env-type=type] [--env-name=name] [--skip-docker-build] [--platforms=platforms] [--param key=value] [--param-file=file] [--instance-id=id] [--resource-id=id] [--github-user-name=username]",
+	Short:        "Build or update a service and deploy or upgrade an instance",
+	Long:         deployLong,
 	Example:      deployExample,
 	Args:         cobra.MaximumNArgs(1),
 	RunE:         runDeploy,
@@ -80,23 +120,24 @@ var DeployCmd = &cobra.Command{
 }
 
 func init() {
-	DeployCmd.Flags().StringP("file", "f", "", fmt.Sprintf("Path to the docker compose file (defaults to %s)", build.ComposeFileName))
-	DeployCmd.Flags().String("product-name", "", "Specify a custom service name. If not provided, directory name will be used.")
-	DeployCmd.Flags().Bool("dry-run", false, "Perform validation checks without actually deploying")
+	DeployCmd.Flags().StringP("file", "f", "", fmt.Sprintf("Path to the Omnistrate spec or compose file (defaults to %s)", build.OmnistrateComposeFileName))
+	DeployCmd.Flags().String("product-name", "", "Specify a custom service name. If not provided, the directory name will be used.")
+	DeployCmd.Flags().Bool("dry-run", false, "Perform validation checks without actually building or deploying")
 	DeployCmd.Flags().String("resource-id", "", "Specify the resource ID to use when multiple resources exist.")
 	DeployCmd.Flags().String("instance-id", "", "Specify the instance ID to use when multiple deployments exist.")
 
 	DeployCmd.Flags().StringP("environment", "e", "Prod", "Name of the environment to build the service in (default: Prod)")
-	DeployCmd.Flags().StringP("environment-type", "t", "prod", "Type of environment. Valid options include: 'dev', 'prod', 'qa', 'canary', 'staging', 'private' (default: prod)")
+	DeployCmd.Flags().StringP("environment-type", "t", "prod", "Type of environment. Valid options: dev, prod, qa, canary, staging, private (default: prod)")
 
 	DeployCmd.Flags().String("cloud-provider", "", "Cloud provider (aws|gcp|azure)")
 	DeployCmd.Flags().String("region", "", "Region code (e.g. us-east-2, us-central1)")
-	DeployCmd.Flags().String("param", "", "Parameters for the instance deployment")
-	DeployCmd.Flags().String("param-file", "", "Json file containing parameters for the instance deployment")
+	DeployCmd.Flags().String("param", "", "JSON parameters for the instance deployment")
+	DeployCmd.Flags().String("param-file", "", "JSON file containing parameters for the instance deployment")
+
 	// Additional flags from build command
 	DeployCmd.Flags().Bool("skip-docker-build", false, "Skip building and pushing the Docker image")
-	DeployCmd.Flags().StringArray("platforms", []string{"linux/amd64"}, "Specify the platforms to build for. Use the format: --platforms linux/amd64 --platforms linux/arm64. Default is linux/amd64.")
-	DeployCmd.Flags().String("deployment-type", "hosted", "Type of deployment. Valid values: hosted, byoa (default \"hosted\" i.e. the deployments are hosted in the service provider account)")
+	DeployCmd.Flags().StringArray("platforms", []string{"linux/amd64"}, "Specify the platforms to build for. Example: --platforms linux/amd64 --platforms linux/arm64")
+	DeployCmd.Flags().String("deployment-type", "hosted", "Type of deployment. Valid values: hosted, byoa (default \"hosted\" i.e. deployments are hosted in the service provider account)")
 	DeployCmd.Flags().String("github-username", "", "GitHub username to use if GitHub API fails to retrieve it automatically")
 
 	if err := DeployCmd.MarkFlagFilename("param-file"); err != nil {
@@ -114,11 +155,17 @@ func init() {
 func runDeploy(cmd *cobra.Command, args []string) error {
 	defer config.CleanupArgsAndFlags(cmd, &args)
 
-	// Step 0: Validate user is logged in first
+	fmt.Println("🚀 omctl deploy")
+	fmt.Println()
+	fmt.Println("Step 1/2: Service creation")
+	fmt.Println("Step 2/2: Instance deployment")
+	fmt.Println()
+
+	// Step 0: Validate user is logged in first (before any spinners)
 	token, err := common.GetTokenWithLogin()
 	if err != nil {
-		utils.PrintError(fmt.Errorf("not logged in. Please run 'omctl login' to authenticate"))
-		return err
+		printAuthError()
+		return fmt.Errorf("authentication error: %w", err)
 	}
 
 	// Retrieve flags
@@ -133,7 +180,7 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 	// Get service name for further validation
 	productName, err := cmd.Flags().GetString("product-name")
 	if err != nil {
-		utils.PrintError(fmt.Errorf("failed to check existing service: %v", err))
+		utils.PrintError(fmt.Errorf("failed to read product-name: %v", err))
 		return err
 	}
 
@@ -208,17 +255,18 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 
 	// Validate deployment-type
 	if deploymentType != build.DeploymentTypeHosted && deploymentType != build.DeploymentTypeByoa {
-		utils.PrintError(fmt.Errorf("invalid deployment-type '%s'. Valid values are: hosted, byoa", deploymentType))
-		return fmt.Errorf("invalid deployment-type '%s'. Valid values are: hosted, byoa", deploymentType)
+		err := fmt.Errorf("invalid deployment-type '%s'. Valid values are: hosted, byoa", deploymentType)
+		utils.PrintError(err)
+		return err
 	}
 
-	// Initialize spinner manager
+	// Initialize spinner manager (only after we know we're logged in)
 	sm := ysmrr.NewSpinnerManager()
 	sm.Start()
 	defer sm.Stop()
 
 	// Inform user of deployment start
-	spinner := sm.AddSpinner("Starting deployment process...")
+	spinner := sm.AddSpinner("Step 1/2: Starting service creation...")
 
 	// Improved spec file detection: prefer service plan, then docker compose, else repo
 	var specFile string
@@ -238,11 +286,21 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 			// If omnistrate-compose.yaml not found, check for docker-compose.yaml and error out
 			if _, err := os.Stat(build.DockerComposeFileName); err == nil {
 				spinner.Error()
-				errMsg := fmt.Sprintf("Deployment failed: Required file missing — %s\n\n→ Found: %s\n→ Expected: %s\n\nTip: You can convert your docker-compose.yaml into Omnistrate's native format using the omnistrate-fde skill via the Omnistrate MCP Server\nYou may even invoke it through AI agents like Claude, Gemini or others.\n\nLearn more: https://docs.omnistrate.com/getting-started/mcp-server/#using-skills",
-					build.OmnistrateComposeFileName, build.DockerComposeFileName, build.OmnistrateComposeFileName)
-				utils.PrintError(errors.New(errMsg))
-				return errors.Wrap(err, errMsg)
+				errMsg := fmt.Sprintf(
+					"❌ Deployment failed\n\n"+
+						"  Required file missing: %s\n\n"+
+						"  Found:    %s\n"+
+						"  Expected: %s\n\n"+
+						"Tip:\n"+
+						"  You can convert your docker-compose.yaml into Omnistrate's native format using\n"+
+						"  the omnistrate-fde skill via the Omnistrate MCP Server (usable from AI agents\n"+
+						"  like Claude or Gemini).\n",
+					build.OmnistrateComposeFileName, build.DockerComposeFileName, build.OmnistrateComposeFileName,
+				)
+				utils.PrintError(fmt.Errorf("%s", errMsg))
+				return pkgerrors.Wrap(err, errMsg)
 			}
+			// No spec files found – proceed with repo-based build
 			buildFromRepo = true
 		}
 	}
@@ -253,24 +311,26 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 	if specFile != "" {
 		absSpecFile, err = filepath.Abs(specFile)
 		if err != nil {
-			return errors.Wrap(err, "failed to get absolute path for spec file")
+			return pkgerrors.Wrap(err, "failed to get absolute path for spec file")
 		}
 
 		// Check if spec file exists
 		if _, err := os.Stat(absSpecFile); os.IsNotExist(err) {
-			return errors.Errorf("spec file does not exist: %s", absSpecFile)
+			err := fmt.Errorf("spec file does not exist: %s", absSpecFile)
+			utils.PrintError(err)
+			return err
 		}
 
 		// Read and process spec file for pre-checks
 		fileData, err := os.ReadFile(absSpecFile)
 		if err != nil {
-			return errors.Wrap(err, "failed to read spec file")
+			return pkgerrors.Wrap(err, "failed to read spec file")
 		}
 
 		// Process template expressions recursively
 		processedData, err = processTemplateExpressions(fileData, filepath.Dir(absSpecFile))
 		if err != nil {
-			return errors.Wrap(err, "failed to process template expressions")
+			return pkgerrors.Wrap(err, "failed to process template expressions")
 		}
 
 		// Check for omnistrate-specific configurations
@@ -279,9 +339,19 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 			// Check if this is an omnistrate spec file
 			isOmnistrate := build.ContainsOmnistrateKey(planCheck)
 			if !isOmnistrate {
-				utils.PrintError(fmt.Errorf("spec file '%s' doesn't contain omnistrate-specific configurations (x-omnistrate-* keys). This might be a standard docker-compose file. Consider adding omnistrate configurations for better service definition", specFile))
-				return nil
-			} // Use the common function to detect spec type
+				err := fmt.Errorf(
+					"spec file '%s' is missing Omnistrate configuration (x-omnistrate-* keys).\n"+
+						"This looks like a plain docker-compose or non-Omnistrate YAML file.\n\n"+
+						"Next steps:\n"+
+						"  - Add x-omnistrate-* keys to your spec, or\n"+
+						"  - Convert your compose file using Omnistrate tools as described in the docs",
+					specFile,
+				)
+				utils.PrintError(err)
+				spinner.Error()
+				return err
+			}
+			// Use the common function to detect spec type
 			specType = build.DetectSpecType(planCheck)
 		} else {
 			// Fallback to file extension based detection
@@ -294,21 +364,29 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	spinner.UpdateMessage("Checking cloud provider accounts...")
+	spinner.UpdateMessage("Step 1/2: Checking cloud provider accounts...")
+
 	isAccountId := false
-	awsAccountID, awsBootstrapRoleARN, gcpProjectID, gcpProjectNumber, gcpServiceAccountEmail, azureSubscriptionID, azureTenantID, extractDeploymentType := extractCloudAccountsFromProcessedData(processedData)
+	awsAccountID, awsBootstrapRoleARN, gcpProjectID, gcpProjectNumber, gcpServiceAccountEmail, azureSubscriptionID, azureTenantID, extractDeploymentType :=
+		extractCloudAccountsFromProcessedData(processedData)
+
 	if awsAccountID != "" || gcpProjectID != "" || azureSubscriptionID != "" {
 		isAccountId = true
 	}
 
+	// Explain precedence between spec deploymentType and CLI deploymentType
 	if extractDeploymentType != "" && extractDeploymentType != deploymentType {
-		deploymentType = extractDeploymentType
-		spinner.UpdateMessage(fmt.Sprintf("Detected deployment type different from spec: %s", deploymentType))
+		utils.PrintWarning(
+			fmt.Sprintf(
+				"⚠️ deployment-type override:\n  Spec file: %s\n  CLI flag: %s\n  Using:    %s (CLI value has precedence)",
+				extractDeploymentType, deploymentType, deploymentType,
+			),
+		)
 	}
 
-	// If no cloud provider is set, assume all providers are available
-	// Determine which cloud providers to check based on spec configuration
+	// If no cloud provider is set, we will figure out based on accounts / offering later
 	var cloudProvidersToCheck []string
+
 	if awsAccountID != "" {
 		cloudProvidersToCheck = append(cloudProvidersToCheck, "aws")
 	}
@@ -319,7 +397,7 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 		cloudProvidersToCheck = append(cloudProvidersToCheck, "azure")
 	}
 
-	// If no specific cloud provider is configured in spec, check all providers
+	// If spec does not constrain providers, check all
 	if len(cloudProvidersToCheck) == 0 {
 		cloudProvidersToCheck = []string{"aws", "gcp", "azure"}
 	}
@@ -335,8 +413,8 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 		// Pre-check 1: Check for linked cloud provider accounts
 		accounts, err := dataaccess.ListAccounts(cmd.Context(), token, cp)
 		if err != nil {
-			spinner.UpdateMessage(fmt.Sprintf("failed to check cloud provider accounts: %v", err))
 			spinner.Error()
+			printBackendError("cloud provider account lookup", err)
 			return err
 		}
 		for _, acc := range accounts.AccountConfigs {
@@ -393,6 +471,7 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 			}
 		}
 	}
+
 	if !foundMatchingAccount && (awsAccountID != "" || gcpProjectID != "" || azureSubscriptionID != "") {
 
 		var errorMessage string
@@ -406,9 +485,9 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 			errorMessage += fmt.Sprintf("Azure subscription %s/%s is not linked. Please link it using 'omctl account create'.", azureSubscriptionID, azureTenantID)
 		}
 
-		spinner.UpdateMessage(errorMessage)
 		spinner.Error()
-		return errors.New(errorMessage)
+		utils.PrintError(fmt.Errorf("cloud account mismatch:\n%s", errorMessage))
+		return fmt.Errorf("cloud account mismatch: %s", errorMessage)
 	} else if accountStatus != "READY" && (awsAccountID != "" || gcpProjectID != "" || azureSubscriptionID != "") {
 
 		var errorMessage string
@@ -421,9 +500,9 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 		if azureSubscriptionID != "" {
 			errorMessage += fmt.Sprintf("Azure subscription %s/%s is linked but has status '%s'. Complete onboarding if required.", azureSubscriptionID, azureTenantID, accountStatus)
 		}
-		spinner.UpdateMessage(errorMessage)
 		spinner.Error()
-		return errors.New(errorMessage)
+		utils.PrintError(fmt.Errorf("cloud account not ready:\n%s", errorMessage))
+		return fmt.Errorf("cloud account not ready: %s", errorMessage)
 	}
 
 	if awsAccountID == "" && gcpProjectID == "" && azureSubscriptionID == "" {
@@ -432,22 +511,23 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 		if len(readyAccounts) == 0 {
 			if len(allAccounts) > 0 {
 				utils.PrintError(fmt.Errorf(
-					"no READY accounts found. Account setup required:\n"+
-						"   Your organization has %d accounts, but none are in READY status.\n"+
-						"   Non-READY accounts may need to complete onboarding or have configuration issues.\n"+
-						"\n💡 Next steps:\n"+
-						"   1. Check existing account status: omctl account list\n"+
-						"   2. Complete onboarding for existing accounts, or\n"+
-						"   3. Create a new READY account: omctl account create",
+					"❌ No READY cloud provider accounts found\n\n"+
+						"  Your organization has %d cloud account(s), but none are in READY status.\n"+
+						"  Non-READY accounts may need to complete onboarding or have configuration issues.\n\n"+
+						"Next steps:\n"+
+						"  1. Check existing account status: omctl account list\n"+
+						"  2. Complete onboarding for existing accounts, or\n"+
+						"  3. Create a new READY account: omctl account create",
 					len(allAccounts),
 				))
 				utils.HandleSpinnerError(spinner, sm, err)
-				spinner.UpdateMessage("deployment requires at least one READY cloud provider account")
+				spinner.UpdateMessage("Step 1/2: Service creation requires at least one READY cloud provider account")
 				spinner.Error()
-				return errors.New("deployment requires at least one READY cloud provider account")
+				return fmt.Errorf("deployment requires at least one READY cloud provider account")
 			} else {
+				// No accounts at all: start interactive account creation flow
 				sm.Stop()
-				fmt.Println("No cloud provider accounts found. Starting account creation flow...")
+				fmt.Println("No cloud provider accounts found. Starting cloud account creation flow...")
 
 				// Determine which cloud provider to use and get credentials
 				if cloudProvider == "" {
@@ -491,10 +571,14 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 						accountParams.AzureTenantID = azureTenantID
 					}
 				}
+
 				// Create the cloud provider account
+				sm.Start()
+				spinner = sm.AddSpinner("Creating cloud provider account...")
 				accountData, err := account.CreateCloudAccount(cmd.Context(), token, accountParams, spinner, sm)
 				if err != nil || accountData == nil {
 					utils.PrintError(fmt.Errorf("failed to create cloud provider account: %v", err))
+					spinner.Error()
 					return err
 				}
 				dataaccess.PrintNextStepVerifyAccountMsg(accountData)
@@ -502,38 +586,51 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 				err = waitForAccountReady(cmd.Context(), token, accountData.Id)
 				if err != nil {
 					utils.PrintError(fmt.Errorf("account did not become READY: %v", err))
+					spinner.Error()
 					return err
 				}
+				spinner.Complete()
 			}
 		}
 
 	}
-	var accountMessage string
-	if awsAccountID != "" {
-		accountMessage += fmt.Sprintf("Using AWS Account ID: %s\n", awsAccountID)
-	}
-	if gcpProjectID != "" {
-		accountMessage += fmt.Sprintf("Using GCP Project ID: %s and Project Number: %s\n", gcpProjectID, gcpProjectNumber)
-	}
-	if azureSubscriptionID != "" {
-		accountMessage += fmt.Sprintf("Using Azure Subscription ID: %s and Tenant ID: %s", azureSubscriptionID, azureTenantID)
-	}
+	if awsAccountID != "" || gcpProjectID != "" || azureSubscriptionID != "" {
+		spinner.Complete()
+		spinner = sm.AddSpinner("Cloud account(s) linked and READY")
+		spinner.Complete()
 
-	if accountMessage != "" {
-		spinner.UpdateMessage(accountMessage + " - Account linked and READY")
+		if awsAccountID != "" {
+			spinner = sm.AddSpinner(fmt.Sprintf("  - Using AWS Account ID: %s", awsAccountID))
+			spinner.Complete()
+
+		}
+		if gcpProjectID != "" {
+			spinner = sm.AddSpinner(fmt.Sprintf("  - Using GCP Project ID: %s and Project Number: %s", gcpProjectID, gcpProjectNumber))
+			spinner.Complete()
+
+		}
+		if azureSubscriptionID != "" {
+			spinner = sm.AddSpinner(fmt.Sprintf("  - Using Azure Subscription ID: %s and Tenant ID: %s", azureSubscriptionID, azureTenantID))
+			spinner.Complete()
+
+		}
+
+		spinner = sm.AddSpinner("Step 1/2: Cloud provider account check complete")
+		spinner.Complete()
+
 	}
-	spinner.Complete()
 
 	// Pre-check 2: Determine service name
-	spinner = sm.AddSpinner("Determining service name")
+	spinner = sm.AddSpinner("Step 1/2: Determining service name...")
 
 	var serviceNameToUse string
 	serviceNameToUse = productName
 	if serviceNameToUse == "" {
-		if specType != "" {
+		if specFile == "" {
 			// Use current directory name for repository-based builds
 			cwd, err := os.Getwd()
 			if err != nil {
+				utils.HandleSpinnerError(spinner, sm, err)
 				return err
 			}
 			serviceNameToUse = sanitizeServiceName(filepath.Base(cwd))
@@ -544,32 +641,30 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 		if serviceNameToUse == "." || serviceNameToUse == "/" || serviceNameToUse == "" {
 			serviceNameToUse = "my-service"
 		}
-
 	}
 
-	spinner.UpdateMessage(fmt.Sprintf("Determining service name: %s", serviceNameToUse))
+	spinner.UpdateMessage(fmt.Sprintf("Step 1/2: Service name resolved: %s", serviceNameToUse))
 	spinner.Complete()
 
 	// Pre-check 3: Check if service exists and validate service plan count
-	spinner.UpdateMessage(fmt.Sprintf("Checking existing service... %s", serviceNameToUse))
+	spinner = sm.AddSpinner(fmt.Sprintf("Step 1/2: Checking for existing service '%s'...", serviceNameToUse))
 	existingServiceID, err := findExistingService(cmd.Context(), token, serviceNameToUse)
 	if err != nil {
-		spinner.UpdateMessage(fmt.Sprintf("Error: failed to check existing service: %v", err))
-		spinner.Error()
+		utils.HandleSpinnerError(spinner, sm, err)
 		utils.PrintError(fmt.Errorf("failed to check existing service: %v", err))
 		return err
 	}
 
 	if existingServiceID != "" {
-		spinner.UpdateMessage(fmt.Sprintf("Checking existing service: %s (ID: %s)\n", serviceNameToUse, existingServiceID))
+		spinner.UpdateMessage(fmt.Sprintf("Step 1/2: Existing service detected: %s (ID: %s)", serviceNameToUse, existingServiceID))
 		spinner.Complete()
 	} else {
-		spinner.UpdateMessage(fmt.Sprintf("New service create: %s", serviceNameToUse))
+		spinner.UpdateMessage(fmt.Sprintf("Step 1/2: New service will be created: %s", serviceNameToUse))
 		spinner.Complete()
 	}
 
-	// Step 3: Build service in DEV environment with release-as-preferred
-	spinner = sm.AddSpinner("Building service")
+	// Step 3: Build service in target environment with release-as-preferred
+	spinner = sm.AddSpinner(fmt.Sprintf("Step 1/2: Building service '%s'...", serviceNameToUse))
 
 	var serviceID, environmentID, planID string
 	var undefinedResources map[string]string
@@ -599,6 +694,7 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 		)
 		if err != nil {
 			utils.HandleSpinnerError(spinner, sm, err)
+			wrapAndPrintServiceBuildError(err)
 			return err
 		}
 
@@ -626,7 +722,7 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 			if deploymentYAML != nil {
 				composeMap := map[string]interface{}{}
 				if err := yaml.Unmarshal(processedData, &composeMap); err != nil {
-					return errors.Wrap(err, "failed to parse compose YAML for injection")
+					return pkgerrors.Wrap(err, "failed to parse compose YAML for injection")
 				}
 				depMap := map[string]interface{}{}
 				if err := yaml.Unmarshal(deploymentYAML, &depMap); err == nil {
@@ -654,7 +750,7 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 				}
 				finalYAML, err := yaml.Marshal(composeMap)
 				if err != nil {
-					return errors.Wrap(err, "failed to marshal final compose YAML")
+					return pkgerrors.Wrap(err, "failed to marshal final compose YAML")
 				}
 				processedData = finalYAML
 			}
@@ -678,6 +774,7 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 		)
 		if err != nil {
 			utils.HandleSpinnerError(spinner, sm, err)
+			wrapAndPrintServiceBuildError(err)
 			return err
 		}
 
@@ -685,21 +782,16 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 
 	// Dry-run exit point
 	if dryRun {
-		spinner.UpdateMessage("Simulated service build completed successfully (dry run)")
+		spinner.UpdateMessage("Step 1/2: Simulated service build completed successfully (dry run)")
 		spinner.Complete()
-		fmt.Println("🔍 Dry-run mode: Validation checks only. No deployment will be performed.")
-		if token == "" {
-			fmt.Println("❌ Not logged in. Please run 'omctl login' to authenticate.")
-			return fmt.Errorf("user not logged in")
-		}
-		fmt.Println("✅ Login check passed.")
-		fmt.Println("✅ All other validations passed.")
-		fmt.Println("To proceed with actual deployment, run the command without --dry-run flag.")
+		fmt.Println()
+		fmt.Println("🔍 Dry-run mode: Validation checks only. No service or instance was created.")
+		fmt.Println("✅ Authentication check passed.")
+		fmt.Println("✅ Service spec and deployment configuration validated.")
+		fmt.Println("To proceed with actual deployment, run the command without the --dry-run flag.")
 		return nil
 	}
-	fmt.Println()
-	spinner.Complete()
-	spinner.UpdateMessage(fmt.Sprintf("Building service in %s environment and %s environment type: built service %s (ID: %s)", environment, environmentTypeUpper, serviceNameToUse, serviceID))
+	spinner.UpdateMessage(fmt.Sprintf("Step 1/2: Built service '%s' in environment %s (%s), Service ID: %s", serviceNameToUse, environment, environmentTypeUpper, serviceID))
 	spinner.Complete()
 
 	// Print warning if there are any undefined resources
@@ -728,7 +820,7 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 func executeDeploymentWorkflow(cmd *cobra.Command, sm ysmrr.SpinnerManager, token, serviceID, environmentID, planID, serviceName, environment, environmentTypeUpper, instanceID, cloudProvider, region, param, paramFile, resourceID, deploymentType string) error {
 
 	// Step 7: Set service plan as preferred in environment
-	spinner := sm.AddSpinner(fmt.Sprintf("Setting service plan as preferred in %s", environment))
+	spinner := sm.AddSpinner(fmt.Sprintf("Step 1/2: Setting service plan as preferred in %s...", environment))
 
 	// Find the latest version of the environment plan
 	targetVersion, err := dataaccess.FindLatestVersion(cmd.Context(), token, serviceID, planID)
@@ -743,18 +835,19 @@ func executeDeploymentWorkflow(cmd *cobra.Command, sm ysmrr.SpinnerManager, toke
 		utils.HandleSpinnerError(spinner, sm, err)
 		return err
 	}
-	spinner.UpdateMessage(fmt.Sprintf("Setting service plan as preferred in %s: Success", environment))
+	spinner.UpdateMessage(fmt.Sprintf("Step 1/2: Service plan set as preferred in %s (version %s)", environment, targetVersion))
 	spinner.Complete()
 
 	// Step 9: Create or upgrade instance deployment automatically
+
 	var finalInstanceID string
 	instanceActionType := "create"
 
-	spinnerMsg := "Deployment instances"
+	spinnerMsg := "Step 2/2: Preparing instance deployment"
 	spinner = sm.AddSpinner(spinnerMsg)
 
 	if instanceID != "" {
-		spinnerMsg = "Checking for existing instances"
+		spinnerMsg = "Step 2/2: Checking for existing instance"
 		spinner.UpdateMessage(spinnerMsg)
 
 		var existingInstanceIDs []string
@@ -763,59 +856,60 @@ func executeDeploymentWorkflow(cmd *cobra.Command, sm ysmrr.SpinnerManager, toke
 			utils.HandleSpinnerError(spinner, sm, err)
 			spinner.UpdateMessage(spinnerMsg + ": Failed (" + err.Error() + ")")
 			spinner.Error()
-			sm.Stop()
 			return err
 		}
 
 		if instanceID != "" && len(existingInstanceIDs) == 0 {
-			spinner.UpdateMessage(fmt.Sprintf("%s: No existing instance found for instance ID: %s (provider instance does not match)", spinnerMsg, instanceID))
+			spinner.UpdateMessage(fmt.Sprintf("%s: No existing instance found for instance ID: %s (provided instance does not match)", spinnerMsg, instanceID))
 			spinner.Error()
+			fmt.Println()
+			fmt.Println("❌ No instance found with the given --instance-id.")
+			fmt.Printf("   Instance ID: %s\n\n", instanceID)
+			fmt.Println("Next steps:")
+			fmt.Println("  - Check the instance ID value.")
+			fmt.Println("  - List instances for this service: omctl instance list --service", serviceName)
 			return nil
 		}
 
 		// Display automatic instance handling message
 		if len(existingInstanceIDs) > 0 {
 			finalInstanceID = existingInstanceIDs[0]
-			spinner.UpdateMessage(fmt.Sprintf("%s: Found %d existing instances", spinnerMsg, len(existingInstanceIDs)))
+			spinner.UpdateMessage(fmt.Sprintf("Step 2/2: %s: Found %d existing instance(s)", spinnerMsg, len(existingInstanceIDs)))
 			spinner.Complete()
 
-			// Stop spinner manager temporarily to show the note
-			sm.Stop()
-			fmt.Printf("📝 Note: Instance upgrade is automatic.\n")
-			fmt.Printf("   Existing Instances: %v\n", finalInstanceID)
+			// Show the note directly without stopping spinner manager
+			spinner = sm.AddSpinner(fmt.Sprintf("Step 2/2: 📝 Note: Existing instance found. An upgrade will be performed. (Instance ID: %s)", finalInstanceID))
+			spinner.Complete()
 
 		} else {
 
-			spinner.UpdateMessage(fmt.Sprintf("%s: No existing instance found (provider instance does not match)", spinnerMsg))
+			spinner.UpdateMessage(fmt.Sprintf("Step 2/2: %s: No existing instance found (provider instance does not match)", spinnerMsg))
 			spinner.Complete()
 
 		}
 	} else {
-
-		// Stop spinner manager temporarily to show the note
-		sm.Stop()
-		fmt.Printf("📝 Note: Instance creation is automatic.\n")
+		spinner.Complete()
+		// Show the note directly
+		spinner = sm.AddSpinner("Step 2/2: 📝 Note: No existing instance specified. A new instance will be created automatically.")
+		spinner.Complete()
 
 	}
 
 	if finalInstanceID != "" {
 
-		foundMsg := spinnerMsg + ": Found existing instance"
-		spinner.UpdateMessage(foundMsg)
+		spinner = sm.AddSpinner(fmt.Sprintf("Step 2/2: Upgrading existing instance %s to latest version...", finalInstanceID))
 		spinner.Complete()
-
-		spinner = sm.AddSpinner(fmt.Sprintf("Upgrading existing instance: %s", finalInstanceID))
+		spinner = sm.AddSpinner("Step 2/2: Upgrading existing instance")
 		upgradeErr := upgradeExistingInstance(cmd.Context(), token, []string{finalInstanceID}, serviceID, planID)
 		instanceActionType = "upgrade"
 		if upgradeErr != nil {
 			utils.HandleSpinnerError(spinner, sm, upgradeErr)
-			spinner.UpdateMessage(fmt.Sprintf("Upgrading existing instance: Failed (%s)", upgradeErr.Error()))
+			spinner.UpdateMessage(fmt.Sprintf("Step 2/2: Upgrading existing instance: Failed (%s)", upgradeErr.Error()))
 			spinner.Error()
-			sm.Stop()
 			return upgradeErr
 		} else {
 
-			spinner.UpdateMessage(fmt.Sprintf("Upgrading existing instance: Success (ID: %s)", finalInstanceID))
+			spinner.UpdateMessage(fmt.Sprintf("Step 2/2: Upgrading existing instance: Success (ID: %s)", finalInstanceID))
 			spinner.Complete()
 		}
 
@@ -834,19 +928,18 @@ func executeDeploymentWorkflow(cmd *cobra.Command, sm ysmrr.SpinnerManager, toke
 				formattedParams = make(map[string]any)
 			}
 
-			fmt.Printf("BYOA deployment detected. Creating cloud account instances...\n")
+			fmt.Printf("BYOA deployment detected. Creating cloud account instance...\n")
 			cloudAccountInstanceID, targetCloudProvider, err := createCloudAccountInstances(cmd.Context(), token, serviceID, environmentID, planID, cloudProvider, sm)
 			if err != nil {
 				fmt.Printf("Warning: Failed to create cloud account instances: %v\n", err)
 			}
 			cloudProvider = targetCloudProvider
-			fmt.Printf("cloud account id: %s, %s\n", targetCloudProvider, cloudAccountInstanceID)
+			fmt.Printf("Cloud account instance created: provider=%s, id=%s\n", targetCloudProvider, cloudAccountInstanceID)
 			formattedParams["cloud_provider_account_config_id"] = cloudAccountInstanceID
 
 		}
 
-		createMsg := "Creating new instance deployment"
-
+		createMsg := "Step 2/2: Deploying a new instance"
 		spinner = sm.AddSpinner(createMsg)
 		createdInstanceID, err := "", error(nil)
 		createdInstanceID, err = createInstanceUnified(cmd.Context(), token, serviceID, environmentID, planID, cloudProvider, region, resourceID, "resourceInstance", formattedParams, sm)
@@ -855,33 +948,45 @@ func executeDeploymentWorkflow(cmd *cobra.Command, sm ysmrr.SpinnerManager, toke
 		if err != nil {
 			utils.HandleSpinnerError(spinner, sm, err)
 			spinner.UpdateMessage(fmt.Sprintf("%s: Failed (%s)", createMsg, err.Error()))
+			if isMissingParamsError(err) {
+				printMissingParamsGuidance(err)
+			}
 			spinner.Error()
-			sm.Stop()
 			return err
 		}
 
 		spinner.UpdateMessage(fmt.Sprintf("%s: Success (ID: %s)", createMsg, finalInstanceID))
 		spinner.Complete()
 	}
+	spinner = sm.AddSpinner("Step 2/2: Instance deployment preparation complete")
+	spinner.Complete()
 
+	// Stop spinner manager before printing summary
 	sm.Stop()
 
-	// Success message
+	// Success summary
 	fmt.Println()
-	fmt.Printf("   Service: %s (ID: %s)\n", serviceName, serviceID)
-	fmt.Printf("   Environment: %s, Environment Type: %s (ID: %s)\n", environment, environmentTypeUpper, environmentID)
+	fmt.Println("✅ Deployment summary")
+	fmt.Println()
+	fmt.Printf("  Service:\n")
+	fmt.Printf("    Name:        %s\n", serviceName)
+	fmt.Printf("    ID:          %s\n", serviceID)
+	fmt.Printf("    Environment: %s (%s)\n", environment, environmentTypeUpper)
+	fmt.Printf("    Plan ID:     %s\n", planID)
 	if finalInstanceID != "" {
-		fmt.Printf("   Instance: %s (ID: %s)\n", instanceActionType, finalInstanceID)
+		fmt.Println()
+		fmt.Printf("  Instance:\n")
+		fmt.Printf("    Action:      %s\n", instanceActionType)
+		fmt.Printf("    ID:          %s\n", finalInstanceID)
 	}
 	fmt.Println()
-
 	fmt.Println("🔄 Deployment progress...")
 
-	// Optionally display workflow progress if desired (if you want to keep this logic, pass cmd/context as needed)
+	// Optionally display workflow progress if desired
 	if finalInstanceID != "" {
-		err = instance.DisplayWorkflowResourceDataWithSpinners(cmd.Context(), token, finalInstanceID, instanceActionType) // Use the correct package alias
+		err = instance.DisplayWorkflowResourceDataWithSpinners(cmd.Context(), token, finalInstanceID, instanceActionType)
 		if err != nil {
-			fmt.Printf("❌ Deployment failed: %s\n", err)
+			fmt.Printf("❌ Deployment workflow failed: %s\n", err)
 			return err
 		} else {
 			fmt.Println("✅ Deployment successful")
@@ -967,6 +1072,7 @@ func createInstanceUnified(ctx context.Context, token, serviceID, environmentID,
 			return "", fmt.Errorf("no resources found in service plan (after filtering internal resources)")
 		}
 
+		// First: determine resourceKey and resourceID (multi-resource UX)
 		if resourceID != "" {
 			for _, resource := range resources.Resources {
 				if resource.Id == resourceID {
@@ -976,7 +1082,7 @@ func createInstanceUnified(ctx context.Context, token, serviceID, environmentID,
 				}
 			}
 			if resourceKey == "" {
-				return "", fmt.Errorf("resource ID : %s not found in service plan", resourceID)
+				return "", fmt.Errorf("resource ID '%s' not found in service plan", resourceID)
 			}
 		}
 
@@ -991,7 +1097,7 @@ func createInstanceUnified(ctx context.Context, token, serviceID, environmentID,
 
 				fmt.Println("Multiple resources found in service plan. Please select one:")
 				for idx, resource := range resources.Resources {
-					fmt.Printf("  %d. Name: %s, ID: %s\n", idx+1, resource.Name, resource.Id)
+					fmt.Printf("  %d. Name: %s, Key: %s, ID: %s\n", idx+1, resource.Name, resource.Key, resource.Id)
 				}
 				var choice int
 				for {
@@ -1012,7 +1118,7 @@ func createInstanceUnified(ctx context.Context, token, serviceID, environmentID,
 		}
 
 		if resourceID == "" || resourceKey == "" {
-			return "", fmt.Errorf("invalid resource in service plan")
+			return "", fmt.Errorf("invalid resource in service plan: missing ID or key")
 		}
 
 		// Select default cloudProvider and region from offering.CloudProviders if available
@@ -1026,7 +1132,7 @@ func createInstanceUnified(ctx context.Context, token, serviceID, environmentID,
 				}
 			}
 			if !found {
-				// fallback to first available provider
+				// fallback to first available provider, but explain
 				return "", fmt.Errorf("cloud provider '%s' is not supported for this service plan. Supported providers: %v", cloudProvider, offering.CloudProviders)
 			}
 		}
@@ -1113,11 +1219,8 @@ func createInstanceUnified(ctx context.Context, token, serviceID, environmentID,
 				region = "us-central1"
 			case "aws":
 				region = "ap-south-1"
-				//    region = "us-east-1"
 			case "azure":
 				region = "eastus2"
-				// region = "eastus"
-
 			}
 		}
 
@@ -1143,9 +1246,10 @@ func createInstanceUnified(ctx context.Context, token, serviceID, environmentID,
 							if inputParam.Required {
 								if formattedParams[inputParam.Key] != nil {
 									defaultParams[inputParam.Key] = formattedParams[inputParam.Key]
-								} else {
+								} else if inputParam.DefaultValue != nil {
 									defaultParams[inputParam.Key] = *inputParam.DefaultValue
-
+								} else {
+									defaultParams[inputParam.Key] = nil
 								}
 
 							}
@@ -1167,14 +1271,18 @@ func createInstanceUnified(ctx context.Context, token, serviceID, environmentID,
 		// Check for missing required parameters
 		var defaultRequiredParams []string
 		for k, v := range defaultParams {
-			if v == nil || (reflect.TypeOf(v).Kind() == reflect.String && v == "") {
+			if v == nil {
+				defaultRequiredParams = append(defaultRequiredParams, k)
+				continue
+			}
+			if reflect.TypeOf(v).Kind() == reflect.String && v == "" {
 				defaultRequiredParams = append(defaultRequiredParams, k)
 			}
 		}
 
 		// Validate that all required parameters have values
 		if len(defaultRequiredParams) > 0 {
-			return "", fmt.Errorf("missing required parameters for instance creation: %v. Please provide values using --param or --param-file flags", defaultRequiredParams)
+			return "", fmt.Errorf("missing required parameters for instance creation: %v", defaultRequiredParams)
 		}
 
 		// Check for unused parameters from formattedParams
@@ -1187,11 +1295,11 @@ func createInstanceUnified(ctx context.Context, token, serviceID, environmentID,
 
 		// Warn user about unused parameters
 		if len(unusedParams) > 0 {
-			fmt.Printf("⚠️  Warning: The following parameters were provided but are not supported by this service and won't be used:\n")
+			fmt.Printf("⚠️  Warning: The following parameters were provided but are not supported by this service and will be ignored:\n")
 			for _, param := range unusedParams {
 				fmt.Printf("   - %s\n", param)
 			}
-
+			fmt.Println()
 		}
 	}
 
@@ -1739,7 +1847,7 @@ type CloudInstanceStatus struct {
 
 func createCloudAccountInstances(ctx context.Context, token, serviceID, environmentID, planID, cloudProvider string, sm ysmrr.SpinnerManager) (string, string, error) {
 
-	spinnerMsg := "Checking for existing cloud account instances"
+	spinnerMsg := "Step 2/2: Checking for existing cloud account instances"
 	spinner := sm.AddSpinner(spinnerMsg)
 	targetCloudProvider := cloudProvider
 
@@ -1831,7 +1939,7 @@ func createCloudAccountInstances(ctx context.Context, token, serviceID, environm
 
 	// Restart spinner for instance creation
 	sm.Start()
-	spinner = sm.AddSpinner("Creating new cloud account instance")
+	spinner = sm.AddSpinner("Step 2/2: Creating new cloud account instance")
 	sm.Stop()
 	// Determine which cloud provider to use and get credentials
 	if targetCloudProvider == "" {
@@ -1842,19 +1950,19 @@ func createCloudAccountInstances(ctx context.Context, token, serviceID, environm
 
 	createdInstanceID, err := createInstanceUnified(ctx, token, serviceID, environmentID, planID, targetCloudProvider, "", "", "cloudAccount", formattedParams, sm)
 	if err != nil {
-		spinner.UpdateMessage("Creating cloud account instance: Failed (" + err.Error() + ")")
+		spinner.UpdateMessage("Step 2/2: Creating cloud account instance: Failed (" + err.Error() + ")")
 		spinner.Error()
 		return "", targetCloudProvider, err
 	}
 
-	spinner.UpdateMessage(fmt.Sprintf("Creating cloud account instance: Success (ID: %s)", createdInstanceID))
+	spinner.UpdateMessage(fmt.Sprintf("Step 2/2: Creating cloud account instance: Success (ID: %s)", createdInstanceID))
 	spinner.Complete()
 
 	// Stop spinner to show instructions
 	sm.Stop()
 
 	// Start polling for account verification
-	fmt.Println("\n🔄 check for account verification...")
+	fmt.Println("\n🔄 Checking for account verification...")
 	accountID, err := waitForAccountVerification(ctx, token, serviceID, environmentID, planID, createdInstanceID, targetCloudProvider)
 	if err != nil {
 		fmt.Printf("❌ Account verification failed: %v\n", err)
@@ -2094,7 +2202,7 @@ func waitForAccountReady(ctx context.Context, token, accountID string) error {
 	for {
 		select {
 		case <-timeout:
-			return errors.New("timed out waiting for account to become READY")
+			return pkgerrors.New("timed out waiting for account to become READY")
 		case <-ticker.C:
 			account, err := dataaccess.DescribeAccount(ctx, token, accountID)
 			if err != nil {
@@ -2105,4 +2213,63 @@ func waitForAccountReady(ctx context.Context, token, accountID string) error {
 			}
 		}
 	}
+}
+
+// --- helpers for nicer errors/messages ---
+
+func printAuthError() {
+	utils.PrintError(fmt.Errorf(
+		"❌ Authentication error\n\n" +
+			"  You are not logged in or your session has expired.\n\n" +
+			"Next steps:\n" +
+			"  1. Run:  omctl login\n" +
+			"  2. Re-run your previous omctl deploy command",
+	))
+}
+
+func printBackendError(context string, err error) {
+	contextTitle := cases.Title(language.English).String(context)
+	utils.PrintError(fmt.Errorf(
+		"❌ %s failed\n\n  %v\n\n"+
+			"Next steps:\n"+
+			"  - Retry the command in a few minutes\n"+
+			"  - If the problem persists, contact Omnistrate support and share this error",
+		contextTitle, err,
+	))
+}
+
+func wrapAndPrintServiceBuildError(err error) {
+	msg := err.Error()
+	if strings.Contains(msg, "public service environment already exists") {
+		utils.PrintError(fmt.Errorf(
+			"❌ Environment conflict during service creation\n\n" +
+				"  The service already has a public environment in this account and a new conflicting\n" +
+				"  environment cannot be created automatically\n\n" +
+				"Next steps:\n" +
+				"  - To update the existing service and environment, re-run with the same service name\n" +
+				"  - To create a new service, use a different name with --product-name",
+		))
+		return
+	}
+	utils.PrintError(fmt.Errorf(
+		"❌ Service creation failed\n\n  %v\n\n"+
+			"Step 1/2 (service creation) failed. No instance was created",
+		err,
+	))
+}
+
+func isMissingParamsError(err error) bool {
+	return strings.Contains(err.Error(), "missing required parameters for instance creation")
+}
+
+func printMissingParamsGuidance(err error) {
+	utils.PrintError(fmt.Errorf(
+		"❌ Missing required parameters for instance creation\n\n"+
+			"  %s\n\n"+
+			"Next steps:\n"+
+			"  - Provide values using --param, for example:\n"+
+			"      omctl deploy --param '{\"key\":\"value\",...}'\n"+
+			"  - Or provide a JSON file with --param-file",
+		err.Error(),
+	))
 }
