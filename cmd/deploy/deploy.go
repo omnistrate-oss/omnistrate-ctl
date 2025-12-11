@@ -740,7 +740,12 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 								services[svcName] = svcMap
 							}
 							composeMap["services"] = services
+						}else {
+						// Inject deployment info at root level
+						for k, v := range depMap {
+							composeMap[k] = v
 						}
+					}
 					} else {
 						// Inject deployment info at root level
 						for k, v := range depMap {
@@ -1720,6 +1725,9 @@ func createDeploymentYAML(
 	azureSubscriptionID string,
 	azureTenantID string,
 ) map[string]interface{} {
+
+
+
 	// Validate deployment type
 	if deploymentType != build.DeploymentTypeHosted && deploymentType != build.DeploymentTypeByoa {
 		fmt.Printf("Warning: Invalid deployment type '%s'. Using default 'hosted'. Valid values are: hosted, byoa\n", deploymentType)
@@ -1773,58 +1781,58 @@ func createDeploymentYAML(
 				"hostedDeployment": map[string]interface{}{},
 			}
 			hosted := make(map[string]interface{})
-			if awsAccountID != "" {
+		if awsAccountID != "" {
 				hosted["awsAccountId"] = awsAccountID
-				if awsBootstrapRoleARN != "" {
+			if awsBootstrapRoleARN != "" {
 					hosted["awsBootstrapRoleAccountArn"] = awsBootstrapRoleARN
-				}
 			}
-			if gcpProjectID != "" {
-				hosted["gcpProjectId"] = gcpProjectID
-				if gcpProjectNumber != "" {
-					hosted["gcpProjectNumber"] = gcpProjectNumber
-				}
-				if gcpServiceAccountEmail != "" {
-					hosted["gcpServiceAccountEmail"] = gcpServiceAccountEmail
-				}
-			}
-			if azureSubscriptionID != "" {
-				hosted["azureSubscriptionId"] = azureSubscriptionID
-				if azureTenantID != "" {
-					hosted["azureTenantId"] = azureTenantID
-				}
-			}
-			yamlDoc["deployment"].(map[string]interface{})["hostedDeployment"] = hosted
-		} else {
-			sp := getServicePlan()
-			hosted := make(map[string]interface{})
-			if awsAccountID != "" {
-				hosted["awsAccountId"] = awsAccountID
-				if awsBootstrapRoleARN != "" {
-					hosted["awsBootstrapRoleAccountArn"] = awsBootstrapRoleARN
-				}
-			}
-			if gcpProjectID != "" {
-				hosted["gcpProjectId"] = gcpProjectID
-				if gcpProjectNumber != "" {
-					hosted["gcpProjectNumber"] = gcpProjectNumber
-				}
-				if gcpServiceAccountEmail != "" {
-					hosted["gcpServiceAccountEmail"] = gcpServiceAccountEmail
-				}
-			}
-			if azureSubscriptionID != "" {
-				hosted["azureSubscriptionId"] = azureSubscriptionID
-				if azureTenantID != "" {
-					hosted["azureTenantId"] = azureTenantID
-				}
-			}
-			sp["deployment"] = map[string]interface{}{
-				"hostedDeployment": hosted,
-			}
-			yamlDoc["x-omnistrate-service-plan"] = sp
 		}
-	}
+		if gcpProjectID != "" {
+				hosted["gcpProjectId"] = gcpProjectID
+			if gcpProjectNumber != "" {
+					hosted["gcpProjectNumber"] = gcpProjectNumber
+			}
+			if gcpServiceAccountEmail != "" {
+					hosted["gcpServiceAccountEmail"] = gcpServiceAccountEmail
+			}
+		}
+		if azureSubscriptionID != "" {
+				hosted["azureSubscriptionId"] = azureSubscriptionID
+			if azureTenantID != "" {
+					hosted["azureTenantId"] = azureTenantID
+			}
+		}
+			yamlDoc["deployment"].(map[string]interface{})["hostedDeployment"] = hosted
+			} else {
+				sp := getServicePlan()
+		hosted := make(map[string]interface{})
+		if awsAccountID != "" {
+			hosted["awsAccountId"] = awsAccountID
+			if awsBootstrapRoleARN != "" {
+				hosted["awsBootstrapRoleAccountArn"] = awsBootstrapRoleARN
+			}
+		}
+		if gcpProjectID != "" {
+			hosted["gcpProjectId"] = gcpProjectID
+			if gcpProjectNumber != "" {
+				hosted["gcpProjectNumber"] = gcpProjectNumber
+			}
+			if gcpServiceAccountEmail != "" {
+				hosted["gcpServiceAccountEmail"] = gcpServiceAccountEmail
+			}
+		}
+		if azureSubscriptionID != "" {
+			hosted["azureSubscriptionId"] = azureSubscriptionID
+			if azureTenantID != "" {
+				hosted["azureTenantId"] = azureTenantID
+			}
+		}
+				sp["deployment"] = map[string]interface{}{
+					"hostedDeployment": hosted,
+				}
+				yamlDoc["x-omnistrate-service-plan"] = sp
+			}
+		}
 	return yamlDoc
 }
 
