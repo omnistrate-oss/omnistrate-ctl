@@ -68,13 +68,21 @@ omctl deploy --platforms "linux/amd64,linux/arm64"
 deploy or upgrade an instance of that service.
 
 It automatically handles:
+
   - Building from repository when no spec file is found
+
   - Building from an Omnistrate spec (such as omnistrate-compose.yaml)
+
   - Creating or updating the service version
-  - Determining deployment type (hosted or BYOA)
+
+  - Determining deployment type (Hosted or BYOC)
+
   - Selecting cloud and region
-  - Selecting or onboarding cloud accounts for BYOA deployments
+
+  - Selecting or onboarding cloud accounts for BYOC deployments
+
   - Collecting instance parameters
+
   - Launching a new instance or upgrading an existing instance
 
 Main modes of operation:
