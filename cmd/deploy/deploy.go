@@ -741,7 +741,7 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 								services[svcName] = svcMap
 							}
 							composeMap["services"] = services
-						}else {
+						} else {
 						// Inject deployment info at root level
 						for k, v := range depMap {
 							composeMap[k] = v
@@ -1116,8 +1116,8 @@ func createInstanceUnified(ctx context.Context, token, serviceID, environmentID,
 			}
 			selected := resources.Resources[choice-1]
 			resourceKey = selected.Key
-			resourceID = selected.Id				// Restart spinner after user input
-				sm.Start()
+			resourceID = selected.Id				
+			sm.Start() // Restart spinner after user input
 			}
 		}
 
@@ -1724,9 +1724,6 @@ func createDeploymentYAML(
 	azureSubscriptionID string,
 	azureTenantID string,
 ) map[string]interface{} {
-
-
-
 	// Validate deployment type
 	if deploymentType != build.DeploymentTypeHosted && deploymentType != build.DeploymentTypeByoa {
 		fmt.Printf("Warning: Invalid deployment type '%s'. Using default 'hosted'. Valid values are: hosted, byoa\n", deploymentType)
