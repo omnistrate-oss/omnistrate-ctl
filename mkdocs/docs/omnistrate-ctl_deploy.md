@@ -11,7 +11,7 @@ It automatically handles:
   - Building from repository when no spec file is found
   - Building from an Omnistrate spec (such as omnistrate-compose.yaml)
   - Creating or updating the service version
-  - Determining deployment type (hosted or BYOA)
+  - Determining deployment type (hosted or byoa)
   - Selecting cloud and region
   - Selecting or onboarding cloud accounts for BYOA deployments
   - Collecting instance parameters

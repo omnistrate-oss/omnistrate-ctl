@@ -71,7 +71,7 @@ It automatically handles:
   - Building from repository when no spec file is found
   - Building from an Omnistrate spec (such as omnistrate-compose.yaml)
   - Creating or updating the service version
-  - Determining deployment type (hosted or BYOA)
+  - Determining deployment type (hosted or byoa)
   - Selecting cloud and region
   - Selecting or onboarding cloud accounts for BYOA deployments
   - Collecting instance parameters
@@ -376,13 +376,15 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 
 	// Explain precedence between spec deploymentType and CLI deploymentType
 	if extractDeploymentType != "" && extractDeploymentType != deploymentType {
+		sm.Stop()
+		deploymentType = extractDeploymentType
 		utils.PrintWarning(
 			fmt.Sprintf(
 				"⚠️ deployment-type override:\n  Spec file: %s\n  CLI flag: %s\n  Using:    %s (CLI value has precedence)",
 				extractDeploymentType, deploymentType, deploymentType,
 			),
 		)
-		deploymentType = extractDeploymentType
+		sm.Start()
 	}
 
 	// If no cloud provider is set, we will figure out based on accounts / offering later
@@ -1102,22 +1104,22 @@ func createInstanceUnified(ctx context.Context, token, serviceID, environmentID,
 				sm.Stop()
 
 				fmt.Println("Multiple resources found in service plan. Please select one:")
-			for idx, resource := range resources.Resources {
-				fmt.Printf("  %d. Name: %s, Key: %s, ID: %s\n", idx+1, resource.Name, resource.Key, resource.Id)
-			}
-			var choice int
-			for {
-				fmt.Printf("Select resource (1-%d): ", len(resources.Resources))
-				_, err := fmt.Scanln(&choice)
-				if err == nil && choice > 0 && choice <= len(resources.Resources) {
-					break
+				for idx, resource := range resources.Resources {
+					fmt.Printf("  %d. Name: %s, Key: %s, ID: %s\n", idx+1, resource.Name, resource.Key, resource.Id)
 				}
-				fmt.Println("Invalid selection. Please enter a valid number.")
-			}
-			selected := resources.Resources[choice-1]
-			resourceKey = selected.Key
-			resourceID = selected.Id				
-			sm.Start() // Restart spinner after user input
+				var choice int
+				for {
+					fmt.Printf("Select resource (1-%d): ", len(resources.Resources))
+					_, err := fmt.Scanln(&choice)
+					if err == nil && choice > 0 && choice <= len(resources.Resources) {
+						break
+					}
+					fmt.Println("Invalid selection. Please enter a valid number.")
+				}
+				selected := resources.Resources[choice-1]
+				resourceKey = selected.Key
+				resourceID = selected.Id				
+				sm.Start() // Restart spinner after user input
 			}
 		}
 
