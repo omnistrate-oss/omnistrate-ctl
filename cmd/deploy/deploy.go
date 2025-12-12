@@ -382,6 +382,7 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 				extractDeploymentType, deploymentType, deploymentType,
 			),
 		)
+		deploymentType = extractDeploymentType
 	}
 
 	// If no cloud provider is set, we will figure out based on accounts / offering later
@@ -1101,23 +1102,21 @@ func createInstanceUnified(ctx context.Context, token, serviceID, environmentID,
 				sm.Stop()
 
 				fmt.Println("Multiple resources found in service plan. Please select one:")
-				for idx, resource := range resources.Resources {
-					fmt.Printf("  %d. Name: %s, Key: %s, ID: %s\n", idx+1, resource.Name, resource.Key, resource.Id)
+			for idx, resource := range resources.Resources {
+				fmt.Printf("  %d. Name: %s, Key: %s, ID: %s\n", idx+1, resource.Name, resource.Key, resource.Id)
+			}
+			var choice int
+			for {
+				fmt.Printf("Select resource (1-%d): ", len(resources.Resources))
+				_, err := fmt.Scanln(&choice)
+				if err == nil && choice > 0 && choice <= len(resources.Resources) {
+					break
 				}
-				var choice int
-				for {
-					fmt.Print("Enter the number of the resource to use: ")
-					_, err := fmt.Scanln(&choice)
-					if err == nil && choice > 0 && choice <= len(resources.Resources) {
-						break
-					}
-					fmt.Println("Invalid selection. Please enter a valid number.")
-				}
-				selected := resources.Resources[choice-1]
-				resourceKey = selected.Key
-				resourceID = selected.Id
-
-				// Restart spinner after user input
+				fmt.Println("Invalid selection. Please enter a valid number.")
+			}
+			selected := resources.Resources[choice-1]
+			resourceKey = selected.Key
+			resourceID = selected.Id				// Restart spinner after user input
 				sm.Start()
 			}
 		}
