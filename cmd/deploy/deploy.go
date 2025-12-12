@@ -537,8 +537,7 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 				return fmt.Errorf("deployment requires at least one READY cloud provider account")
 			} else {
 				// No accounts at all: start interactive account creation flow
-				sm.Stop()
-				fmt.Println("No cloud provider accounts found. Starting cloud account creation flow...")
+				utils.HandleSpinnerSuccess(spinner, sm, "No cloud provider accounts found. Starting cloud account creation flow...")
 
 				// Determine which cloud provider to use and get credentials
 				if cloudProvider == "" {
@@ -812,8 +811,7 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 
 	// Print warning if there are any undefined resources
 	if len(undefinedResources) > 0 {
-		sm.Stop()
-		utils.PrintWarning("The following resources appear in the service plan but were not defined in the spec:")
+		utils.HandleSpinnerSuccess(spinner, sm, "The following resources appear in the service plan but were not defined in the spec:")
 		for resourceName, resourceID := range undefinedResources {
 			utils.PrintWarning(fmt.Sprintf("  %s: %s", resourceName, resourceID))
 		}
@@ -892,7 +890,7 @@ func executeDeploymentWorkflow(cmd *cobra.Command, sm ysmrr.SpinnerManager, toke
 			finalInstanceID = existingInstanceIDs[0]
 			spinner.UpdateMessage(fmt.Sprintf("Step 2/2: %s: Found %d existing instance(s)", spinnerMsg, len(existingInstanceIDs)))
 			spinner.Complete()
-
+			
 			// Show the note directly without stopping spinner manager
 			spinner = sm.AddSpinner(fmt.Sprintf("Step 2/2: 📝 Note: Existing instance found. An upgrade will be performed. (Instance ID: %s)", finalInstanceID))
 			spinner.Complete()
@@ -956,6 +954,8 @@ func executeDeploymentWorkflow(cmd *cobra.Command, sm ysmrr.SpinnerManager, toke
 
 		}
 
+		sm.Stop()
+
 		createdInstanceID, err := "", error(nil)
 		createdInstanceID, err = createInstanceUnified(cmd.Context(), token, serviceID, environmentID, planID, cloudProvider, region, resourceID, "resourceInstance", formattedParams, sm)
 		finalInstanceID = createdInstanceID
@@ -974,11 +974,8 @@ func executeDeploymentWorkflow(cmd *cobra.Command, sm ysmrr.SpinnerManager, toke
 	}
 	sm = ysmrr.NewSpinnerManager()
 	sm.Start()
-	spinner = sm.AddSpinner("Step 2/2: Instance deployment preparation complete")
-	spinner.Complete()
-
-	// Stop spinner manager before printing summary
-	sm.Stop()
+	utils.HandleSpinnerSuccess(spinner, sm, "Step 2/2: Instance deployment preparation complete")
+	
 
 	// Success summary
 	fmt.Println()
@@ -1118,8 +1115,7 @@ func createInstanceUnified(ctx context.Context, token, serviceID, environmentID,
 			if len(resources.Resources) > 1 {
 				// Stop spinner before prompting user
 				
-				sm.Stop()
-				fmt.Println("Multiple resources found in service plan. Please select one:")
+				utils.HandleSpinnerSuccess(spinner, sm, "Multiple resources found in service plan. Please select one:")
 				
 				for idx, resource := range resources.Resources {
 					fmt.Printf("  %d. Name: %s, Key: %s, ID: %s\n", idx+1, resource.Name, resource.Key, resource.Id)
@@ -1368,14 +1364,11 @@ func createInstanceUnified(ctx context.Context, token, serviceID, environmentID,
 	if instance == nil || instance.Id == nil {
 		return "", fmt.Errorf("instance creation returned empty result")
 	}
+	createMsg := "Step 2/2: Deploying a new instance: Success... (ID: " + *instance.Id + ")"
 	if instanceType == "cloudAccount" {
-		spinner.UpdateMessage("Step 2/2: Deploying a new instance: Verification... (ID: " + *instance.Id + ")")
-		spinner.Complete()
-	} else{
-	spinner.UpdateMessage("Step 2/2: Deploying a new instance: Success (ID: " + *instance.Id + ")")
-	spinner.Complete()
-	}
-	sm.Stop()
+		createMsg = "Step 2/2: Deploying a new instance: Verification... (ID: " + *instance.Id + ")"
+	} 
+	utils.HandleSpinnerSuccess(spinner, sm, createMsg)
 
 	return *instance.Id, nil
 }
@@ -1894,9 +1887,7 @@ func createCloudAccountInstances(ctx context.Context, token, serviceID, environm
 	// Get existing cloud account instances grouped by cloud provider and status
 	cloudInstancesByProvider, err := listCloudAccountInstancesByProvider(ctx, token, serviceID, environmentID, planID)
 	if err != nil {
-		spinner.UpdateMessage(spinnerMsg + ": Failed (" + err.Error() + ")")
-		spinner.Error()
-		sm.Stop()
+		utils.HandleSpinnerError(spinner, sm, fmt.Errorf(spinnerMsg + ": Failed (%s)", err.Error()))
 		return "", targetCloudProvider, fmt.Errorf("failed to list cloud account instances: %w", err)
 	}
 
@@ -1912,8 +1903,7 @@ func createCloudAccountInstances(ctx context.Context, token, serviceID, environm
 
 	// If we have READY instances for any cloud provider, show them and let user choose
 	if len(readyInstances) > 0 {
-		sm.Stop()
-		fmt.Println("Available READY cloud account instances:")
+		utils.HandleSpinnerSuccess(spinner, sm, "Available READY cloud account instances:")
 
 		// Create a list of all available instances with their providers
 		var instanceOptions []struct {
@@ -1958,8 +1948,7 @@ func createCloudAccountInstances(ctx context.Context, token, serviceID, environm
 	}
 
 	// No READY instances found, create a new one
-	sm.Stop()
-	fmt.Println("No READY cloud account instances found. Creating a new one.")
+	utils.HandleSpinnerSuccess(spinner, sm, "No READY cloud account instances found. Creating a new one.")
 
 	// Determine which cloud provider to use and get credentials
 	if targetCloudProvider == "" {
