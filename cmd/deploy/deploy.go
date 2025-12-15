@@ -1060,8 +1060,7 @@ func createInstanceUnified(ctx context.Context, token, serviceID, environmentID,
 			return "", fmt.Errorf("cloud account instances are only supported for BYOA service model, got: %s", offering.ServiceModelType)
 		}
 
-		spinner.UpdateMessage(fmt.Sprintf("Step 2/2: Found cloud account resource: ID=%s, Key=%s", resourceID, resourceKey))
-		spinner.Complete()
+		utils.HandleSpinnerSuccess(spinner, sm, fmt.Sprintf("Step 2/2: Found cloud account resource: ID=%s, Key=%s", resourceID, resourceKey))
 
 		
 	} else {
@@ -1138,8 +1137,7 @@ func createInstanceUnified(ctx context.Context, token, serviceID, environmentID,
 				sm.Start()
 				
 			}
-			spinner := sm.AddSpinner(fmt.Sprintf("Step 2/2: selected resource %s (ID: %s)", resourceKey, resourceID))		
-			spinner.Complete()	
+			utils.HandleSpinnerSuccess(spinner, sm, fmt.Sprintf("Step 2/2: Using resource %s (ID: %s)", resourceKey, resourceID))
 		}
 		spinner := sm.AddSpinner("Step 2/2: Check cloud provider and region")
 		if resourceID == "" || resourceKey == "" {
@@ -1248,9 +1246,8 @@ func createInstanceUnified(ctx context.Context, token, serviceID, environmentID,
 				region = "eastus2"
 			}
 		}
-		spinner.UpdateMessage(fmt.Sprintf("Step 2/2: Using cloud provider '%s' and region '%s'", cloudProvider, region))
-		spinner.Complete()
-		
+	
+		utils.HandleSpinnerSuccess(spinner, sm, fmt.Sprintf("Step 2/2: Using cloud provider '%s' and region '%s'", cloudProvider, region))
 
 		// Try to describe service offering resource - this is optional for parameter validation
 		resApiParams, err := dataaccess.DescribeServiceOfferingResource(ctx, token, serviceID, resourceID, "none", productTierID, version)
