@@ -49,10 +49,10 @@ omctl deploy --cloud-provider aws --region us-east-1
 omctl deploy --deployment-type byoa
 
 # Build and deploy with instance parameters supplied inline
-omctl deploy --param '{"disk_size:20Gi, nodes:3"}'
+omctl deploy --param '{"disk_size":"20Gi", "username":"test", "password":"Test@123"}'
 
 # Build and deploy with parameters loaded from a file
-omctl deploy --param-file params.yaml
+omctl deploy --param-file params.json
 
 # Build and upgrade an existing instance
 omctl deploy --instance-id inst-12345
@@ -384,12 +384,15 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 
 	// Explain precedence between spec deploymentType and CLI deploymentType
 	if extractDeploymentType != "" && extractDeploymentType != deploymentType {
-		utils.PrintWarning(
+		spinner.UpdateMessage(
 			fmt.Sprintf(
-				"⚠️ deployment-type override:\n  Spec file: %s\n  CLI flag: %s\n  Using:    %s (CLI value has precedence)",
-				extractDeploymentType, deploymentType, deploymentType,
+				"⚠️  deployment-type override:\n  Spec file: %s\n  CLI flag: %s\n  Using:    %s (CLI value has precedence)",
+				extractDeploymentType, deploymentType, extractDeploymentType,
 			),
 		)
+		deploymentType = extractDeploymentType
+		spinner.Complete()
+		spinner = sm.AddSpinner("Step 1/2: Checking cloud provider accounts...")
 	}
 
 	// If no cloud provider is set, we will figure out based on accounts / offering later
@@ -534,8 +537,7 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 				return fmt.Errorf("deployment requires at least one READY cloud provider account")
 			} else {
 				// No accounts at all: start interactive account creation flow
-				sm.Stop()
-				fmt.Println("No cloud provider accounts found. Starting cloud account creation flow...")
+				utils.HandleSpinnerSuccess(spinner, sm, "No cloud provider accounts found. Starting cloud account creation flow...")
 
 				// Determine which cloud provider to use and get credentials
 				if cloudProvider == "" {
@@ -748,7 +750,12 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 								services[svcName] = svcMap
 							}
 							composeMap["services"] = services
+						} else {
+						// Inject deployment info at root level
+						for k, v := range depMap {
+							composeMap[k] = v
 						}
+					}
 					} else {
 						// Inject deployment info at root level
 						for k, v := range depMap {
@@ -804,8 +811,7 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 
 	// Print warning if there are any undefined resources
 	if len(undefinedResources) > 0 {
-		sm.Stop()
-		utils.PrintWarning("The following resources appear in the service plan but were not defined in the spec:")
+		utils.HandleSpinnerSuccess(spinner, sm, "The following resources appear in the service plan but were not defined in the spec:")
 		for resourceName, resourceID := range undefinedResources {
 			utils.PrintWarning(fmt.Sprintf("  %s: %s", resourceName, resourceID))
 		}
@@ -884,7 +890,7 @@ func executeDeploymentWorkflow(cmd *cobra.Command, sm ysmrr.SpinnerManager, toke
 			finalInstanceID = existingInstanceIDs[0]
 			spinner.UpdateMessage(fmt.Sprintf("Step 2/2: %s: Found %d existing instance(s)", spinnerMsg, len(existingInstanceIDs)))
 			spinner.Complete()
-
+			
 			// Show the note directly without stopping spinner manager
 			spinner = sm.AddSpinner(fmt.Sprintf("Step 2/2: 📝 Note: Existing instance found. An upgrade will be performed. (Instance ID: %s)", finalInstanceID))
 			spinner.Complete()
@@ -940,6 +946,7 @@ func executeDeploymentWorkflow(cmd *cobra.Command, sm ysmrr.SpinnerManager, toke
 			cloudAccountInstanceID, targetCloudProvider, err := createCloudAccountInstances(cmd.Context(), token, serviceID, environmentID, planID, cloudProvider, sm)
 			if err != nil {
 				fmt.Printf("Warning: Failed to create cloud account instances: %v\n", err)
+				return err
 			}
 			cloudProvider = targetCloudProvider
 			fmt.Printf("Cloud account instance created: provider=%s, id=%s\n", targetCloudProvider, cloudAccountInstanceID)
@@ -947,30 +954,28 @@ func executeDeploymentWorkflow(cmd *cobra.Command, sm ysmrr.SpinnerManager, toke
 
 		}
 
-		createMsg := "Step 2/2: Deploying a new instance"
-		spinner = sm.AddSpinner(createMsg)
+		sm.Stop()
+
 		createdInstanceID, err := "", error(nil)
-		createdInstanceID, err = createInstanceUnified(cmd.Context(), token, serviceID, environmentID, planID, cloudProvider, region, resourceID, "resourceInstance", formattedParams, sm)
+		createdInstanceID, err = createInstanceUnified(cmd.Context(), token, serviceID, environmentID, planID, cloudProvider, region, resourceID, "resourceInstance", formattedParams)
 		finalInstanceID = createdInstanceID
 		// instanceActionType is already "create" from initialization
 		if err != nil {
 			utils.HandleSpinnerError(spinner, sm, err)
-			spinner.UpdateMessage(fmt.Sprintf("%s: Failed (%s)", createMsg, err.Error()))
+			spinner.UpdateMessage(fmt.Sprintf("%s: Failed (%s)", "Step 2/2: Deploying a new instance", err.Error()))
 			if isMissingParamsError(err) {
 				printMissingParamsGuidance(err)
 			}
 			spinner.Error()
 			return err
 		}
-
-		spinner.UpdateMessage(fmt.Sprintf("%s: Success (ID: %s)", createMsg, finalInstanceID))
-		spinner.Complete()
+		
+		
 	}
-	spinner = sm.AddSpinner("Step 2/2: Instance deployment preparation complete")
-	spinner.Complete()
-
-	// Stop spinner manager before printing summary
-	sm.Stop()
+	sm = ysmrr.NewSpinnerManager()
+	sm.Start()
+	utils.HandleSpinnerSuccess(spinner, sm, "Step 2/2: Instance deployment preparation complete")
+	
 
 	// Success summary
 	fmt.Println()
@@ -1005,7 +1010,10 @@ func executeDeploymentWorkflow(cmd *cobra.Command, sm ysmrr.SpinnerManager, toke
 }
 
 // createInstanceUnified creates an instance with or without subscription, removing duplicate code
-func createInstanceUnified(ctx context.Context, token, serviceID, environmentID, productTierID, cloudProvider, region, resourceID, instanceType string, formattedParams map[string]interface{}, sm ysmrr.SpinnerManager) (string, error) {
+func createInstanceUnified(ctx context.Context, token, serviceID, environmentID, productTierID, cloudProvider, region, resourceID, instanceType string, formattedParams map[string]interface{}) (string, error) {
+	sm := ysmrr.NewSpinnerManager()
+	sm.Start()
+	spinner := sm.AddSpinner("Step 2/2: Deploying a new instance")
 
 	// Get the latest version
 	version, err := dataaccess.FindLatestVersion(ctx, token, serviceID, productTierID)
@@ -1052,7 +1060,9 @@ func createInstanceUnified(ctx context.Context, token, serviceID, environmentID,
 			return "", fmt.Errorf("cloud account instances are only supported for BYOA service model, got: %s", offering.ServiceModelType)
 		}
 
-		fmt.Printf("Found cloud account resource: ID=%s, Key=%s\n", resourceID, resourceKey)
+		utils.HandleSpinnerSuccess(spinner, sm, fmt.Sprintf("Step 2/2: Found cloud account resource: ID=%s, Key=%s", resourceID, resourceKey))
+
+		
 	} else {
 		// Get list of resources in the target tier version
 		resources, err := dataaccess.ListResources(ctx, token, serviceID, productTierID, &version)
@@ -1095,21 +1105,23 @@ func createInstanceUnified(ctx context.Context, token, serviceID, environmentID,
 		}
 
 		if resourceKey == "" {
+			spinner.UpdateMessage("Step 2/2 : Resources found in service plan")
+			spinner.Complete()
 			if len(resources.Resources) == 1 {
 				resourceKey = resources.Resources[0].Key
 				resourceID = resources.Resources[0].Id
 			}
 			if len(resources.Resources) > 1 {
 				// Stop spinner before prompting user
-				sm.Stop()
-
-				fmt.Println("Multiple resources found in service plan. Please select one:")
+				
+				utils.HandleSpinnerSuccess(spinner, sm, "Multiple resources found in service plan. Please select one:")
+				
 				for idx, resource := range resources.Resources {
 					fmt.Printf("  %d. Name: %s, Key: %s, ID: %s\n", idx+1, resource.Name, resource.Key, resource.Id)
 				}
 				var choice int
 				for {
-					fmt.Print("Enter the number of the resource to use: ")
+					fmt.Printf("Select resource (1-%d): ", len(resources.Resources))
 					_, err := fmt.Scanln(&choice)
 					if err == nil && choice > 0 && choice <= len(resources.Resources) {
 						break
@@ -1118,13 +1130,16 @@ func createInstanceUnified(ctx context.Context, token, serviceID, environmentID,
 				}
 				selected := resources.Resources[choice-1]
 				resourceKey = selected.Key
-				resourceID = selected.Id
+				resourceID = selected.Id	
 
-				// Restart spinner after user input
+				// Create new spinner manager after warning
+				sm = ysmrr.NewSpinnerManager()
 				sm.Start()
+				
 			}
+			utils.HandleSpinnerSuccess(spinner, sm, fmt.Sprintf("Step 2/2: Using resource %s (ID: %s)", resourceKey, resourceID))
 		}
-
+		spinner := sm.AddSpinner("Step 2/2: Check cloud provider and region")
 		if resourceID == "" || resourceKey == "" {
 			return "", fmt.Errorf("invalid resource in service plan: missing ID or key")
 		}
@@ -1231,6 +1246,8 @@ func createInstanceUnified(ctx context.Context, token, serviceID, environmentID,
 				region = "eastus2"
 			}
 		}
+	
+		utils.HandleSpinnerSuccess(spinner, sm, fmt.Sprintf("Step 2/2: Using cloud provider '%s' and region '%s'", cloudProvider, region))
 
 		// Try to describe service offering resource - this is optional for parameter validation
 		resApiParams, err := dataaccess.DescribeServiceOfferingResource(ctx, token, serviceID, resourceID, "none", productTierID, version)
@@ -1310,7 +1327,7 @@ func createInstanceUnified(ctx context.Context, token, serviceID, environmentID,
 			fmt.Println()
 		}
 	}
-
+	spinner = sm.AddSpinner("Step 2/2: Deploying a new instance")
 	request := openapiclientfleet.FleetCreateResourceInstanceRequest2{
 		CloudProvider: &cloudProvider,
 		RequestParams: defaultParams,
@@ -1344,6 +1361,11 @@ func createInstanceUnified(ctx context.Context, token, serviceID, environmentID,
 	if instance == nil || instance.Id == nil {
 		return "", fmt.Errorf("instance creation returned empty result")
 	}
+	createMsg := "Step 2/2: Deploying a new instance: Success... (ID: " + *instance.Id + ")"
+	if instanceType == "cloudAccount" {
+		createMsg = "Step 2/2: Deploying a new instance: Verification... (ID: " + *instance.Id + ")"
+	} 
+	utils.HandleSpinnerSuccess(spinner, sm, createMsg)
 
 	return *instance.Id, nil
 }
@@ -1781,58 +1803,58 @@ func createDeploymentYAML(
 				"hostedDeployment": map[string]interface{}{},
 			}
 			hosted := make(map[string]interface{})
-			if awsAccountID != "" {
+		if awsAccountID != "" {
 				hosted["awsAccountId"] = awsAccountID
-				if awsBootstrapRoleARN != "" {
+			if awsBootstrapRoleARN != "" {
 					hosted["awsBootstrapRoleAccountArn"] = awsBootstrapRoleARN
-				}
 			}
-			if gcpProjectID != "" {
-				hosted["gcpProjectId"] = gcpProjectID
-				if gcpProjectNumber != "" {
-					hosted["gcpProjectNumber"] = gcpProjectNumber
-				}
-				if gcpServiceAccountEmail != "" {
-					hosted["gcpServiceAccountEmail"] = gcpServiceAccountEmail
-				}
-			}
-			if azureSubscriptionID != "" {
-				hosted["azureSubscriptionId"] = azureSubscriptionID
-				if azureTenantID != "" {
-					hosted["azureTenantId"] = azureTenantID
-				}
-			}
-			yamlDoc["deployment"].(map[string]interface{})["hostedDeployment"] = hosted
-		} else {
-			sp := getServicePlan()
-			hosted := make(map[string]interface{})
-			if awsAccountID != "" {
-				hosted["awsAccountId"] = awsAccountID
-				if awsBootstrapRoleARN != "" {
-					hosted["awsBootstrapRoleAccountArn"] = awsBootstrapRoleARN
-				}
-			}
-			if gcpProjectID != "" {
-				hosted["gcpProjectId"] = gcpProjectID
-				if gcpProjectNumber != "" {
-					hosted["gcpProjectNumber"] = gcpProjectNumber
-				}
-				if gcpServiceAccountEmail != "" {
-					hosted["gcpServiceAccountEmail"] = gcpServiceAccountEmail
-				}
-			}
-			if azureSubscriptionID != "" {
-				hosted["azureSubscriptionId"] = azureSubscriptionID
-				if azureTenantID != "" {
-					hosted["azureTenantId"] = azureTenantID
-				}
-			}
-			sp["deployment"] = map[string]interface{}{
-				"hostedDeployment": hosted,
-			}
-			yamlDoc["x-omnistrate-service-plan"] = sp
 		}
-	}
+		if gcpProjectID != "" {
+				hosted["gcpProjectId"] = gcpProjectID
+			if gcpProjectNumber != "" {
+					hosted["gcpProjectNumber"] = gcpProjectNumber
+			}
+			if gcpServiceAccountEmail != "" {
+					hosted["gcpServiceAccountEmail"] = gcpServiceAccountEmail
+			}
+		}
+		if azureSubscriptionID != "" {
+				hosted["azureSubscriptionId"] = azureSubscriptionID
+			if azureTenantID != "" {
+					hosted["azureTenantId"] = azureTenantID
+			}
+		}
+			yamlDoc["deployment"].(map[string]interface{})["hostedDeployment"] = hosted
+			} else {
+				sp := getServicePlan()
+		hosted := make(map[string]interface{})
+		if awsAccountID != "" {
+			hosted["awsAccountId"] = awsAccountID
+			if awsBootstrapRoleARN != "" {
+				hosted["awsBootstrapRoleAccountArn"] = awsBootstrapRoleARN
+			}
+		}
+		if gcpProjectID != "" {
+			hosted["gcpProjectId"] = gcpProjectID
+			if gcpProjectNumber != "" {
+				hosted["gcpProjectNumber"] = gcpProjectNumber
+			}
+			if gcpServiceAccountEmail != "" {
+				hosted["gcpServiceAccountEmail"] = gcpServiceAccountEmail
+			}
+		}
+		if azureSubscriptionID != "" {
+			hosted["azureSubscriptionId"] = azureSubscriptionID
+			if azureTenantID != "" {
+				hosted["azureTenantId"] = azureTenantID
+			}
+		}
+				sp["deployment"] = map[string]interface{}{
+					"hostedDeployment": hosted,
+				}
+				yamlDoc["x-omnistrate-service-plan"] = sp
+			}
+		}
 	return yamlDoc
 }
 
@@ -1862,9 +1884,7 @@ func createCloudAccountInstances(ctx context.Context, token, serviceID, environm
 	// Get existing cloud account instances grouped by cloud provider and status
 	cloudInstancesByProvider, err := listCloudAccountInstancesByProvider(ctx, token, serviceID, environmentID, planID)
 	if err != nil {
-		spinner.UpdateMessage(spinnerMsg + ": Failed (" + err.Error() + ")")
-		spinner.Error()
-		sm.Stop()
+		utils.HandleSpinnerError(spinner, sm, fmt.Errorf(spinnerMsg + ": Failed (%s)", err.Error()))
 		return "", targetCloudProvider, fmt.Errorf("failed to list cloud account instances: %w", err)
 	}
 
@@ -1880,8 +1900,7 @@ func createCloudAccountInstances(ctx context.Context, token, serviceID, environm
 
 	// If we have READY instances for any cloud provider, show them and let user choose
 	if len(readyInstances) > 0 {
-		sm.Stop()
-		fmt.Println("Available READY cloud account instances:")
+		utils.HandleSpinnerSuccess(spinner, sm, "Available READY cloud account instances:")
 
 		// Create a list of all available instances with their providers
 		var instanceOptions []struct {
@@ -1915,6 +1934,7 @@ func createCloudAccountInstances(ctx context.Context, token, serviceID, environm
 
 		if choice == 0 {
 			// User chose to create a new instance - continue with creation logic below
+			sm = ysmrr.NewSpinnerManager()
 			sm.Start()
 		} else {
 			// User selected an existing instance
@@ -1925,8 +1945,7 @@ func createCloudAccountInstances(ctx context.Context, token, serviceID, environm
 	}
 
 	// No READY instances found, create a new one
-	sm.Stop()
-	fmt.Println("No READY cloud account instances found. Creating a new one.")
+	utils.HandleSpinnerSuccess(spinner, sm, "No READY cloud account instances found. Creating a new one.")
 
 	// Determine which cloud provider to use and get credentials
 	if targetCloudProvider == "" {
@@ -1945,29 +1964,21 @@ func createCloudAccountInstances(ctx context.Context, token, serviceID, environm
 		return "", targetCloudProvider, err
 	}
 
-	// Restart spinner for instance creation
-	sm.Start()
-	spinner = sm.AddSpinner("Step 2/2: Creating new cloud account instance")
-	sm.Stop()
+	
 	// Determine which cloud provider to use and get credentials
 	if targetCloudProvider == "" {
 		targetCloudProvider = promptForCloudProvider()
 	}
 
-	sm.Start()
 
-	createdInstanceID, err := createInstanceUnified(ctx, token, serviceID, environmentID, planID, targetCloudProvider, "", "", "cloudAccount", formattedParams, sm)
+	createdInstanceID, err := createInstanceUnified(ctx, token, serviceID, environmentID, planID, targetCloudProvider, "", "", "cloudAccount", formattedParams)
 	if err != nil {
+		sm = ysmrr.NewSpinnerManager()
+		sm.Start()
 		spinner.UpdateMessage("Step 2/2: Creating cloud account instance: Failed (" + err.Error() + ")")
 		spinner.Error()
 		return "", targetCloudProvider, err
 	}
-
-	spinner.UpdateMessage(fmt.Sprintf("Step 2/2: Creating cloud account instance: Success (ID: %s)", createdInstanceID))
-	spinner.Complete()
-
-	// Stop spinner to show instructions
-	sm.Stop()
 
 	// Start polling for account verification
 	fmt.Println("\n🔄 Checking for account verification...")
@@ -2180,7 +2191,7 @@ func waitForAccountVerification(ctx context.Context, token, serviceID,
 				case "READY":
 					return instance.instanceID, nil
 				case "FAILED":
-					return "", fmt.Errorf("account setup encountered an error %s", instance.status)
+					return "", fmt.Errorf("cloud account setup failed with status: %s", instance.status)
 				}
 			}
 		}

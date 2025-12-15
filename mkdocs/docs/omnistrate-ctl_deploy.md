@@ -80,10 +80,10 @@ omctl deploy --cloud-provider aws --region us-east-1
 omctl deploy --deployment-type byoa
 
 # Build and deploy with instance parameters supplied inline
-omctl deploy --param '{"disk_size:20Gi, nodes:3"}'
+omctl deploy --param '{"disk_size":"20Gi", "username":"test", "password":"Test@123"}'
 
 # Build and deploy with parameters loaded from a file
-omctl deploy --param-file params.yaml
+omctl deploy --param-file params.json
 
 # Build and upgrade an existing instance
 omctl deploy --instance-id inst-12345
