@@ -605,28 +605,22 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 
 	}
 	if awsAccountID != "" || gcpProjectID != "" || azureSubscriptionID != "" {
-		spinner.Complete()
-		spinner = sm.AddSpinner("Cloud account(s) linked and READY")
-		spinner.Complete()
+		utils.HandleSpinnerSuccess(spinner, sm, "Cloud account(s) linked and READY")
+	
 
 		if awsAccountID != "" {
-			spinner = sm.AddSpinner(fmt.Sprintf("  - Using AWS Account ID: %s", awsAccountID))
-			spinner.Complete()
+			utils.HandleSpinnerSuccess(spinner, sm, fmt.Sprintf("  - Using AWS Account ID: %s", awsAccountID))
 
 		}
 		if gcpProjectID != "" {
-			spinner = sm.AddSpinner(fmt.Sprintf("  - Using GCP Project ID: %s and Project Number: %s", gcpProjectID, gcpProjectNumber))
-			spinner.Complete()
+			utils.HandleSpinnerSuccess(spinner, sm, fmt.Sprintf("  - Using GCP Project ID: %s and Project Number: %s", gcpProjectID, gcpProjectNumber))
 
 		}
 		if azureSubscriptionID != "" {
-			spinner = sm.AddSpinner(fmt.Sprintf("  - Using Azure Subscription ID: %s and Tenant ID: %s", azureSubscriptionID, azureTenantID))
-			spinner.Complete()
+			utils.HandleSpinnerSuccess(spinner, sm, fmt.Sprintf("  - Using Azure Subscription ID: %s and Tenant ID: %s", azureSubscriptionID, azureTenantID))
 
 		}
-
-		spinner = sm.AddSpinner("Step 1/2: Cloud provider account check complete")
-		spinner.Complete()
+		utils.HandleSpinnerSuccess(spinner, sm, "Step 1/2: Cloud provider account check complete")
 
 	}
 
