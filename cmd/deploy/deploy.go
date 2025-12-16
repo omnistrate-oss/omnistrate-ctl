@@ -679,6 +679,8 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 	var undefinedResources map[string]string
 
 	if specType == build.DockerComposeSpecType && buildFromRepo {
+		spinner.UpdateMessage("Step 1/2: No spec file found, building service from repository...")
+		spinner.Complete()
 		serviceID, environmentID, planID, undefinedResources, err = build.BuildServiceFromRepository(
 			cmd,
 			cmd.Context(),
@@ -706,6 +708,8 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 			wrapAndPrintServiceBuildError(err)
 			return err
 		}
+		sm = ysmrr.NewSpinnerManager()
+		sm.Start()
 
 	} else {
 
