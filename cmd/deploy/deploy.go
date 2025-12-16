@@ -697,7 +697,7 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 			azureSubscriptionID,
 			azureTenantID,
 			sm,
-			file,
+			build.OmnistrateComposeFileName,
 			[]string{},
 			platforms,
 			false,
