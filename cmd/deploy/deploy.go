@@ -622,6 +622,7 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 		}
 		if azureSubscriptionID != "" {
 			spinner = sm.AddSpinner(fmt.Sprintf(" - Using Azure Subscription ID: %s and Tenant ID: %s", azureSubscriptionID, azureTenantID))
+			spinner.Complete()	
 
 		}
 		spinner = sm.AddSpinner("Step 1/2: Cloud provider account check complete")
