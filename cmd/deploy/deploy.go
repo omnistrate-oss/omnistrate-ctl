@@ -608,23 +608,23 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 		spinner.Complete()
 		spinner = sm.AddSpinner("Cloud account(s) linked and READY")
 		spinner.Complete()
+	
 
 		if awsAccountID != "" {
-			spinner = sm.AddSpinner(fmt.Sprintf("  - Using AWS Account ID: %s", awsAccountID))
+			spinner = sm.AddSpinner(fmt.Sprintf(" - Using AWS Account ID: %s", awsAccountID))
 			spinner.Complete()
 
 		}
 		if gcpProjectID != "" {
-			spinner = sm.AddSpinner(fmt.Sprintf("  - Using GCP Project ID: %s and Project Number: %s", gcpProjectID, gcpProjectNumber))
+			spinner = sm.AddSpinner(fmt.Sprintf(" - Using GCP Project ID: %s and Project Number: %s", gcpProjectID, gcpProjectNumber))
 			spinner.Complete()
 
 		}
 		if azureSubscriptionID != "" {
-			spinner = sm.AddSpinner(fmt.Sprintf("  - Using Azure Subscription ID: %s and Tenant ID: %s", azureSubscriptionID, azureTenantID))
-			spinner.Complete()
+			spinner = sm.AddSpinner(fmt.Sprintf(" - Using Azure Subscription ID: %s and Tenant ID: %s", azureSubscriptionID, azureTenantID))
+			spinner.Complete()	
 
 		}
-
 		spinner = sm.AddSpinner("Step 1/2: Cloud provider account check complete")
 		spinner.Complete()
 
@@ -680,6 +680,8 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 	var undefinedResources map[string]string
 
 	if specType == build.DockerComposeSpecType && buildFromRepo {
+		spinner.UpdateMessage("Step 1/2: No spec file found, building service from repository...")
+		spinner.Complete()
 		serviceID, environmentID, planID, undefinedResources, err = build.BuildServiceFromRepository(
 			cmd,
 			cmd.Context(),
@@ -697,7 +699,7 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 			azureSubscriptionID,
 			azureTenantID,
 			sm,
-			file,
+			build.OmnistrateComposeFileName,
 			[]string{},
 			platforms,
 			false,
@@ -707,6 +709,8 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 			wrapAndPrintServiceBuildError(err)
 			return err
 		}
+		sm = ysmrr.NewSpinnerManager()
+		sm.Start()
 
 	} else {
 
