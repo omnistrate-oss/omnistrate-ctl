@@ -18,7 +18,7 @@ import (
 
 const (
 	enableDebugModeExample = `# Enable debug mode for an instance deployment
-omctl instance enable-debug-mode i-1234 --resource-name terraform --force`
+omnistrate-ctl instance enable-debug-mode i-1234 --resource-name terraform --force`
 )
 
 var enableDebugModeCmd = &cobra.Command{

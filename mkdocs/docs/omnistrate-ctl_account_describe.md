@@ -14,7 +14,7 @@ omnistrate-ctl account describe [account-name or account-id] [flags]
 
 ```
 # Describe account with name or id
-omctl account describe [account-name or account-id]
+omnistrate-ctl account describe [account-name or account-id]
 ```
 
 ### Options

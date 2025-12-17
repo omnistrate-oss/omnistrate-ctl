@@ -14,7 +14,7 @@ omnistrate-ctl custom-network describe [flags]
 
 ```
 # Describe a custom network by ID
-omctl custom-network describe --custom-network-id [custom-network-id]
+omnistrate-ctl custom-network describe --custom-network-id [custom-network-id]
 ```
 
 ### Options

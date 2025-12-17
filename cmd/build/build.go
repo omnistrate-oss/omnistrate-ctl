@@ -33,43 +33,43 @@ var (
 const (
 	buildExample = `
 # Build service in dev environment
-omctl build --product-name "My Service"
+omnistrate-ctl build --product-name "My Service"
 
 # Build service with compose spec in dev environment
-omctl build --file omnistrate-compose.yaml --product-name "My Service"
+omnistrate-ctl build --file omnistrate-compose.yaml --product-name "My Service"
 
 # Build service with compose spec in prod environment
-omctl build --file omnistrate-compose.yaml --product-name "My Service" --environment prod --environment-type prod
+omnistrate-ctl build --file omnistrate-compose.yaml --product-name "My Service" --environment prod --environment-type prod
 
 # Build service with compose spec and release the service with a release description
-omctl build --file omnistrate-compose.yaml --product-name "My Service" --release --release-description "v1.0.0-alpha"
+omnistrate-ctl build --file omnistrate-compose.yaml --product-name "My Service" --release --release-description "v1.0.0-alpha"
 
 # Build service with compose spec and release the service as preferred with a release description
-omctl build --file omnistrate-compose.yaml --product-name "My Service" --release-as-preferred --release-description "v1.0.0-alpha"
+omnistrate-ctl build --file omnistrate-compose.yaml --product-name "My Service" --release-as-preferred --release-description "v1.0.0-alpha"
 
 # Build service with compose spec interactively
-omctl build --file omnistrate-compose.yaml --product-name "My Service" --interactive
+omnistrate-ctl build --file omnistrate-compose.yaml --product-name "My Service" --interactive
 
 # Build service with compose spec with service description and service logo
-omctl build --file omnistrate-compose.yaml --product-name "My Service" --description "My Service Description" --service-logo-url "https://example.com/logo.png"
+omnistrate-ctl build --file omnistrate-compose.yaml --product-name "My Service" --description "My Service Description" --service-logo-url "https://example.com/logo.png"
 
 # Build service with service specification for Helm, Operator or Kustomize in dev environment
-omctl build --spec-type ServicePlanSpec --file spec.yaml --product-name "My Service"
+omnistrate-ctl build --spec-type ServicePlanSpec --file spec.yaml --product-name "My Service"
 
 # Build service with service specification for Helm, Operator or Kustomize in prod environment
-omctl build --spec-type ServicePlanSpec --file spec.yaml --product-name "My Service" --environment prod --environment-type prod
+omnistrate-ctl build --spec-type ServicePlanSpec --file spec.yaml --product-name "My Service" --environment prod --environment-type prod
 
 # Build service with service specification for Helm, Operator or Kustomize as preferred
-omctl build --spec-type ServicePlanSpec --file spec.yaml --product-name "My Service" --release-as-preferred --release-description "v1.0.0-alpha"
+omnistrate-ctl build --spec-type ServicePlanSpec --file spec.yaml --product-name "My Service" --release-as-preferred --release-description "v1.0.0-alpha"
 
 # Build service with service specification for Helm, Operator or Kustomize and explicitly do not release as preferred
-omctl build --spec-type ServicePlanSpec --file spec.yaml --product-name "My Service" --no-release-as-preferred --release-description "v1.0.0-alpha"
+omnistrate-ctl build --spec-type ServicePlanSpec --file spec.yaml --product-name "My Service" --no-release-as-preferred --release-description "v1.0.0-alpha"
 
 # Build service from image in dev environment
-omctl build --image docker.io/mysql:5.7 --product-name MySQL --env-var "MYSQL_ROOT_PASSWORD=password" --env-var "MYSQL_DATABASE=mydb"
+omnistrate-ctl build --image docker.io/mysql:5.7 --product-name MySQL --env-var "MYSQL_ROOT_PASSWORD=password" --env-var "MYSQL_DATABASE=mydb"
 
 # Build service with private image in dev environment
-omctl build --image docker.io/namespace/my-image:v1.2 --product-name "My Service" --image-registry-auth-username username --image-registry-auth-password password --env-var KEY1:VALUE1 --env-var KEY2:VALUE2
+omnistrate-ctl build --image docker.io/namespace/my-image:v1.2 --product-name "My Service" --image-registry-auth-username username --image-registry-auth-password password --env-var KEY1:VALUE1 --env-var KEY2:VALUE2
 `
 
 	buildLong = `Build command can be used to build a service from image, docker compose, and service plan spec. 
@@ -384,11 +384,11 @@ func runBuild(cmd *cobra.Command, args []string) error {
 				if _, err := os.Stat(file); os.IsNotExist(err) {
 					// Check if Dockerfile exists to suggest build-from-repo
 					if _, err := os.Stat("Dockerfile"); err == nil {
-						err = fmt.Errorf("no omnistrate-compose.yaml found, but Dockerfile exists. Please use 'omctl build-from-repo' command to build from your Dockerfile, or create an omnistrate-compose.yaml file")
+						err = fmt.Errorf("no omnistrate-compose.yaml found, but Dockerfile exists. Please use 'omnistrate-ctl build-from-repo' command to build from your Dockerfile, or create an omnistrate-compose.yaml file")
 						utils.PrintError(err)
 						return err
 					}
-					err = fmt.Errorf("no omnistrate-compose.yaml or spec.yaml found in current directory. Please provide a valid file using --file flag, or use 'omctl build-from-repo' if you have a Dockerfile")
+					err = fmt.Errorf("no omnistrate-compose.yaml or spec.yaml found in current directory. Please provide a valid file using --file flag, or use 'omnistrate-ctl build-from-repo' if you have a Dockerfile")
 					utils.PrintError(err)
 					return err
 				}

@@ -14,7 +14,7 @@ omnistrate-ctl helm list [flags]
 
 ```
 # List all Helm packages that are saved
-omctl helm list
+omnistrate-ctl helm list
 ```
 
 ### Options

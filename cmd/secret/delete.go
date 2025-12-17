@@ -13,10 +13,10 @@ import (
 const (
 	// #nosec G101 -- This is just an example string for CLI help, not actual credentials
 	secretDeleteExample = `# Delete a secret from dev environment
-omctl environment secret delete dev my-secret
+omnistrate-ctl environment secret delete dev my-secret
 
 # Delete a secret from prod environment
-omctl environment secret delete prod db-password`
+omnistrate-ctl environment secret delete prod db-password`
 )
 
 var secretDeleteCmd = &cobra.Command{

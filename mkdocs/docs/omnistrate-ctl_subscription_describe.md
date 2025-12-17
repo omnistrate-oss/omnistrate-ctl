@@ -14,7 +14,7 @@ omnistrate-ctl subscription describe [subscription-id] [flags]
 
 ```
 # Describe subscription
-omctl subscription describe [subscription-id]
+omnistrate-ctl subscription describe [subscription-id]
 ```
 
 ### Options

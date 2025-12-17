@@ -10,7 +10,7 @@ omnistrate-ctl upgrade notify-customer [upgrade-id] [flags]
 
 ```
  Enable customer notifications for a scheduled upgrade # 
-omctl upgrade notify-customer [upgrade-id] 
+omnistrate-ctl upgrade notify-customer [upgrade-id] 
 ```
 
 ### Options

@@ -14,7 +14,7 @@ omnistrate-ctl instance patch-deployment [instance-id] --resource-name <resource
 
 ```
 # Patch deployment for an instance deployment
-omctl instance patch-deployment instance-abcd1234 --resource-name my-terraform-deployment --deployment-action apply --patch-files /patchedFiles
+omnistrate-ctl instance patch-deployment instance-abcd1234 --resource-name my-terraform-deployment --deployment-action apply --patch-files /patchedFiles
 ```
 
 ### Options

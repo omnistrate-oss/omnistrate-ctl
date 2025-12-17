@@ -14,10 +14,10 @@ omnistrate-ctl secret delete [environment-type] [secret-name] [flags]
 
 ```
 # Delete a secret from dev environment
-omctl environment secret delete dev my-secret
+omnistrate-ctl environment secret delete dev my-secret
 
 # Delete a secret from prod environment
-omctl environment secret delete prod db-password
+omnistrate-ctl environment secret delete prod db-password
 ```
 
 ### Options

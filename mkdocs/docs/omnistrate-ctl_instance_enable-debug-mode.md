@@ -14,7 +14,7 @@ omnistrate-ctl instance enable-debug-mode [instance-id] --resource-name [resourc
 
 ```
 # Enable debug mode for an instance deployment
-omctl instance enable-debug-mode i-1234 --resource-name terraform --force
+omnistrate-ctl instance enable-debug-mode i-1234 --resource-name terraform --force
 ```
 
 ### Options

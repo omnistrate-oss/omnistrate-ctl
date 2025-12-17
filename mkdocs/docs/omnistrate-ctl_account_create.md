@@ -14,13 +14,13 @@ omnistrate-ctl account create [account-name] [--aws-account-id=account-id] [--gc
 
 ```
 # Create aws account
-omctl account create [account-name] --aws-account-id=[account-id]
+omnistrate-ctl account create [account-name] --aws-account-id=[account-id]
 
 # Create gcp account
-omctl account create [account-name] --gcp-project-id=[project-id] --gcp-project-number=[project-number]
+omnistrate-ctl account create [account-name] --gcp-project-id=[project-id] --gcp-project-number=[project-number]
 
 # Create azure account
-omctl account create [account-name] --azure-subscription-id=[subscription-id] --azure-tenant-id=[tenant-id]
+omnistrate-ctl account create [account-name] --azure-subscription-id=[subscription-id] --azure-tenant-id=[tenant-id]
 ```
 
 ### Options

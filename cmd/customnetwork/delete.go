@@ -13,7 +13,7 @@ import (
 
 const (
 	deleteExample = `# Delete a custom network by ID
-omctl custom-network delete --custom-network-id [custom-network-id]`
+omnistrate-ctl custom-network delete --custom-network-id [custom-network-id]`
 )
 
 var deleteCmd = &cobra.Command{

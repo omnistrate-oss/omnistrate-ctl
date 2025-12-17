@@ -18,7 +18,7 @@ import (
 
 const (
 	deleteExample = `# Delete an instance deployment
-omctl instance delete instance-abcd1234`
+omnistrate-ctl instance delete instance-abcd1234`
 )
 
 var deleteCmd = &cobra.Command{

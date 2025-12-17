@@ -17,7 +17,7 @@ import (
 
 const (
 	patchDeploymentExample = `# Patch deployment for an instance deployment
-omctl instance patch-deployment instance-abcd1234 --resource-name my-terraform-deployment --deployment-action apply --patch-files /patchedFiles`
+omnistrate-ctl instance patch-deployment instance-abcd1234 --resource-name my-terraform-deployment --deployment-action apply --patch-files /patchedFiles`
 )
 
 var patchDeploymentCmd = &cobra.Command{

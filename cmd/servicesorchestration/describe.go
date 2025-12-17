@@ -14,7 +14,7 @@ import (
 
 const (
 	describeExample = `# Describe an services orchestration deployment
-omctl services-orchestration describe so-abcd1234`
+omnistrate-ctl services-orchestration describe so-abcd1234`
 )
 
 var describeCmd = &cobra.Command{

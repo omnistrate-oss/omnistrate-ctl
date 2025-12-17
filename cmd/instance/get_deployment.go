@@ -34,7 +34,7 @@ type FileInfo struct {
 
 const (
 	getDeploymentExample = `  # Get the deployment entity metadata of the instance
-	  omctl instance get-deployment instance-abcd1234 --resource-name my-terraform-deployment --output-path /tmp`
+	  omnistrate-ctl instance get-deployment instance-abcd1234 --resource-name my-terraform-deployment --output-path /tmp`
 )
 
 var getDeploymentCmd = &cobra.Command{

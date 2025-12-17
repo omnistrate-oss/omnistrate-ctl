@@ -15,7 +15,7 @@ omnistrate-ctl account list [flags]
 
 ```
 # List accounts
-omctl account list
+omnistrate-ctl account list
 ```
 
 ### Options

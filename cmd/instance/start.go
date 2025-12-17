@@ -15,7 +15,7 @@ import (
 
 const (
 	startExample = `# Start an instance deployment
-omctl instance start instance-abcd1234`
+omnistrate-ctl instance start instance-abcd1234`
 )
 
 var startCmd = &cobra.Command{

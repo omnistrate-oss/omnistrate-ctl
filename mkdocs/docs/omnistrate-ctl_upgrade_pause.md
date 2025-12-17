@@ -10,7 +10,7 @@ omnistrate-ctl upgrade pause [upgrade-id] [flags]
 
 ```
  Pausing ongoing upgrade # 
-omctl upgrade pause [upgrade-id] 
+omnistrate-ctl upgrade pause [upgrade-id] 
 ```
 
 ### Options

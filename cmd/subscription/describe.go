@@ -18,7 +18,7 @@ import (
 
 const (
 	describeExample = `# Describe subscription
-omctl subscription describe [subscription-id]`
+omnistrate-ctl subscription describe [subscription-id]`
 )
 
 var describeCmd = &cobra.Command{

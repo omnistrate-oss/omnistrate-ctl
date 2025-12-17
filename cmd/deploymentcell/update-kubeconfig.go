@@ -21,10 +21,10 @@ import (
 
 const (
 	updateKubeConfigExample = `# Update kubeconfig for a deployment cell
-omctl deployment-cell update-kubeconfig deployment-cell-id-123
+omnistrate-ctl deployment-cell update-kubeconfig deployment-cell-id-123
 
 # Update kubeconfig with custom kubeconfig path
-omctl deployment-cell update-kubeconfig deployment-cell-id-123 --kubeconfig ~/.kube/my-config`
+omnistrate-ctl deployment-cell update-kubeconfig deployment-cell-id-123 --kubeconfig ~/.kube/my-config`
 )
 
 var updateKubeConfigCmd = &cobra.Command{

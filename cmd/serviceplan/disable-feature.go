@@ -15,10 +15,10 @@ import (
 
 const (
 	disableFeatureExample = `# Disable service plan feature 
-omctl service-plan disable-feature [service-name] [plan-name] --feature [feature-name]
+omnistrate-ctl service-plan disable-feature [service-name] [plan-name] --feature [feature-name]
 
 #  Disable service plan feature by ID instead of name
-omctl service-plan enable-feature --service-id [service-id] --plan-id [plan-id] --feature [feature-name]`
+omnistrate-ctl service-plan enable-feature --service-id [service-id] --plan-id [plan-id] --feature [feature-name]`
 )
 
 var disableCmd = &cobra.Command{

@@ -14,7 +14,7 @@ omnistrate-ctl custom-network delete [custom-network-name] [flags]
 
 ```
 # Delete a custom network by ID
-omctl custom-network delete --custom-network-id [custom-network-id]
+omnistrate-ctl custom-network delete --custom-network-id [custom-network-id]
 ```
 
 ### Options

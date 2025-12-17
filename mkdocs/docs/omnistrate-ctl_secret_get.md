@@ -14,10 +14,10 @@ omnistrate-ctl secret get [environment-type] [secret-name] [flags]
 
 ```
 # Get a secret in dev environment
-omctl secret get dev my-secret
+omnistrate-ctl secret get dev my-secret
 
 # Get a secret with JSON output
-omctl secret get prod db-password --output json
+omnistrate-ctl secret get prod db-password --output json
 ```
 
 ### Options

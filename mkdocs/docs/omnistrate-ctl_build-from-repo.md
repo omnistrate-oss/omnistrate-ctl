@@ -18,35 +18,35 @@ omnistrate-ctl build-from-repo [flags]
 
 ```
 # Build service from git repository
-omctl build-from-repo
+omnistrate-ctl build-from-repo
 
 # Build service from git repository with environment variables, deployment type and cloud provider account details
-omctl build-from-repo --env-var POSTGRES_PASSWORD=default --deployment-type byoa --aws-account-id 442426883376
+omnistrate-ctl build-from-repo --env-var POSTGRES_PASSWORD=default --deployment-type byoa --aws-account-id 442426883376
 
 # Build service from an existing compose spec in the repository
-omctl build-from-repo --file omnistrate-compose.yaml
+omnistrate-ctl build-from-repo --file omnistrate-compose.yaml
 
 # Build service with a custom service name
-omctl build-from-repo --product-name my-custom-service
+omnistrate-ctl build-from-repo --product-name my-custom-service
 
 # Skip building and pushing Docker image
-omctl build-from-repo --skip-docker-build
+omnistrate-ctl build-from-repo --skip-docker-build
 
 # Skip multiple stages
-omctl build-from-repo --skip-docker-build --skip-environment-promotion
+omnistrate-ctl build-from-repo --skip-docker-build --skip-environment-promotion
 
 # Run in dry-run mode (build image locally but don't push or create service)
-omctl build-from-repo --dry-run
+omnistrate-ctl build-from-repo --dry-run
 
 # Build for multiple platforms
-omctl build-from-repo --platforms linux/amd64 --platforms linux/arm64
+omnistrate-ctl build-from-repo --platforms linux/amd64 --platforms linux/arm64
 
 # Build with release description
-omctl build-from-repo --release-description "v1.0.0-alpha"
+omnistrate-ctl build-from-repo --release-description "v1.0.0-alpha"
 
 # Build using github token from environment variable (GH_PAT)
 set GH_PAT=ghp_xxxxxxxx
-omctl build-from-repo
+omnistrate-ctl build-from-repo
 "
 ```
 

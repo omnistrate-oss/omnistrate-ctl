@@ -11,7 +11,7 @@ import (
 
 const (
 	listExample = `# List all Helm packages that are saved
-omctl helm list`
+omnistrate-ctl helm list`
 )
 
 var listCmd = &cobra.Command{

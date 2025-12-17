@@ -14,7 +14,7 @@ omnistrate-ctl instance start [instance-id] [flags]
 
 ```
 # Start an instance deployment
-omctl instance start instance-abcd1234
+omnistrate-ctl instance start instance-abcd1234
 ```
 
 ### Options

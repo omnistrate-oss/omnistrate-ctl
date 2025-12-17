@@ -14,10 +14,10 @@ omnistrate-ctl instance restore [instance-id] --snapshot-id <snapshot-id> [--par
 
 ```
 # Restore to a new instance from a snapshot
-omctl instance restore instance-abcd1234 --snapshot-id snapshot-xyz789 --param '{"key": "value"}'
+omnistrate-ctl instance restore instance-abcd1234 --snapshot-id snapshot-xyz789 --param '{"key": "value"}'
 
 # Restore using parameters from a file
-omctl instance restore instance-abcd1234 --snapshot-id snapshot-xyz789 --param-file /path/to/params.json
+omnistrate-ctl instance restore instance-abcd1234 --snapshot-id snapshot-xyz789 --param-file /path/to/params.json
 ```
 
 ### Options

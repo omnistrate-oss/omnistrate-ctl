@@ -14,10 +14,10 @@ omnistrate-ctl secret list [environment-type] [flags]
 
 ```
 # List secrets for dev environment
-omctl secret list dev
+omnistrate-ctl secret list dev
 
 # List secrets for prod environment with JSON output
-omctl secret list prod --output json
+omnistrate-ctl secret list prod --output json
 ```
 
 ### Options

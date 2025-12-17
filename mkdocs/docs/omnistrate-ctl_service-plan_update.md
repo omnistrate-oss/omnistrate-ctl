@@ -16,10 +16,10 @@ omnistrate-ctl service-plan update [service-name] [plan-name] --version=[version
 
 ```
 # Update service plan version name
-omctl service-plan update [service-name] [plan-name] --version=[version] --name=[new-name]
+omnistrate-ctl service-plan update [service-name] [plan-name] --version=[version] --name=[new-name]
 
 # Update service plan version name by ID instead of name
-omctl service-plan update --service-id=[service-id] --plan-id=[plan-id] --version=[version] --name=[new-name]
+omnistrate-ctl service-plan update --service-id=[service-id] --plan-id=[plan-id] --version=[version] --name=[new-name]
 ```
 
 ### Options

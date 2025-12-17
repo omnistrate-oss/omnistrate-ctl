@@ -14,10 +14,10 @@ omnistrate-ctl docs system-parameters [flags]
 
 ```
 # Get the JSON schema for system parameters
-omctl docs system-parameters
+omnistrate-ctl docs system-parameters
 
 # Get the JSON schema for system parameters with JSON output
-omctl docs system-parameters --output json
+omnistrate-ctl docs system-parameters --output json
 
 ```
 

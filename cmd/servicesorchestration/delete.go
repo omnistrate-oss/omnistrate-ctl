@@ -18,7 +18,7 @@ import (
 
 const (
 	deleteExample = `# Delete an services orchestration deployment
-omctl services-orchestration delete so-abcd1234`
+omnistrate-ctl services-orchestration delete so-abcd1234`
 )
 
 var deleteCmd = &cobra.Command{

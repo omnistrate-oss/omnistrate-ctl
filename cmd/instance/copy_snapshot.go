@@ -13,10 +13,10 @@ import (
 
 const (
 	copySnapshotExample = `# Copy a snapshot to another region
-omctl instance copy-snapshot instance-abcd1234 --snapshot-id instance-ss-wxyz6789 --target-region us-east1
+omnistrate-ctl instance copy-snapshot instance-abcd1234 --snapshot-id instance-ss-wxyz6789 --target-region us-east1
 
 # Copy the latest snapshot to another region
-omctl instance copy-snapshot instance-abcd1234 --target-region us-east1
+omnistrate-ctl instance copy-snapshot instance-abcd1234 --target-region us-east1
 `
 )
 

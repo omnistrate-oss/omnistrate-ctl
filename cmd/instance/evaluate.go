@@ -18,10 +18,10 @@ import (
 
 const (
 	evaluateExample = `# Evaluate an expression for an instance
-omctl instance evaluate instance-abcd1234 my-resource-key --expression "$var.username + {{ $sys.id }}"
+omnistrate-ctl instance evaluate instance-abcd1234 my-resource-key --expression "$var.username + {{ $sys.id }}"
 
 # Evaluate expressions from a JSON file
-omctl instance evaluate instance-abcd1234 my-resource-key --expression-file expressions.json`
+omnistrate-ctl instance evaluate instance-abcd1234 my-resource-key --expression-file expressions.json`
 )
 
 var evaluateCmd = &cobra.Command{

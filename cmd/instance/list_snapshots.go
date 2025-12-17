@@ -15,7 +15,7 @@ import (
 
 const (
 	listSnapshotsExample = `# List snapshots for an instance
-omctl instance list-snapshots instance-abcd1234"`
+omnistrate-ctl instance list-snapshots instance-abcd1234"`
 )
 
 var listSnapshotsCmd = &cobra.Command{

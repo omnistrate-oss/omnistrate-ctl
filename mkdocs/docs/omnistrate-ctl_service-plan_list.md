@@ -15,7 +15,7 @@ omnistrate-ctl service-plan list [flags]
 
 ```
 # List service plans of the service postgres in the prod and dev environments
-omctl service-plan list -f="service_name:postgres,environment:prod" -f="service:postgres,environment:dev"
+omnistrate-ctl service-plan list -f="service_name:postgres,environment:prod" -f="service:postgres,environment:dev"
 ```
 
 ### Options
