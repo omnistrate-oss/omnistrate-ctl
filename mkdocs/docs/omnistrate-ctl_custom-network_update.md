@@ -14,7 +14,7 @@ omnistrate-ctl custom-network update [flags]
 
 ```
 # Update a custom network by ID
-omctl custom-network update --custom-network-id [custom-network-id] --name [new-custom-network-name]
+omnistrate-ctl custom-network update --custom-network-id [custom-network-id] --name [new-custom-network-name]
 ```
 
 ### Options

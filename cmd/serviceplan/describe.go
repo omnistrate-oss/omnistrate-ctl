@@ -19,10 +19,10 @@ import (
 
 const (
 	describeExample = `# Describe service plan
-omctl service-plan describe [service-name] [plan-name]
+omnistrate-ctl service-plan describe [service-name] [plan-name]
 
 # Describe service plan by ID instead of name
-omctl service-plan describe --service-id [service-id] --plan-id [plan-id]`
+omnistrate-ctl service-plan describe --service-id [service-id] --plan-id [plan-id]`
 )
 
 var describeCmd = &cobra.Command{

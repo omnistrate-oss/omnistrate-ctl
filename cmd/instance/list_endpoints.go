@@ -16,7 +16,7 @@ import (
 
 const (
 	listEndpointsExample = `# List endpoints for a specific instance
-omctl instance list-endpoints instance-abcd1234`
+omnistrate-ctl instance list-endpoints instance-abcd1234`
 )
 
 // ResourceEndpoints represents the endpoints for a resource

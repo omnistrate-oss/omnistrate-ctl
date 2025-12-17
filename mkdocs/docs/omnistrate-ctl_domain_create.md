@@ -14,10 +14,10 @@ omnistrate-ctl domain create [flags]
 
 ```
 # Create a custom domain for dev environment
-omctl domain create dev --domain=abc.dev --environment-type=dev
+omnistrate-ctl domain create dev --domain=abc.dev --environment-type=dev
 
 # Create a custom domain for prod environment
-omctl domain create abc.cloud --domain=abc.cloud --environment-type=prod
+omnistrate-ctl domain create abc.cloud --domain=abc.cloud --environment-type=prod
 ```
 
 ### Options

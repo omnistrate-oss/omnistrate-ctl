@@ -10,7 +10,7 @@ omnistrate-ctl upgrade resume [upgrade-id] [flags]
 
 ```
  Resuming paused upgrade # 
-omctl upgrade resume [upgrade-id] 
+omnistrate-ctl upgrade resume [upgrade-id] 
 ```
 
 ### Options

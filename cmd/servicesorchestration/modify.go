@@ -13,7 +13,7 @@ import (
 
 const (
 	modifyExample = `# Modify a services orchestration deployment from a DSL file
-omctl services-orchestration modify so-abcd1234 --dsl-file /path/to/dsl.yaml`
+omnistrate-ctl services-orchestration modify so-abcd1234 --dsl-file /path/to/dsl.yaml`
 )
 
 var modifyCmd = &cobra.Command{

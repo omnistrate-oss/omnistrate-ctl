@@ -14,10 +14,10 @@ omnistrate-ctl secret set [environment-type] [secret-name] [secret-value] [flags
 
 ```
 # Set a secret for dev environment
-omctl secret set dev my-secret my-value
+omnistrate-ctl secret set dev my-secret my-value
 
 # Set a secret for prod environment
-omctl secret set prod db-password secret123
+omnistrate-ctl secret set prod db-password secret123
 ```
 
 ### Options

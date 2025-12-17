@@ -14,7 +14,7 @@ omnistrate-ctl instance continue-deployment [instance-id] --resource-name <resou
 
 ```
 # Continue instance deployment
-omctl instance continue-deployment instance-abcd1234 --resource-name my-terraform-deployment --deployment-action apply
+omnistrate-ctl instance continue-deployment instance-abcd1234 --resource-name my-terraform-deployment --deployment-action apply
 ```
 
 ### Options

@@ -13,7 +13,7 @@ import (
 
 const (
 	triggerBackupExample = `# Trigger an automatic backup for an instance
-omctl instance trigger-backup instance-abcd1234`
+omnistrate-ctl instance trigger-backup instance-abcd1234`
 )
 
 var triggerBackupCmd = &cobra.Command{

@@ -19,22 +19,22 @@ import (
 
 const (
 	upgradeExample = `# Upgrade instances to a specific version
-omctl upgrade [instance1] [instance2] --version=2.0
+omnistrate-ctl upgrade [instance1] [instance2] --version=2.0
 
 # Upgrade instances to the latest version
-omctl upgrade [instance1] [instance2] --version=latest
+omnistrate-ctl upgrade [instance1] [instance2] --version=latest
 
  # Upgrade instances to the preferred version
-omctl upgrade [instance1] [instance2] --version=preferred
+omnistrate-ctl upgrade [instance1] [instance2] --version=preferred
 
 # Upgrade instances to a specific version with version name
-omctl upgrade [instance1] [instance2] --version-name=v0.1.1
+omnistrate-ctl upgrade [instance1] [instance2] --version-name=v0.1.1
 
 # Upgrade instance to a specific version with a schedule date in the future
-omctl upgrade [instance-id] --version=1.0 --scheduled-date="2023-12-01T00:00:00Z"
+omnistrate-ctl upgrade [instance-id] --version=1.0 --scheduled-date="2023-12-01T00:00:00Z"
 
 # Upgrade instance with limited concurrent upgrades
-omctl upgrade [instance-id] --version=2.0 --max-concurrent-upgrades=5`
+omnistrate-ctl upgrade [instance-id] --version=2.0 --max-concurrent-upgrades=5`
 )
 
 var Cmd = &cobra.Command{
@@ -361,7 +361,7 @@ func run(cmd *cobra.Command, args []string) error {
 	if output != "json" {
 		println("\nCheck the upgrade status using the following command(s):")
 		for _, upgradeRes := range upgrades {
-			fmt.Printf("  omctl upgrade status %s\n", upgradeRes.UpgradePathID)
+			fmt.Printf("  omnistrate-ctl upgrade status %s\n", upgradeRes.UpgradePathID)
 		}
 	}
 

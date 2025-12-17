@@ -14,7 +14,7 @@ omnistrate-ctl instance delete [instance-id] [flags]
 
 ```
 # Delete an instance deployment
-omctl instance delete instance-abcd1234
+omnistrate-ctl instance delete instance-abcd1234
 ```
 
 ### Options

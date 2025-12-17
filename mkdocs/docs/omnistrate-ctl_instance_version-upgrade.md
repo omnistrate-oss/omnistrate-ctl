@@ -14,16 +14,16 @@ omnistrate-ctl instance version-upgrade [instance-id] [flags]
 
 ```
 # Issue a version upgrade for an instance with upgrade configuration override to the latest tier version
-omctl instance version-upgrade instance-abcd1234 --upgrade-configuration-override /path/to/config.yaml
+omnistrate-ctl instance version-upgrade instance-abcd1234 --upgrade-configuration-override /path/to/config.yaml
 
 # Issue a version upgrade to a specific target tier version
-omctl instance version-upgrade instance-abcd1234 --upgrade-configuration-override /path/to/config.yaml --target-tier-version 3.0
+omnistrate-ctl instance version-upgrade instance-abcd1234 --upgrade-configuration-override /path/to/config.yaml --target-tier-version 3.0
 
 # Issue a version upgrade and wait for completion with progress tracking
-omctl instance version-upgrade instance-abcd1234 --upgrade-configuration-override /path/to/config.yaml --target-tier-version 3.0 --wait
+omnistrate-ctl instance version-upgrade instance-abcd1234 --upgrade-configuration-override /path/to/config.yaml --target-tier-version 3.0 --wait
 
 # [HELM ONLY] Use generate-configuration with a target tier version to generate a default deployment instance configuration file based on the current helm values as well as the proposed helm values for the target tier version
-omctl instance version-upgrade instance-abcd1234 --existing-configuration existing-config.yaml --proposed-configuration proposed-config.yaml --generate-configuration --target-tier-version 3.0
+omnistrate-ctl instance version-upgrade instance-abcd1234 --existing-configuration existing-config.yaml --proposed-configuration proposed-config.yaml --generate-configuration --target-tier-version 3.0
 
 # Example upgrade configuration override YAML file:
 # resource-key-1:

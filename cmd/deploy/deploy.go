@@ -34,34 +34,34 @@ const (
 	deployExample = `
 # Build and deploy using the default spec in the current directory
 # Looks for omnistrate-compose.yaml, if no spec file is found, deploy falls back to build-from-repo.
-omctl deploy
+omnistrate-ctl deploy
 
 # Deploy using a specific Omnistrate spec
-omctl deploy --file omnistrate-compose.yaml
+omnistrate-ctl deploy --file omnistrate-compose.yaml
 
 # Build and deploy with a specific product name
-omctl deploy --product-name "My Service"
+omnistrate-ctl deploy --product-name "My Service"
 
 # Build and deploy to a specific cloud and region
-omctl deploy --cloud-provider aws --region us-east-1
+omnistrate-ctl deploy --cloud-provider aws --region us-east-1
 
 # Build and deploy using BYOA (Bring Your Own Account)
-omctl deploy --deployment-type byoa
+omnistrate-ctl deploy --deployment-type byoa
 
 # Build and deploy with instance parameters supplied inline
-omctl deploy --param '{"disk_size":"20Gi", "username":"test", "password":"Test@123"}'
+omnistrate-ctl deploy --param '{"disk_size":"20Gi", "username":"test", "password":"Test@123"}'
 
 # Build and deploy with parameters loaded from a file
-omctl deploy --param-file params.json
+omnistrate-ctl deploy --param-file params.json
 
 # Build and upgrade an existing instance
-omctl deploy --instance-id inst-12345
+omnistrate-ctl deploy --instance-id inst-12345
 
 # Build from repository but skip Docker build (use pre-built image) and then deploy
-omctl deploy --skip-docker-build --product-name "My Service"
+omnistrate-ctl deploy --skip-docker-build --product-name "My Service"
 
 # Multi-arch build from repo and deploy
-omctl deploy --platforms "linux/amd64,linux/arm64"
+omnistrate-ctl deploy --platforms "linux/amd64,linux/arm64"
 `
 
 	deployLong = `Deploy command is the unified entry point to build (or update) a service and then
@@ -163,7 +163,7 @@ func init() {
 func runDeploy(cmd *cobra.Command, args []string) error {
 	defer config.CleanupArgsAndFlags(cmd, &args)
 
-	fmt.Println("🚀 omctl deploy")
+	fmt.Println("🚀 omnistrate-ctl deploy")
 	fmt.Println()
 	fmt.Println("Step 1/2: Service creation")
 	fmt.Println("Step 2/2: Instance deployment")
@@ -487,13 +487,13 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 
 		var errorMessage string
 		if awsAccountID != "" {
-			errorMessage += fmt.Sprintf("AWS account ID %s is not linked. Please link it using 'omctl account create'.\n", awsAccountID)
+			errorMessage += fmt.Sprintf("AWS account ID %s is not linked. Please link it using 'omnistrate-ctl account create'.\n", awsAccountID)
 		}
 		if gcpProjectID != "" {
-			errorMessage += fmt.Sprintf("GCP project %s/%s is not linked. Please link it using 'omctl account create'.\n", gcpProjectID, gcpProjectNumber)
+			errorMessage += fmt.Sprintf("GCP project %s/%s is not linked. Please link it using 'omnistrate-ctl account create'.\n", gcpProjectID, gcpProjectNumber)
 		}
 		if azureSubscriptionID != "" {
-			errorMessage += fmt.Sprintf("Azure subscription %s/%s is not linked. Please link it using 'omctl account create'.", azureSubscriptionID, azureTenantID)
+			errorMessage += fmt.Sprintf("Azure subscription %s/%s is not linked. Please link it using 'omnistrate-ctl account create'.", azureSubscriptionID, azureTenantID)
 		}
 
 		spinner.Error()
@@ -526,9 +526,9 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 						"  Your organization has %d cloud account(s), but none are in READY status.\n"+
 						"  Non-READY accounts may need to complete onboarding or have configuration issues.\n\n"+
 						"Next steps:\n"+
-						"  1. Check existing account status: omctl account list\n"+
+						"  1. Check existing account status: omnistrate-ctl account list\n"+
 						"  2. Complete onboarding for existing accounts, or\n"+
-						"  3. Create a new READY account: omctl account create",
+						"  3. Create a new READY account: omnistrate-ctl account create",
 					len(allAccounts),
 				))
 				utils.HandleSpinnerError(spinner, sm, err)
@@ -608,7 +608,6 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 		spinner.Complete()
 		spinner = sm.AddSpinner("Cloud account(s) linked and READY")
 		spinner.Complete()
-	
 
 		if awsAccountID != "" {
 			spinner = sm.AddSpinner(fmt.Sprintf(" - Using AWS Account ID: %s", awsAccountID))
@@ -622,7 +621,7 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 		}
 		if azureSubscriptionID != "" {
 			spinner = sm.AddSpinner(fmt.Sprintf(" - Using Azure Subscription ID: %s and Tenant ID: %s", azureSubscriptionID, azureTenantID))
-			spinner.Complete()	
+			spinner.Complete()
 
 		}
 		spinner = sm.AddSpinner("Step 1/2: Cloud provider account check complete")
@@ -755,11 +754,11 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 							}
 							composeMap["services"] = services
 						} else {
-						// Inject deployment info at root level
-						for k, v := range depMap {
-							composeMap[k] = v
+							// Inject deployment info at root level
+							for k, v := range depMap {
+								composeMap[k] = v
+							}
 						}
-					}
 					} else {
 						// Inject deployment info at root level
 						for k, v := range depMap {
@@ -885,7 +884,7 @@ func executeDeploymentWorkflow(cmd *cobra.Command, sm ysmrr.SpinnerManager, toke
 			fmt.Printf("   Instance ID: %s\n\n", instanceID)
 			fmt.Println("Next steps:")
 			fmt.Println("  - Check the instance ID value.")
-			fmt.Println("  - List instances for this service: omctl instance list --service", serviceName)
+			fmt.Println("  - List instances for this service: omnistrate-ctl instance list --service", serviceName)
 			return nil
 		}
 
@@ -894,7 +893,7 @@ func executeDeploymentWorkflow(cmd *cobra.Command, sm ysmrr.SpinnerManager, toke
 			finalInstanceID = existingInstanceIDs[0]
 			spinner.UpdateMessage(fmt.Sprintf("Step 2/2: %s: Found %d existing instance(s)", spinnerMsg, len(existingInstanceIDs)))
 			spinner.Complete()
-			
+
 			// Show the note directly without stopping spinner manager
 			spinner = sm.AddSpinner(fmt.Sprintf("Step 2/2: 📝 Note: Existing instance found. An upgrade will be performed. (Instance ID: %s)", finalInstanceID))
 			spinner.Complete()
@@ -973,13 +972,11 @@ func executeDeploymentWorkflow(cmd *cobra.Command, sm ysmrr.SpinnerManager, toke
 			spinner.Error()
 			return err
 		}
-		
-		
+
 	}
 	sm = ysmrr.NewSpinnerManager()
 	sm.Start()
 	utils.HandleSpinnerSuccess(spinner, sm, "Step 2/2: Instance deployment preparation complete")
-	
 
 	// Success summary
 	fmt.Println()
@@ -1066,7 +1063,6 @@ func createInstanceUnified(ctx context.Context, token, serviceID, environmentID,
 
 		utils.HandleSpinnerSuccess(spinner, sm, fmt.Sprintf("Step 2/2: Found cloud account resource: ID=%s, Key=%s", resourceID, resourceKey))
 
-		
 	} else {
 		// Get list of resources in the target tier version
 		resources, err := dataaccess.ListResources(ctx, token, serviceID, productTierID, &version)
@@ -1117,9 +1113,9 @@ func createInstanceUnified(ctx context.Context, token, serviceID, environmentID,
 			}
 			if len(resources.Resources) > 1 {
 				// Stop spinner before prompting user
-				
+
 				utils.HandleSpinnerSuccess(spinner, sm, "Multiple resources found in service plan. Please select one:")
-				
+
 				for idx, resource := range resources.Resources {
 					fmt.Printf("  %d. Name: %s, Key: %s, ID: %s\n", idx+1, resource.Name, resource.Key, resource.Id)
 				}
@@ -1134,12 +1130,12 @@ func createInstanceUnified(ctx context.Context, token, serviceID, environmentID,
 				}
 				selected := resources.Resources[choice-1]
 				resourceKey = selected.Key
-				resourceID = selected.Id	
+				resourceID = selected.Id
 
 				// Create new spinner manager after warning
 				sm = ysmrr.NewSpinnerManager()
 				sm.Start()
-				
+
 			}
 			utils.HandleSpinnerSuccess(spinner, sm, fmt.Sprintf("Step 2/2: Using resource %s (ID: %s)", resourceKey, resourceID))
 		}
@@ -1250,7 +1246,7 @@ func createInstanceUnified(ctx context.Context, token, serviceID, environmentID,
 				region = "eastus2"
 			}
 		}
-	
+
 		utils.HandleSpinnerSuccess(spinner, sm, fmt.Sprintf("Step 2/2: Using cloud provider '%s' and region '%s'", cloudProvider, region))
 
 		// Try to describe service offering resource - this is optional for parameter validation
@@ -1368,7 +1364,7 @@ func createInstanceUnified(ctx context.Context, token, serviceID, environmentID,
 	createMsg := "Step 2/2: Deploying a new instance: Success... (ID: " + *instance.Id + ")"
 	if instanceType == "cloudAccount" {
 		createMsg = "Step 2/2: Deploying a new instance: Verification... (ID: " + *instance.Id + ")"
-	} 
+	}
 	utils.HandleSpinnerSuccess(spinner, sm, createMsg)
 
 	return *instance.Id, nil
@@ -1807,58 +1803,58 @@ func createDeploymentYAML(
 				"hostedDeployment": map[string]interface{}{},
 			}
 			hosted := make(map[string]interface{})
-		if awsAccountID != "" {
+			if awsAccountID != "" {
 				hosted["awsAccountId"] = awsAccountID
-			if awsBootstrapRoleARN != "" {
+				if awsBootstrapRoleARN != "" {
 					hosted["awsBootstrapRoleAccountArn"] = awsBootstrapRoleARN
-			}
-		}
-		if gcpProjectID != "" {
-				hosted["gcpProjectId"] = gcpProjectID
-			if gcpProjectNumber != "" {
-					hosted["gcpProjectNumber"] = gcpProjectNumber
-			}
-			if gcpServiceAccountEmail != "" {
-					hosted["gcpServiceAccountEmail"] = gcpServiceAccountEmail
-			}
-		}
-		if azureSubscriptionID != "" {
-				hosted["azureSubscriptionId"] = azureSubscriptionID
-			if azureTenantID != "" {
-					hosted["azureTenantId"] = azureTenantID
-			}
-		}
-			yamlDoc["deployment"].(map[string]interface{})["hostedDeployment"] = hosted
-			} else {
-				sp := getServicePlan()
-		hosted := make(map[string]interface{})
-		if awsAccountID != "" {
-			hosted["awsAccountId"] = awsAccountID
-			if awsBootstrapRoleARN != "" {
-				hosted["awsBootstrapRoleAccountArn"] = awsBootstrapRoleARN
-			}
-		}
-		if gcpProjectID != "" {
-			hosted["gcpProjectId"] = gcpProjectID
-			if gcpProjectNumber != "" {
-				hosted["gcpProjectNumber"] = gcpProjectNumber
-			}
-			if gcpServiceAccountEmail != "" {
-				hosted["gcpServiceAccountEmail"] = gcpServiceAccountEmail
-			}
-		}
-		if azureSubscriptionID != "" {
-			hosted["azureSubscriptionId"] = azureSubscriptionID
-			if azureTenantID != "" {
-				hosted["azureTenantId"] = azureTenantID
-			}
-		}
-				sp["deployment"] = map[string]interface{}{
-					"hostedDeployment": hosted,
 				}
-				yamlDoc["x-omnistrate-service-plan"] = sp
 			}
+			if gcpProjectID != "" {
+				hosted["gcpProjectId"] = gcpProjectID
+				if gcpProjectNumber != "" {
+					hosted["gcpProjectNumber"] = gcpProjectNumber
+				}
+				if gcpServiceAccountEmail != "" {
+					hosted["gcpServiceAccountEmail"] = gcpServiceAccountEmail
+				}
+			}
+			if azureSubscriptionID != "" {
+				hosted["azureSubscriptionId"] = azureSubscriptionID
+				if azureTenantID != "" {
+					hosted["azureTenantId"] = azureTenantID
+				}
+			}
+			yamlDoc["deployment"].(map[string]interface{})["hostedDeployment"] = hosted
+		} else {
+			sp := getServicePlan()
+			hosted := make(map[string]interface{})
+			if awsAccountID != "" {
+				hosted["awsAccountId"] = awsAccountID
+				if awsBootstrapRoleARN != "" {
+					hosted["awsBootstrapRoleAccountArn"] = awsBootstrapRoleARN
+				}
+			}
+			if gcpProjectID != "" {
+				hosted["gcpProjectId"] = gcpProjectID
+				if gcpProjectNumber != "" {
+					hosted["gcpProjectNumber"] = gcpProjectNumber
+				}
+				if gcpServiceAccountEmail != "" {
+					hosted["gcpServiceAccountEmail"] = gcpServiceAccountEmail
+				}
+			}
+			if azureSubscriptionID != "" {
+				hosted["azureSubscriptionId"] = azureSubscriptionID
+				if azureTenantID != "" {
+					hosted["azureTenantId"] = azureTenantID
+				}
+			}
+			sp["deployment"] = map[string]interface{}{
+				"hostedDeployment": hosted,
+			}
+			yamlDoc["x-omnistrate-service-plan"] = sp
 		}
+	}
 	return yamlDoc
 }
 
@@ -1888,7 +1884,7 @@ func createCloudAccountInstances(ctx context.Context, token, serviceID, environm
 	// Get existing cloud account instances grouped by cloud provider and status
 	cloudInstancesByProvider, err := listCloudAccountInstancesByProvider(ctx, token, serviceID, environmentID, planID)
 	if err != nil {
-		utils.HandleSpinnerError(spinner, sm, fmt.Errorf(spinnerMsg + ": Failed (%s)", err.Error()))
+		utils.HandleSpinnerError(spinner, sm, fmt.Errorf(spinnerMsg+": Failed (%s)", err.Error()))
 		return "", targetCloudProvider, fmt.Errorf("failed to list cloud account instances: %w", err)
 	}
 
@@ -1968,12 +1964,10 @@ func createCloudAccountInstances(ctx context.Context, token, serviceID, environm
 		return "", targetCloudProvider, err
 	}
 
-	
 	// Determine which cloud provider to use and get credentials
 	if targetCloudProvider == "" {
 		targetCloudProvider = promptForCloudProvider()
 	}
-
 
 	createdInstanceID, err := createInstanceUnified(ctx, token, serviceID, environmentID, planID, targetCloudProvider, "", "", "cloudAccount", formattedParams)
 	if err != nil {
@@ -2245,8 +2239,8 @@ func printAuthError() {
 		"❌ Authentication error\n\n" +
 			"  You are not logged in or your session has expired.\n\n" +
 			"Next steps:\n" +
-			"  1. Run:  omctl login\n" +
-			"  2. Re-run your previous omctl deploy command",
+			"  1. Run:  omnistrate-ctl login\n" +
+			"  2. Re-run your previous omnistrate-ctl deploy command",
 	))
 }
 
@@ -2291,7 +2285,7 @@ func printMissingParamsGuidance(err error) {
 			"  %s\n\n"+
 			"Next steps:\n"+
 			"  - Provide values using --param, for example:\n"+
-			"      omctl deploy --param '{\"key\":\"value\",...}'\n"+
+			"      omnistrate-ctl deploy --param '{\"key\":\"value\",...}'\n"+
 			"  - Or provide a JSON file with --param-file",
 		err.Error(),
 	))

@@ -15,7 +15,7 @@ import (
 
 const (
 	detailExample = `# Get upgrade status detail
-omctl upgrade status detail [upgrade-id]`
+omnistrate-ctl upgrade status detail [upgrade-id]`
 )
 
 var Cmd = &cobra.Command{

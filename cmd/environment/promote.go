@@ -19,10 +19,10 @@ import (
 
 const (
 	promoteExample = `# Promote environment
-omctl environment promote [service-name] [environment-name]
+omnistrate-ctl environment promote [service-name] [environment-name]
 
 # Promote environment by ID instead of name
-omctl environment promote --service-id=[service-id] --environment-id=[environment-id]`
+omnistrate-ctl environment promote --service-id=[service-id] --environment-id=[environment-id]`
 )
 
 var promoteCmd = &cobra.Command{

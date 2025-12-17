@@ -10,7 +10,7 @@ omnistrate-ctl upgrade status detail [upgrade-id] [flags]
 
 ```
 # Get upgrade status detail
-omctl upgrade status detail [upgrade-id]
+omnistrate-ctl upgrade status detail [upgrade-id]
 ```
 
 ### Options

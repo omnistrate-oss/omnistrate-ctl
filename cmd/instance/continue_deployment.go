@@ -16,7 +16,7 @@ import (
 
 const (
 	continueDeploymentExample = `# Continue instance deployment
-omctl instance continue-deployment instance-abcd1234 --resource-name my-terraform-deployment --deployment-action apply`
+omnistrate-ctl instance continue-deployment instance-abcd1234 --resource-name my-terraform-deployment --deployment-action apply`
 )
 
 var continueDeploymentCmd = &cobra.Command{

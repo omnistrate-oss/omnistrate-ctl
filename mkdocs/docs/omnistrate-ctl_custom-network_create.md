@@ -14,7 +14,7 @@ omnistrate-ctl custom-network create [flags]
 
 ```
 # Create a custom network for specific cloud provider and region 
-omctl custom-network create --cloud-provider=[cloud-provider-name] --region=[cloud-provider-region] --cidr=[cidr-block] --name=[friendly-network-name]
+omnistrate-ctl custom-network create --cloud-provider=[cloud-provider-name] --region=[cloud-provider-region] --cidr=[cidr-block] --name=[friendly-network-name]
 ```
 
 ### Options

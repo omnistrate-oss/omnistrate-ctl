@@ -14,7 +14,7 @@ omnistrate-ctl instance restart [instance-id] [flags]
 
 ```
 # Restart an instance deployment
-omctl instance restart instance-abcd1234
+omnistrate-ctl instance restart instance-abcd1234
 ```
 
 ### Options

@@ -17,22 +17,22 @@ import (
 
 const (
 	createExample = `# Create upgrade for instances to a specific version
-omctl upgrade create [instance1] [instance2] --version=2.0
+omnistrate-ctl upgrade create [instance1] [instance2] --version=2.0
 
 # Create upgrade for instances to the latest version
-omctl upgrade create [instance1] [instance2] --version=latest
+omnistrate-ctl upgrade create [instance1] [instance2] --version=latest
 
 # Create upgrade for instances to the preferred version
-omctl upgrade create [instance1] [instance2] --version=preferred
+omnistrate-ctl upgrade create [instance1] [instance2] --version=preferred
 
 # Create upgrade for instances to a specific version with version name
-omctl upgrade create [instance1] [instance2] --version-name=v0.1.1
+omnistrate-ctl upgrade create [instance1] [instance2] --version-name=v0.1.1
 
 # Create upgrade for instance to a specific version with a schedule date in the future
-omctl upgrade create [instance-id] --version=1.0 --scheduled-date="2023-12-01T00:00:00Z"
+omnistrate-ctl upgrade create [instance-id] --version=1.0 --scheduled-date="2023-12-01T00:00:00Z"
 
 # Create upgrade for instance with limited concurrent upgrades
-omctl upgrade create [instance-id] --version=2.0 --max-concurrent-upgrades=5`
+omnistrate-ctl upgrade create [instance-id] --version=2.0 --max-concurrent-upgrades=5`
 )
 
 var createCmd = &cobra.Command{
@@ -330,7 +330,7 @@ func runCreate(cmd *cobra.Command, args []string) error {
 	if output != "json" {
 		println("\nCheck the upgrade status using the following command(s):")
 		for _, upgradeRes := range upgrades {
-			fmt.Printf("  omctl upgrade status %s\n", upgradeRes.UpgradePathID)
+			fmt.Printf("  omnistrate-ctl upgrade status %s\n", upgradeRes.UpgradePathID)
 		}
 	}
 

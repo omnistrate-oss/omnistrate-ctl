@@ -10,7 +10,7 @@ omnistrate-ctl upgrade cancel [upgrade-id] [flags]
 
 ```
  Cancelling uncompleted upgrade # 
-omctl upgrade cancel [upgrade-id] 
+omnistrate-ctl upgrade cancel [upgrade-id] 
 ```
 
 ### Options

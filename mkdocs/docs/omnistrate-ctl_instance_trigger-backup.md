@@ -14,7 +14,7 @@ omnistrate-ctl instance trigger-backup [instance-id] [flags]
 
 ```
 # Trigger an automatic backup for an instance
-omctl instance trigger-backup instance-abcd1234
+omnistrate-ctl instance trigger-backup instance-abcd1234
 ```
 
 ### Options

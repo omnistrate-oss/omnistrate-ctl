@@ -15,13 +15,13 @@ omnistrate-ctl instance list [flags]
 
 ```
 # List instance deployments of the service postgres in the prod and dev environments
-omctl instance list -f="service:postgres,environment:Production" -f="service:postgres,environment:Dev"
+omnistrate-ctl instance list -f="service:postgres,environment:Production" -f="service:postgres,environment:Dev"
 
 # List instances with specific tags
-omctl instance list --tag env=prod --tag team=backend
+omnistrate-ctl instance list --tag env=prod --tag team=backend
 
 # Combine regular filters with tag filters
-omctl instance list -f="service:postgres" --tag env=prod
+omnistrate-ctl instance list -f="service:postgres" --tag env=prod
 ```
 
 ### Options

@@ -14,7 +14,7 @@ omnistrate-ctl account delete [account-name or account-id] [flags]
 
 ```
 # Delete account with name or id
-omctl account delete [account-name or account-id]
+omnistrate-ctl account delete [account-name or account-id]
 ```
 
 ### Options

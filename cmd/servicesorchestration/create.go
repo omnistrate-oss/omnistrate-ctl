@@ -12,7 +12,7 @@ import (
 
 const (
 	createExample = `# Create a services orchestration deployment from a DSL file
-omctl services-orchestration create --dsl-file /path/to/dsl.yaml`
+omnistrate-ctl services-orchestration create --dsl-file /path/to/dsl.yaml`
 )
 
 var createCmd = &cobra.Command{

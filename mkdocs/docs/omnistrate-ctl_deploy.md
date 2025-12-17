@@ -65,34 +65,34 @@ omnistrate-ctl deploy [--file=file] [--product-name=service-name] [--dry-run] [-
 
 # Build and deploy using the default spec in the current directory
 # Looks for omnistrate-compose.yaml, if no spec file is found, deploy falls back to build-from-repo.
-omctl deploy
+omnistrate-ctl deploy
 
 # Deploy using a specific Omnistrate spec
-omctl deploy --file omnistrate-compose.yaml
+omnistrate-ctl deploy --file omnistrate-compose.yaml
 
 # Build and deploy with a specific product name
-omctl deploy --product-name "My Service"
+omnistrate-ctl deploy --product-name "My Service"
 
 # Build and deploy to a specific cloud and region
-omctl deploy --cloud-provider aws --region us-east-1
+omnistrate-ctl deploy --cloud-provider aws --region us-east-1
 
 # Build and deploy using BYOA (Bring Your Own Account)
-omctl deploy --deployment-type byoa
+omnistrate-ctl deploy --deployment-type byoa
 
 # Build and deploy with instance parameters supplied inline
-omctl deploy --param '{"disk_size":"20Gi", "username":"test", "password":"Test@123"}'
+omnistrate-ctl deploy --param '{"disk_size":"20Gi", "username":"test", "password":"Test@123"}'
 
 # Build and deploy with parameters loaded from a file
-omctl deploy --param-file params.json
+omnistrate-ctl deploy --param-file params.json
 
 # Build and upgrade an existing instance
-omctl deploy --instance-id inst-12345
+omnistrate-ctl deploy --instance-id inst-12345
 
 # Build from repository but skip Docker build (use pre-built image) and then deploy
-omctl deploy --skip-docker-build --product-name "My Service"
+omnistrate-ctl deploy --skip-docker-build --product-name "My Service"
 
 # Multi-arch build from repo and deploy
-omctl deploy --platforms "linux/amd64,linux/arm64"
+omnistrate-ctl deploy --platforms "linux/amd64,linux/arm64"
 
 ```
 

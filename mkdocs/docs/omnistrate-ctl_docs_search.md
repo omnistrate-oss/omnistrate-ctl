@@ -14,13 +14,13 @@ omnistrate-ctl docs search [query] [flags]
 
 ```
 # Search documentation for a specific term
-omctl docs search "kubernetes" --output json
+omnistrate-ctl docs search "kubernetes" --output json
 
 # Search documentation with multiple terms with JSON output
-omctl docs search "service plan deployment" --output json
+omnistrate-ctl docs search "service plan deployment" --output json
 
 # Limit the number of results returned
-omctl docs search "service plan deployment" --limit 5 --output json
+omnistrate-ctl docs search "service plan deployment" --limit 5 --output json
 
 ```
 

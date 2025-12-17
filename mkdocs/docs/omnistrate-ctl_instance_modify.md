@@ -14,16 +14,16 @@ omnistrate-ctl instance modify [instance-id] [flags]
 
 ```
 # Modify an instance deployment
-omctl instance modify instance-abcd1234 --network-type PUBLIC / INTERNAL --param '{"databaseName":"default","password":"a_secure_password","rootPassword":"a_secure_root_password","username":"user"}'
+omnistrate-ctl instance modify instance-abcd1234 --network-type PUBLIC / INTERNAL --param '{"databaseName":"default","password":"a_secure_password","rootPassword":"a_secure_root_password","username":"user"}'
 
 # Modify an instance deployment using a parameter file
-omctl instance modify instance-abcd1234 --param-file /path/to/param.json
+omnistrate-ctl instance modify instance-abcd1234 --param-file /path/to/param.json
 
 # Modify instance tags
-omctl instance modify instance-abcd1234 --tags environment=prod,owner=team
+omnistrate-ctl instance modify instance-abcd1234 --tags environment=prod,owner=team
 
 # Modify an instance deployment and wait for completion with progress tracking
-omctl instance modify instance-abcd1234 --param-file /path/to/param.json --wait
+omnistrate-ctl instance modify instance-abcd1234 --param-file /path/to/param.json --wait
 ```
 
 ### Options

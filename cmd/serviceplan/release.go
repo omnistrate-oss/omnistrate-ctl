@@ -16,10 +16,10 @@ import (
 
 const (
 	releaseExample = `# Release service plan by name
-omctl service-plan release [service-name] [plan-name]
+omnistrate-ctl service-plan release [service-name] [plan-name]
 
 # Release service plan by ID
-omctl service-plan release --service-id=[service-id] --plan-id=[plan-id]`
+omnistrate-ctl service-plan release --service-id=[service-id] --plan-id=[plan-id]`
 )
 
 var releaseCmd = &cobra.Command{

@@ -13,7 +13,7 @@ import (
 
 const (
 	deleteExample = `# Delete account with name or id
-omctl account delete [account-name or account-id]`
+omnistrate-ctl account delete [account-name or account-id]`
 )
 
 var deleteCmd = &cobra.Command{

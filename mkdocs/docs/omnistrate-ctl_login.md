@@ -14,10 +14,10 @@ omnistrate-ctl login [flags]
 
 ```
 # Select login method with a prompt
-omctl login
+omnistrate-ctl login
 
 # Login with email and password
-omctl login --email email --password password
+omnistrate-ctl login --email email --password password
 
 # Login with environment variables
   export OMNISTRATE_USER_NAME=YOUR_EMAIL

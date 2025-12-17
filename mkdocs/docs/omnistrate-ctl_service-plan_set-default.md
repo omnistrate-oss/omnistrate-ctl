@@ -15,10 +15,10 @@ omnistrate-ctl service-plan set-default [service-name] [plan-name] --version=[ve
 
 ```
 # Set service plan as default
-omctl service-plan set-default [service-name] [plan-name] --version=[version]
+omnistrate-ctl service-plan set-default [service-name] [plan-name] --version=[version]
 
 # Set  service plan as default by ID instead of name
-omctl service-plan set-default --service-id=[service-id] --plan-id=[plan-id] --version=[version]
+omnistrate-ctl service-plan set-default --service-id=[service-id] --plan-id=[plan-id] --version=[version]
 ```
 
 ### Options

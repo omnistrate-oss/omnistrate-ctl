@@ -32,7 +32,7 @@ func TestComposeSpecCommandFlags(t *testing.T) {
 
 func TestComposeSpecExample(t *testing.T) {
 	require.NotEmpty(t, composeSpecCmd.Example)
-	require.Contains(t, composeSpecCmd.Example, "omctl docs compose-spec")
+	require.Contains(t, composeSpecCmd.Example, "omnistrate-ctl docs compose-spec")
 	require.Contains(t, composeSpecCmd.Example, "--output json")
 	require.Contains(t, composeSpecCmd.Example, "x-omnistrate-compute")
 }

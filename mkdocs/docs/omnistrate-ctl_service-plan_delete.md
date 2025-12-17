@@ -14,10 +14,10 @@ omnistrate-ctl service-plan delete [service-name] [plan-name] [flags]
 
 ```
 # Delete service plan
-omctl service-plan delete [service-name] [plan-name]
+omnistrate-ctl service-plan delete [service-name] [plan-name]
 
 # Delete service plan by ID instead of name
-omctl service-plan delete --service-id=[service-id] --plan-id=[plan-id]
+omnistrate-ctl service-plan delete --service-id=[service-id] --plan-id=[plan-id]
 ```
 
 ### Options

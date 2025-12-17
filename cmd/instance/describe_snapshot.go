@@ -13,7 +13,7 @@ import (
 
 const (
 	describeSnapshotExample = `# Describe a specific snapshot
-omctl instance describe-snapshot instance-abcd1234 snapshot-xyz789`
+omnistrate-ctl instance describe-snapshot instance-abcd1234 snapshot-xyz789`
 )
 
 var describeSnapshotCmd = &cobra.Command{

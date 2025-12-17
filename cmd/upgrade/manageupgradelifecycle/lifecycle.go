@@ -15,15 +15,15 @@ import (
 
 const (
 	pauseExample = ` Pausing ongoing upgrade # 
-omctl upgrade pause [upgrade-id] `
+omnistrate-ctl upgrade pause [upgrade-id] `
 	resumeExample = ` Resuming paused upgrade # 
-omctl upgrade resume [upgrade-id] `
+omnistrate-ctl upgrade resume [upgrade-id] `
 	cancelExample = ` Cancelling uncompleted upgrade # 
-omctl upgrade cancel [upgrade-id] `
+omnistrate-ctl upgrade cancel [upgrade-id] `
 	notifyCustomerExample = ` Enable customer notifications for a scheduled upgrade # 
-omctl upgrade notify-customer [upgrade-id] `
+omnistrate-ctl upgrade notify-customer [upgrade-id] `
 	skipInstancesExample = ` Skip specific instances from an upgrade path #
-omctl upgrade skip-instances [upgrade-id] --resource-ids instance-1,instance-2 `
+omnistrate-ctl upgrade skip-instances [upgrade-id] --resource-ids instance-1,instance-2 `
 )
 
 var PauseCmd = &cobra.Command{
@@ -200,7 +200,7 @@ func manageLifecycle(cmd *cobra.Command, args []string, action model.UpgradeMain
 	if output != "json" {
 		println("\nTo get more details, run the following command(s):")
 		for _, s := range formattedUpgradeStatuses {
-			println(fmt.Sprintf("  omctl upgrade pause detail %s", s.UpgradeID))
+			println(fmt.Sprintf("  omnistrate-ctl upgrade pause detail %s", s.UpgradeID))
 		}
 	}
 

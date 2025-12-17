@@ -14,7 +14,7 @@ omnistrate-ctl domain delete [name] [flags]
 
 ```
 # Delete domain with name
-omctl delete domain [domain-name]
+omnistrate-ctl delete domain [domain-name]
 ```
 
 ### Options

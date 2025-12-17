@@ -16,7 +16,7 @@ import (
 
 const (
 	statusExample = `# Get upgrade status
-omctl upgrade status [upgrade-id]`
+omnistrate-ctl upgrade status [upgrade-id]`
 )
 
 var LastUpgradeStatus model.UpgradeStatus
@@ -131,7 +131,7 @@ func run(cmd *cobra.Command, args []string) error {
 	if output != "json" {
 		println("\nTo get more details, run the following command(s):")
 		for _, s := range formattedUpgradeStatuses {
-			println(fmt.Sprintf("  omctl upgrade status detail %s", s.UpgradeID))
+			println(fmt.Sprintf("  omnistrate-ctl upgrade status detail %s", s.UpgradeID))
 		}
 	}
 

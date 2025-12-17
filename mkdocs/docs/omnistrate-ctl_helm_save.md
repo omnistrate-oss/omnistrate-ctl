@@ -14,7 +14,7 @@ omnistrate-ctl helm save chart --repo-name=[repo-name] --repo-url=[repo-url] --v
 
 ```
 # Install the Redis Operator Helm Chart
-omctl helm save redis --repo-url=https://charts.bitnami.com/bitnami --version=20.0.1 --namespace=redis-operator
+omnistrate-ctl helm save redis --repo-url=https://charts.bitnami.com/bitnami --version=20.0.1 --namespace=redis-operator
 ```
 
 ### Options

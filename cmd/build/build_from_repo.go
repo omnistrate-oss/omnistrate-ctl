@@ -31,35 +31,35 @@ import (
 
 const (
 	buildFromRepoExample = `# Build service from git repository
-omctl build-from-repo
+omnistrate-ctl build-from-repo
 
 # Build service from git repository with environment variables, deployment type and cloud provider account details
-omctl build-from-repo --env-var POSTGRES_PASSWORD=default --deployment-type byoa --aws-account-id 442426883376
+omnistrate-ctl build-from-repo --env-var POSTGRES_PASSWORD=default --deployment-type byoa --aws-account-id 442426883376
 
 # Build service from an existing compose spec in the repository
-omctl build-from-repo --file omnistrate-compose.yaml
+omnistrate-ctl build-from-repo --file omnistrate-compose.yaml
 
 # Build service with a custom service name
-omctl build-from-repo --product-name my-custom-service
+omnistrate-ctl build-from-repo --product-name my-custom-service
 
 # Skip building and pushing Docker image
-omctl build-from-repo --skip-docker-build
+omnistrate-ctl build-from-repo --skip-docker-build
 
 # Skip multiple stages
-omctl build-from-repo --skip-docker-build --skip-environment-promotion
+omnistrate-ctl build-from-repo --skip-docker-build --skip-environment-promotion
 
 # Run in dry-run mode (build image locally but don't push or create service)
-omctl build-from-repo --dry-run
+omnistrate-ctl build-from-repo --dry-run
 
 # Build for multiple platforms
-omctl build-from-repo --platforms linux/amd64 --platforms linux/arm64
+omnistrate-ctl build-from-repo --platforms linux/amd64 --platforms linux/arm64
 
 # Build with release description
-omctl build-from-repo --release-description "v1.0.0-alpha"
+omnistrate-ctl build-from-repo --release-description "v1.0.0-alpha"
 
 # Build using github token from environment variable (GH_PAT)
 set GH_PAT=ghp_xxxxxxxx
-omctl build-from-repo
+omnistrate-ctl build-from-repo
 "`
 	GitHubPATGenerateURL      = "https://github.com/settings/tokens"
 	DefaultProdEnvName        = "Production"
@@ -575,12 +575,12 @@ func runBuildFromRepo(cmd *cobra.Command, args []string) error {
 
 		fmt.Printf("2. After account verified, play around with the SaaS Portal! Subscribe to your service and create instance deployments.\n")
 		fmt.Printf("3. A compose spec has been generated from the Docker image. You can customize it further by editing the %s file. Refer to the documentation %s for more information.\n", filepath.Base(file), urlMsg("https://docs.omnistrate.com/getting-started/compose-spec/"))
-		fmt.Printf("4. Push any changes to the repository and automatically update the service by running 'omctl build-from-repo' again.\n")
+		fmt.Printf("4. Push any changes to the repository and automatically update the service by running 'omnistrate-ctl build-from-repo' again.\n")
 	} else {
 		fmt.Println("Next steps:")
 		fmt.Printf("1. Play around with the SaaS Portal! Subscribe to your service and create instance deployments.\n")
 		fmt.Printf("2. A compose spec has been generated from the Docker image. You can customize it further by editing the %s file. Refer to the documentation %s for more information.\n", filepath.Base(file), urlMsg("https://docs.omnistrate.com/getting-started/compose-spec/"))
-		fmt.Printf("3. Push any changes to the repository and automatically update the service by running 'omctl build-from-repo' again.\n")
+		fmt.Printf("3. Push any changes to the repository and automatically update the service by running 'omnistrate-ctl build-from-repo' again.\n")
 	}
 
 	return nil

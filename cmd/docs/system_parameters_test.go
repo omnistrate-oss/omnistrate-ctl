@@ -28,7 +28,7 @@ func TestSystemParametersCommandFlags(t *testing.T) {
 
 func TestSystemParametersExample(t *testing.T) {
 	require.NotEmpty(t, systemParametersCmd.Example)
-	require.Contains(t, systemParametersCmd.Example, "omctl docs system-parameters")
+	require.Contains(t, systemParametersCmd.Example, "omnistrate-ctl docs system-parameters")
 	require.Contains(t, systemParametersCmd.Example, "--output json")
 }
 

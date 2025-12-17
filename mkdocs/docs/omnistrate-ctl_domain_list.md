@@ -15,7 +15,7 @@ omnistrate-ctl domain list [flags]
 
 ```
 # List domains
-omctl domain list
+omnistrate-ctl domain list
 ```
 
 ### Options

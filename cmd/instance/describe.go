@@ -18,13 +18,13 @@ import (
 
 const (
 	describeExample = `# Describe an instance deployment
-omctl instance describe instance-abcd1234
+omnistrate-ctl instance describe instance-abcd1234
 
 # Get compact deployment status information
-omctl instance describe instance-abcd1234 --deployment-status
+omnistrate-ctl instance describe instance-abcd1234 --deployment-status
 
 # Get deployment status for specific resource only  
-omctl instance describe instance-abcd1234 --deployment-status --resource-key mydb`
+omnistrate-ctl instance describe instance-abcd1234 --deployment-status --resource-key mydb`
 )
 
 type InstanceStatusType string
@@ -194,10 +194,10 @@ func runDescribe(cmd *cobra.Command, args []string) error {
 		instance = filteredInstance
 	}
 
-	// Replace the kubectl config instructions with the omctl update-kubeconfig for better MCP reference
+	// Replace the kubectl config instructions with the omnistrate-ctl update-kubeconfig for better MCP reference
 	if instance.DeploymentCellID != nil {
 		instance.InstanceDebugCommands = []string{
-			fmt.Sprintf("omctl deployment-cell update-kubeconfig %s --role cluster-admin --kubeconfig /tmp/kubeconfig", *instance.DeploymentCellID),
+			fmt.Sprintf("omnistrate-ctl deployment-cell update-kubeconfig %s --role cluster-admin --kubeconfig /tmp/kubeconfig", *instance.DeploymentCellID),
 			fmt.Sprintf("KUBECONFIG=/tmp/kubeconfig kubectl get pods -n instance-%s", *instance.ConsumptionResourceInstanceResult.Id),
 		}
 	}

@@ -14,10 +14,10 @@ omnistrate-ctl instance get-installer [instance-id] [flags]
 
 ```
 # Get the installer for an instance
-omctl instance get-installer instance-abcd1234
+omnistrate-ctl instance get-installer instance-abcd1234
 
 # Get the installer and save to a specific location
-omctl instance get-installer instance-abcd1234 --output-path /tmp/installer.tar.gz
+omnistrate-ctl instance get-installer instance-abcd1234 --output-path /tmp/installer.tar.gz
 ```
 
 ### Options

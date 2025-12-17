@@ -14,10 +14,10 @@ omnistrate-ctl instance adopt [flags]
 
 ```
 # Adopt a resource instance with basic parameters
-omctl instance adopt --service-id my-service --service-plan-id my-plan --host-cluster-id my-cluster --primary-resource-key my-resource
+omnistrate-ctl instance adopt --service-id my-service --service-plan-id my-plan --host-cluster-id my-cluster --primary-resource-key my-resource
 
 # Adopt a resource instance with YAML configuration file
-omctl instance adopt --service-id my-service --service-plan-id my-plan --host-cluster-id my-cluster --primary-resource-key my-resource --config-file adoption-config.yaml
+omnistrate-ctl instance adopt --service-id my-service --service-plan-id my-plan --host-cluster-id my-cluster --primary-resource-key my-resource --config-file adoption-config.yaml
 
 # Example adoption-config.yaml format:
 resourceAdoptionConfiguration:

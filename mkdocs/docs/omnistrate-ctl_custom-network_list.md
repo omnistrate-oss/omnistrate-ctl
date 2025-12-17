@@ -14,10 +14,10 @@ omnistrate-ctl custom-network list [flags]
 
 ```
 # List all custom networks 
-omctl custom-network list 
+omnistrate-ctl custom-network list 
 
 # List custom networks for a specific cloud provider and region  
-omctl custom-network list --filter="cloud_provider:aws,region:us-east-1"
+omnistrate-ctl custom-network list --filter="cloud_provider:aws,region:us-east-1"
 ```
 
 ### Options

@@ -14,7 +14,7 @@ omnistrate-ctl instance list-endpoints [instance-id] [flags]
 
 ```
 # List endpoints for a specific instance
-omctl instance list-endpoints instance-abcd1234
+omnistrate-ctl instance list-endpoints instance-abcd1234
 ```
 
 ### Options

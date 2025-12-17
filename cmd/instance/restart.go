@@ -15,7 +15,7 @@ import (
 
 const (
 	restartExample = `# Restart an instance deployment
-omctl instance restart instance-abcd1234`
+omnistrate-ctl instance restart instance-abcd1234`
 )
 
 var restartCmd = &cobra.Command{
