@@ -929,6 +929,8 @@ func executeDeploymentWorkflow(cmd *cobra.Command, sm ysmrr.SpinnerManager, toke
 			spinner.UpdateMessage(fmt.Sprintf("Step 2/2: Upgrading existing instance: Success (ID: %s)", finalInstanceID))
 			spinner.Complete()
 		}
+		// Ensure spinner manager is stopped before printing summary
+		sm.Stop()
 
 	} else {
 
@@ -964,6 +966,10 @@ func executeDeploymentWorkflow(cmd *cobra.Command, sm ysmrr.SpinnerManager, toke
 		finalInstanceID = createdInstanceID
 		// instanceActionType is already "create" from initialization
 		if err != nil {
+			// Restart spinner manager to handle error properly
+			sm = ysmrr.NewSpinnerManager()
+			sm.Start()
+			spinner = sm.AddSpinner("Step 2/2: Deploying a new instance")
 			utils.HandleSpinnerError(spinner, sm, err)
 			spinner.UpdateMessage(fmt.Sprintf("%s: Failed (%s)", "Step 2/2: Deploying a new instance", err.Error()))
 			if isMissingParamsError(err) {
@@ -972,9 +978,12 @@ func executeDeploymentWorkflow(cmd *cobra.Command, sm ysmrr.SpinnerManager, toke
 			spinner.Error()
 			return err
 		}
+		// Instance created successfully - createInstanceUnified handles its own spinner
 
 	}
-	spinner.Complete()
+
+	// Ensure spinner manager is fully stopped before printing summary
+	sm.Stop()
 
 	// Success summary
 	fmt.Println()
