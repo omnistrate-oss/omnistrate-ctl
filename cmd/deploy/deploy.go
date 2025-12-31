@@ -974,9 +974,7 @@ func executeDeploymentWorkflow(cmd *cobra.Command, sm ysmrr.SpinnerManager, toke
 		}
 
 	}
-	sm = ysmrr.NewSpinnerManager()
-	sm.Start()
-	utils.HandleSpinnerSuccess(spinner, sm, "Step 2/2: Instance deployment preparation complete")
+	spinner.Complete()
 
 	// Success summary
 	fmt.Println()
@@ -1137,7 +1135,7 @@ func createInstanceUnified(ctx context.Context, token, serviceID, environmentID,
 				sm.Start()
 
 			}
-			utils.HandleSpinnerSuccess(spinner, sm, fmt.Sprintf("Step 2/2: Using resource %s (ID: %s)", resourceKey, resourceID))
+			utils.HandleSpinnerSuccess(spinner, nil, fmt.Sprintf("Step 2/2: Using resource %s (ID: %s)", resourceKey, resourceID))
 		}
 		spinner := sm.AddSpinner("Step 2/2: Check cloud provider and region")
 		if resourceID == "" || resourceKey == "" {
@@ -1247,7 +1245,7 @@ func createInstanceUnified(ctx context.Context, token, serviceID, environmentID,
 			}
 		}
 
-		utils.HandleSpinnerSuccess(spinner, sm, fmt.Sprintf("Step 2/2: Using cloud provider '%s' and region '%s'", cloudProvider, region))
+		utils.HandleSpinnerSuccess(spinner, nil, fmt.Sprintf("Step 2/2: Using cloud provider '%s' and region '%s'", cloudProvider, region))
 
 		// Try to describe service offering resource - this is optional for parameter validation
 		resApiParams, err := dataaccess.DescribeServiceOfferingResource(ctx, token, serviceID, resourceID, "none", productTierID, version)
