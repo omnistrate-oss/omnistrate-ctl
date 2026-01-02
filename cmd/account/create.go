@@ -234,7 +234,7 @@ func WaitForAccountReady(ctx context.Context, token, accountID string) error {
 	for {
 		select {
 		case <-timeout:
-			return pkgerrors.New("timed out waiting for account to become READY")
+			return pkgerrors.New("timed out waiting for account to become READY after 10 minutes. Please check account status with 'omnistrate-ctl account describe [account-id]'")
 		case <-ticker.C:
 			account, err := dataaccess.DescribeAccount(ctx, token, accountID)
 			if err != nil {
