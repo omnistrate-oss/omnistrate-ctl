@@ -3,14 +3,15 @@ package account
 import (
 	"context"
 	"fmt"
-
-	"github.com/omnistrate-oss/omnistrate-ctl/cmd/common"
+	"time"
 
 	"github.com/chelnak/ysmrr"
+	"github.com/omnistrate-oss/omnistrate-ctl/cmd/common"
 	"github.com/omnistrate-oss/omnistrate-ctl/internal/config"
 	"github.com/omnistrate-oss/omnistrate-ctl/internal/dataaccess"
 	"github.com/omnistrate-oss/omnistrate-ctl/internal/utils"
 	openapiclient "github.com/omnistrate-oss/omnistrate-sdk-go/v1"
+	pkgerrors "github.com/pkg/errors"
 	"github.com/spf13/cobra"
 )
 
@@ -70,6 +71,14 @@ func runCreate(cmd *cobra.Command, args []string) error {
 		(gcpProjectID != "" && azureSubscriptionID != "") {
 		return fmt.Errorf("only one of --aws-account-id, --gcp-project-id, or --azure-subscription-id can be used at a time")
 	}
+
+	if (gcpProjectID != "" && gcpProjectNumber == "") || (gcpProjectID == "" && gcpProjectNumber != "") {
+		return fmt.Errorf("both --gcp-project-id and --gcp-project-number must be provided together")
+	}
+	if (azureSubscriptionID != "" && azureTenantID == "") || (azureSubscriptionID == "" && azureTenantID != "") {
+		return fmt.Errorf("both --azure-subscription-id and --azure-tenant-id must be provided together")
+	}
+
 	// Validate user login
 	token, err := common.GetTokenWithLogin()
 	if err != nil {
@@ -114,6 +123,23 @@ func runCreate(cmd *cobra.Command, args []string) error {
 	if output != "json" {
 		dataaccess.PrintNextStepVerifyAccountMsg(account)
 	}
+
+	// Wait for account to become READY (poll up to 10 min)
+	var waitSpinner *ysmrr.Spinner
+	if output != "json" {
+		fmt.Printf("\n")
+		sm = ysmrr.NewSpinnerManager()
+		waitSpinner = sm.AddSpinner("Waiting for account to become READY (may take up to 10 minutes)...")
+		sm.Start()
+	}
+
+	err = WaitForAccountReady(cmd.Context(), token, account.Id)
+	if err != nil {
+		utils.HandleSpinnerError(waitSpinner, sm, err)
+		utils.PrintError(fmt.Errorf("account did not become READY: %v", err))
+		return err
+	}
+	utils.HandleSpinnerSuccess(waitSpinner, sm, "Account is now READY")
 
 	return nil
 }
@@ -198,4 +224,25 @@ func CreateCloudAccount(ctx context.Context, token string, params CloudAccountPa
 	}
 
 	return account, nil
+}
+
+// waitForAccountReady polls for account status to become READY, up to 10 minutes
+func WaitForAccountReady(ctx context.Context, token, accountID string) error {
+	timeout := time.After(10 * time.Minute)
+	ticker := time.NewTicker(10 * time.Second)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-timeout:
+			return pkgerrors.New("timed out waiting for account to become READY")
+		case <-ticker.C:
+			account, err := dataaccess.DescribeAccount(ctx, token, accountID)
+			if err != nil {
+				return err
+			}
+			if account.Status == "READY" {
+				return nil
+			}
+		}
+	}
 }

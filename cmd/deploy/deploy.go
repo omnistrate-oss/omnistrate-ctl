@@ -593,7 +593,7 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 				}
 				dataaccess.PrintNextStepVerifyAccountMsg(accountData)
 				// Wait for account to become READY (poll up to 10 min)
-				err = waitForAccountReady(cmd.Context(), token, accountData.Id)
+				err = account.WaitForAccountReady(cmd.Context(), token, accountData.Id)
 				if err != nil {
 					utils.PrintError(fmt.Errorf("account did not become READY: %v", err))
 					spinner.Error()
@@ -2216,27 +2216,6 @@ func waitForAccountVerification(ctx context.Context, token, serviceID,
 	}
 
 	return "", fmt.Errorf("account verification timed out after %d attempts", maxRetries)
-}
-
-// waitForAccountReady polls for account status to become READY, up to 10 minutes
-func waitForAccountReady(ctx context.Context, token, accountID string) error {
-	timeout := time.After(10 * time.Minute)
-	ticker := time.NewTicker(10 * time.Second)
-	defer ticker.Stop()
-	for {
-		select {
-		case <-timeout:
-			return pkgerrors.New("timed out waiting for account to become READY")
-		case <-ticker.C:
-			account, err := dataaccess.DescribeAccount(ctx, token, accountID)
-			if err != nil {
-				return err
-			}
-			if account.Status == "READY" {
-				return nil
-			}
-		}
-	}
 }
 
 // --- helpers for nicer errors/messages ---
