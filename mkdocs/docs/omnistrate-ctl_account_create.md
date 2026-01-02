@@ -32,6 +32,7 @@ omnistrate-ctl account create [account-name] --azure-subscription-id=[subscripti
       --gcp-project-id string          GCP project ID
       --gcp-project-number string      GCP project number
   -h, --help                           help for create
+      --skip-wait                      Skip waiting for account to become READY
 ```
 
 ### Options inherited from parent commands

@@ -3,10 +3,10 @@ package account
 import (
 	"context"
 	"fmt"
-
-	"github.com/omnistrate-oss/omnistrate-ctl/cmd/common"
+	"time"
 
 	"github.com/chelnak/ysmrr"
+	"github.com/omnistrate-oss/omnistrate-ctl/cmd/common"
 	"github.com/omnistrate-oss/omnistrate-ctl/internal/config"
 	"github.com/omnistrate-oss/omnistrate-ctl/internal/dataaccess"
 	"github.com/omnistrate-oss/omnistrate-ctl/internal/utils"
@@ -42,6 +42,7 @@ func init() {
 	createCmd.Flags().String("gcp-project-number", "", "GCP project number")
 	createCmd.Flags().String("azure-subscription-id", "", "Azure subscription ID")
 	createCmd.Flags().String("azure-tenant-id", "", "Azure tenant ID")
+	createCmd.Flags().Bool("skip-wait", false, "Skip waiting for account to become READY")
 
 	// Add validation to the flags
 	createCmd.MarkFlagsOneRequired("aws-account-id", "gcp-project-id", "azure-subscription-id")
@@ -65,11 +66,20 @@ func runCreate(cmd *cobra.Command, args []string) error {
 	azureSubscriptionID, _ := cmd.Flags().GetString("azure-subscription-id")
 	azureTenantID, _ := cmd.Flags().GetString("azure-tenant-id")
 	output, _ := cmd.Flags().GetString("output")
+	skipWait, _ := cmd.Flags().GetBool("skip-wait")
 	if (awsAccountID != "" && gcpProjectID != "") ||
 		(awsAccountID != "" && azureSubscriptionID != "") ||
 		(gcpProjectID != "" && azureSubscriptionID != "") {
 		return fmt.Errorf("only one of --aws-account-id, --gcp-project-id, or --azure-subscription-id can be used at a time")
 	}
+
+	if (gcpProjectID != "" && gcpProjectNumber == "") || (gcpProjectID == "" && gcpProjectNumber != "") {
+		return fmt.Errorf("both --gcp-project-id and --gcp-project-number must be provided together")
+	}
+	if (azureSubscriptionID != "" && azureTenantID == "") || (azureSubscriptionID == "" && azureTenantID != "") {
+		return fmt.Errorf("both --azure-subscription-id and --azure-tenant-id must be provided together")
+	}
+
 	// Validate user login
 	token, err := common.GetTokenWithLogin()
 	if err != nil {
@@ -113,6 +123,25 @@ func runCreate(cmd *cobra.Command, args []string) error {
 	// Print next step
 	if output != "json" {
 		dataaccess.PrintNextStepVerifyAccountMsg(account)
+	}
+
+	// Wait for account to become READY (poll up to 10 min)
+	if !skipWait {
+		var waitSpinner *ysmrr.Spinner
+		if output != "json" {
+			fmt.Printf("\n")
+			sm = ysmrr.NewSpinnerManager()
+			waitSpinner = sm.AddSpinner("Waiting for account to become READY (may take up to 10 minutes)...")
+			sm.Start()
+		}
+
+		err = WaitForAccountReady(cmd.Context(), token, account.Id)
+		if err != nil {
+			utils.HandleSpinnerError(waitSpinner, sm, err)
+			utils.PrintError(fmt.Errorf("account did not become READY: %v", err))
+			return err
+		}
+		utils.HandleSpinnerSuccess(waitSpinner, sm, "Account is now READY")
 	}
 
 	return nil
@@ -198,4 +227,26 @@ func CreateCloudAccount(ctx context.Context, token string, params CloudAccountPa
 	}
 
 	return account, nil
+}
+
+// waitForAccountReady polls for account status to become READY, up to 10 minutes
+func WaitForAccountReady(ctx context.Context, token, accountID string) error {
+	timeout := time.After(10 * time.Minute)
+	ticker := time.NewTicker(10 * time.Second)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-timeout:
+			fmt.Printf("\n⚠️  Warning: Account did not become READY after 10 minutes. Please check account status with 'omnistrate-ctl account describe %s'\n", accountID)
+			return nil
+		case <-ticker.C:
+			account, err := dataaccess.DescribeAccount(ctx, token, accountID)
+			if err != nil {
+				return err
+			}
+			if account.Status == "READY" {
+				return nil
+			}
+		}
+	}
 }
