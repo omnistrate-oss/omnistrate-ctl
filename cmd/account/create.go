@@ -11,7 +11,6 @@ import (
 	"github.com/omnistrate-oss/omnistrate-ctl/internal/dataaccess"
 	"github.com/omnistrate-oss/omnistrate-ctl/internal/utils"
 	openapiclient "github.com/omnistrate-oss/omnistrate-sdk-go/v1"
-	pkgerrors "github.com/pkg/errors"
 	"github.com/spf13/cobra"
 )
 
@@ -234,7 +233,8 @@ func WaitForAccountReady(ctx context.Context, token, accountID string) error {
 	for {
 		select {
 		case <-timeout:
-			return pkgerrors.New("timed out waiting for account to become READY after 10 minutes. Please check account status with 'omnistrate-ctl account describe [account-id]'")
+			fmt.Printf("\n⚠️  Warning: Account did not become READY after 10 minutes. Please check account status with 'omnistrate-ctl account describe %s'\n", accountID)
+			return nil
 		case <-ticker.C:
 			account, err := dataaccess.DescribeAccount(ctx, token, accountID)
 			if err != nil {
