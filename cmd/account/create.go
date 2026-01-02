@@ -138,7 +138,6 @@ func runCreate(cmd *cobra.Command, args []string) error {
 		utils.PrintError(fmt.Errorf("account did not become READY: %v", err))
 		return err
 	}
-	utils.HandleSpinnerSuccess(waitSpinner, sm, "Account is now READY")
 
 	return nil
 }
