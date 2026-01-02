@@ -42,6 +42,7 @@ func init() {
 	createCmd.Flags().String("gcp-project-number", "", "GCP project number")
 	createCmd.Flags().String("azure-subscription-id", "", "Azure subscription ID")
 	createCmd.Flags().String("azure-tenant-id", "", "Azure tenant ID")
+	createCmd.Flags().Bool("skip-wait", false, "Skip waiting for account to become READY")
 
 	// Add validation to the flags
 	createCmd.MarkFlagsOneRequired("aws-account-id", "gcp-project-id", "azure-subscription-id")
@@ -65,6 +66,7 @@ func runCreate(cmd *cobra.Command, args []string) error {
 	azureSubscriptionID, _ := cmd.Flags().GetString("azure-subscription-id")
 	azureTenantID, _ := cmd.Flags().GetString("azure-tenant-id")
 	output, _ := cmd.Flags().GetString("output")
+	skipWait, _ := cmd.Flags().GetBool("skip-wait")
 	if (awsAccountID != "" && gcpProjectID != "") ||
 		(awsAccountID != "" && azureSubscriptionID != "") ||
 		(gcpProjectID != "" && azureSubscriptionID != "") {
@@ -124,19 +126,22 @@ func runCreate(cmd *cobra.Command, args []string) error {
 	}
 
 	// Wait for account to become READY (poll up to 10 min)
-	var waitSpinner *ysmrr.Spinner
-	if output != "json" {
-		fmt.Printf("\n")
-		sm = ysmrr.NewSpinnerManager()
-		waitSpinner = sm.AddSpinner("Waiting for account to become READY (may take up to 10 minutes)...")
-		sm.Start()
-	}
+	if !skipWait {
+		var waitSpinner *ysmrr.Spinner
+		if output != "json" {
+			fmt.Printf("\n")
+			sm = ysmrr.NewSpinnerManager()
+			waitSpinner = sm.AddSpinner("Waiting for account to become READY (may take up to 10 minutes)...")
+			sm.Start()
+		}
 
-	err = WaitForAccountReady(cmd.Context(), token, account.Id)
-	if err != nil {
-		utils.HandleSpinnerError(waitSpinner, sm, err)
-		utils.PrintError(fmt.Errorf("account did not become READY: %v", err))
-		return err
+		err = WaitForAccountReady(cmd.Context(), token, account.Id)
+		if err != nil {
+			utils.HandleSpinnerError(waitSpinner, sm, err)
+			utils.PrintError(fmt.Errorf("account did not become READY: %v", err))
+			return err
+		}
+		utils.HandleSpinnerSuccess(waitSpinner, sm, "Account is now READY")
 	}
 
 	return nil
