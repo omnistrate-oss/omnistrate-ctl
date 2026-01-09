@@ -4,7 +4,7 @@ Configure VSCode MCP servers
 
 ### Synopsis
 
-Configure MCP servers for Visual Studio Code
+Configure MCP servers for VSCode
 
 ### Options
 
@@ -24,5 +24,5 @@ Configure MCP servers for Visual Studio Code
 * [omnistrate-ctl mcp](omnistrate-ctl_mcp.md)	 - MCP server management
 * [omnistrate-ctl mcp vscode disable](omnistrate-ctl_mcp_vscode_disable.md)	 - Remove server from VSCode config
 * [omnistrate-ctl mcp vscode enable](omnistrate-ctl_mcp_vscode_enable.md)	 - Add server to VSCode config
-* [omnistrate-ctl mcp vscode list](omnistrate-ctl_mcp_vscode_list.md)	 - Show VSCode MCP servers
+* [omnistrate-ctl mcp vscode list](omnistrate-ctl_mcp_vscode_list.md)	 - List configured MCP servers
 

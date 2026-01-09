@@ -1,10 +1,10 @@
 ## omnistrate-ctl mcp vscode list
 
-Show VSCode MCP servers
+List configured MCP servers
 
 ### Synopsis
 
-Show all MCP servers configured in VSCode
+List all MCP servers configured in VSCode
 
 ```
 omnistrate-ctl mcp vscode list [flags]
@@ -16,7 +16,7 @@ omnistrate-ctl mcp vscode list [flags]
       --config-path string   Path to VSCode config file
       --config-type string   Configuration type: 'workspace' or 'user' (default: user)
   -h, --help                 help for list
-      --workspace            List from workspace settings (.vscode/mcp.json) instead of user settings
+      --workspace            List workspace settings (.vscode/mcp.json) instead of user settings
 ```
 
 ### Options inherited from parent commands

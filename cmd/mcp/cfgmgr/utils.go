@@ -91,7 +91,7 @@ func BackupConfigFile(configPath string) error {
 		return fmt.Errorf("failed to read configuration file for backup at '%s': %w", configPath, err)
 	}
 
-	if err := os.WriteFile(backupPath, data, 0o644); err != nil {
+	if err := os.WriteFile(backupPath, data, 0o600); err != nil {
 		return fmt.Errorf("failed to write backup configuration file at '%s': %w", backupPath, err)
 	}
 
@@ -99,7 +99,7 @@ func BackupConfigFile(configPath string) error {
 }
 
 // LoadJSONConfig loads a JSON configuration file into the provided interface.
-func LoadJSONConfig(configPath string, config interface{}) error {
+func LoadJSONConfig(configPath string, config any) error {
 	if _, err := os.Stat(configPath); os.IsNotExist(err) {
 		return nil
 	}
@@ -117,7 +117,7 @@ func LoadJSONConfig(configPath string, config interface{}) error {
 }
 
 // SaveJSONConfig saves a configuration to a JSON file with proper formatting.
-func SaveJSONConfig(configPath string, config interface{}) error {
+func SaveJSONConfig(configPath string, config any) error {
 	if err := os.MkdirAll(filepath.Dir(configPath), 0o755); err != nil {
 		return fmt.Errorf("failed to create configuration directory at '%s': %w", filepath.Dir(configPath), err)
 	}
@@ -127,7 +127,7 @@ func SaveJSONConfig(configPath string, config interface{}) error {
 		return fmt.Errorf("failed to marshal configuration to JSON: %w", err)
 	}
 
-	if err := os.WriteFile(configPath, data, 0o644); err != nil {
+	if err := os.WriteFile(configPath, data, 0o600); err != nil {
 		return fmt.Errorf("failed to write configuration file at '%s': %w", configPath, err)
 	}
 
