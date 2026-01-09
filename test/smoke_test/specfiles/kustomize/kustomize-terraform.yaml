@@ -13,6 +13,8 @@ services:
       configurationPerCloudProvider:
         aws:
           terraformPath: /test/resources/aws/terraform
+          variablesValuesFileOverride: |
+            instance_type = t4g.small 
           gitConfiguration:
             reference: refs/heads/main
             repositoryUrl: https://github.com/omnistrate-oss/omnistrate-ctl.git

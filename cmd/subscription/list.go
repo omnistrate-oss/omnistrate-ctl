@@ -110,7 +110,7 @@ func runList(cmd *cobra.Command, args []string) error {
 	}
 
 	// Print output
-	err = utils.PrintTextTableJsonOutput(output, formattedSubscriptions)
+	err = utils.PrintTextTableJsonArrayOutput(output, formattedSubscriptions)
 	if err != nil {
 		utils.PrintError(err)
 		return err

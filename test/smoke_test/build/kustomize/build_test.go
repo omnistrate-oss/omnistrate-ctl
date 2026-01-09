@@ -63,6 +63,10 @@ func Test_build_basic(t *testing.T) {
 		err = cmd.RootCmd.ExecuteContext(ctx)
 		require.NoError(err, f.Name())
 
+		cmd.RootCmd.SetArgs([]string{"service-plan", "describe", "--service-id", build.ServiceID, "--plan-id", build.ProductTierID})
+		err = cmd.RootCmd.ExecuteContext(ctx)
+		require.NoError(err, f.Name())
+
 		cmd.RootCmd.SetArgs([]string{"service", "delete", "--id", build.ServiceID})
 		err = cmd.RootCmd.ExecuteContext(ctx)
 		require.NoError(err, f.Name())

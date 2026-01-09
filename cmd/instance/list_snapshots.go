@@ -111,17 +111,17 @@ func runListSnapshots(cmd *cobra.Command, args []string) error {
 	summaries := make([]SnapshotDetail, 0, len(result.Snapshots))
 	for _, snapshot := range result.Snapshots {
 		summaries = append(summaries, SnapshotDetail{
-			SnapshotID:       snapshot.SnapshotId,
-			Status:           snapshot.Status,
-			Region:           snapshot.Region,
-			SnapshotType:     snapshot.SnapshotType,
-			Progress:         fmt.Sprintf("%d%%", snapshot.Progress),
-			CreatedAt:        formatSnapshotDisplayTime(snapshot.CreatedTime),
-			CompletedAt:      formatSnapshotDisplayTime(snapshot.CompleteTime),
-			SourceInstanceID: snapshot.SourceInstanceId,
-			ProductTierID:    snapshot.ProductTierId,
-			ProductTierVer:   snapshot.ProductTierVersion,
-			Encrypted:        snapshot.Encrypted,
+			SnapshotID:       utils.FromPtr(snapshot.SnapshotId),
+			Status:           utils.FromPtr(snapshot.Status),
+			Region:           utils.FromPtr(snapshot.Region),
+			SnapshotType:     utils.FromPtr(snapshot.SnapshotType),
+			Progress:         fmt.Sprintf("%d%%", utils.FromPtr(snapshot.Progress)),
+			CreatedAt:        formatSnapshotDisplayTime(utils.FromPtr(snapshot.CreatedTime)),
+			CompletedAt:      formatSnapshotDisplayTime(utils.FromPtr(snapshot.CompleteTime)),
+			SourceInstanceID: utils.FromPtr(snapshot.SourceInstanceId),
+			ProductTierID:    utils.FromPtr(snapshot.ProductTierId),
+			ProductTierVer:   utils.FromPtr(snapshot.ProductTierVersion),
+			Encrypted:        utils.FromPtr(snapshot.Encrypted),
 		})
 	}
 
