@@ -4,7 +4,7 @@ Remove server from Claude config
 
 ### Synopsis
 
-Remove this application from Claude Desktop MCP servers
+Remove this application as an MCP server from Claude Desktop
 
 ```
 omnistrate-ctl mcp claude disable [flags]
@@ -15,7 +15,7 @@ omnistrate-ctl mcp claude disable [flags]
 ```
       --config-path string   Path to Claude config file
   -h, --help                 help for disable
-      --server-name string   Name of the MCP server to remove (default: derived from executable name)
+      --server-name string   Name of the MCP server to disable (default: derived from executable name)
 ```
 
 ### Options inherited from parent commands

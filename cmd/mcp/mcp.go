@@ -4,6 +4,9 @@ import (
 	"github.com/njayp/ophis"
 	"github.com/njayp/ophis/tools"
 	"github.com/spf13/cobra"
+
+	"github.com/omnistrate-oss/omnistrate-ctl/cmd/mcp/claude"
+	"github.com/omnistrate-oss/omnistrate-ctl/cmd/mcp/vscode"
 )
 
 var config = &ophis.Config{
@@ -77,4 +80,32 @@ var config = &ophis.Config{
 	},
 }
 
-var Cmd = ophis.Command(config)
+// Cmd is the MCP command with custom claude/vscode subcommands that preserve symlink paths.
+// This fixes the issue where Homebrew upgrades break the MCP configuration because
+// the ophis library resolves symlinks to version-specific paths.
+var Cmd = buildMCPCommand()
+
+func buildMCPCommand() *cobra.Command {
+	// Get the base ophis command (includes start, tools, claude, vscode)
+	cmd := ophis.Command(config)
+
+	// Remove the ophis claude and vscode commands that have the symlink resolution bug
+	removeSubcommand(cmd, "claude")
+	removeSubcommand(cmd, "vscode")
+
+	// Add our custom claude and vscode commands that preserve symlink paths
+	cmd.AddCommand(claude.Command())
+	cmd.AddCommand(vscode.Command())
+
+	return cmd
+}
+
+// removeSubcommand removes a subcommand by name from a parent command
+func removeSubcommand(parent *cobra.Command, name string) {
+	for _, sub := range parent.Commands() {
+		if sub.Name() == name {
+			parent.RemoveCommand(sub)
+			return
+		}
+	}
+}
