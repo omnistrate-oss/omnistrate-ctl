@@ -111,7 +111,7 @@ jobs:
     steps:
       - name: Download build artifacts
         timeout-minutes: 5
-        uses: actions/download-artifact@v6
+        uses: actions/download-artifact@v7
 
       - name: Display structure of downloaded files
         timeout-minutes: 1
@@ -217,7 +217,7 @@ jobs:
 
       - name: Download build artifacts
         timeout-minutes: 5
-        uses: actions/download-artifact@v6
+        uses: actions/download-artifact@v7
 
       - name: Display structure of downloaded files
         timeout-minutes: 1
@@ -270,7 +270,7 @@ jobs:
 
       - name: Download build artifacts
         timeout-minutes: 5
-        uses: actions/download-artifact@v6
+        uses: actions/download-artifact@v7
 
       - name: Display structure of downloaded files
         timeout-minutes: 1
@@ -311,7 +311,7 @@ jobs:
       - name: Create Pull Request
         timeout-minutes: 5
         id: cpr
-        uses: peter-evans/create-pull-request@v7
+        uses: peter-evans/create-pull-request@v8
         with:
           token: ${{ secrets.PUBLISH_CTL_PAT }}
           title: Update Omnistrate CTL Formula to ${{ steps.get_version.outputs.version }}

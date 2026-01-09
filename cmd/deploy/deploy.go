@@ -593,7 +593,7 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 				}
 				dataaccess.PrintNextStepVerifyAccountMsg(accountData)
 				// Wait for account to become READY (poll up to 10 min)
-				err = waitForAccountReady(cmd.Context(), token, accountData.Id)
+				err = account.WaitForAccountReady(cmd.Context(), token, accountData.Id)
 				if err != nil {
 					utils.PrintError(fmt.Errorf("account did not become READY: %v", err))
 					spinner.Error()
@@ -929,6 +929,8 @@ func executeDeploymentWorkflow(cmd *cobra.Command, sm ysmrr.SpinnerManager, toke
 			spinner.UpdateMessage(fmt.Sprintf("Step 2/2: Upgrading existing instance: Success (ID: %s)", finalInstanceID))
 			spinner.Complete()
 		}
+		// Ensure spinner manager is stopped before printing summary
+		sm.Stop()
 
 	} else {
 
@@ -964,6 +966,10 @@ func executeDeploymentWorkflow(cmd *cobra.Command, sm ysmrr.SpinnerManager, toke
 		finalInstanceID = createdInstanceID
 		// instanceActionType is already "create" from initialization
 		if err != nil {
+			// Restart spinner manager to handle error properly
+			sm = ysmrr.NewSpinnerManager()
+			sm.Start()
+			spinner = sm.AddSpinner("Step 2/2: Deploying a new instance")
 			utils.HandleSpinnerError(spinner, sm, err)
 			spinner.UpdateMessage(fmt.Sprintf("%s: Failed (%s)", "Step 2/2: Deploying a new instance", err.Error()))
 			if isMissingParamsError(err) {
@@ -972,11 +978,12 @@ func executeDeploymentWorkflow(cmd *cobra.Command, sm ysmrr.SpinnerManager, toke
 			spinner.Error()
 			return err
 		}
+		// Instance created successfully - createInstanceUnified handles its own spinner
 
 	}
-	sm = ysmrr.NewSpinnerManager()
-	sm.Start()
-	utils.HandleSpinnerSuccess(spinner, sm, "Step 2/2: Instance deployment preparation complete")
+
+	// Ensure spinner manager is fully stopped before printing summary
+	sm.Stop()
 
 	// Success summary
 	fmt.Println()
@@ -1137,7 +1144,7 @@ func createInstanceUnified(ctx context.Context, token, serviceID, environmentID,
 				sm.Start()
 
 			}
-			utils.HandleSpinnerSuccess(spinner, sm, fmt.Sprintf("Step 2/2: Using resource %s (ID: %s)", resourceKey, resourceID))
+			utils.HandleSpinnerSuccess(spinner, nil, fmt.Sprintf("Step 2/2: Using resource %s (ID: %s)", resourceKey, resourceID))
 		}
 		spinner := sm.AddSpinner("Step 2/2: Check cloud provider and region")
 		if resourceID == "" || resourceKey == "" {
@@ -1247,7 +1254,7 @@ func createInstanceUnified(ctx context.Context, token, serviceID, environmentID,
 			}
 		}
 
-		utils.HandleSpinnerSuccess(spinner, sm, fmt.Sprintf("Step 2/2: Using cloud provider '%s' and region '%s'", cloudProvider, region))
+		utils.HandleSpinnerSuccess(spinner, nil, fmt.Sprintf("Step 2/2: Using cloud provider '%s' and region '%s'", cloudProvider, region))
 
 		// Try to describe service offering resource - this is optional for parameter validation
 		resApiParams, err := dataaccess.DescribeServiceOfferingResource(ctx, token, serviceID, resourceID, "none", productTierID, version)
@@ -2209,27 +2216,6 @@ func waitForAccountVerification(ctx context.Context, token, serviceID,
 	}
 
 	return "", fmt.Errorf("account verification timed out after %d attempts", maxRetries)
-}
-
-// waitForAccountReady polls for account status to become READY, up to 10 minutes
-func waitForAccountReady(ctx context.Context, token, accountID string) error {
-	timeout := time.After(10 * time.Minute)
-	ticker := time.NewTicker(10 * time.Second)
-	defer ticker.Stop()
-	for {
-		select {
-		case <-timeout:
-			return pkgerrors.New("timed out waiting for account to become READY")
-		case <-ticker.C:
-			account, err := dataaccess.DescribeAccount(ctx, token, accountID)
-			if err != nil {
-				return err
-			}
-			if account.Status == "READY" {
-				return nil
-			}
-		}
-	}
 }
 
 // --- helpers for nicer errors/messages ---
