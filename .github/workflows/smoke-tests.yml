@@ -24,7 +24,7 @@ jobs:
       contents: read
     concurrency:
       group: ${{ github.workflow }}-${{ inputs.environment }}-${{ matrix.test-group }}
-      cancel-in-progress: true
+      cancel-in-progress: false
 
     strategy:
       fail-fast: false
@@ -87,7 +87,7 @@ jobs:
       contents: read
     concurrency:
       group: ${{ github.workflow }}-${{ inputs.environment }}-${{ matrix.test-group }}
-      cancel-in-progress: true
+      cancel-in-progress: false
 
     strategy:
       fail-fast: false
