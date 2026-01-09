@@ -45,6 +45,7 @@ jobs:
             "serviceplan/...",
             "customnetwork/...",
             "servicesorchestration/...",
+            "subscription/...",
           ]
 
     steps:
