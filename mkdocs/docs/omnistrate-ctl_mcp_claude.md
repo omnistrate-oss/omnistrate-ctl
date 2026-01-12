@@ -24,5 +24,5 @@ Configure MCP servers for Claude Desktop
 * [omnistrate-ctl mcp](omnistrate-ctl_mcp.md)	 - MCP server management
 * [omnistrate-ctl mcp claude disable](omnistrate-ctl_mcp_claude_disable.md)	 - Remove server from Claude config
 * [omnistrate-ctl mcp claude enable](omnistrate-ctl_mcp_claude_enable.md)	 - Add server to Claude config
-* [omnistrate-ctl mcp claude list](omnistrate-ctl_mcp_claude_list.md)	 - Show Claude MCP servers
+* [omnistrate-ctl mcp claude list](omnistrate-ctl_mcp_claude_list.md)	 - List configured MCP servers
 

@@ -1,10 +1,10 @@
 ## omnistrate-ctl mcp claude list
 
-Show Claude MCP servers
+List configured MCP servers
 
 ### Synopsis
 
-Show all MCP servers configured in Claude Desktop
+List all MCP servers configured in Claude Desktop
 
 ```
 omnistrate-ctl mcp claude list [flags]
