@@ -28,7 +28,7 @@ omnistrate-ctl service-plan enable-feature --service-id [service-id] --plan-id [
       --feature-configuration string        Configuration of the feature
       --feature-configuration-file string   Json file containing feature configuration
   -h, --help                                help for enable-feature
-      --plan-id string                      Environment ID. Required if plan name is not provided
+      --plan-id string                      Plan ID. Required if plan name is not provided
       --service-id string                   Service ID. Required if service name is not provided
 ```
 

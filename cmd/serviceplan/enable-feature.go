@@ -32,7 +32,7 @@ var enableCmd = &cobra.Command{
 func init() {
 	enableCmd.Flags().StringP(EnvironmentFlag, "", "", "Environment name. Use this flag with service name and plan name to describe the service plan in a specific environment")
 	enableCmd.Flags().StringP(ServiceIDFlag, "", "", "Service ID. Required if service name is not provided")
-	enableCmd.Flags().StringP(PlanIDFlag, "", "", "Environment ID. Required if plan name is not provided")
+	enableCmd.Flags().StringP(PlanIDFlag, "", "", "Plan ID. Required if plan name is not provided")
 
 	enableCmd.Flags().String(FeatureNameFlag, "", "Name / identifier of the feature to enable")
 	enableCmd.Flags().String(FeatureConfigurationFlag, "", "Configuration of the feature")

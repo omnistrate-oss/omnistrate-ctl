@@ -26,7 +26,7 @@ omnistrate-ctl service-plan enable-feature --service-id [service-id] --plan-id [
       --environment string   Environment name. Use this flag with service name and plan name to describe the service plan in a specific environment
       --feature string       Name / identifier of the feature to disable
   -h, --help                 help for disable-feature
-      --plan-id string       Environment ID. Required if plan name is not provided
+      --plan-id string       Plan ID. Required if plan name is not provided
       --service-id string    Service ID. Required if service name is not provided
 ```
 

@@ -38,7 +38,7 @@ func init() {
 	describeCmd.Flags().StringP("environment", "", "", "Environment name. Use this flag with service name and plan name to describe the service plan in a specific environment")
 	describeCmd.Flags().StringP("output", "o", "json", "Output format. Only json is supported")
 	describeCmd.Flags().StringP("service-id", "", "", "Service ID. Required if service name is not provided")
-	describeCmd.Flags().StringP("plan-id", "", "", "Environment ID. Required if plan name is not provided")
+	describeCmd.Flags().StringP("plan-id", "", "", "Plan ID. Required if plan name is not provided")
 }
 
 func runDescribe(cmd *cobra.Command, args []string) error {
