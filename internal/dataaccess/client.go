@@ -148,11 +148,9 @@ func (l *LeveledLogger) Warn(msg string, keysAndValues ...interface{}) {
 
 func retryPolicy(ctx context.Context, resp *http.Response, err error) (bool, error) {
 	shouldRetry, err := retryablehttp.ErrorPropagatedRetryPolicy(ctx, resp, err)
-	if err != nil {
-		if resp != nil && resp.Request != nil && resp.Request.Method != http.MethodGet {
-			// Do not retry non-GET requests on error
-			shouldRetry = false
-		}
+	// Do not retry non-GET requests on error
+	if err != nil && resp != nil && resp.Request != nil && resp.Request.Method != http.MethodGet {
+		shouldRetry = false
 	}
 	return shouldRetry, nil
 }
