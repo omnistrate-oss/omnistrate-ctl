@@ -198,8 +198,8 @@ github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822 h1:C3w9PqII01/Oq
 github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822/go.mod h1:+n7T8mK8HuQTcFwEeznm/DIxMOiR9yIdICNftLE1DvQ=
 github.com/njayp/ophis v0.3.2 h1:lMRvbSMLuGUkMnGUPBL/TyYwck+2tMn21xY6dsx8Ij4=
 github.com/njayp/ophis v0.3.2/go.mod h1:kUvQBiqRDtegm7a8J3/YeHYKg1wNrWxsizG+b6MTPcY=
-github.com/omnistrate-oss/omnistrate-sdk-go v0.0.88 h1:hWZ5oMMhm4ukjWI/WzwofeOk/A0AeokoaMPo98/8MAI=
-github.com/omnistrate-oss/omnistrate-sdk-go v0.0.88/go.mod h1:q0FPYLbtm+Aw6GW0xbeaMPHR4WGzoV61iTGFoOhO72M=
+github.com/omnistrate-oss/omnistrate-sdk-go v0.0.90 h1:6Wnj9/gBQhuo2OXlaEqZQNY7U75AT/zUY8DQ7fx8Fws=
+github.com/omnistrate-oss/omnistrate-sdk-go v0.0.90/go.mod h1:q0FPYLbtm+Aw6GW0xbeaMPHR4WGzoV61iTGFoOhO72M=
 github.com/onsi/ginkgo/v2 v2.27.2 h1:LzwLj0b89qtIy6SSASkzlNvX6WktqurSHwkk2ipF/Ns=
 github.com/onsi/ginkgo/v2 v2.27.2/go.mod h1:ArE1D/XhNXBXCBkKOLkbsb2c81dQHCRcF5zwn/ykDRo=
 github.com/onsi/gomega v1.38.2 h1:eZCjf2xjZAqe+LeWvKb5weQ+NcPwX84kqJ0cZNxok2A=

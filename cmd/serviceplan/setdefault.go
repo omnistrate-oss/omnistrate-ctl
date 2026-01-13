@@ -12,6 +12,7 @@ import (
 	"github.com/omnistrate-oss/omnistrate-ctl/internal/dataaccess"
 	"github.com/omnistrate-oss/omnistrate-ctl/internal/utils"
 	openapiclientfleet "github.com/omnistrate-oss/omnistrate-sdk-go/fleet"
+	openapiclient "github.com/omnistrate-oss/omnistrate-sdk-go/v1"
 	"github.com/spf13/cobra"
 )
 
@@ -134,37 +135,55 @@ func runSetDefault(cmd *cobra.Command, args []string) error {
 }
 
 func getServicePlan(ctx context.Context, token, serviceIDArg, serviceNameArg, planIDArg, planNameArg, envNameArg string) (serviceID, serviceName, planID, environment string, err error) {
-	searchRes, err := dataaccess.SearchInventory(ctx, token, "service:s")
-	if err != nil {
-		return
-	}
+	var describeServiceRes *openapiclient.DescribeServiceResult
 
-	serviceFound := 0
-	for _, service := range searchRes.ServiceResults {
-		if !strings.EqualFold(service.Name, serviceNameArg) && service.Id != serviceIDArg {
-			continue
+	if serviceIDArg != "" {
+		describeServiceRes, err = dataaccess.DescribeService(ctx, token, serviceIDArg)
+		if err != nil {
+			return
 		}
-		serviceID = service.Id
-		serviceFound += 1
+		serviceID = serviceIDArg
+	} else {
+		searchQuery := "service:s"
+		if serviceNameArg != "" {
+			searchQuery = fmt.Sprintf("service:%s", serviceNameArg)
+		}
+
+		searchRes, searchErr := dataaccess.SearchInventory(ctx, token, searchQuery)
+		if searchErr != nil {
+			err = searchErr
+			return
+		}
+
+		serviceFound := 0
+		for _, service := range searchRes.ServiceResults {
+			if !strings.EqualFold(service.Name, serviceNameArg) {
+				continue
+			}
+			serviceID = service.Id
+			serviceFound += 1
+		}
+
+		if serviceFound == 0 {
+			err = fmt.Errorf("service not found. Please check input values and try again")
+			return
+		}
+
+		if serviceFound > 1 {
+			err = fmt.Errorf("multiple services with the same name found. Please provide the service ID instead of the name")
+			return
+		}
+
+		describeServiceRes, err = dataaccess.DescribeService(ctx, token, serviceID)
+		if err != nil {
+			return
+		}
 	}
 
-	if serviceFound == 0 {
-		err = fmt.Errorf("service not found. Please check input values and try again")
-		return
-	}
-
-	if serviceFound > 1 {
-		err = fmt.Errorf("multiple services with the same name found. Please provide the service ID instead of the name")
-		return
-	}
+	serviceName = describeServiceRes.Name
 
 	envFound := 0
 	servicePlanFound := 0
-	describeServiceRes, err := dataaccess.DescribeService(ctx, token, serviceID)
-	if err != nil {
-		return
-	}
-	serviceName = describeServiceRes.Name
 	for _, env := range describeServiceRes.ServiceEnvironments {
 		if envNameArg != "" && !strings.EqualFold(envNameArg, env.Name) {
 			continue
@@ -187,6 +206,14 @@ func getServicePlan(ctx context.Context, token, serviceIDArg, serviceNameArg, pl
 
 	if envNameArg != "" && envFound > 1 {
 		err = fmt.Errorf("multiple environments with the same name found. Please provide the environment name instead of the name")
+		return
+	}
+
+	if planIDArg != "" {
+		if servicePlanFound == 0 {
+			err = fmt.Errorf("service plan not found. Please check input values and try again")
+			return
+		}
 		return
 	}
 
