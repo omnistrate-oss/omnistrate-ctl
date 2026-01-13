@@ -150,8 +150,9 @@ func retryPolicy(ctx context.Context, resp *http.Response, err error) (bool, err
 	shouldRetry, err := retryablehttp.ErrorPropagatedRetryPolicy(ctx, resp, err)
 	if err != nil {
 		if resp != nil && resp.Request != nil && resp.Request.Method != http.MethodGet {
-			return false, err
+			// Do not retry non-GET requests on error
+			shouldRetry = false
 		}
 	}
-	return shouldRetry, err
+	return shouldRetry, nil
 }
