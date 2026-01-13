@@ -1,6 +1,7 @@
 package dataaccess
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"net/http/httputil"
@@ -95,7 +96,8 @@ func getRetryableHttpClient() *http.Client {
 	httpClient := retryablehttp.NewClient()
 	// HTTP requests are logged at DEBUG level.
 	httpClient.ErrorHandler = retryablehttp.PassthroughErrorHandler
-	httpClient.CheckRetry = retryablehttp.DefaultRetryPolicy
+	httpClient.CheckRetry = retryPolicy
+	httpClient.Backoff = retryablehttp.DefaultBackoff
 	httpClient.HTTPClient.Timeout = config.GetClientTimeout()
 	httpClient.Logger = NewLeveledLogger()
 	httpClient.RequestLogHook = func(logger retryablehttp.Logger, req *http.Request, retryNumber int) {
@@ -142,4 +144,13 @@ func (l *LeveledLogger) Info(msg string, keysAndValues ...interface{}) {
 
 func (l *LeveledLogger) Warn(msg string, keysAndValues ...interface{}) {
 	log.Warn().Msgf(msg, keysAndValues...)
+}
+
+func retryPolicy(ctx context.Context, resp *http.Response, err error) (bool, error) {
+	shouldRetry, err := retryablehttp.ErrorPropagatedRetryPolicy(ctx, resp, err)
+	// Do not retry POST requests on error
+	if err != nil && resp != nil && resp.Request != nil && resp.Request.Method == http.MethodPost {
+		shouldRetry = false
+	}
+	return shouldRetry, nil
 }
