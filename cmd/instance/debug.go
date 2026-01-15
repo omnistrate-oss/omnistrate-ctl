@@ -714,7 +714,7 @@ func buildDebugEventsNode(resource ResourceInfo) *tview.TreeNode {
 			eventType := getHighestPriorityEventType(step.events)
 			stepIcon, stepColor := getEventTypeOrStatusColorAndIcon(eventType)
 
-			stepNode := tview.NewTreeNode(fmt.Sprintf("[%s]%s [white]%s (%d)", stepColor, stepIcon, step.name, len(step.events)))
+			stepNode := tview.NewTreeNode(fmt.Sprintf("[%s]%s [lightcyan]%s (%d)", stepColor, stepIcon, step.name, len(step.events)))
 			stepNode.SetReference(map[string]interface{}{
 				"type":     "debug-events-step",
 				"resource": resource,
@@ -2548,7 +2548,7 @@ func updateDebugEventsNode(resourceNode *tview.TreeNode, resource ResourceInfo) 
 				eventType := getHighestPriorityEventType(step.events)
 				stepIcon, stepColor := getEventTypeOrStatusColorAndIcon(eventType)
 
-				stepNode := tview.NewTreeNode(fmt.Sprintf("[%s]%s [white]%s (%d)", stepColor, stepIcon, step.name, len(step.events)))
+				stepNode := tview.NewTreeNode(fmt.Sprintf("[%s]%s [lightcyan]%s (%d)", stepColor, stepIcon, step.name, len(step.events)))
 				stepNode.SetReference(map[string]interface{}{
 					"type":     "debug-events-step",
 					"resource": resource,
