@@ -2382,19 +2382,6 @@ func pollDebugEventsAndWorkflowStatus(app *tview.Application, rightPanel *tview.
 						break
 					}
 				}
-				// If no specific resource found, use the first resource's events
-				if data.Resources[i].WorkflowEvents == nil && len(resourcesData) > 0 {
-					data.Resources[i].WorkflowEvents = resourcesData[0].EventsByWorkflowStep
-					data.Resources[i].WorkflowInfo = workflowInfo
-				}
-			}
-
-			// Update the local resource variable for right panel updates
-			for _, res := range data.Resources {
-				if res.ID == resource.ID || res.Name == resource.Name {
-					resource = res
-					break
-				}
 			}
 
 			// Check if workflow is complete - stop polling immediately if so
