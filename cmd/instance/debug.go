@@ -23,6 +23,7 @@ import (
 // Global variables for managing right panel type
 var currentRightPanelType string
 var currentSelectedStep string
+var isPollingActive bool
 
 var (
 	outputFlag string
@@ -793,15 +794,27 @@ func handleOptionMapSelection(ref map[string]interface{}, leftPanel *tview.TreeV
 	if t, ok := ref["type"].(string); ok && t == "live-log-pod" {
 		handleLiveLogPodSelection(ref, rightPanel, app)
 	} else if t, ok := ref["type"].(string); ok && (t == "debug-events-workflow-step" || t == "debug-events-step") {
+		// Update currentSelectedStep before handling the selection
+		if workflowStep, ok := ref["step"].(string); ok {
+			currentSelectedStep = workflowStep
+		}
 		handleDebugEventsWorkflowStepSelection(ref, rightPanel)
-		if resource, ok := ref["resource"].(ResourceInfo); ok {
-			pollDebugEventsAndWorkflowStatus(app, rightPanel, leftPanel, resource, data)
+		// Only start polling if not already active
+		if !isPollingActive {
+			if resource, ok := ref["resource"].(ResourceInfo); ok {
+				isPollingActive = true
+				pollDebugEventsAndWorkflowStatus(app, rightPanel, leftPanel, resource, data)
+			}
 		}
 	} else if t, ok := ref["type"].(string); ok && t == "debug-events-overview" {
 		handleDebugEventsOverviewSelection(ref, rightPanel)
 		// Start polling for debug events when overview is selected
-		if resource, ok := ref["resource"].(ResourceInfo); ok {
-			pollDebugEventsAndWorkflowStatus(app, rightPanel, leftPanel, resource, data)
+		// Only start polling if not already active
+		if !isPollingActive {
+			if resource, ok := ref["resource"].(ResourceInfo); ok {
+				isPollingActive = true
+				pollDebugEventsAndWorkflowStatus(app, rightPanel, leftPanel, resource, data)
+			}
 		}
 	} else {
 		handleOptionSelection(ref, rightPanel)
@@ -854,9 +867,6 @@ func handleDebugEventsWorkflowStepSelection(ref map[string]interface{}, rightPan
 	workflowStep, _ := ref["step"].(string)
 	events, _ := ref["events"].([]dataaccess.DebugEvent)
 	resource, _ := ref["resource"].(ResourceInfo)
-
-	// Track the current selected step globally
-	currentSelectedStep = workflowStep
 
 	rightPanel.SetTitle(fmt.Sprintf("Debug Events: %s - %s", resource.Name, workflowStep))
 
@@ -2353,6 +2363,7 @@ func pollDebugEventsAndWorkflowStatus(app *tview.Application, rightPanel *tview.
 			status := strings.ToLower(resource.WorkflowInfo.WorkflowStatus)
 			isWorkflowComplete := status == "success" || status == "failed" || status == "cancelled"
 			if isWorkflowComplete {
+				isPollingActive = false
 				ticker.Stop()
 				return
 			}
@@ -2360,6 +2371,7 @@ func pollDebugEventsAndWorkflowStatus(app *tview.Application, rightPanel *tview.
 			// Check if we should still be updating debug events
 			if !strings.HasPrefix(currentRightPanelType, "debug-events") {
 				// User has switched away from debug events, stop polling
+				isPollingActive = false
 				return
 			}
 
@@ -2423,6 +2435,7 @@ func pollDebugEventsAndWorkflowStatus(app *tview.Application, rightPanel *tview.
 					})
 
 					// Workflow is complete, stop polling
+					isPollingActive = false
 					return
 				}
 			}
@@ -2469,6 +2482,21 @@ func rebuildTreeWithUpdatedResources(leftPanel *tview.TreeView, data DebugData) 
 		return
 	}
 
+	// Store the current selection to restore it after rebuilding
+	currentNode := leftPanel.GetCurrentNode()
+	var currentStepToRestore string
+	var currentResourceID string
+	if currentNode != nil {
+		if ref, ok := currentNode.GetReference().(map[string]interface{}); ok {
+			if stepName, ok := ref["step"].(string); ok {
+				currentStepToRestore = stepName
+			}
+			if res, ok := ref["resource"].(ResourceInfo); ok {
+				currentResourceID = res.ID
+			}
+		}
+	}
+
 	// Update existing tree nodes in-place to preserve selection and expansion state
 	for _, child := range root.GetChildren() {
 		ref := child.GetReference()
@@ -2480,7 +2508,7 @@ func rebuildTreeWithUpdatedResources(leftPanel *tview.TreeView, data DebugData) 
 					child.SetReference(updatedResource)
 
 					// Update child nodes (Debug Events, etc.)
-					updateDebugEventsNode(child, updatedResource)
+					updateDebugEventsNode(child, updatedResource, leftPanel, currentStepToRestore, currentResourceID)
 					break
 				}
 			}
@@ -2489,7 +2517,7 @@ func rebuildTreeWithUpdatedResources(leftPanel *tview.TreeView, data DebugData) 
 }
 
 // updateDebugEventsNode updates the Debug Events child node with new data
-func updateDebugEventsNode(resourceNode *tview.TreeNode, resource ResourceInfo) {
+func updateDebugEventsNode(resourceNode *tview.TreeNode, resource ResourceInfo, leftPanel *tview.TreeView, currentStepToRestore string, currentResourceID string) {
 	// Find the Debug Events node
 	var debugEventsNode *tview.TreeNode
 	for _, child := range resourceNode.GetChildren() {
@@ -2544,6 +2572,11 @@ func updateDebugEventsNode(resourceNode *tview.TreeNode, resource ResourceInfo) 
 				})
 				debugEventsNode.AddChild(stepNode)
 				hasEvents = true
+
+				// If this is the step that was previously selected, restore the selection
+				if currentStepToRestore == step.name && currentResourceID == resource.ID && leftPanel != nil {
+					leftPanel.SetCurrentNode(stepNode)
+				}
 			}
 		}
 
