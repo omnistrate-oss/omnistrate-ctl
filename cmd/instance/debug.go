@@ -803,7 +803,7 @@ func handleOptionMapSelection(ref map[string]interface{}, leftPanel *tview.TreeV
 		if !isPollingActive {
 			if resource, ok := ref["resource"].(ResourceInfo); ok {
 				isPollingActive = true
-				pollDebugEventsAndWorkflowStatus(app, rightPanel, leftPanel, resource, data)
+				pollDebugEventsAndWorkflowStatus(app, leftPanel, rightPanel, resource, data)
 			}
 		}
 	} else if t, ok := ref["type"].(string); ok && t == "debug-events-overview" {
@@ -813,7 +813,7 @@ func handleOptionMapSelection(ref map[string]interface{}, leftPanel *tview.TreeV
 		if !isPollingActive {
 			if resource, ok := ref["resource"].(ResourceInfo); ok {
 				isPollingActive = true
-				pollDebugEventsAndWorkflowStatus(app, rightPanel, leftPanel, resource, data)
+				pollDebugEventsAndWorkflowStatus(app, leftPanel, rightPanel, resource, data)
 			}
 		}
 	} else {
@@ -2351,7 +2351,7 @@ func connectAndStreamLogs(app *tview.Application, logsUrl string, rightPanel *tv
 }
 
 // pollDebugEventsAndWorkflowStatus polls debug events and workflow status every 30 seconds and stops when workflow is complete
-func pollDebugEventsAndWorkflowStatus(app *tview.Application, rightPanel *tview.TextView, leftPanel *tview.TreeView, resource ResourceInfo, data *DebugData) {
+func pollDebugEventsAndWorkflowStatus(app *tview.Application, leftPanel *tview.TreeView, rightPanel *tview.TextView, resource ResourceInfo, data *DebugData) {
 	go func() {
 		ticker := time.NewTicker(30 * time.Second)
 		defer ticker.Stop()
