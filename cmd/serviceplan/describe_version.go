@@ -37,7 +37,7 @@ func init() {
 	describeVersionCmd.Flags().StringP("version", "v", "", "Service plan version (latest|preferred|1.0 etc.)")
 	describeVersionCmd.Flags().StringP("environment", "", "", "Environment name. Use this flag with service name and plan name to describe the version in a specific environment")
 	describeVersionCmd.Flags().StringP("service-id", "", "", "Service ID. Required if service name is not provided")
-	describeVersionCmd.Flags().StringP("plan-id", "", "", "Environment ID. Required if plan name is not provided")
+	describeVersionCmd.Flags().StringP("plan-id", "", "", "Plan ID. Required if plan name is not provided")
 	describeVersionCmd.Flags().StringP("output", "o", "json", "Output format. Only json is supported")
 
 	err := describeVersionCmd.MarkFlagRequired("version")

@@ -34,7 +34,7 @@ You can filter for specific service plan versions by using the filter flag.`,
 
 func init() {
 	listVersionsCmd.Flags().StringP("service-id", "", "", "Service ID. Required if service name is not provided")
-	listVersionsCmd.Flags().StringP("plan-id", "", "", "Environment ID. Required if plan name is not provided")
+	listVersionsCmd.Flags().StringP("plan-id", "", "", "Plan ID. Required if plan name is not provided")
 	listVersionsCmd.Flags().IntP("limit", "", -1, "List only the latest N service plan versions")
 	listVersionsCmd.Flags().IntP("latest-n", "", -1, "List only the latest N service plan versions")
 	listVersionsCmd.Flags().StringP("environment", "", "", "Environment name. Use this flag with service name and plan name to describe the version in a specific environment")
