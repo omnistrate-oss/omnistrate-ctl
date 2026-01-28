@@ -13,7 +13,8 @@ omnistrate-ctl mcp tools [flags]
 ### Options
 
 ```
-  -h, --help   help for tools
+  -h, --help               help for tools
+      --log-level string   Log level (debug, info, warn, error)
 ```
 
 ### Options inherited from parent commands
