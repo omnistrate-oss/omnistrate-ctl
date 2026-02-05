@@ -3,7 +3,9 @@ package common
 import (
 	"context"
 	"fmt"
+	"os"
 
+	"github.com/mattn/go-isatty"
 	"github.com/omnistrate-oss/omnistrate-ctl/cmd/auth/login"
 	"github.com/omnistrate-oss/omnistrate-ctl/internal/config"
 	"github.com/omnistrate-oss/omnistrate-ctl/internal/dataaccess"
@@ -12,43 +14,76 @@ import (
 
 const maxTokenRetries = 3
 
-func GetTokenWithLogin() (token string, err error) {
+// isStdinPiped returns true when stdin is not a terminal (piped/redirected).
+// This happens in MCP servers, CI/CD, shell pipes, and automation.
+func isStdinPiped() bool {
+	return !isatty.IsTerminal(os.Stdin.Fd()) && !isatty.IsCygwinTerminal(os.Stdin.Fd())
+}
+
+// GetToken gets and validates auth token without prompting for login.
+func GetToken() (string, error) {
+	token, err := config.GetToken()
+	if err != nil {
+		if errors.Is(err, config.ErrAuthConfigNotFound) || errors.Is(err, config.ErrConfigFileNotFound) {
+			return "", fmt.Errorf("authentication required: not logged in. Run: omnistrate-ctl login")
+		}
+		return "", errors.Wrap(err, "failed to retrieve authentication token")
+	}
+
+	if token == "" {
+		return "", fmt.Errorf("authentication required: not logged in. Run: omnistrate-ctl login")
+	}
+
+	// Validate token with API call
+	_, err = dataaccess.DescribeUser(context.Background(), token)
+	if err != nil {
+		if errors.Is(err, config.ErrTokenExpired) {
+			return "", fmt.Errorf("authentication expired: token has expired. Run: omnistrate-ctl login")
+		}
+		if errors.Is(err, config.ErrUnauthorized) {
+			return "", fmt.Errorf("authentication failed: unauthorized access. Run: omnistrate-ctl login")
+		}
+		return "", errors.Wrap(err, "failed to validate token")
+	}
+
+	return token, nil
+}
+
+// GetTokenWithLogin gets auth token, prompting for login only in interactive mode.
+// In non-interactive contexts (MCP, automation), fails immediately to prevent hanging.
+func GetTokenWithLogin() (string, error) {
+	if isStdinPiped() {
+		return GetToken()
+	}
 	return getTokenWithRetry(0)
 }
 
-func getTokenWithRetry(retryCount int) (token string, err error) {
-	// Check if max retries exceeded
+func getTokenWithRetry(retryCount int) (string, error) {
 	if retryCount >= maxTokenRetries {
 		return "", fmt.Errorf("maximum token validation retries (%d) exceeded, please try again later", maxTokenRetries)
 	}
 
-	token, err = config.GetToken()
+	token, err := config.GetToken()
 	if err != nil && !errors.Is(err, config.ErrAuthConfigNotFound) && !errors.Is(err, config.ErrConfigFileNotFound) {
 		return "", errors.Wrap(err, "failed to retrieve authentication token")
 	}
 
-	// If token is present, validate it by calling the user API
+	// Validate existing token
 	if token != "" {
-		// Validate token by making an API call
 		_, err = dataaccess.DescribeUser(context.Background(), token)
 		if err != nil {
-			// Check if error is due to token expiry or authentication issues
 			if errors.Is(err, config.ErrTokenExpired) || errors.Is(err, config.ErrUnauthorized) {
-				// Remove expired/invalid token
 				_ = config.RemoveAuthConfig()
 				token = ""
-				// Continue to login prompt
 			} else {
-				// Other API errors (network, server issues, etc.)
 				return "", errors.Wrap(err, "failed to validate token")
 			}
 		} else {
-			// Token is valid, return it
 			return token, nil
 		}
 	}
 
-	// Run login command (if no token or token was expired/invalid)
+	// Prompt for login
 	err = login.RunLogin(login.LoginCmd, []string{})
 	if err != nil {
 		return "", errors.Wrap(err, "login failed")
@@ -59,16 +94,13 @@ func getTokenWithRetry(retryCount int) (token string, err error) {
 		return "", errors.Wrap(err, "failed to retrieve token after login")
 	}
 
-	// Validate the newly obtained token with retry
+	// Validate new token
 	_, err = dataaccess.DescribeUser(context.Background(), token)
 	if err != nil {
-		// Check if error is due to token expiry or authentication issues
 		if errors.Is(err, config.ErrTokenExpired) || errors.Is(err, config.ErrUnauthorized) {
-			// Token is still invalid after login, retry
 			_ = config.RemoveAuthConfig()
 			return getTokenWithRetry(retryCount + 1)
 		}
-		// Other API errors (network, server issues, etc.)
 		return "", errors.Wrap(err, "failed to validate token after login")
 	}
 
