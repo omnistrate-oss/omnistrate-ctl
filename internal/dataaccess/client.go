@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httputil"
+	"strings"
 
 	"github.com/hashicorp/go-retryablehttp"
 	"github.com/omnistrate-oss/omnistrate-ctl/internal/config"
@@ -42,6 +43,19 @@ func handleV1Error(err error) error {
 		if !ok {
 			return err
 		}
+
+		// Check for authentication/authorization errors based on HTTP status codes
+		// Extract status code from error body if available
+		errorBody := string(serviceErr.Body())
+		if strings.Contains(errorBody, "401") || strings.Contains(err.Error(), "401") ||
+			strings.Contains(errorBody, "Unauthorized") || strings.Contains(err.Error(), "Unauthorized") {
+			return config.ErrTokenExpired
+		}
+		if strings.Contains(errorBody, "403") || strings.Contains(err.Error(), "403") ||
+			strings.Contains(errorBody, "Forbidden") || strings.Contains(err.Error(), "Forbidden") {
+			return config.ErrUnauthorized
+		}
+
 		apiError, ok := serviceErr.Model().(openapiclientv1.Error)
 		if !ok {
 			return fmt.Errorf("%s\nDetail: %s", serviceErr.Error(), string(serviceErr.Body()))
@@ -79,6 +93,18 @@ func handleFleetError(err error) error {
 		if !ok {
 			return err
 		}
+
+		// Check for authentication/authorization errors based on HTTP status codes
+		errorBody := string(serviceErr.Body())
+		if strings.Contains(errorBody, "401") || strings.Contains(err.Error(), "401") ||
+			strings.Contains(errorBody, "Unauthorized") || strings.Contains(err.Error(), "Unauthorized") {
+			return config.ErrTokenExpired
+		}
+		if strings.Contains(errorBody, "403") || strings.Contains(err.Error(), "403") ||
+			strings.Contains(errorBody, "Forbidden") || strings.Contains(err.Error(), "Forbidden") {
+			return config.ErrUnauthorized
+		}
+
 		apiError, ok := serviceErr.Model().(openapiclientfleet.Error)
 		if !ok {
 			return fmt.Errorf("%s\nDetail: %s", serviceErr.Error(), string(serviceErr.Body()))
