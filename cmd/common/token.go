@@ -12,7 +12,10 @@ import (
 	"github.com/pkg/errors"
 )
 
-const maxTokenRetries = 3
+const (
+	maxTokenRetries     = 3
+	loginInstructionMsg = "Run: omnistrate-ctl login"
+)
 
 // isStdinPiped returns true when stdin is not a terminal (piped/redirected).
 // This happens in MCP servers, CI/CD, shell pipes, and automation.
@@ -25,23 +28,23 @@ func GetToken() (string, error) {
 	token, err := config.GetToken()
 	if err != nil {
 		if errors.Is(err, config.ErrAuthConfigNotFound) || errors.Is(err, config.ErrConfigFileNotFound) {
-			return "", fmt.Errorf("authentication required: not logged in. Run: omnistrate-ctl login")
+			return "", fmt.Errorf("authentication required: not logged in. %s", loginInstructionMsg)
 		}
 		return "", errors.Wrap(err, "failed to retrieve authentication token")
 	}
 
 	if token == "" {
-		return "", fmt.Errorf("authentication required: not logged in. Run: omnistrate-ctl login")
+		return "", fmt.Errorf("authentication required: not logged in. %s", loginInstructionMsg)
 	}
 
 	// Validate token with API call
 	_, err = dataaccess.DescribeUser(context.Background(), token)
 	if err != nil {
 		if errors.Is(err, config.ErrTokenExpired) {
-			return "", fmt.Errorf("authentication expired: token has expired. Run: omnistrate-ctl login")
+			return "", fmt.Errorf("authentication expired: token has expired. %s", loginInstructionMsg)
 		}
 		if errors.Is(err, config.ErrUnauthorized) {
-			return "", fmt.Errorf("authentication failed: unauthorized access. Run: omnistrate-ctl login")
+			return "", fmt.Errorf("authentication failed: unauthorized access. %s", loginInstructionMsg)
 		}
 		return "", errors.Wrap(err, "failed to validate token")
 	}

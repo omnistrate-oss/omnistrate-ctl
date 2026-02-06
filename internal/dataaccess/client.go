@@ -37,6 +37,19 @@ func getV1Client() *openapiclientv1.APIClient {
 	return apiClient
 }
 
+// checkAuthErrorInBody checks if error body or message contains authentication/authorization indicators
+func checkAuthErrorInBody(errorBody string, errStr string) error {
+	if strings.Contains(errorBody, "401") || strings.Contains(errStr, "401") ||
+		strings.Contains(errorBody, "Unauthorized") || strings.Contains(errStr, "Unauthorized") {
+		return config.ErrTokenExpired
+	}
+	if strings.Contains(errorBody, "403") || strings.Contains(errStr, "403") ||
+		strings.Contains(errorBody, "Forbidden") || strings.Contains(errStr, "Forbidden") {
+		return config.ErrUnauthorized
+	}
+	return nil
+}
+
 func handleV1Error(err error) error {
 	if err != nil {
 		var serviceErr *openapiclientv1.GenericOpenAPIError
@@ -45,16 +58,9 @@ func handleV1Error(err error) error {
 			return err
 		}
 
-		// Check for authentication/authorization errors based on HTTP status codes
-		// Extract status code from error body if available
-		errorBody := string(serviceErr.Body())
-		if strings.Contains(errorBody, "401") || strings.Contains(err.Error(), "401") ||
-			strings.Contains(errorBody, "Unauthorized") || strings.Contains(err.Error(), "Unauthorized") {
-			return config.ErrTokenExpired
-		}
-		if strings.Contains(errorBody, "403") || strings.Contains(err.Error(), "403") ||
-			strings.Contains(errorBody, "Forbidden") || strings.Contains(err.Error(), "Forbidden") {
-			return config.ErrUnauthorized
+		// Check for authentication/authorization errors
+		if authErr := checkAuthErrorInBody(string(serviceErr.Body()), err.Error()); authErr != nil {
+			return authErr
 		}
 
 		apiError, ok := serviceErr.Model().(openapiclientv1.Error)
@@ -95,15 +101,9 @@ func handleFleetError(err error) error {
 			return err
 		}
 
-		// Check for authentication/authorization errors based on HTTP status codes
-		errorBody := string(serviceErr.Body())
-		if strings.Contains(errorBody, "401") || strings.Contains(err.Error(), "401") ||
-			strings.Contains(errorBody, "Unauthorized") || strings.Contains(err.Error(), "Unauthorized") {
-			return config.ErrTokenExpired
-		}
-		if strings.Contains(errorBody, "403") || strings.Contains(err.Error(), "403") ||
-			strings.Contains(errorBody, "Forbidden") || strings.Contains(err.Error(), "Forbidden") {
-			return config.ErrUnauthorized
+		// Check for authentication/authorization errors
+		if authErr := checkAuthErrorInBody(string(serviceErr.Body()), err.Error()); authErr != nil {
+			return authErr
 		}
 
 		apiError, ok := serviceErr.Model().(openapiclientfleet.Error)
