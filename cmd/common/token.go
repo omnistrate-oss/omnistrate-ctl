@@ -77,7 +77,6 @@ func getTokenWithRetry(retryCount int) (string, error) {
 		if err != nil {
 			if errors.Is(err, config.ErrTokenExpired) || errors.Is(err, config.ErrUnauthorized) {
 				_ = config.RemoveAuthConfig()
-				token = ""
 			} else {
 				return "", errors.Wrap(err, "failed to validate token")
 			}
