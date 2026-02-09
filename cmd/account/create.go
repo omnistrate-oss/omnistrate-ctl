@@ -22,7 +22,10 @@ omnistrate-ctl account create [account-name] --aws-account-id=[account-id]
 omnistrate-ctl account create [account-name] --gcp-project-id=[project-id] --gcp-project-number=[project-number]
 
 # Create azure account
-omnistrate-ctl account create [account-name] --azure-subscription-id=[subscription-id] --azure-tenant-id=[tenant-id]`
+omnistrate-ctl account create [account-name] --azure-subscription-id=[subscription-id] --azure-tenant-id=[tenant-id]
+
+# Create oci account
+omnistrate-ctl account create [account-name] --oci-tenancy-id=[tenancy-id] --oci-domain-id=[domain-id]`
 )
 
 var createCmd = &cobra.Command{
@@ -42,12 +45,15 @@ func init() {
 	createCmd.Flags().String("gcp-project-number", "", "GCP project number")
 	createCmd.Flags().String("azure-subscription-id", "", "Azure subscription ID")
 	createCmd.Flags().String("azure-tenant-id", "", "Azure tenant ID")
+	createCmd.Flags().String("oci-tenancy-id", "", "OCI tenant ID")
+	createCmd.Flags().String("oci-domain-id", "", "OCI domain ID")
 	createCmd.Flags().Bool("skip-wait", false, "Skip waiting for account to become READY")
 
 	// Add validation to the flags
-	createCmd.MarkFlagsOneRequired("aws-account-id", "gcp-project-id", "azure-subscription-id")
+	createCmd.MarkFlagsOneRequired("aws-account-id", "gcp-project-id", "azure-subscription-id", "oci-tenancy-id")
 	createCmd.MarkFlagsRequiredTogether("gcp-project-id", "gcp-project-number")
 	createCmd.MarkFlagsRequiredTogether("azure-subscription-id", "azure-tenant-id")
+	createCmd.MarkFlagsRequiredTogether("oci-tenancy-id", "oci-domain-id")
 }
 
 func runCreate(cmd *cobra.Command, args []string) error {
@@ -65,12 +71,16 @@ func runCreate(cmd *cobra.Command, args []string) error {
 	gcpProjectNumber, _ := cmd.Flags().GetString("gcp-project-number")
 	azureSubscriptionID, _ := cmd.Flags().GetString("azure-subscription-id")
 	azureTenantID, _ := cmd.Flags().GetString("azure-tenant-id")
+	ociTenancyID, _ := cmd.Flags().GetString("oci-tenant-id")
+	ociDomainID, _ := cmd.Flags().GetString("oci-domain-id")
+
 	output, _ := cmd.Flags().GetString("output")
 	skipWait, _ := cmd.Flags().GetBool("skip-wait")
 	if (awsAccountID != "" && gcpProjectID != "") ||
 		(awsAccountID != "" && azureSubscriptionID != "") ||
-		(gcpProjectID != "" && azureSubscriptionID != "") {
-		return fmt.Errorf("only one of --aws-account-id, --gcp-project-id, or --azure-subscription-id can be used at a time")
+		(gcpProjectID != "" && azureSubscriptionID != "") ||
+		(ociTenancyID != "" && ociDomainID != "") {
+		return fmt.Errorf("only one of --aws-account-id, --gcp-project-id, --azure-subscription-id or --oci-tenant-id can be used at a time")
 	}
 
 	if (gcpProjectID != "" && gcpProjectNumber == "") || (gcpProjectID == "" && gcpProjectNumber != "") {
@@ -78,6 +88,9 @@ func runCreate(cmd *cobra.Command, args []string) error {
 	}
 	if (azureSubscriptionID != "" && azureTenantID == "") || (azureSubscriptionID == "" && azureTenantID != "") {
 		return fmt.Errorf("both --azure-subscription-id and --azure-tenant-id must be provided together")
+	}
+	if (ociTenancyID != "" && ociDomainID == "") || (ociTenancyID == "" && ociDomainID != "") {
+		return fmt.Errorf("both --oci-tenant-id and --oci-domain-id must be provided together")
 	}
 
 	// Validate user login
@@ -105,6 +118,8 @@ func runCreate(cmd *cobra.Command, args []string) error {
 		GcpProjectNumber:    gcpProjectNumber,
 		AzureSubscriptionID: azureSubscriptionID,
 		AzureTenantID:       azureTenantID,
+		OciTenancyID:        ociTenancyID,
+		OciDomainID:         ociDomainID,
 	}
 
 	account, err := CreateCloudAccount(cmd.Context(), token, params, spinner, sm)
@@ -155,6 +170,8 @@ type CloudAccountParams struct {
 	GcpProjectNumber    string
 	AzureSubscriptionID string
 	AzureTenantID       string
+	OciTenancyID        string
+	OciDomainID         string
 }
 
 // CreateCloudAccount creates a cloud provider account and returns the account config ID and account details
@@ -209,6 +226,18 @@ func CreateCloudAccount(ctx context.Context, token string, params CloudAccountPa
 		request.AzureSubscriptionID = &params.AzureSubscriptionID
 		request.AzureTenantID = &params.AzureTenantID
 		request.Description = "Azure Account " + params.AzureSubscriptionID
+	} else if params.OciTenancyID != "" {
+		// Get azure cloud provider id
+		cloudProviderID, err := dataaccess.GetCloudProviderByName(ctx, token, "oci")
+		if err != nil {
+			utils.HandleSpinnerError(spinner, sm, err)
+			return nil, err
+		}
+
+		request.CloudProviderId = cloudProviderID
+		request.OciTenancyID = &params.OciTenancyID
+		request.OciDomainID = &params.OciDomainID
+		request.Description = "OCI Account " + params.OciTenancyID
 	} else {
 		return nil, fmt.Errorf("no cloud provider credentials provided")
 	}

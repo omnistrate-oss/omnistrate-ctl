@@ -84,6 +84,8 @@ func init() {
 	BuildFromRepoCmd.Flags().String("gcp-project-number", "", "GCP project number. Must be used with --gcp-project-id and --deployment-type")
 	BuildFromRepoCmd.Flags().String("azure-subscription-id", "", "Azure subscription ID. Must be used with --azure-tenant-id and --deployment-type")
 	BuildFromRepoCmd.Flags().String("azure-tenant-id", "", "Azure tenant ID. Must be used with --azure-subscription-id and --deployment-type")
+	BuildFromRepoCmd.Flags().String("oci-tenant-id", "", "OCI tenant ID. Must be used with --oci-tenant-id and --deployment-type")
+	BuildFromRepoCmd.Flags().String("oci-domain-id", "", "OCI domain ID. Must be used with --oci-domain-id and --deployment-type")
 	BuildFromRepoCmd.Flags().Bool("reset-pat", false, "Reset the GitHub Personal Access Token (PAT) for the current user.")
 	BuildFromRepoCmd.Flags().StringP("output", "o", "text", "Output format. Only text is supported")
 	BuildFromRepoCmd.Flags().StringP("file", "f", OmnistrateComposeFileName, "Specify the compose file to read and write to")
@@ -158,6 +160,15 @@ func runBuildFromRepo(cmd *cobra.Command, args []string) error {
 		return err
 	}
 	azureTenantID, err := cmd.Flags().GetString("azure-tenant-id")
+	if err != nil {
+		return err
+	}
+
+	ociTenancyID, err := cmd.Flags().GetString("oci-tenant-id")
+	if err != nil {
+		return err
+	}
+	ociDomainID, err := cmd.Flags().GetString("oci-domain-id")
 	if err != nil {
 		return err
 	}
@@ -295,8 +306,8 @@ func runBuildFromRepo(cmd *cobra.Command, args []string) error {
 			return err
 		}
 
-		if awsAccountID == "" && gcpProjectID == "" && azureSubscriptionID == "" {
-			err = errors.New(fmt.Sprintf("AWS account ID or GCP project ID or Azure subscription ID are required for %s deployment type", deploymentType))
+		if awsAccountID == "" && gcpProjectID == "" && azureSubscriptionID == "" && ociTenancyID == "" {
+			err = errors.New(fmt.Sprintf("AWS account ID or GCP project ID or Azure subscription ID or OCI tenantID are required for %s deployment type", deploymentType))
 			utils.PrintError(err)
 			return err
 		}
@@ -305,13 +316,13 @@ func runBuildFromRepo(cmd *cobra.Command, args []string) error {
 			utils.PrintError(err)
 			return err
 		}
-		if gcpProjectID == "" && gcpProjectNumber != "" {
-			err = errors.New("GCP project ID is required with GCP project number")
+		if azureSubscriptionID != "" && azureTenantID == "" {
+			err = errors.New("Azure tenant ID is required with Azure subscription ID")
 			utils.PrintError(err)
 			return err
 		}
-		if azureSubscriptionID != "" && azureTenantID == "" {
-			err = errors.New("Azure tenant ID is required with Azure subscription ID")
+		if ociTenancyID != "" && ociDomainID == "" {
+			err = errors.New("OCI domain ID is required with OCI tenant ID")
 			utils.PrintError(err)
 			return err
 		}
@@ -347,6 +358,8 @@ func runBuildFromRepo(cmd *cobra.Command, args []string) error {
 		gcpProjectNumber,
 		azureSubscriptionID,
 		azureTenantID,
+		ociTenancyID,
+		ociDomainID,
 		sm,
 		file,
 		envVars,
@@ -508,8 +521,9 @@ func runBuildFromRepo(cmd *cobra.Command, args []string) error {
 	awsAccountUnverified := false
 	gcpAccountUnverified := false
 	azureAccountUnverified := false
-	var unverifiedAwsAccountConfigID, unverifiedGcpAccountConfigID, unverifiedAzureAccountConfigID string
-	if awsAccountID != "" || gcpProjectID != "" || azureSubscriptionID != "" {
+	ociAccountUnverified := false
+	var unverifiedAwsAccountConfigID, unverifiedGcpAccountConfigID, unverifiedAzureAccountConfigID, unverifiedOciAccountConfigID string
+	if awsAccountID != "" || gcpProjectID != "" || azureSubscriptionID != "" || ociTenancyID != "" {
 		accounts, err := dataaccess.ListAccounts(cmd.Context(), token, "all")
 		if err != nil {
 			utils.HandleSpinnerError(spinner, sm, err)
@@ -527,9 +541,14 @@ func runBuildFromRepo(cmd *cobra.Command, args []string) error {
 				unverifiedGcpAccountConfigID = account.Id
 			}
 
-			if account.Status == model.Verifying.String() && account.AzureSubscriptionID != nil && *account.AzureSubscriptionID == azureSubscriptionID {
+			if account.Status == model.Verifying.String() && account.AzureSubscriptionID != nil && *account.AzureSubscriptionID == azureSubscriptionID && account.AzureTenantID != nil && *account.AzureTenantID == azureTenantID {
 				azureAccountUnverified = true
 				unverifiedAzureAccountConfigID = account.Id
+			}
+
+			if account.Status == model.Verifying.String() && account.OciTenancyID != nil && *account.OciTenancyID == ociTenancyID && account.OciDomainID != nil && *account.OciDomainID == ociDomainID {
+				ociAccountUnverified = true
+				unverifiedOciAccountConfigID = account.Id
 			}
 		}
 	}
@@ -572,6 +591,16 @@ func runBuildFromRepo(cmd *cobra.Command, args []string) error {
 				fmt.Printf("  - Execute the Terraform scripts available at %s, by using the Account Config Identity ID below. For guidance our Terraform instructional video is at %s.\n", urlMsg(dataaccess.AwsGcpTerraformScriptsURL), urlMsg(dataaccess.AwsGcpTerraformGuideURL))
 			}
 		}
+		if ociAccountUnverified {
+			account, err := dataaccess.DescribeAccount(cmd.Context(), token, unverifiedOciAccountConfigID)
+			if err != nil {
+				fmt.Printf(" Warning: Could not fetch details for OCI account %s: %v\n", ociTenancyID, err)
+				fmt.Printf(" Your Azure account appears to be functional based on earlier checks.\n")
+			} else {
+				fmt.Printf(" Verify your cloud provider account %s following the instructions below:\n", account.Name)
+				fmt.Printf("  - Execute the Terraform scripts available at %s, by using the Account Config Identity ID below. For guidance our Terraform instructional video is at %s.\n", urlMsg(dataaccess.AwsGcpTerraformScriptsURL), urlMsg(dataaccess.AwsGcpTerraformGuideURL))
+			}
+		}
 
 		fmt.Printf("2. After account verified, play around with the SaaS Portal! Subscribe to your service and create instance deployments.\n")
 		fmt.Printf("3. A compose spec has been generated from the Docker image. You can customize it further by editing the %s file. Refer to the documentation %s for more information.\n", filepath.Base(file), urlMsg("https://docs.omnistrate.com/getting-started/compose-spec/"))
@@ -586,7 +615,7 @@ func runBuildFromRepo(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
-func BuildServiceFromRepository(cmd *cobra.Command, ctx context.Context, token, serviceName, releaseDescription string, resetPAT, dryRun, skipDockerBuild, skipServiceBuild bool, deploymentType, awsAccountID, gcpProjectID, gcpProjectNumber, azureSubscriptionID, azureTenantID string, sm ysmrr.SpinnerManager, file string, envVars, platforms []string, forceCreateServicePlanVersion bool) (serviceID, devEnvironmentID, devPlanID string, undefinedResources map[string]string, err error) {
+func BuildServiceFromRepository(cmd *cobra.Command, ctx context.Context, token, serviceName, releaseDescription string, resetPAT, dryRun, skipDockerBuild, skipServiceBuild bool, deploymentType, awsAccountID, gcpProjectID, gcpProjectNumber, azureSubscriptionID, azureTenantID, ociTenancyID, ociDomainID string, sm ysmrr.SpinnerManager, file string, envVars, platforms []string, forceCreateServicePlanVersion bool) (serviceID, devEnvironmentID, devPlanID string, undefinedResources map[string]string, err error) {
 
 	// Step 0: Validate user is currently logged in
 	spinner := sm.AddSpinner("Checking if user is logged in")
@@ -1197,6 +1226,7 @@ func BuildServiceFromRepository(cmd *cobra.Command, ctx context.Context, token, 
 					fileData = append(fileData, []byte(fmt.Sprintf("      GcpServiceAccountEmail: '%s'\n", gcpServiceAccountEmail))...)
 				}
 				fileData = appendAzureConfig(fileData, azureSubscriptionID, azureTenantID)
+				fileData = appendOciConfig(fileData, ociTenancyID, ociDomainID)
 			}
 
 			// Write the compose spec to a file
@@ -1240,6 +1270,7 @@ func BuildServiceFromRepository(cmd *cobra.Command, ctx context.Context, token, 
 						fileData = append(fileData, []byte(fmt.Sprintf("      GcpServiceAccountEmail: '%s'\n", gcpServiceAccountEmail))...)
 					}
 					fileData = appendAzureConfig(fileData, azureSubscriptionID, azureTenantID)
+					fileData = appendOciConfig(fileData, ociTenancyID, ociDomainID)
 				}
 			}
 
@@ -1383,6 +1414,15 @@ func appendAzureConfig(fileData []byte, azureSubscriptionID, azureTenantID strin
 	if azureSubscriptionID != "" {
 		fileData = append(fileData, []byte(fmt.Sprintf("      AzureSubscriptionId: '%s'\n", azureSubscriptionID))...)
 		fileData = append(fileData, []byte(fmt.Sprintf("      AzureTenantId: '%s'\n", azureTenantID))...)
+	}
+	return fileData
+}
+
+// appendAzureConfig appends Azure configuration to fileData if Azure credentials are provided
+func appendOciConfig(fileData []byte, ociTenancyID, ociDomainID string) []byte {
+	if ociTenancyID != "" {
+		fileData = append(fileData, []byte(fmt.Sprintf("      OciTenancyID: '%s'\n", ociTenancyID))...)
+		fileData = append(fileData, []byte(fmt.Sprintf("      OciDomainId: '%s'\n", ociDomainID))...)
 	}
 	return fileData
 }

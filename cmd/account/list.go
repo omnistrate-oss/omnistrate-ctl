@@ -136,6 +136,10 @@ func formatAccount(account *openapiclient.DescribeAccountConfigResult) (model.Ac
 		// Handle Azure account
 		targetAccountID = *account.AzureSubscriptionID
 		cloudProvider = "Azure"
+	} else if account.OciTenancyID != nil {
+		// Handle OCI account
+		targetAccountID = *account.OciTenancyID
+		cloudProvider = "OCI"
 	} else {
 		// Handle unknown account type
 		targetAccountID = "unknown"

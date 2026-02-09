@@ -47,7 +47,7 @@ func init() {
 	createCmd.Flags().String("plan", "", "Service plan name")
 	createCmd.Flags().String("version", "preferred", "Service plan version (latest|preferred|1.0 etc.)")
 	createCmd.Flags().String("resource", "", "Resource name")
-	createCmd.Flags().String("cloud-provider", "", "Cloud provider (aws|gcp)")
+	createCmd.Flags().String("cloud-provider", "", "Cloud provider (aws|gcp|azure|oci)")
 	createCmd.Flags().String("region", "", "Region code (e.g. us-east-2, us-central1)")
 	createCmd.Flags().String("param", "", "Parameters for the instance deployment")
 	createCmd.Flags().String("param-file", "", "Json file containing parameters for the instance deployment")

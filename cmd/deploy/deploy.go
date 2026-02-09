@@ -137,7 +137,7 @@ func init() {
 	DeployCmd.Flags().StringP("environment", "e", "Prod", "Name of the environment to build the service in (default: Prod)")
 	DeployCmd.Flags().StringP("environment-type", "t", "prod", "Type of environment. Valid options: dev, prod, qa, canary, staging, private (default: prod)")
 
-	DeployCmd.Flags().String("cloud-provider", "", "Cloud provider (aws|gcp|azure)")
+	DeployCmd.Flags().String("cloud-provider", "", "Cloud provider (aws|gcp|azure|oci)")
 	DeployCmd.Flags().String("region", "", "Region code (e.g. us-east-2, us-central1)")
 	DeployCmd.Flags().String("param", "", "JSON parameters for the instance deployment")
 	DeployCmd.Flags().String("param-file", "", "JSON file containing parameters for the instance deployment")
@@ -375,7 +375,7 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 	spinner.UpdateMessage("Step 1/2: Checking cloud provider accounts...")
 
 	isAccountId := false
-	awsAccountID, awsBootstrapRoleARN, gcpProjectID, gcpProjectNumber, gcpServiceAccountEmail, azureSubscriptionID, azureTenantID, extractDeploymentType :=
+	awsAccountID, awsBootstrapRoleARN, gcpProjectID, gcpProjectNumber, gcpServiceAccountEmail, azureSubscriptionID, azureTenantID, ociTenancyID, ociDomainID, extractDeploymentType :=
 		extractCloudAccountsFromProcessedData(processedData)
 
 	if awsAccountID != "" || gcpProjectID != "" || azureSubscriptionID != "" {
@@ -407,10 +407,12 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 	if azureSubscriptionID != "" {
 		cloudProvidersToCheck = append(cloudProvidersToCheck, "azure")
 	}
-
+	if ociTenancyID != "" {
+		cloudProvidersToCheck = append(cloudProvidersToCheck, "oci")
+	}
 	// If spec does not constrain providers, check all
 	if len(cloudProvidersToCheck) == 0 {
-		cloudProvidersToCheck = []string{"aws", "gcp", "azure"}
+		cloudProvidersToCheck = []string{"aws", "gcp", "azure", "oci"}
 	}
 
 	allAccounts := []*openapiclient.DescribeAccountConfigResult{}
@@ -457,6 +459,12 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 					foundMatchingAccount = true
 					accountStatus = acc.Status
 				}
+				if ociTenancyID == "" && acc.OciTenancyID != nil {
+					ociTenancyID = *acc.OciTenancyID
+					ociDomainID = *acc.OciDomainID
+					foundMatchingAccount = true
+					accountStatus = acc.Status
+				}
 			}
 			accountStatusSummary[acc.Status]++
 			if awsAccountID != "" && acc.AwsAccountID != nil {
@@ -480,10 +488,16 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 					break
 				}
 			}
+			if ociTenancyID != "" && acc.OciTenancyID != nil {
+				ociTenancyID = *acc.OciTenancyID
+				ociDomainID = *acc.OciDomainID
+				foundMatchingAccount = true
+				accountStatus = acc.Status
+			}
 		}
 	}
 
-	if !foundMatchingAccount && (awsAccountID != "" || gcpProjectID != "" || azureSubscriptionID != "") {
+	if !foundMatchingAccount && (awsAccountID != "" || gcpProjectID != "" || azureSubscriptionID != "" || ociTenancyID != "") {
 
 		var errorMessage string
 		if awsAccountID != "" {
@@ -495,11 +509,14 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 		if azureSubscriptionID != "" {
 			errorMessage += fmt.Sprintf("Azure subscription %s/%s is not linked. Please link it using 'omnistrate-ctl account create'.", azureSubscriptionID, azureTenantID)
 		}
+		if ociTenancyID != "" {
+			errorMessage += fmt.Sprintf("OCI Tenant %s/%s is not linked. Please link it using 'omnistrate-ctl account create'.", ociTenancyID, ociDomainID)
+		}
 
 		spinner.Error()
 		utils.PrintError(fmt.Errorf("cloud account mismatch:\n%s", errorMessage))
 		return fmt.Errorf("cloud account mismatch: %s", errorMessage)
-	} else if accountStatus != "READY" && (awsAccountID != "" || gcpProjectID != "" || azureSubscriptionID != "") {
+	} else if accountStatus != "READY" && (awsAccountID != "" || gcpProjectID != "" || azureSubscriptionID != "" || ociTenancyID != "") {
 
 		var errorMessage string
 		if awsAccountID != "" {
@@ -511,12 +528,15 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 		if azureSubscriptionID != "" {
 			errorMessage += fmt.Sprintf("Azure subscription %s/%s is linked but has status '%s'. Complete onboarding if required.", azureSubscriptionID, azureTenantID, accountStatus)
 		}
+		if ociTenancyID != "" {
+			errorMessage += fmt.Sprintf("OCI Tenant %s/%s is not linked. Please link it using 'omnistrate-ctl account create'.", ociTenancyID, ociDomainID)
+		}
 		spinner.Error()
 		utils.PrintError(fmt.Errorf("cloud account not ready:\n%s", errorMessage))
 		return fmt.Errorf("cloud account not ready: %s", errorMessage)
 	}
 
-	if awsAccountID == "" && gcpProjectID == "" && azureSubscriptionID == "" {
+	if awsAccountID == "" && gcpProjectID == "" && azureSubscriptionID == "" && ociTenancyID == "" {
 
 		// Ensure at least one READY account is available
 		if len(readyAccounts) == 0 {
@@ -580,6 +600,13 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 					if azureTenantID, ok := paramsMap["azure_tenant_id"].(string); ok {
 						accountParams.AzureTenantID = azureTenantID
 					}
+				case "oci":
+					if ociTenancyID, ok := paramsMap["oci_tenancy_id"].(string); ok {
+						accountParams.OciTenancyID = ociTenancyID
+					}
+					if ociDomainID, ok := paramsMap["oci_domain_id"].(string); ok {
+						accountParams.OciDomainID = ociDomainID
+					}
 				}
 
 				// Create the cloud provider account
@@ -604,7 +631,7 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 		}
 
 	}
-	if awsAccountID != "" || gcpProjectID != "" || azureSubscriptionID != "" {
+	if awsAccountID != "" || gcpProjectID != "" || azureSubscriptionID != "" || ociTenancyID != "" {
 		spinner.Complete()
 		spinner = sm.AddSpinner("Cloud account(s) linked and READY")
 		spinner.Complete()
@@ -621,6 +648,11 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 		}
 		if azureSubscriptionID != "" {
 			spinner = sm.AddSpinner(fmt.Sprintf(" - Using Azure Subscription ID: %s and Tenant ID: %s", azureSubscriptionID, azureTenantID))
+			spinner.Complete()
+
+		}
+		if ociTenancyID != "" {
+			spinner = sm.AddSpinner(fmt.Sprintf(" - Using OCI Tenancy ID: %s and Domain ID: %s", ociTenancyID, ociDomainID))
 			spinner.Complete()
 
 		}
@@ -697,6 +729,8 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 			gcpProjectNumber,
 			azureSubscriptionID,
 			azureTenantID,
+			ociTenancyID,
+			ociDomainID,
 			sm,
 			build.OmnistrateComposeFileName,
 			[]string{},
@@ -725,6 +759,8 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 				gcpServiceAccountEmail,
 				azureSubscriptionID,
 				azureTenantID,
+				ociTenancyID,
+				ociDomainID,
 			)
 			// Marshal the deployment section to YAML
 			deploymentYAML, err := yaml.Marshal(deploymentSection)
@@ -1182,6 +1218,7 @@ func createInstanceUnified(ctx context.Context, token, serviceID, environmentID,
 			gcpRegions := offering.GcpRegions
 			awsRegions := offering.AwsRegions
 			azureRegions := offering.AzureRegions
+			ociRegions := offering.OciRegions
 
 			// Check GCP regions first
 			for _, gcpRegion := range gcpRegions {
@@ -1211,6 +1248,16 @@ func createInstanceUnified(ctx context.Context, token, serviceID, environmentID,
 				}
 			}
 
+			// check oci regions
+			if cloudProvider == "" {
+				for _, ociRegions := range ociRegions {
+					if ociRegions == region {
+						cloudProvider = "oci"
+						break
+					}
+				}
+			}
+
 			// If not found in any provider, return error
 			if cloudProvider == "" {
 				return "", fmt.Errorf("unknown region '%s'. Please specify a valid cloud provider", region)
@@ -1226,6 +1273,8 @@ func createInstanceUnified(ctx context.Context, token, serviceID, environmentID,
 				regions = offering.AwsRegions
 			case "azure":
 				regions = offering.AzureRegions
+			case "oci":
+				regions = offering.OciRegions
 			}
 			found := false
 			for _, rk := range regions {
@@ -1251,6 +1300,8 @@ func createInstanceUnified(ctx context.Context, token, serviceID, environmentID,
 				region = "ap-south-1"
 			case "azure":
 				region = "eastus2"
+			case "oci":
+				region = "us-sanjose-1"
 			}
 		}
 
@@ -1525,9 +1576,9 @@ func findAllOmnistrateServicePlanBlocks(yamlContent interface{}) []map[string]in
 }
 
 // extractCloudAccountsFromProcessedData extracts cloud provider account information from the YAML content
-func extractCloudAccountsFromProcessedData(processedData []byte) (awsAccountID, awsBootstrapRoleARN, gcpProjectID, gcpProjectNumber, gcpServiceAccountEmail, azureSubscriptionID, azureTenantID, extractDeploymentType string) {
+func extractCloudAccountsFromProcessedData(processedData []byte) (awsAccountID, awsBootstrapRoleARN, gcpProjectID, gcpProjectNumber, gcpServiceAccountEmail, azureSubscriptionID, azureTenantID, ociTenancyID, ociDomainID, extractDeploymentType string) {
 	if len(processedData) == 0 {
-		return "", "", "", "", "", "", "", ""
+		return "", "", "", "", "", "", "", "", "", ""
 	}
 
 	// Helper to validate and set deployment type
@@ -1574,6 +1625,12 @@ func extractCloudAccountsFromProcessedData(processedData []byte) (awsAccountID, 
 		if azureTenantID == "" {
 			azureTenantID = getFirstString(m, "azureTenantId", "azureTenantID", "AzureTenantID", "AzureTenantId")
 		}
+		if ociTenancyID == "" {
+			ociTenancyID = getFirstString(m, "ociTenancyId", "ociTenancyID", "OciTenancyID", "OciTenancyId")
+		}
+		if ociDomainID == "" {
+			ociDomainID = getFirstString(m, "ociDomainId", "ociDomainID", "OciDomainID", "OciDomainId")
+		}
 	}
 
 	// Helper to process deployment sections (hosted/byoa)
@@ -1595,7 +1652,7 @@ func extractCloudAccountsFromProcessedData(processedData []byte) (awsAccountID, 
 	// Parse YAML content directly
 	var yamlContent map[string]interface{}
 	if err := yaml.Unmarshal(processedData, &yamlContent); err != nil {
-		return "", "", "", "", "", "", "", "" // Return empty values if YAML is invalid
+		return "", "", "", "", "", "", "", "", "", "" // Return empty values if YAML is invalid
 	}
 
 	// Check direct x-omnistrate-byoa/hosted keys
@@ -1642,7 +1699,7 @@ func extractCloudAccountsFromProcessedData(processedData []byte) (awsAccountID, 
 		}
 	}
 
-	return awsAccountID, awsBootstrapRoleARN, gcpProjectID, gcpProjectNumber, gcpServiceAccountEmail, azureSubscriptionID, azureTenantID, extractDeploymentType
+	return awsAccountID, awsBootstrapRoleARN, gcpProjectID, gcpProjectNumber, gcpServiceAccountEmail, azureSubscriptionID, azureTenantID, ociTenancyID, ociDomainID, extractDeploymentType
 }
 
 // sanitizeServiceName converts a service name to be API-compatible (lowercase, valid characters)
@@ -1756,6 +1813,8 @@ func createDeploymentYAML(
 	gcpServiceAccountEmail string,
 	azureSubscriptionID string,
 	azureTenantID string,
+	ociTenancyID string,
+	ociDomainID string,
 ) map[string]interface{} {
 	// Validate deployment type
 	if deploymentType != build.DeploymentTypeHosted && deploymentType != build.DeploymentTypeByoa {
@@ -1831,6 +1890,12 @@ func createDeploymentYAML(
 					hosted["azureTenantId"] = azureTenantID
 				}
 			}
+			if ociTenancyID != "" {
+				hosted["ociTenancyID"] = ociTenancyID
+				if ociDomainID != "" {
+					hosted["ociDomainID"] = ociDomainID
+				}
+			}
 			yamlDoc["deployment"].(map[string]interface{})["hostedDeployment"] = hosted
 		} else {
 			sp := getServicePlan()
@@ -1854,6 +1919,12 @@ func createDeploymentYAML(
 				hosted["azureSubscriptionId"] = azureSubscriptionID
 				if azureTenantID != "" {
 					hosted["azureTenantId"] = azureTenantID
+				}
+			}
+			if ociTenancyID != "" {
+				hosted["ociTenancyID"] = ociTenancyID
+				if ociDomainID != "" {
+					hosted["ociDomainID"] = ociDomainID
 				}
 			}
 			sp["deployment"] = map[string]interface{}{
@@ -2041,15 +2112,16 @@ func promptForCloudProvider() string {
 	fmt.Println("  1. AWS")
 	fmt.Println("  2. GCP")
 	fmt.Println("  3. Azure")
+	fmt.Println("  4. OCI")
 
 	var choice int
 	for {
-		fmt.Print("Select cloud provider (1-3): ")
+		fmt.Print("Select cloud provider (1-4): ")
 		_, err := fmt.Scanln(&choice)
-		if err == nil && choice >= 1 && choice <= 3 {
+		if err == nil && choice >= 1 && choice <= 4 {
 			break
 		}
-		fmt.Println("Invalid selection. Please enter 1, 2, or 3.")
+		fmt.Println("Invalid selection. Please enter 1, 2, 3 or 4.")
 	}
 
 	switch choice {
@@ -2059,6 +2131,8 @@ func promptForCloudProvider() string {
 		return "gcp"
 	case 3:
 		return "azure"
+	case 4:
+		return "oci"
 	default:
 		return "aws" // fallback
 	}
@@ -2137,6 +2211,27 @@ func promptForCloudCredentials(cloudProvider string) (string, error) {
 			"cloud_provider":               "azure",
 		}
 
+	case "oci":
+		fmt.Println("Enter OCI credentials:")
+		var ociTenancyID, ociDomainID string
+
+		fmt.Print("OCI Tenancy ID: ")
+		if _, err := fmt.Scanln(&ociTenancyID); err != nil {
+			return "", fmt.Errorf("failed to read OCI Tenancy ID: %w", err)
+		}
+
+		fmt.Print("OCI Domain ID: ")
+		if _, err := fmt.Scanln(&ociDomainID); err != nil {
+			return "", fmt.Errorf("failed to read OCI Domain ID: %w", err)
+		}
+
+		params = map[string]interface{}{
+			"account_configuration_method": "OCIScript",
+			"oci_tenancy_id":               ociTenancyID,
+			"oci_domain_id":                ociDomainID,
+			"cloud_provider":               "oci",
+		}
+
 	default:
 		return "", fmt.Errorf("unsupported cloud provider: %s", cloudProvider)
 	}
@@ -2169,6 +2264,9 @@ func showCloudSetupInstructions(cloudProvider, instanceID string) {
 	case "azure":
 		fmt.Printf(dataaccess.NextStepVerifyAccountMsgTemplateAzure,
 			"# Follow the setup commands for your Azure subscription")
+	case "oci":
+		fmt.Printf(dataaccess.NextStepVerifyAccountMsgTemplateAzure,
+			"# Follow the setup commands for your OCI Tenancy")
 	}
 
 	fmt.Println("\n⏳ Please complete the setup steps above and wait for verification...")
