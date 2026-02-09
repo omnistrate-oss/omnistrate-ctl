@@ -79,48 +79,50 @@ func DisableServiceModelFeature(ctx context.Context, token, serviceID, serviceMo
 
 // CreateServiceModel creates a new service model
 func CreateServiceModel(ctx context.Context, token, serviceID, name, description string) (serviceModelID string, err error) {
-ctxWithToken := context.WithValue(ctx, openapiclient.ContextAccessToken, token)
-apiClient := getV1Client()
+	ctxWithToken := context.WithValue(ctx, openapiclient.ContextAccessToken, token)
 
-// Use empty string as default for description if not provided
-if description == "" {
-description = "Created by omnistrate-ctl"
-}
+	apiClient := getV1Client()
 
-req := openapiclient.CreateServiceModelRequest2{
-Name:        name,
-Description: description,
-}
+	// Use empty string as default for description if not provided
+	if description == "" {
+		description = "Created by omnistrate-ctl"
+	}
 
-serviceModelID, r, err := apiClient.ServiceModelApiAPI.ServiceModelApiCreateServiceModel(ctxWithToken, serviceID).
-CreateServiceModelRequest2(req).
-Execute()
-defer func() {
-if r != nil {
-_ = r.Body.Close()
-}
-}()
-if err != nil {
-return "", handleV1Error(err)
-}
+	req := openapiclient.CreateServiceModelRequest2{
+		Name:        name,
+		Description: description,
+	}
 
-return serviceModelID, nil
+	serviceModelID, r, err := apiClient.ServiceModelApiAPI.ServiceModelApiCreateServiceModel(ctxWithToken, serviceID).
+		CreateServiceModelRequest2(req).
+		Execute()
+	defer func() {
+		if r != nil {
+			_ = r.Body.Close()
+		}
+	}()
+	if err != nil {
+		return "", handleV1Error(err)
+	}
+
+	return serviceModelID, nil
 }
 
 // DeleteServiceModel deletes a service model
 func DeleteServiceModel(ctx context.Context, token, serviceID, serviceModelID string) (err error) {
-ctxWithToken := context.WithValue(ctx, openapiclient.ContextAccessToken, token)
-apiClient := getV1Client()
+	ctxWithToken := context.WithValue(ctx, openapiclient.ContextAccessToken, token)
 
-r, err := apiClient.ServiceModelApiAPI.ServiceModelApiDeleteServiceModel(ctxWithToken, serviceID, serviceModelID).Execute()
-defer func() {
-if r != nil {
-_ = r.Body.Close()
-}
-}()
-if err != nil {
-return handleV1Error(err)
-}
+	apiClient := getV1Client()
 
-return nil
+	r, err := apiClient.ServiceModelApiAPI.ServiceModelApiDeleteServiceModel(ctxWithToken, serviceID, serviceModelID).Execute()
+	defer func() {
+		if r != nil {
+			_ = r.Body.Close()
+		}
+	}()
+	if err != nil {
+		return handleV1Error(err)
+	}
+
+	return nil
 }
