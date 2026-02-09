@@ -2,6 +2,7 @@ package dataaccess
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 
 	openapiclient "github.com/omnistrate-oss/omnistrate-sdk-go/v1"
@@ -75,4 +76,53 @@ func DisableServiceModelFeature(ctx context.Context, token, serviceID, serviceMo
 	}
 
 	return
+}
+
+// CreateServiceModel creates a new service model
+func CreateServiceModel(ctx context.Context, token, serviceID, name, description string) (serviceModelID string, err error) {
+ctxWithToken := context.WithValue(ctx, openapiclient.ContextAccessToken, token)
+apiClient := getV1Client()
+
+req := openapiclient.CreateServiceModelRequest2{
+Name: name,
+}
+if description != "" {
+req.Description = &description
+}
+
+resp, r, err := apiClient.ServiceModelApiAPI.ServiceModelApiCreateServiceModel(ctxWithToken, serviceID).
+CreateServiceModelRequest2(req).
+Execute()
+defer func() {
+if r != nil {
+_ = r.Body.Close()
+}
+}()
+if err != nil {
+return "", handleV1Error(err)
+}
+
+if resp == nil || resp.Id == "" {
+return "", fmt.Errorf("empty service model ID in response")
+}
+
+return resp.Id, nil
+}
+
+// DeleteServiceModel deletes a service model
+func DeleteServiceModel(ctx context.Context, token, serviceID, serviceModelID string) (err error) {
+ctxWithToken := context.WithValue(ctx, openapiclient.ContextAccessToken, token)
+apiClient := getV1Client()
+
+r, err := apiClient.ServiceModelApiAPI.ServiceModelApiDeleteServiceModel(ctxWithToken, serviceID, serviceModelID).Execute()
+defer func() {
+if r != nil {
+_ = r.Body.Close()
+}
+}()
+if err != nil {
+return handleV1Error(err)
+}
+
+return nil
 }

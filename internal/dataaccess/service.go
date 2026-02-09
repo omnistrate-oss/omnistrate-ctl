@@ -100,3 +100,34 @@ func BuildServiceFromComposeSpec(ctx context.Context, token string, request open
 
 	return resp, nil
 }
+
+// CreateService creates a new service
+func CreateService(ctx context.Context, token, name, description string) (serviceID string, err error) {
+ctxWithToken := context.WithValue(ctx, openapiclient.ContextAccessToken, token)
+apiClient := getV1Client()
+
+req := openapiclient.CreateServiceRequest2{
+Name: name,
+}
+if description != "" {
+req.Description = &description
+}
+
+resp, r, err := apiClient.ServiceApiAPI.ServiceApiCreateService(ctxWithToken).
+CreateServiceRequest2(req).
+Execute()
+defer func() {
+if r != nil {
+_ = r.Body.Close()
+}
+}()
+if err != nil {
+return "", handleV1Error(err)
+}
+
+if resp == nil || resp.Id == "" {
+return "", fmt.Errorf("empty service ID in response")
+}
+
+return resp.Id, nil
+}
