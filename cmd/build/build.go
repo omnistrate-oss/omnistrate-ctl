@@ -794,6 +794,72 @@ func BuildService(ctx context.Context, fileData []byte, token, name, specType st
 
 	switch specType {
 	case ServicePlanSpecType:
+		// Parse the service plan spec to extract account config requirements
+		specInfo, parseErr := ParseServicePlanSpec(fileData)
+		if parseErr != nil {
+			// Log warning but continue - parsing is optional for validation
+			// The server will handle the actual spec processing
+			fmt.Printf("Warning: Failed to parse service plan spec for account validation: %v\n", parseErr)
+		}
+
+		// If parsing succeeded, validate account configs exist
+		if specInfo != nil {
+			// Check if any cloud provider accounts are specified in the spec
+			hasAccountRequirements := specInfo.AwsAccountID != "" ||
+				specInfo.GcpProjectID != "" || specInfo.GcpProjectNumber != "" ||
+				specInfo.AzureSubscriptionID != "" || specInfo.OCITenancyID != ""
+
+			if hasAccountRequirements {
+				// Find matching account configs
+				matchedAccounts, matchErr := FindMatchingAccountConfigs(ctx, token, specInfo)
+				if matchErr != nil {
+					// Log warning but continue - account matching is for validation only
+					fmt.Printf("Warning: Failed to match account configs: %v\n", matchErr)
+				} else if matchedAccounts != nil {
+					// Validate that all required accounts were matched
+					var missingAccounts []string
+
+					if matchedAccounts.AWS != nil && !matchedAccounts.AWS.Matched {
+						missingAccounts = append(missingAccounts, fmt.Sprintf("AWS: %s", matchedAccounts.AWS.Error))
+					}
+					if matchedAccounts.GCP != nil && !matchedAccounts.GCP.Matched {
+						missingAccounts = append(missingAccounts, fmt.Sprintf("GCP: %s", matchedAccounts.GCP.Error))
+					}
+					if matchedAccounts.Azure != nil && !matchedAccounts.Azure.Matched {
+						missingAccounts = append(missingAccounts, fmt.Sprintf("Azure: %s", matchedAccounts.Azure.Error))
+					}
+					if matchedAccounts.OCI != nil && !matchedAccounts.OCI.Matched {
+						missingAccounts = append(missingAccounts, fmt.Sprintf("OCI: %s", matchedAccounts.OCI.Error))
+					}
+
+					if len(missingAccounts) > 0 {
+						// Return error if required accounts are not found
+						errMsg := fmt.Sprintf("Required cloud provider account configs not found:\n%s", strings.Join(missingAccounts, "\n"))
+						return "", "", "", make(map[string]string), false, errors.New(errMsg)
+					}
+
+					// Log successful account matching
+					var matchedAccountIDs []string
+					if matchedAccounts.AWS != nil && matchedAccounts.AWS.Matched {
+						matchedAccountIDs = append(matchedAccountIDs, fmt.Sprintf("AWS: %s", matchedAccounts.AWS.AccountConfigID))
+					}
+					if matchedAccounts.GCP != nil && matchedAccounts.GCP.Matched {
+						matchedAccountIDs = append(matchedAccountIDs, fmt.Sprintf("GCP: %s", matchedAccounts.GCP.AccountConfigID))
+					}
+					if matchedAccounts.Azure != nil && matchedAccounts.Azure.Matched {
+						matchedAccountIDs = append(matchedAccountIDs, fmt.Sprintf("Azure: %s", matchedAccounts.Azure.AccountConfigID))
+					}
+					if matchedAccounts.OCI != nil && matchedAccounts.OCI.Matched {
+						matchedAccountIDs = append(matchedAccountIDs, fmt.Sprintf("OCI: %s", matchedAccounts.OCI.AccountConfigID))
+					}
+
+					if len(matchedAccountIDs) > 0 {
+						fmt.Printf("Matched account configs:\n%s\n", strings.Join(matchedAccountIDs, "\n"))
+					}
+				}
+			}
+		}
+
 		request := openapiclient.BuildServiceFromServicePlanSpecRequest2{
 			Name:                             name,
 			Description:                      description,

@@ -106,14 +106,17 @@ func CreateService(ctx context.Context, token, name, description string) (servic
 ctxWithToken := context.WithValue(ctx, openapiclient.ContextAccessToken, token)
 apiClient := getV1Client()
 
-req := openapiclient.CreateServiceRequest2{
-Name: name,
-}
-if description != "" {
-req.Description = &description
+// Use empty string as default for description if not provided
+if description == "" {
+description = "Created by omnistrate-ctl"
 }
 
-resp, r, err := apiClient.ServiceApiAPI.ServiceApiCreateService(ctxWithToken).
+req := openapiclient.CreateServiceRequest2{
+Name:        name,
+Description: description,
+}
+
+serviceID, r, err := apiClient.ServiceApiAPI.ServiceApiCreateService(ctxWithToken).
 CreateServiceRequest2(req).
 Execute()
 defer func() {
@@ -125,9 +128,5 @@ if err != nil {
 return "", handleV1Error(err)
 }
 
-if resp == nil || resp.Id == "" {
-return "", fmt.Errorf("empty service ID in response")
-}
-
-return resp.Id, nil
+return serviceID, nil
 }

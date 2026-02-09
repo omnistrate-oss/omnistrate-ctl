@@ -267,13 +267,11 @@ func matchAWSAccount(accounts []openapiclientfleet.FleetDescribeAccountConfigRes
 	for _, account := range accounts {
 		if strings.ToLower(account.CloudProviderId) == "aws" {
 			// Check if account details match
-			if accountConfig, ok := account.AccountConfig.(map[string]interface{}); ok {
-				if accountID, ok := accountConfig["accountId"].(string); ok && accountID == specInfo.AwsAccountID {
-					return &AccountMatchResult{
-						AccountConfigID: account.Id,
-						CloudProvider:   "aws",
-						Matched:         true,
-					}
+			if account.AwsAccountID != nil && *account.AwsAccountID == specInfo.AwsAccountID {
+				return &AccountMatchResult{
+					AccountConfigID: account.Id,
+					CloudProvider:   "aws",
+					Matched:         true,
 				}
 			}
 		}
@@ -289,18 +287,13 @@ func matchAWSAccount(accounts []openapiclientfleet.FleetDescribeAccountConfigRes
 func matchGCPAccount(accounts []openapiclientfleet.FleetDescribeAccountConfigResult, specInfo *ServicePlanSpecInfo) *AccountMatchResult {
 	for _, account := range accounts {
 		if strings.ToLower(account.CloudProviderId) == "gcp" {
-			if accountConfig, ok := account.AccountConfig.(map[string]interface{}); ok {
-				projectID, hasProjectID := accountConfig["projectId"].(string)
-				projectNumber, hasProjectNumber := accountConfig["projectNumber"].(string)
-
-				// Match by project ID or project number
-				if (hasProjectID && projectID == specInfo.GcpProjectID) ||
-					(hasProjectNumber && projectNumber == specInfo.GcpProjectNumber) {
-					return &AccountMatchResult{
-						AccountConfigID: account.Id,
-						CloudProvider:   "gcp",
-						Matched:         true,
-					}
+			// Match by project ID or project number
+			if (account.GcpProjectID != nil && *account.GcpProjectID == specInfo.GcpProjectID) ||
+				(account.GcpProjectNumber != nil && *account.GcpProjectNumber == specInfo.GcpProjectNumber) {
+				return &AccountMatchResult{
+					AccountConfigID: account.Id,
+					CloudProvider:   "gcp",
+					Matched:         true,
 				}
 			}
 		}
@@ -316,13 +309,11 @@ func matchGCPAccount(accounts []openapiclientfleet.FleetDescribeAccountConfigRes
 func matchAzureAccount(accounts []openapiclientfleet.FleetDescribeAccountConfigResult, specInfo *ServicePlanSpecInfo) *AccountMatchResult {
 	for _, account := range accounts {
 		if strings.ToLower(account.CloudProviderId) == "azure" {
-			if accountConfig, ok := account.AccountConfig.(map[string]interface{}); ok {
-				if subscriptionID, ok := accountConfig["subscriptionId"].(string); ok && subscriptionID == specInfo.AzureSubscriptionID {
-					return &AccountMatchResult{
-						AccountConfigID: account.Id,
-						CloudProvider:   "azure",
-						Matched:         true,
-					}
+			if account.AzureSubscriptionID != nil && *account.AzureSubscriptionID == specInfo.AzureSubscriptionID {
+				return &AccountMatchResult{
+					AccountConfigID: account.Id,
+					CloudProvider:   "azure",
+					Matched:         true,
 				}
 			}
 		}
@@ -338,14 +329,14 @@ func matchAzureAccount(accounts []openapiclientfleet.FleetDescribeAccountConfigR
 func matchOCIAccount(accounts []openapiclientfleet.FleetDescribeAccountConfigResult, specInfo *ServicePlanSpecInfo) *AccountMatchResult {
 	for _, account := range accounts {
 		if strings.ToLower(account.CloudProviderId) == "oci" {
-			if accountConfig, ok := account.AccountConfig.(map[string]interface{}); ok {
-				if tenancyID, ok := accountConfig["tenancyId"].(string); ok && tenancyID == specInfo.OCITenancyID {
-					return &AccountMatchResult{
-						AccountConfigID: account.Id,
-						CloudProvider:   "oci",
-						Matched:         true,
-					}
-				}
+			// Note: The SDK may not have OCI fields yet, so this might need updating
+			// when OCI support is fully added to the SDK
+			// For now, return not matched
+			// TODO: Update when SDK adds OCI fields to FleetDescribeAccountConfigResult
+			return &AccountMatchResult{
+				CloudProvider: "oci",
+				Matched:       false,
+				Error:         "OCI account matching not yet supported in SDK",
 			}
 		}
 	}

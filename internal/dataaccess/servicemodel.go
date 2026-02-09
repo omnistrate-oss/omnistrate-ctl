@@ -2,7 +2,6 @@ package dataaccess
 
 import (
 	"context"
-	"fmt"
 	"net/http"
 
 	openapiclient "github.com/omnistrate-oss/omnistrate-sdk-go/v1"
@@ -83,14 +82,17 @@ func CreateServiceModel(ctx context.Context, token, serviceID, name, description
 ctxWithToken := context.WithValue(ctx, openapiclient.ContextAccessToken, token)
 apiClient := getV1Client()
 
-req := openapiclient.CreateServiceModelRequest2{
-Name: name,
-}
-if description != "" {
-req.Description = &description
+// Use empty string as default for description if not provided
+if description == "" {
+description = "Created by omnistrate-ctl"
 }
 
-resp, r, err := apiClient.ServiceModelApiAPI.ServiceModelApiCreateServiceModel(ctxWithToken, serviceID).
+req := openapiclient.CreateServiceModelRequest2{
+Name:        name,
+Description: description,
+}
+
+serviceModelID, r, err := apiClient.ServiceModelApiAPI.ServiceModelApiCreateServiceModel(ctxWithToken, serviceID).
 CreateServiceModelRequest2(req).
 Execute()
 defer func() {
@@ -102,11 +104,7 @@ if err != nil {
 return "", handleV1Error(err)
 }
 
-if resp == nil || resp.Id == "" {
-return "", fmt.Errorf("empty service model ID in response")
-}
-
-return resp.Id, nil
+return serviceModelID, nil
 }
 
 // DeleteServiceModel deletes a service model
