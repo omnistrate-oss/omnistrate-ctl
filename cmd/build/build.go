@@ -8,6 +8,8 @@ import (
 	"path/filepath"
 	"strings"
 
+	"gopkg.in/yaml.v3"
+
 	"github.com/omnistrate-oss/omnistrate-ctl/cmd/common"
 	"github.com/omnistrate-oss/omnistrate-ctl/internal/model"
 
@@ -302,18 +304,29 @@ func runBuild(cmd *cobra.Command, args []string) error {
 			}
 		}
 
-		// Determine spec type based on file name
+		// Read and analyze file content for spec type detection
 		if fileToRead != "" {
 			// Update file variable if auto-detected
 			if fileToRead != file {
 				file = fileToRead
 			}
 
-			// Determine spec type based on file name
-			if fileToRead == PlanSpecFileName {
-				specType = ServicePlanSpecType
-			} else {
-				specType = DockerComposeSpecType
+			if _, err := os.Stat(fileToRead); err == nil {
+				tempFileData, err := os.ReadFile(filepath.Clean(fileToRead))
+				if err == nil {
+					var planCheck map[string]interface{}
+					if err := yaml.Unmarshal(tempFileData, &planCheck); err == nil {
+						// Use the common function to detect spec type
+						specType = DetectSpecType(planCheck)
+					} else {
+						// Fallback to file extension based detection
+						if fileToRead == PlanSpecFileName {
+							specType = ServicePlanSpecType
+						} else {
+							specType = DockerComposeSpecType
+						}
+					}
+				}
 			}
 		}
 
