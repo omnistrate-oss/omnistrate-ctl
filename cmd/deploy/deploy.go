@@ -1626,10 +1626,10 @@ func extractCloudAccountsFromProcessedData(processedData []byte) (awsAccountID, 
 			azureTenantID = getFirstString(m, "azureTenantId", "azureTenantID", "AzureTenantID", "AzureTenantId")
 		}
 		if ociTenancyID == "" {
-			ociTenancyID = getFirstString(m, "ociTenancyId", "ociTenancyID", "OciTenancyID", "OciTenancyId")
+			ociTenancyID = getFirstString(m, "ociTenancyId", "ociTenancyID", "OciTenancyID", "OciTenancyId", "OCITenancyId")
 		}
 		if ociDomainID == "" {
-			ociDomainID = getFirstString(m, "ociDomainId", "ociDomainID", "OciDomainID", "OciDomainId")
+			ociDomainID = getFirstString(m, "ociDomainId", "ociDomainID", "OciDomainID", "OciDomainId", "OCIDomainId")
 		}
 	}
 
@@ -1891,9 +1891,9 @@ func createDeploymentYAML(
 				}
 			}
 			if ociTenancyID != "" {
-				hosted["ociTenancyID"] = ociTenancyID
+				hosted["OCITenancyId"] = ociTenancyID
 				if ociDomainID != "" {
-					hosted["ociDomainID"] = ociDomainID
+					hosted["OCIDomainId"] = ociDomainID
 				}
 			}
 			yamlDoc["deployment"].(map[string]interface{})["hostedDeployment"] = hosted
@@ -1922,9 +1922,9 @@ func createDeploymentYAML(
 				}
 			}
 			if ociTenancyID != "" {
-				hosted["ociTenancyID"] = ociTenancyID
+				hosted["OCITenancyId"] = ociTenancyID
 				if ociDomainID != "" {
-					hosted["ociDomainID"] = ociDomainID
+					hosted["OCIDomainId"] = ociDomainID
 				}
 			}
 			sp["deployment"] = map[string]interface{}{

@@ -747,6 +747,8 @@ func TestExtractCloudAccountsFromProcessedData(t *testing.T) {
 		expectedGCPProjectNumber    string
 		expectedAzureSubscriptionID string
 		expectedAzureTenantID       string
+		expectedOciTenancyID        string
+		expectedOciDomainID         string
 		expectedDeploymentType      string
 	}{
 		{
@@ -792,6 +794,20 @@ services:
 			expectedDeploymentType:      "",
 		},
 		{
+			name: "Service plan with OCI",
+			yamlContent: `
+x-omnistrate-service-plan:
+  OCITenancyId: 'ocid1.tenancy.oc1.iad.aaaaaaaaexampleuniqueID'
+  OCIDomainId: 'ocid1.domain.oc1.iad.aaaaaaaaexampleuniqueID'
+services:
+  postgres:
+    image: postgres:latest
+`,
+			expectedOciTenancyID:   "ocid1.tenancy.oc1.iad.aaaaaaaaexampleuniqueID",
+			expectedOciDomainID:    "ocid1.domain.oc1.iad.aaaaaaaaexampleuniqueID",
+			expectedDeploymentType: "",
+		},
+		{
 			name: "Empty YAML",
 			yamlContent: `
 services:
@@ -804,7 +820,7 @@ services:
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			awsAccountID, awsBootstrapRoleARN, gcpProjectID, gcpProjectNumber, _, azureSubscriptionID, azureTenantID, deploymentType := extractCloudAccountsFromProcessedData([]byte(tt.yamlContent))
+			awsAccountID, awsBootstrapRoleARN, gcpProjectID, gcpProjectNumber, _, azureSubscriptionID, azureTenantID, ociTenancyID, ociDomainID, deploymentType := extractCloudAccountsFromProcessedData([]byte(tt.yamlContent))
 
 			assert.Equal(t, tt.expectedAWSAccountID, awsAccountID)
 			assert.Equal(t, tt.expectedAWSBootstrapRoleARN, awsBootstrapRoleARN)
@@ -812,6 +828,8 @@ services:
 			assert.Equal(t, tt.expectedGCPProjectNumber, gcpProjectNumber)
 			assert.Equal(t, tt.expectedAzureSubscriptionID, azureSubscriptionID)
 			assert.Equal(t, tt.expectedAzureTenantID, azureTenantID)
+			assert.Equal(t, tt.expectedOciTenancyID, ociTenancyID)
+			assert.Equal(t, tt.expectedOciDomainID, ociDomainID)
 			assert.Equal(t, tt.expectedDeploymentType, deploymentType)
 		})
 	}
