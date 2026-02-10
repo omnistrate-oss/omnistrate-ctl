@@ -1421,8 +1421,8 @@ func appendAzureConfig(fileData []byte, azureSubscriptionID, azureTenantID strin
 // appendAzureConfig appends Azure configuration to fileData if Azure credentials are provided
 func appendOciConfig(fileData []byte, ociTenancyID, ociDomainID string) []byte {
 	if ociTenancyID != "" {
-		fileData = append(fileData, []byte(fmt.Sprintf("      OciTenancyID: '%s'\n", ociTenancyID))...)
-		fileData = append(fileData, []byte(fmt.Sprintf("      OciDomainId: '%s'\n", ociDomainID))...)
+		fileData = append(fileData, []byte(fmt.Sprintf("      OCITenancyId: '%s'\n", ociTenancyID))...)
+		fileData = append(fileData, []byte(fmt.Sprintf("      OCIDomainId: '%s'\n", ociDomainID))...)
 	}
 	return fileData
 }
