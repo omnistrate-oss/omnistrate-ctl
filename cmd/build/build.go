@@ -8,8 +8,6 @@ import (
 	"path/filepath"
 	"strings"
 
-	"gopkg.in/yaml.v3"
-
 	"github.com/omnistrate-oss/omnistrate-ctl/cmd/common"
 	"github.com/omnistrate-oss/omnistrate-ctl/internal/model"
 
@@ -304,29 +302,18 @@ func runBuild(cmd *cobra.Command, args []string) error {
 			}
 		}
 
-		// Read and analyze file content for spec type detection
+		// Determine spec type based on file name
 		if fileToRead != "" {
 			// Update file variable if auto-detected
 			if fileToRead != file {
 				file = fileToRead
 			}
 
-			if _, err := os.Stat(fileToRead); err == nil {
-				tempFileData, err := os.ReadFile(filepath.Clean(fileToRead))
-				if err == nil {
-					var planCheck map[string]interface{}
-					if err := yaml.Unmarshal(tempFileData, &planCheck); err == nil {
-						// Use the common function to detect spec type
-						specType = DetectSpecType(planCheck)
-					} else {
-						// Fallback to file extension based detection
-						if fileToRead == PlanSpecFileName {
-							specType = ServicePlanSpecType
-						} else {
-							specType = DockerComposeSpecType
-						}
-					}
-				}
+			// Determine spec type based on file name
+			if fileToRead == PlanSpecFileName {
+				specType = ServicePlanSpecType
+			} else {
+				specType = DockerComposeSpecType
 			}
 		}
 
@@ -542,6 +529,91 @@ func runBuild(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		utils.HandleSpinnerError(spinner1, sm1, err)
 		return err
+	}
+
+	if specType == ServicePlanSpecType {
+		// Parse the spec and validate account configs for ServicePlanSpec only
+		var specInfo *ServicePlanSpecInfo
+		var parseErr error
+		specInfo, parseErr = ParseServicePlanSpec(fileData)
+		if parseErr != nil {
+			utils.HandleSpinnerError(spinner1, sm1, parseErr)
+			return parseErr
+		}
+
+		// Log the parsed product tier name if available (only for ServicePlanSpec)
+		if specInfo != nil && specInfo.ProductTierName != "" && output != "json" {
+			spinner1.UpdateMessage(fmt.Sprintf("Building service '%s' with plan '%s'...", name, specInfo.ProductTierName))
+		}
+
+		// Collect account config IDs for product tier creation
+		var accountConfigIDs []string
+
+		// Check for cloud account configs in the spec and validate they exist (only for ServicePlanSpec)
+		if specInfo != nil && (specInfo.AwsAccountID != "" || specInfo.GcpProjectID != "" || specInfo.AzureSubscriptionID != "" || specInfo.OCITenancyID != "") {
+			spinner1.UpdateMessage("Validating cloud provider accounts...")
+
+			accountResult, matchErr := FindMatchingAccountConfigs(cmd.Context(), token, specInfo)
+			if matchErr != nil {
+				utils.HandleSpinnerError(spinner1, sm1, matchErr)
+				return matchErr
+			}
+
+			// Report missing accounts
+			if len(accountResult.Missing) > 0 {
+				errMsg := "Cloud account mismatch:\n"
+				for _, msg := range accountResult.Missing {
+					errMsg += "  - " + msg + "\n"
+				}
+				err = errors.New(errMsg)
+				utils.HandleSpinnerError(spinner1, sm1, err)
+				return err
+			}
+
+			// Warn about unverified accounts but continue
+			if len(accountResult.Unverified) > 0 && output != "json" {
+				for _, msg := range accountResult.Unverified {
+					utils.PrintWarning("⚠️  " + msg)
+				}
+			}
+
+			// Update spinner to show matched accounts
+			if accountResult.Matched.HasAnyAccountConfigID() {
+				matchedCount := len(accountResult.Matched.ToSlice())
+				spinner1.UpdateMessage(fmt.Sprintf("Found %d matching account config(s), building service...", matchedCount))
+				accountConfigIDs = accountResult.Matched.ToSlice()
+			}
+		}
+
+		// Step 1: Find or create service hierarchy (service -> environment -> product tier)
+		spinner1.UpdateMessage("Finding or creating service hierarchy...")
+
+		productTierName := specInfo.ProductTierName
+		if productTierName == "" {
+			productTierName = name // Use service name as product tier name if not specified
+		}
+
+		hierarchyResult, hierarchyErr := FindOrCreateServiceHierarchy(
+			cmd.Context(),
+			token,
+			name,
+			productTierName,
+			description,
+			environmentPtr,
+			environmentTypePtr,
+			specInfo.TenancyType,
+			specInfo.DeploymentModelType,
+			accountConfigIDs,
+		)
+		if hierarchyErr != nil {
+			utils.HandleSpinnerError(spinner1, sm1, hierarchyErr)
+			return hierarchyErr
+		}
+
+		// Store the hierarchy IDs
+		ServiceID = hierarchyResult.ServiceID
+		EnvironmentID = hierarchyResult.EnvironmentID
+		ProductTierID = hierarchyResult.ProductTierID
 	}
 
 	var undefinedResources map[string]string
