@@ -18,7 +18,7 @@ require (
 	github.com/mitchellh/go-homedir v1.1.0
 	github.com/mitchellh/go-wordwrap v1.0.1
 	github.com/njayp/ophis v1.1.1-0.20260128002115-67f4f99a1974
-	github.com/omnistrate-oss/omnistrate-sdk-go v0.0.92
+	github.com/omnistrate-oss/omnistrate-sdk-go v0.0.93
 	github.com/pkg/browser v0.0.0-20240102092130-5ac0b6a4141c
 	github.com/pkg/errors v0.9.1
 	github.com/rivo/tview v0.42.0

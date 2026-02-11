@@ -1,6 +1,9 @@
 package build
 
 import (
+	"encoding/base64"
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -262,4 +265,299 @@ func TestContainsOmnistrateKey(t *testing.T) {
 			assert.Equal(t, tt.expected, ContainsOmnistrateKey(tt.content))
 		})
 	}
+}
+
+func TestParseServicePlanSpec_ExtractsArtifactPaths_FromTerraform(t *testing.T) {
+	yamlContent := `
+name: Terraform
+deployment:
+  hostedDeployment:
+    AwsAccountId: "111111111111"
+services:
+  - name: terraformResource
+    type: terraform
+    terraformConfigurations:
+      configurationPerCloudProvider:
+        aws:
+          terraformPath: /
+          artifactsLocalPath: /path/to/aws/artifacts
+        gcp:
+          terraformPath: /
+          artifactsLocalPath: /path/to/gcp/artifacts
+        azure:
+          terraformPath: /
+          artifactsLocalPath: /path/to/azure/artifacts
+`
+	info, err := ParseServicePlanSpec([]byte(yamlContent))
+	require.NoError(t, err)
+	assert.NotNil(t, info.ArtifactPaths)
+	assert.Len(t, info.ArtifactPaths, 3)
+	assert.Contains(t, info.ArtifactPaths, "/path/to/aws/artifacts")
+	assert.Contains(t, info.ArtifactPaths, "/path/to/gcp/artifacts")
+	assert.Contains(t, info.ArtifactPaths, "/path/to/azure/artifacts")
+}
+
+func TestParseServicePlanSpec_ExtractsArtifactPaths_Deduplicates(t *testing.T) {
+	yamlContent := `
+name: Terraform
+deployment:
+  hostedDeployment:
+    AwsAccountId: "111111111111"
+services:
+  - name: terraformResource
+    type: terraform
+    terraformConfigurations:
+      configurationPerCloudProvider:
+        aws:
+          terraformPath: /
+          artifactsLocalPath: /shared/artifacts
+        gcp:
+          terraformPath: /
+          artifactsLocalPath: /shared/artifacts
+        azure:
+          terraformPath: /
+          artifactsLocalPath: /shared/artifacts
+`
+	info, err := ParseServicePlanSpec([]byte(yamlContent))
+	require.NoError(t, err)
+	assert.NotNil(t, info.ArtifactPaths)
+	// Same path should be deduplicated
+	assert.Len(t, info.ArtifactPaths, 1)
+	assert.Contains(t, info.ArtifactPaths, "/shared/artifacts")
+}
+
+func TestParseServicePlanSpec_ExtractsArtifactPaths_FromMultipleServices(t *testing.T) {
+	yamlContent := `
+name: MultiService
+deployment:
+  hostedDeployment:
+    AwsAccountId: "111111111111"
+services:
+  - name: terraformService
+    type: terraform
+    terraformConfigurations:
+      configurationPerCloudProvider:
+        aws:
+          terraformPath: /
+          artifactsLocalPath: /terraform/artifacts
+  - name: helmService
+    helmChartConfiguration:
+      chartName: redis
+      artifactsLocalPath: /helm/artifacts
+  - name: kustomizeService
+    kustomizeConfiguration:
+      kustomizePath: /
+      artifactsLocalPath: /kustomize/artifacts
+`
+	info, err := ParseServicePlanSpec([]byte(yamlContent))
+	require.NoError(t, err)
+	assert.NotNil(t, info.ArtifactPaths)
+	assert.Len(t, info.ArtifactPaths, 3)
+	assert.Contains(t, info.ArtifactPaths, "/terraform/artifacts")
+	assert.Contains(t, info.ArtifactPaths, "/helm/artifacts")
+	assert.Contains(t, info.ArtifactPaths, "/kustomize/artifacts")
+}
+
+func TestParseServicePlanSpec_ExtractsArtifactPaths_FromHelm(t *testing.T) {
+	yamlContent := `
+name: HelmService
+deployment:
+  hostedDeployment: {}
+services:
+  - name: redis
+    helmChartConfiguration:
+      chartName: redis
+      artifactsLocalPath: /helm/redis/artifacts
+`
+	info, err := ParseServicePlanSpec([]byte(yamlContent))
+	require.NoError(t, err)
+	assert.NotNil(t, info.ArtifactPaths)
+	assert.Len(t, info.ArtifactPaths, 1)
+	assert.Contains(t, info.ArtifactPaths, "/helm/redis/artifacts")
+}
+
+func TestParseServicePlanSpec_ExtractsArtifactPaths_FromKustomize(t *testing.T) {
+	yamlContent := `
+name: KustomizeService
+deployment:
+  hostedDeployment: {}
+services:
+  - name: app
+    kustomizeConfiguration:
+      kustomizePath: /overlays/prod
+      artifactsLocalPath: /kustomize/app/artifacts
+`
+	info, err := ParseServicePlanSpec([]byte(yamlContent))
+	require.NoError(t, err)
+	assert.NotNil(t, info.ArtifactPaths)
+	assert.Len(t, info.ArtifactPaths, 1)
+	assert.Contains(t, info.ArtifactPaths, "/kustomize/app/artifacts")
+}
+
+func TestParseServicePlanSpec_ExtractsArtifactPaths_FromOperator(t *testing.T) {
+	yamlContent := `
+name: OperatorService
+deployment:
+  hostedDeployment: {}
+services:
+  - name: operator
+    operatorCRDConfiguration:
+      crdName: myoperator
+      artifactsLocalPath: /operator/artifacts
+`
+	info, err := ParseServicePlanSpec([]byte(yamlContent))
+	require.NoError(t, err)
+	assert.NotNil(t, info.ArtifactPaths)
+	assert.Len(t, info.ArtifactPaths, 1)
+	assert.Contains(t, info.ArtifactPaths, "/operator/artifacts")
+}
+
+func TestParseServicePlanSpec_ExtractsArtifactPaths_EmptyWhenNoArtifactPaths(t *testing.T) {
+	yamlContent := `
+name: NoArtifacts
+deployment:
+  hostedDeployment: {}
+services:
+  - name: terraformResource
+    type: terraform
+    terraformConfigurations:
+      configurationPerCloudProvider:
+        aws:
+          terraformPath: /
+`
+	info, err := ParseServicePlanSpec([]byte(yamlContent))
+	require.NoError(t, err)
+	assert.Nil(t, info.ArtifactPaths)
+}
+
+func TestParseServicePlanSpec_ExtractsArtifactPaths_NoServicesSection(t *testing.T) {
+	yamlContent := `
+name: NoServices
+deployment:
+  hostedDeployment:
+    AwsAccountId: "111111111111"
+`
+	info, err := ParseServicePlanSpec([]byte(yamlContent))
+	require.NoError(t, err)
+	assert.Nil(t, info.ArtifactPaths)
+}
+
+func TestArchiveArtifactPaths_CreatesBase64Archive(t *testing.T) {
+	// Create a temporary source directory with some files
+	sourceDir, err := os.MkdirTemp("", "test-source-*")
+	require.NoError(t, err)
+	defer os.RemoveAll(sourceDir)
+
+	// Create a subdirectory to archive
+	artifactDir := filepath.Join(sourceDir, "artifacts")
+	err = os.MkdirAll(artifactDir, 0755)
+	require.NoError(t, err)
+
+	// Create some test files
+	err = os.WriteFile(filepath.Join(artifactDir, "test.txt"), []byte("test content"), 0644)
+	require.NoError(t, err)
+
+	// Archive the directory
+	result, err := ArchiveArtifactPaths(sourceDir, []string{"artifacts"})
+	require.NoError(t, err)
+
+	assert.Len(t, result, 1)
+	assert.Contains(t, result, "artifacts")
+
+	// Verify the base64 content is valid
+	base64Content := result["artifacts"]
+	assert.NotEmpty(t, base64Content)
+
+	// Verify it can be decoded
+	decoded, err := base64.StdEncoding.DecodeString(base64Content)
+	require.NoError(t, err)
+	assert.NotEmpty(t, decoded)
+}
+
+func TestArchiveArtifactPaths_MultipleDirectories(t *testing.T) {
+	// Create a temporary source directory
+	sourceDir, err := os.MkdirTemp("", "test-source-*")
+	require.NoError(t, err)
+	defer os.RemoveAll(sourceDir)
+
+	// Create subdirectories
+	err = os.MkdirAll(filepath.Join(sourceDir, "dir1"), 0755)
+	require.NoError(t, err)
+	err = os.WriteFile(filepath.Join(sourceDir, "dir1", "file1.txt"), []byte("content1"), 0644)
+	require.NoError(t, err)
+
+	err = os.MkdirAll(filepath.Join(sourceDir, "dir2"), 0755)
+	require.NoError(t, err)
+	err = os.WriteFile(filepath.Join(sourceDir, "dir2", "file2.txt"), []byte("content2"), 0644)
+	require.NoError(t, err)
+
+	// Archive multiple directories
+	result, err := ArchiveArtifactPaths(sourceDir, []string{"dir1", "dir2"})
+	require.NoError(t, err)
+
+	assert.Len(t, result, 2)
+	assert.Contains(t, result, "dir1")
+	assert.Contains(t, result, "dir2")
+}
+
+func TestArchiveArtifactPaths_EmptyPaths(t *testing.T) {
+	result, err := ArchiveArtifactPaths("/tmp", []string{})
+	require.NoError(t, err)
+	assert.Nil(t, result)
+}
+
+func TestArchiveArtifactPaths_NilPaths(t *testing.T) {
+	result, err := ArchiveArtifactPaths("/tmp", nil)
+	require.NoError(t, err)
+	assert.Nil(t, result)
+}
+
+func TestArchiveArtifactPaths_NonExistentPath(t *testing.T) {
+	_, err := ArchiveArtifactPaths("/tmp", []string{"/non/existent/path/that/does/not/exist"})
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "does not exist")
+}
+
+func TestArchiveArtifactPaths_FileNotDirectory(t *testing.T) {
+	// Create a temporary file (not a directory)
+	tmpFile, err := os.CreateTemp("", "test-file-*")
+	require.NoError(t, err)
+	defer os.Remove(tmpFile.Name())
+	tmpFile.Close()
+
+	_, err = ArchiveArtifactPaths(filepath.Dir(tmpFile.Name()), []string{filepath.Base(tmpFile.Name())})
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "is not a directory")
+}
+
+func TestArchiveArtifactPaths_NestedDirectories(t *testing.T) {
+	// Create a temporary source directory with nested structure
+	sourceDir, err := os.MkdirTemp("", "test-source-*")
+	require.NoError(t, err)
+	defer os.RemoveAll(sourceDir)
+
+	// Create a nested directory structure
+	nestedDir := filepath.Join(sourceDir, "artifacts", "subdir1", "subdir2")
+	err = os.MkdirAll(nestedDir, 0755)
+	require.NoError(t, err)
+
+	// Create files at different levels
+	err = os.WriteFile(filepath.Join(sourceDir, "artifacts", "root.txt"), []byte("root"), 0644)
+	require.NoError(t, err)
+	err = os.WriteFile(filepath.Join(sourceDir, "artifacts", "subdir1", "level1.txt"), []byte("level1"), 0644)
+	require.NoError(t, err)
+	err = os.WriteFile(filepath.Join(nestedDir, "level2.txt"), []byte("level2"), 0644)
+	require.NoError(t, err)
+
+	// Archive the directory
+	result, err := ArchiveArtifactPaths(sourceDir, []string{"artifacts"})
+	require.NoError(t, err)
+
+	assert.Len(t, result, 1)
+	assert.Contains(t, result, "artifacts")
+
+	// Verify the content is valid base64
+	decoded, err := base64.StdEncoding.DecodeString(result["artifacts"])
+	require.NoError(t, err)
+	assert.NotEmpty(t, decoded)
 }

@@ -561,12 +561,14 @@ func runBuild(cmd *cobra.Command, args []string) error {
 
 		// Collect account config IDs for product tier creation
 		var accountConfigIDs []string
+		var accountResult *AccountMatchResult
 
 		// Check for cloud account configs in the spec and validate they exist (only for ServicePlanSpec)
 		if specInfo != nil && (specInfo.AwsAccountID != "" || specInfo.GcpProjectID != "" || specInfo.AzureSubscriptionID != "" || specInfo.OCITenancyID != "") {
 			spinner1.UpdateMessage("Validating cloud provider accounts...")
 
-			accountResult, matchErr := FindMatchingAccountConfigs(cmd.Context(), token, specInfo)
+			var matchErr error
+			accountResult, matchErr = FindMatchingAccountConfigs(cmd.Context(), token, specInfo)
 			if matchErr != nil {
 				utils.HandleSpinnerError(spinner1, sm1, matchErr)
 				return matchErr
@@ -627,6 +629,74 @@ func runBuild(cmd *cobra.Command, args []string) error {
 		ServiceID = hierarchyResult.ServiceID
 		EnvironmentID = hierarchyResult.EnvironmentID
 		ProductTierID = hierarchyResult.ProductTierID
+
+		// Step 2: Upload artifacts if any are specified in the spec
+		if len(specInfo.ArtifactUploads) > 0 && !dryRun {
+			spinner1.UpdateMessage(fmt.Sprintf("Archiving %d artifact director(ies)...", len(specInfo.ArtifactPaths)))
+
+			// Archive all unique artifact paths (gzip + tar + base64 encode)
+			artifactArchives, archiveErr := ArchiveArtifactPaths(cwd, specInfo.ArtifactPaths)
+			if archiveErr != nil {
+				utils.HandleSpinnerError(spinner1, sm1, archiveErr)
+				return archiveErr
+			}
+
+			spinner1.UpdateMessage(fmt.Sprintf("Uploading %d artifact(s)...", len(specInfo.ArtifactUploads)))
+
+			// Upload each artifact to its corresponding account config
+			var uploadedArtifactIDs []string
+			for _, upload := range specInfo.ArtifactUploads {
+				base64Content, exists := artifactArchives[upload.Path]
+				if !exists {
+					uploadErr := fmt.Errorf("artifact archive not found for path '%s'", upload.Path)
+					utils.HandleSpinnerError(spinner1, sm1, uploadErr)
+					return uploadErr
+				}
+
+				// Get the account config ID for this upload based on cloud provider
+				accountConfigID := getAccountConfigIDForArtifact(upload, specInfo.DeploymentModelType, accountResult)
+
+				uploadResult, uploadErr := dataaccess.UploadArtifact(
+					cmd.Context(),
+					token,
+					base64Content,
+					upload.Path,
+					name,            // serviceName
+					productTierName, // productTierName
+					accountConfigID,
+					strings.ToUpper(environmentType), // environmentType (must be uppercase)
+				)
+				if uploadErr != nil {
+					cpInfo := ""
+					if upload.CloudProvider != "" {
+						cpInfo = fmt.Sprintf(" for %s", upload.CloudProvider)
+					}
+					utils.HandleSpinnerError(spinner1, sm1, fmt.Errorf("failed to upload artifact '%s'%s: %w", upload.Path, cpInfo, uploadErr))
+					return uploadErr
+				}
+				uploadedArtifactIDs = append(uploadedArtifactIDs, uploadResult.ArtifactID)
+				if output != "json" {
+					cpInfo := ""
+					if upload.CloudProvider != "" {
+						cpInfo = fmt.Sprintf(" (%s)", upload.CloudProvider)
+					}
+					spinner1.UpdateMessage(fmt.Sprintf("Uploaded artifact '%s'%s -> %s", upload.Path, cpInfo, uploadResult.ArtifactID))
+				}
+			}
+
+			// Wait for all artifacts to be in READY status (5 minute timeout)
+			if len(uploadedArtifactIDs) > 0 {
+				spinner1.UpdateMessage(fmt.Sprintf("Waiting for %d artifact(s) to be ready...", len(uploadedArtifactIDs)))
+
+				waitErr := waitForArtifactsReady(cmd.Context(), token, uploadedArtifactIDs)
+				if waitErr != nil {
+					utils.HandleSpinnerError(spinner1, sm1, waitErr)
+					return waitErr
+				}
+
+				spinner1.UpdateMessage(fmt.Sprintf("All %d artifact(s) are ready", len(uploadedArtifactIDs)))
+			}
+		}
 	}
 
 	var undefinedResources map[string]string

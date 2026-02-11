@@ -1,9 +1,17 @@
 package build
 
 import (
+	"archive/tar"
+	"bytes"
+	"compress/gzip"
 	"context"
+	"encoding/base64"
 	"fmt"
+	"io"
+	"os"
+	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/omnistrate-oss/omnistrate-ctl/internal/dataaccess"
 	openapiclient "github.com/omnistrate-oss/omnistrate-sdk-go/v1"
@@ -124,6 +132,15 @@ type ServicePlanSpecInfo struct {
 	AzureTenantID          string
 	OCITenancyID           string
 	OCIDomainID            string
+	ArtifactPaths          []string              // Deduplicated list of artifact local paths from services configurations
+	ArtifactUploads        []*ArtifactUploadInfo // List of artifact uploads - each entry is a (path, cloudProvider) pair
+}
+
+// ArtifactUploadInfo holds information about a single artifact upload operation
+// Each entry represents one upload: artifact path to a specific cloud provider's account
+type ArtifactUploadInfo struct {
+	Path          string // Local path to the artifact directory
+	CloudProvider string // Cloud provider this artifact is for (e.g., "aws", "gcp", "azure", "oci", or "" for non-cloud-specific)
 }
 
 // ParseServicePlanSpec parses the service plan spec YAML and extracts relevant information
@@ -144,6 +161,10 @@ func ParseServicePlanSpec(fileData []byte) (*ServicePlanSpecInfo, error) {
 	info.TenancyType = TenancyTypeCustom
 	// Extract deployment model type and account configs from top-level deployment section
 	extractDeploymentInfo(yamlContent, info)
+	// Extract and deduplicate artifact paths from services configurations
+	info.ArtifactPaths = extractArtifactPaths(yamlContent)
+	// Extract artifact uploads with cloud provider info
+	info.ArtifactUploads = extractArtifactUploads(yamlContent)
 
 	return info, nil
 }
@@ -235,6 +256,415 @@ func extractAccountFromMap(m map[string]interface{}, info *ServicePlanSpecInfo) 
 	if info.OCIDomainID == "" {
 		info.OCIDomainID = getFirstString(m, "OCIDomainId", "ociDomainId", "ociDomainID", "OCIDomainID")
 	}
+}
+
+// extractArtifactPaths extracts and deduplicates all artifactsLocalPath values from the services section
+// It looks for artifactsLocalPath in terraform, helm, kustomize, and operator configurations
+func extractArtifactPaths(yamlContent map[string]interface{}) []string {
+	pathSet := make(map[string]struct{})
+
+	// Get services array
+	services, ok := yamlContent["services"].([]interface{})
+	if !ok {
+		return nil
+	}
+
+	// Iterate through each service
+	for _, svc := range services {
+		svcMap, ok := svc.(map[string]interface{})
+		if !ok {
+			continue
+		}
+
+		// Extract from terraformConfigurations
+		extractArtifactPathsFromTerraform(svcMap, pathSet)
+
+		// Extract from helmChartConfiguration
+		extractArtifactPathsFromHelm(svcMap, pathSet)
+
+		// Extract from kustomizeConfiguration
+		extractArtifactPathsFromKustomize(svcMap, pathSet)
+
+		// Extract from operatorCRDConfiguration
+		extractArtifactPathsFromOperator(svcMap, pathSet)
+	}
+
+	// Convert set to slice
+	if len(pathSet) == 0 {
+		return nil
+	}
+
+	paths := make([]string, 0, len(pathSet))
+	for path := range pathSet {
+		paths = append(paths, path)
+	}
+
+	return paths
+}
+
+// extractArtifactPathsFromTerraform extracts artifactsLocalPath from terraformConfigurations
+func extractArtifactPathsFromTerraform(svcMap map[string]interface{}, pathSet map[string]struct{}) {
+	terraformConfigs, ok := svcMap["terraformConfigurations"].(map[string]interface{})
+	if !ok {
+		return
+	}
+
+	// Check configurationPerCloudProvider
+	perCloudProvider, ok := terraformConfigs["configurationPerCloudProvider"].(map[string]interface{})
+	if !ok {
+		return
+	}
+
+	// Iterate through each cloud provider (aws, gcp, azure, oci)
+	cloudProviders := []string{"aws", "gcp", "azure", "oci"}
+	for _, cp := range cloudProviders {
+		cpConfig, ok := perCloudProvider[cp].(map[string]interface{})
+		if !ok {
+			continue
+		}
+
+		if path, ok := cpConfig["artifactsLocalPath"].(string); ok && path != "" {
+			pathSet[path] = struct{}{}
+		}
+	}
+}
+
+// extractArtifactPathsFromHelm extracts artifactsLocalPath from helmChartConfiguration
+func extractArtifactPathsFromHelm(svcMap map[string]interface{}, pathSet map[string]struct{}) {
+	helmConfig, ok := svcMap["helmChartConfiguration"].(map[string]interface{})
+	if !ok {
+		return
+	}
+
+	if path, ok := helmConfig["artifactsLocalPath"].(string); ok && path != "" {
+		pathSet[path] = struct{}{}
+	}
+}
+
+// extractArtifactPathsFromKustomize extracts artifactsLocalPath from kustomizeConfiguration
+func extractArtifactPathsFromKustomize(svcMap map[string]interface{}, pathSet map[string]struct{}) {
+	kustomizeConfig, ok := svcMap["kustomizeConfiguration"].(map[string]interface{})
+	if !ok {
+		return
+	}
+
+	if path, ok := kustomizeConfig["artifactsLocalPath"].(string); ok && path != "" {
+		pathSet[path] = struct{}{}
+	}
+}
+
+// extractArtifactPathsFromOperator extracts artifactsLocalPath from operatorCRDConfiguration
+func extractArtifactPathsFromOperator(svcMap map[string]interface{}, pathSet map[string]struct{}) {
+	operatorConfig, ok := svcMap["operatorCRDConfiguration"].(map[string]interface{})
+	if !ok {
+		return
+	}
+
+	if path, ok := operatorConfig["artifactsLocalPath"].(string); ok && path != "" {
+		pathSet[path] = struct{}{}
+	}
+}
+
+// extractArtifactUploads extracts all artifact upload pairs (path, cloudProvider) from services configurations
+// This returns a list where each entry is one upload operation needed
+func extractArtifactUploads(yamlContent map[string]interface{}) []*ArtifactUploadInfo {
+	var uploads []*ArtifactUploadInfo
+	seen := make(map[string]bool) // Track unique (path, cloudProvider) pairs
+
+	// Get services array
+	services, ok := yamlContent["services"].([]interface{})
+	if !ok {
+		return uploads
+	}
+
+	// Iterate through each service
+	for _, svc := range services {
+		svcMap, ok := svc.(map[string]interface{})
+		if !ok {
+			continue
+		}
+
+		// Extract from terraformConfigurations - has per-cloud-provider configs
+		extractTerraformArtifactUploads(svcMap, &uploads, seen)
+
+		// Extract from helmChartConfiguration - no specific cloud provider
+		extractHelmArtifactUploads(svcMap, &uploads, seen)
+
+		// Extract from kustomizeConfiguration - no specific cloud provider
+		extractKustomizeArtifactUploads(svcMap, &uploads, seen)
+
+		// Extract from operatorCRDConfiguration - no specific cloud provider
+		extractOperatorArtifactUploads(svcMap, &uploads, seen)
+	}
+
+	return uploads
+}
+
+// extractTerraformArtifactUploads extracts artifact uploads from terraform configurations
+func extractTerraformArtifactUploads(svcMap map[string]interface{}, uploads *[]*ArtifactUploadInfo, seen map[string]bool) {
+	terraformConfigs, ok := svcMap["terraformConfigurations"].(map[string]interface{})
+	if !ok {
+		return
+	}
+
+	perCloudProvider, ok := terraformConfigs["configurationPerCloudProvider"].(map[string]interface{})
+	if !ok {
+		return
+	}
+
+	cloudProviders := []string{"aws", "gcp", "azure", "oci"}
+	for _, cp := range cloudProviders {
+		cpConfig, ok := perCloudProvider[cp].(map[string]interface{})
+		if !ok {
+			continue
+		}
+
+		if path, ok := cpConfig["artifactsLocalPath"].(string); ok && path != "" {
+			key := path + "|" + cp
+			if !seen[key] {
+				seen[key] = true
+				*uploads = append(*uploads, &ArtifactUploadInfo{
+					Path:          path,
+					CloudProvider: cp,
+				})
+			}
+		}
+	}
+}
+
+// extractHelmArtifactUploads extracts artifact uploads from helm configuration
+func extractHelmArtifactUploads(svcMap map[string]interface{}, uploads *[]*ArtifactUploadInfo, seen map[string]bool) {
+	helmConfig, ok := svcMap["helmChartConfiguration"].(map[string]interface{})
+	if !ok {
+		return
+	}
+
+	if path, ok := helmConfig["artifactsLocalPath"].(string); ok && path != "" {
+		key := path + "|"
+		if !seen[key] {
+			seen[key] = true
+			*uploads = append(*uploads, &ArtifactUploadInfo{
+				Path:          path,
+				CloudProvider: "", // No specific cloud provider
+			})
+		}
+	}
+}
+
+// extractKustomizeArtifactUploads extracts artifact uploads from kustomize configuration
+func extractKustomizeArtifactUploads(svcMap map[string]interface{}, uploads *[]*ArtifactUploadInfo, seen map[string]bool) {
+	kustomizeConfig, ok := svcMap["kustomizeConfiguration"].(map[string]interface{})
+	if !ok {
+		return
+	}
+
+	if path, ok := kustomizeConfig["artifactsLocalPath"].(string); ok && path != "" {
+		key := path + "|"
+		if !seen[key] {
+			seen[key] = true
+			*uploads = append(*uploads, &ArtifactUploadInfo{
+				Path:          path,
+				CloudProvider: "", // No specific cloud provider
+			})
+		}
+	}
+}
+
+// extractOperatorArtifactUploads extracts artifact uploads from operator configuration
+func extractOperatorArtifactUploads(svcMap map[string]interface{}, uploads *[]*ArtifactUploadInfo, seen map[string]bool) {
+	operatorConfig, ok := svcMap["operatorCRDConfiguration"].(map[string]interface{})
+	if !ok {
+		return
+	}
+
+	if path, ok := operatorConfig["artifactsLocalPath"].(string); ok && path != "" {
+		key := path + "|"
+		if !seen[key] {
+			seen[key] = true
+			*uploads = append(*uploads, &ArtifactUploadInfo{
+				Path:          path,
+				CloudProvider: "", // No specific cloud provider
+			})
+		}
+	}
+}
+
+// getAccountConfigIDForArtifact returns the account config ID to use for an artifact upload
+// For customer hosted: use the specific cloud provider's account config
+// For BYOA/on-prem: use the first (central) account config
+func getAccountConfigIDForArtifact(
+	upload *ArtifactUploadInfo,
+	deploymentModelType string,
+	accountResult *AccountMatchResult,
+) string {
+	// For BYOA or on-prem models, always use the first available account config
+	if deploymentModelType == DeploymentModelBYOA ||
+		deploymentModelType == DeploymentModelOnPrem ||
+		deploymentModelType == DeploymentModelOnPremCopilot {
+		if accountResult != nil && accountResult.Matched.HasAnyAccountConfigID() {
+			ids := accountResult.Matched.ToSlice()
+			if len(ids) > 0 {
+				return ids[0]
+			}
+		}
+		return ""
+	}
+
+	// For customer hosted model, use the specific cloud provider's account config
+	if upload.CloudProvider == "" {
+		// No specific cloud provider, use first available
+		if accountResult != nil && accountResult.Matched.HasAnyAccountConfigID() {
+			ids := accountResult.Matched.ToSlice()
+			if len(ids) > 0 {
+				return ids[0]
+			}
+		}
+		return ""
+	}
+
+	// Map cloud provider to account config ID
+	if accountResult == nil {
+		return ""
+	}
+
+	switch upload.CloudProvider {
+	case "aws":
+		return accountResult.Matched.AwsAccountConfigID
+	case "gcp":
+		return accountResult.Matched.GcpAccountConfigID
+	case "azure":
+		return accountResult.Matched.AzureAccountConfigID
+	case "oci":
+		return accountResult.Matched.OciAccountConfigID
+	default:
+		return ""
+	}
+}
+
+// ArchiveArtifactPaths creates tar.gz archives for each artifact path and returns base64 encoded content
+// baseDir is the directory from which relative paths are resolved
+// Returns a map of relative path to base64 encoded tar.gz content
+func ArchiveArtifactPaths(baseDir string, artifactPaths []string) (map[string]string, error) {
+	if len(artifactPaths) == 0 {
+		return nil, nil
+	}
+
+	result := make(map[string]string)
+
+	for _, artifactPath := range artifactPaths {
+		// Resolve the artifact path relative to baseDir
+		resolvedPath := artifactPath
+		if !filepath.IsAbs(artifactPath) {
+			resolvedPath = filepath.Join(baseDir, artifactPath)
+		}
+
+		// Clean the path
+		resolvedPath = filepath.Clean(resolvedPath)
+
+		// Check if the directory exists
+		info, err := os.Stat(resolvedPath)
+		if err != nil {
+			return nil, fmt.Errorf("artifact path '%s' does not exist: %w", artifactPath, err)
+		}
+		if !info.IsDir() {
+			return nil, fmt.Errorf("artifact path '%s' is not a directory", artifactPath)
+		}
+
+		// Create the tar.gz archive in memory and encode to base64
+		base64Content, err := createTarGzBase64(resolvedPath)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create archive for '%s': %w", artifactPath, err)
+		}
+
+		result[artifactPath] = base64Content
+	}
+
+	return result, nil
+}
+
+// createTarGzBase64 creates a tar.gz archive of a directory and returns base64 encoded content
+func createTarGzBase64(sourceDir string) (string, error) {
+	// Create a buffer to write the archive to
+	var buf bytes.Buffer
+
+	// Create gzip writer
+	gzWriter := gzip.NewWriter(&buf)
+
+	// Create tar writer
+	tarWriter := tar.NewWriter(gzWriter)
+
+	// Walk through the source directory
+	err := filepath.Walk(sourceDir, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+
+		// Get the relative path
+		relPath, err := filepath.Rel(sourceDir, path)
+		if err != nil {
+			return fmt.Errorf("failed to get relative path: %w", err)
+		}
+
+		// Skip the root directory itself
+		if relPath == "." {
+			return nil
+		}
+
+		// Create tar header
+		header, err := tar.FileInfoHeader(info, "")
+		if err != nil {
+			return fmt.Errorf("failed to create tar header: %w", err)
+		}
+
+		// Use relative path as the name in the archive
+		header.Name = relPath
+
+		// Handle symlinks
+		if info.Mode()&os.ModeSymlink != 0 {
+			link, err := os.Readlink(path)
+			if err != nil {
+				return fmt.Errorf("failed to read symlink: %w", err)
+			}
+			header.Linkname = link
+		}
+
+		// Write header
+		if err := tarWriter.WriteHeader(header); err != nil {
+			return fmt.Errorf("failed to write tar header: %w", err)
+		}
+
+		// If it's a regular file, write its content
+		if info.Mode().IsRegular() {
+			file, err := os.Open(path)
+			if err != nil {
+				return fmt.Errorf("failed to open file: %w", err)
+			}
+			defer file.Close()
+
+			if _, err := io.Copy(tarWriter, file); err != nil {
+				return fmt.Errorf("failed to write file content: %w", err)
+			}
+		}
+
+		return nil
+	})
+
+	if err != nil {
+		return "", err
+	}
+
+	// Close tar writer first, then gzip writer
+	if err := tarWriter.Close(); err != nil {
+		return "", fmt.Errorf("failed to close tar writer: %w", err)
+	}
+	if err := gzWriter.Close(); err != nil {
+		return "", fmt.Errorf("failed to close gzip writer: %w", err)
+	}
+
+	// Encode to base64 using standard encoding
+	base64Content := base64.StdEncoding.EncodeToString(buf.Bytes())
+
+	return base64Content, nil
 }
 
 // MatchedAccountConfigs holds the matched account config IDs for each cloud provider
@@ -734,4 +1164,50 @@ func findOrCreateProductTier(ctx context.Context, token, serviceID, serviceModel
 	}
 
 	return productTierID, true, nil
+}
+
+// waitForArtifactsReady polls the artifact status until all artifacts are in READY status
+// Timeout is 5 minutes. Status can be "READY", "UPLOADING", or "FAILED"
+func waitForArtifactsReady(ctx context.Context, token string, artifactIDs []string) error {
+	const (
+		timeout      = 5 * time.Minute
+		pollInterval = 5 * time.Second
+		statusReady  = "READY"
+		statusFailed = "FAILED"
+	)
+
+	deadline := time.Now().Add(timeout)
+
+	pendingArtifacts := make(map[string]bool)
+	for _, id := range artifactIDs {
+		pendingArtifacts[id] = true
+	}
+
+	for time.Now().Before(deadline) {
+		for artifactID := range pendingArtifacts {
+			result, err := dataaccess.DescribeArtifact(ctx, token, artifactID)
+			if err != nil {
+				return fmt.Errorf("failed to describe artifact %s: %w", artifactID, err)
+			}
+
+			if result.Status == statusReady {
+				delete(pendingArtifacts, artifactID)
+			} else if result.Status == statusFailed {
+				return fmt.Errorf("artifact %s failed to process", artifactID)
+			}
+			// If status is UPLOADING, continue waiting
+		}
+
+		if len(pendingArtifacts) == 0 {
+			return nil
+		}
+
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(pollInterval):
+		}
+	}
+
+	return fmt.Errorf("timeout after 5 minutes waiting for artifacts to be ready, %d artifacts still pending", len(pendingArtifacts))
 }
