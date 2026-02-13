@@ -641,11 +641,15 @@ func runBuild(cmd *cobra.Command, args []string) error {
 				return archiveErr
 			}
 
-			spinner1.UpdateMessage(fmt.Sprintf("Uploading %d artifact(s)...", len(specInfo.ArtifactUploads)))
+			// Deduplicate uploads based on (path, accountConfigID) pairs
+			// For BYOA/on-prem, all cloud providers use the same account config, so we only upload once
+			dedupedUploads := DeduplicateArtifactUploads(specInfo.ArtifactUploads, specInfo.DeploymentModelType, accountResult)
+
+			spinner1.UpdateMessage(fmt.Sprintf("Uploading %d artifact(s)...", len(dedupedUploads)))
 
 			// Upload each artifact to its corresponding account config
 			var uploadedArtifactIDs []string
-			for _, upload := range specInfo.ArtifactUploads {
+			for _, upload := range dedupedUploads {
 				base64Content, exists := artifactArchives[upload.Path]
 				if !exists {
 					uploadErr := fmt.Errorf("artifact archive not found for path '%s'", upload.Path)

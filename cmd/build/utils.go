@@ -531,6 +531,38 @@ func getAccountConfigIDForArtifact(
 	}
 }
 
+// DeduplicateArtifactUploads deduplicates artifact uploads based on unique (path, accountConfigID) pairs
+// For BYOA/on-prem models, all cloud providers use the same single account config, so we should only
+// upload once per unique path+account combo instead of once per cloud provider
+func DeduplicateArtifactUploads(
+	uploads []*ArtifactUploadInfo,
+	deploymentModelType string,
+	accountResult *AccountMatchResult,
+) []*ArtifactUploadInfo {
+	if len(uploads) == 0 {
+		return uploads
+	}
+
+	// Track unique (path, accountConfigID) pairs
+	seen := make(map[string]bool)
+	var deduped []*ArtifactUploadInfo
+
+	for _, upload := range uploads {
+		// Get the account config ID for this upload
+		accountConfigID := getAccountConfigIDForArtifact(upload, deploymentModelType, accountResult)
+
+		// Create a unique key based on path and account config ID
+		key := upload.Path + "|" + accountConfigID
+
+		if !seen[key] {
+			seen[key] = true
+			deduped = append(deduped, upload)
+		}
+	}
+
+	return deduped
+}
+
 // ArchiveArtifactPaths creates tar.gz archives for each artifact path and returns base64 encoded content
 // baseDir is the directory from which relative paths are resolved
 // Returns a map of relative path to base64 encoded tar.gz content
