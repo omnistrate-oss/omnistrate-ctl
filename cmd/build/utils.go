@@ -26,7 +26,6 @@ const (
 
 // Deployment model type constants
 const (
-	DeploymentModelHosted         = "hostedDeployment"
 	DeploymentModelCustomerHosted = "customerHostedDeployment"
 	DeploymentModelBYOA           = "byoaDeployment"
 	DeploymentModelOnPrem         = "onPremDeployment"
@@ -176,16 +175,7 @@ func extractDeploymentInfo(yamlContent map[string]interface{}, info *ServicePlan
 			if hosted, exists := depMap["hostedDeployment"]; exists {
 				if hostedMap, ok := hosted.(map[string]interface{}); ok {
 					extractAccountFromMap(hostedMap, info)
-					// If hostedDeployment has cloud account info, it's CUSTOMER_HOSTED
-					// Only if there's no account info, it's OMNISTRATE_HOSTED
-					if info.AwsAccountID != "" || info.GcpProjectID != "" || info.AzureSubscriptionID != "" || info.OCITenancyID != "" {
-						info.DeploymentModelType = DeploymentModelCustomerHosted
-					} else {
-						info.DeploymentModelType = DeploymentModelHosted
-					}
-				} else {
-					// hostedDeployment is empty or not a map, treat as OMNISTRATE_HOSTED
-					info.DeploymentModelType = DeploymentModelHosted
+					info.DeploymentModelType = DeploymentModelCustomerHosted
 				}
 			}
 			if byoa, exists := depMap["byoaDeployment"]; exists {
@@ -1124,8 +1114,6 @@ func findOrCreateServiceModel(ctx context.Context, token, serviceID, serviceAPII
 // DeploymentModelToServiceModelType converts deployment model type to service model type
 func DeploymentModelToServiceModelType(deploymentModelType string) string {
 	switch deploymentModelType {
-	case DeploymentModelHosted:
-		return ServiceModelTypeOmnistrateHosted
 	case DeploymentModelCustomerHosted:
 		return ServiceModelTypeCustomerHosted
 	case DeploymentModelBYOA:
