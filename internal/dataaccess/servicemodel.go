@@ -3,6 +3,7 @@ package dataaccess
 import (
 	"context"
 	"net/http"
+	"strings"
 
 	openapiclient "github.com/omnistrate-oss/omnistrate-sdk-go/v1"
 )
@@ -75,4 +76,65 @@ func DisableServiceModelFeature(ctx context.Context, token, serviceID, serviceMo
 	}
 
 	return
+}
+
+// CreateServiceModel creates a new service model with model type and account config IDs
+// serviceApiID: the service API ID this model belongs to
+// modelType: CUSTOMER_HOSTED, OMNISTRATE_HOSTED, OMNISTRATE_DEDICATED, etc.
+func CreateServiceModel(ctx context.Context, token, serviceID, serviceApiID, name, description, modelType string, accountConfigIDs []string) (serviceModelID string, err error) {
+	ctxWithToken := context.WithValue(ctx, openapiclient.ContextAccessToken, token)
+	apiClient := getV1Client()
+	var r *http.Response
+	defer func() {
+		if r != nil {
+			_ = r.Body.Close()
+		}
+	}()
+
+	req := openapiclient.CreateServiceModelRequest2{
+		Name:         name,
+		Description:  description,
+		ServiceApiId: serviceApiID,
+	}
+
+	// Set model type if provided
+	if modelType != "" {
+		req.ModelType = modelType
+	}
+
+	// Set account config IDs if provided
+	if len(accountConfigIDs) > 0 {
+		req.AccountConfigIds = accountConfigIDs
+	}
+
+	resp, r, err := apiClient.ServiceModelApiAPI.ServiceModelApiCreateServiceModel(ctxWithToken, serviceID).
+		CreateServiceModelRequest2(req).Execute()
+
+	err = handleV1Error(err)
+	if err != nil {
+		return "", err
+	}
+
+	// Clean up the response ID (remove surrounding quotes and newlines)
+	return strings.Trim(resp, "\"\n\t "), nil
+}
+
+func DeleteServiceModel(ctx context.Context, token, serviceID, serviceModelID string) error {
+	ctxWithToken := context.WithValue(ctx, openapiclient.ContextAccessToken, token)
+	apiClient := getV1Client()
+	var r *http.Response
+	defer func() {
+		if r != nil {
+			_ = r.Body.Close()
+		}
+	}()
+
+	r, err := apiClient.ServiceModelApiAPI.ServiceModelApiDeleteServiceModel(ctxWithToken, serviceID, serviceModelID).Execute()
+
+	err = handleV1Error(err)
+	if err != nil {
+		return err
+	}
+
+	return nil
 }

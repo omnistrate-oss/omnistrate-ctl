@@ -544,6 +544,165 @@ func runBuild(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
+	if specType == ServicePlanSpecType {
+		// Parse the spec and validate account configs for ServicePlanSpec only
+		var specInfo *ServicePlanSpecInfo
+		var parseErr error
+		specInfo, parseErr = ParseServicePlanSpec(fileData)
+		if parseErr != nil {
+			utils.HandleSpinnerError(spinner1, sm1, parseErr)
+			return parseErr
+		}
+
+		// Log the parsed product tier name if available (only for ServicePlanSpec)
+		if specInfo != nil && specInfo.ProductTierName != "" && output != "json" {
+			spinner1.UpdateMessage(fmt.Sprintf("Building service '%s' with plan '%s'...", name, specInfo.ProductTierName))
+		}
+
+		// Collect account config IDs for product tier creation
+		var accountConfigIDs []string
+		var accountResult *AccountMatchResult
+
+		// Check for cloud account configs in the spec and validate they exist (only for ServicePlanSpec)
+		if specInfo != nil && (specInfo.AwsAccountID != "" || specInfo.GcpProjectID != "" || specInfo.AzureSubscriptionID != "" || specInfo.OCITenancyID != "") {
+			spinner1.UpdateMessage("Validating cloud provider accounts...")
+
+			var matchErr error
+			accountResult, matchErr = FindMatchingAccountConfigs(cmd.Context(), token, specInfo)
+			if matchErr != nil {
+				utils.HandleSpinnerError(spinner1, sm1, matchErr)
+				return matchErr
+			}
+
+			// Report missing accounts
+			if len(accountResult.Missing) > 0 {
+				errMsg := "Cloud account mismatch:\n"
+				for _, msg := range accountResult.Missing {
+					errMsg += "  - " + msg + "\n"
+				}
+				err = errors.New(errMsg)
+				utils.HandleSpinnerError(spinner1, sm1, err)
+				return err
+			}
+
+			// Warn about unverified accounts but continue
+			if len(accountResult.Unverified) > 0 && output != "json" {
+				for _, msg := range accountResult.Unverified {
+					utils.PrintWarning("⚠️  " + msg)
+				}
+			}
+
+			// Update spinner to show matched accounts
+			if accountResult.Matched.HasAnyAccountConfigID() {
+				matchedCount := len(accountResult.Matched.ToSlice())
+				spinner1.UpdateMessage(fmt.Sprintf("Found %d matching account config(s), building service...", matchedCount))
+				accountConfigIDs = accountResult.Matched.ToSlice()
+			}
+		}
+
+		// Step 1: Find or create service hierarchy (service -> environment -> product tier)
+		spinner1.UpdateMessage("Finding or creating service hierarchy...")
+
+		productTierName := specInfo.ProductTierName
+		if productTierName == "" {
+			productTierName = name // Use service name as product tier name if not specified
+		}
+
+		hierarchyResult, hierarchyErr := FindOrCreateServiceHierarchy(
+			cmd.Context(),
+			token,
+			name,
+			productTierName,
+			description,
+			environmentPtr,
+			environmentTypePtr,
+			specInfo.TenancyType,
+			specInfo.DeploymentModelType,
+			accountConfigIDs,
+		)
+		if hierarchyErr != nil {
+			utils.HandleSpinnerError(spinner1, sm1, hierarchyErr)
+			return hierarchyErr
+		}
+
+		// Store the hierarchy IDs
+		ServiceID = hierarchyResult.ServiceID
+		EnvironmentID = hierarchyResult.EnvironmentID
+		ProductTierID = hierarchyResult.ProductTierID
+
+		// Step 2: Upload artifacts if any are specified in the spec
+		if len(specInfo.ArtifactUploads) > 0 && !dryRun {
+			spinner1.UpdateMessage(fmt.Sprintf("Archiving %d artifact director(ies)...", len(specInfo.ArtifactPaths)))
+
+			// Archive all unique artifact paths (gzip + tar + base64 encode)
+			artifactArchives, archiveErr := ArchiveArtifactPaths(cwd, specInfo.ArtifactPaths)
+			if archiveErr != nil {
+				utils.HandleSpinnerError(spinner1, sm1, archiveErr)
+				return archiveErr
+			}
+
+			// Deduplicate uploads based on (path, accountConfigID) pairs
+			// For BYOA/on-prem, all cloud providers use the same account config, so we only upload once
+			dedupedUploads := DeduplicateArtifactUploads(specInfo.ArtifactUploads, specInfo.DeploymentModelType, accountResult)
+
+			spinner1.UpdateMessage(fmt.Sprintf("Uploading %d artifact(s)...", len(dedupedUploads)))
+
+			// Upload each artifact to its corresponding account config
+			var uploadedArtifactIDs []string
+			for _, upload := range dedupedUploads {
+				base64Content, exists := artifactArchives[upload.Path]
+				if !exists {
+					uploadErr := fmt.Errorf("artifact archive not found for path '%s'", upload.Path)
+					utils.HandleSpinnerError(spinner1, sm1, uploadErr)
+					return uploadErr
+				}
+
+				// Get the account config ID for this upload based on cloud provider
+				accountConfigID := getAccountConfigIDForArtifact(upload, specInfo.DeploymentModelType, accountResult)
+
+				uploadResult, uploadErr := dataaccess.UploadArtifact(
+					cmd.Context(),
+					token,
+					base64Content,
+					upload.Path,
+					name,            // serviceName
+					productTierName, // productTierName
+					accountConfigID,
+					strings.ToUpper(environmentType), // environmentType (must be uppercase)
+				)
+				if uploadErr != nil {
+					cpInfo := ""
+					if upload.CloudProvider != "" {
+						cpInfo = fmt.Sprintf(" for %s", upload.CloudProvider)
+					}
+					utils.HandleSpinnerError(spinner1, sm1, fmt.Errorf("failed to upload artifact '%s'%s: %w", upload.Path, cpInfo, uploadErr))
+					return uploadErr
+				}
+				uploadedArtifactIDs = append(uploadedArtifactIDs, uploadResult.ArtifactID)
+				if output != "json" {
+					cpInfo := ""
+					if upload.CloudProvider != "" {
+						cpInfo = fmt.Sprintf(" (%s)", upload.CloudProvider)
+					}
+					spinner1.UpdateMessage(fmt.Sprintf("Uploaded artifact '%s'%s -> %s", upload.Path, cpInfo, uploadResult.ArtifactID))
+				}
+			}
+
+			// Wait for all artifacts to be in READY status (5 minute timeout)
+			if len(uploadedArtifactIDs) > 0 {
+				spinner1.UpdateMessage(fmt.Sprintf("Waiting for %d artifact(s) to be ready...", len(uploadedArtifactIDs)))
+
+				waitErr := waitForArtifactsReady(cmd.Context(), token, uploadedArtifactIDs)
+				if waitErr != nil {
+					utils.HandleSpinnerError(spinner1, sm1, waitErr)
+					return waitErr
+				}
+
+				spinner1.UpdateMessage(fmt.Sprintf("All %d artifact(s) are ready", len(uploadedArtifactIDs)))
+			}
+		}
+	}
+
 	var undefinedResources map[string]string
 	var isNewVersionCreated bool
 	ServiceID, EnvironmentID, ProductTierID, undefinedResources, isNewVersionCreated, err = BuildService(

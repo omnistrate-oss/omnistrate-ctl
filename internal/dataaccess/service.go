@@ -3,6 +3,7 @@ package dataaccess
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	openapiclient "github.com/omnistrate-oss/omnistrate-sdk-go/v1"
 )
@@ -99,4 +100,32 @@ func BuildServiceFromComposeSpec(ctx context.Context, token string, request open
 	}
 
 	return resp, nil
+}
+
+func CreateService(ctx context.Context, token, name, description string) (serviceID string, err error) {
+	ctxWithToken := context.WithValue(ctx, openapiclient.ContextAccessToken, token)
+
+	apiClient := getV1Client()
+
+	req := openapiclient.CreateServiceRequest2{
+		Name:        name,
+		Description: description,
+	}
+
+	resp, r, err := apiClient.ServiceApiAPI.ServiceApiCreateService(ctxWithToken).
+		CreateServiceRequest2(req).Execute()
+
+	defer func() {
+		if r != nil {
+			_ = r.Body.Close()
+		}
+	}()
+
+	err = handleV1Error(err)
+	if err != nil {
+		return "", err
+	}
+
+	// Clean up the response ID (remove surrounding quotes and newlines)
+	return strings.Trim(resp, "\"\n\t "), nil
 }

@@ -13,7 +13,6 @@ func ListServiceOfferings(ctx context.Context, token, orgID string) (inventory *
 	apiClient := getFleetClient()
 
 	req := apiClient.InventoryApiAPI.InventoryApiListServiceOfferings(ctxWithToken)
-	req = req.OrgId(orgID)
 
 	var r *http.Response
 	defer func() {
