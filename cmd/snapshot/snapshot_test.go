@@ -10,7 +10,6 @@ func TestSnapshotSubcommandsRegistered(t *testing.T) {
 	require := require.New(t)
 
 	expectedCommands := []string{
-		"copy",
 		"list",
 		"delete",
 		"restore",
@@ -24,28 +23,6 @@ func TestSnapshotSubcommandsRegistered(t *testing.T) {
 	for _, expected := range expectedCommands {
 		require.Contains(actualCommands, expected, "Expected subcommand %s not found", expected)
 	}
-}
-
-func TestCopyCommandHasCreateAlias(t *testing.T) {
-	require := require.New(t)
-
-	require.Contains(copyCmd.Aliases, "create", "copy command should have 'create' as an alias")
-}
-
-func TestCopyCommandFlags(t *testing.T) {
-	require := require.New(t)
-
-	require.Contains(copyCmd.Use, "copy")
-	require.NotEmpty(copyCmd.Example)
-	require.True(copyCmd.SilenceUsage)
-
-	snapshotIDFlag := copyCmd.Flags().Lookup("snapshot-id")
-	require.NotNil(snapshotIDFlag, "Expected flag 'snapshot-id' not found")
-	require.Equal("string", snapshotIDFlag.Value.Type())
-
-	targetRegionFlag := copyCmd.Flags().Lookup("target-region")
-	require.NotNil(targetRegionFlag, "Expected flag 'target-region' not found")
-	require.Equal("string", targetRegionFlag.Value.Type())
 }
 
 func TestDeleteCommandFlags(t *testing.T) {

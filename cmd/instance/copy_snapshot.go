@@ -22,13 +22,11 @@ omnistrate-ctl instance copy-snapshot instance-abcd1234 --target-region us-east1
 
 var copySnapshotCmd = &cobra.Command{
 	Use:          "copy-snapshot [instance-id] --snapshot-id <snapshot-id> --target-region <region>",
-	Aliases:      []string{"create-snapshot"},
 	Short:        "Copy an instance snapshot to another region",
 	Long:         `This command helps you copy an instance snapshot to a different region in the same cloud account for redundancy or disaster recovery. Do not support cross-cloud / cross-account snapshot copies at this time.`,
 	Example:      copySnapshotExample,
 	RunE:         runCopySnapshot,
 	SilenceUsage: true,
-	Deprecated:   "use 'omnistrate-ctl snapshot copy' instead",
 }
 
 func init() {
