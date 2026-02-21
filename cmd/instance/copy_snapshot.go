@@ -31,7 +31,7 @@ var copySnapshotCmd = &cobra.Command{
 
 func init() {
 	copySnapshotCmd.Args = cobra.ExactArgs(1)
-	copySnapshotCmd.Flags().String("snapshot-id", "", "The ID of the snapshot or backup to copy. If not provided, the latest snapshot will be used.")
+	copySnapshotCmd.Flags().String("snapshot-id", "", "The ID of the snapshot to copy. If not provided, the latest snapshot will be used.")
 	copySnapshotCmd.Flags().String("target-region", "", "The region to copy the snapshot into")
 
 	if err := copySnapshotCmd.MarkFlagRequired("target-region"); err != nil {
