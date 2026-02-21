@@ -1,8 +1,6 @@
 package instance
 
 import (
-	"errors"
-
 	"github.com/chelnak/ysmrr"
 	"github.com/omnistrate-oss/omnistrate-ctl/cmd/common"
 	"github.com/omnistrate-oss/omnistrate-ctl/internal/config"
@@ -34,12 +32,6 @@ func init() {
 
 func runCreateSnapshot(cmd *cobra.Command, args []string) error {
 	defer config.CleanupArgsAndFlags(cmd, &args)
-
-	if len(args) == 0 {
-		err := errors.New("instance id is required")
-		utils.PrintError(err)
-		return err
-	}
 
 	instanceID := args[0]
 

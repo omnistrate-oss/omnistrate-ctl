@@ -1,7 +1,6 @@
 package instance
 
 import (
-	"errors"
 	"fmt"
 
 	"github.com/chelnak/ysmrr"
@@ -37,12 +36,6 @@ func init() {
 
 func runDeleteSnapshot(cmd *cobra.Command, args []string) error {
 	defer config.CleanupArgsAndFlags(cmd, &args)
-
-	if len(args) == 0 {
-		err := errors.New("instance id is required")
-		utils.PrintError(err)
-		return err
-	}
 
 	instanceID := args[0]
 
