@@ -1,4 +1,4 @@
-# CLAUDE.md - CLI Development Guidelines
+# AGENTS.md - CLI Development Guidelines
 
 ## Key Documentation
 
