@@ -1,26 +1,28 @@
 ## omnistrate-ctl snapshot list
 
-List all snapshots for an instance
+List all snapshots for a service environment
 
 ### Synopsis
 
-This command helps you list all snapshots available for your instance.
+This command helps you list all snapshots available across all instances in a service environment.
 
 ```
-omnistrate-ctl snapshot list [instance-id] [flags]
+omnistrate-ctl snapshot list --service-id <service-id> --environment-id <environment-id> [flags]
 ```
 
 ### Examples
 
 ```
-# List snapshots for an instance
-omnistrate-ctl snapshot list instance-abcd1234
+# List all snapshots for a service environment
+omnistrate-ctl snapshot list --service-id service-abcd --environment-id env-1234
 ```
 
 ### Options
 
 ```
-  -h, --help   help for list
+      --environment-id string   The ID of the environment (required)
+  -h, --help                    help for list
+      --service-id string       The ID of the service (required)
 ```
 
 ### Options inherited from parent commands

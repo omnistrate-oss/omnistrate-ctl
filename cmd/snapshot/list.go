@@ -13,21 +13,30 @@ import (
 )
 
 const (
-	listExample = `# List snapshots for an instance
-omnistrate-ctl snapshot list instance-abcd1234`
+	listExample = `# List all snapshots for a service environment
+omnistrate-ctl snapshot list --service-id service-abcd --environment-id env-1234`
 )
 
 var listCmd = &cobra.Command{
-	Use:          "list [instance-id]",
-	Short:        "List all snapshots for an instance",
-	Long:         `This command helps you list all snapshots available for your instance.`,
+	Use:          "list --service-id <service-id> --environment-id <environment-id>",
+	Short:        "List all snapshots for a service environment",
+	Long:         `This command helps you list all snapshots available across all instances in a service environment.`,
 	Example:      listExample,
 	RunE:         runList,
 	SilenceUsage: true,
 }
 
 func init() {
-	listCmd.Args = cobra.ExactArgs(1)
+	listCmd.Args = cobra.NoArgs
+	listCmd.Flags().String("service-id", "", "The ID of the service (required)")
+	listCmd.Flags().String("environment-id", "", "The ID of the environment (required)")
+
+	if err := listCmd.MarkFlagRequired("service-id"); err != nil {
+		return
+	}
+	if err := listCmd.MarkFlagRequired("environment-id"); err != nil {
+		return
+	}
 }
 
 const snapshotDisplayTimeLayout = "2006-01-02 15:04:05 MST"
@@ -49,7 +58,17 @@ type SnapshotDetail struct {
 func runList(cmd *cobra.Command, args []string) error {
 	defer config.CleanupArgsAndFlags(cmd, &args)
 
-	instanceID := args[0]
+	serviceID, err := cmd.Flags().GetString("service-id")
+	if err != nil {
+		utils.PrintError(err)
+		return err
+	}
+
+	environmentID, err := cmd.Flags().GetString("environment-id")
+	if err != nil {
+		utils.PrintError(err)
+		return err
+	}
 
 	output, err := cmd.Flags().GetString("output")
 	if err != nil {
@@ -71,13 +90,7 @@ func runList(cmd *cobra.Command, args []string) error {
 		sm.Start()
 	}
 
-	serviceID, environmentID, _, _, err := common.GetInstance(cmd.Context(), token, instanceID)
-	if err != nil {
-		utils.HandleSpinnerError(spinner, sm, err)
-		return err
-	}
-
-	result, err := dataaccess.ListResourceInstanceSnapshots(cmd.Context(), token, serviceID, environmentID, instanceID)
+	result, err := dataaccess.ListAllSnapshots(cmd.Context(), token, serviceID, environmentID)
 	if err != nil {
 		utils.HandleSpinnerError(spinner, sm, err)
 		return err
@@ -90,7 +103,7 @@ func runList(cmd *cobra.Command, args []string) error {
 	}
 
 	if result == nil || len(result.Snapshots) == 0 {
-		utils.PrintInfo(fmt.Sprintf("No snapshots found for instance %s.", instanceID))
+		utils.PrintInfo("No snapshots found.")
 		return nil
 	}
 

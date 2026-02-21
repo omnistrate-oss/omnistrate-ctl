@@ -12,7 +12,6 @@ func TestSnapshotSubcommandsRegistered(t *testing.T) {
 	expectedCommands := []string{
 		"copy",
 		"list",
-		"describe",
 		"delete",
 		"restore",
 	}
@@ -63,20 +62,18 @@ func TestDeleteCommandFlags(t *testing.T) {
 	require.NotNil(environmentIDFlag, "Expected flag 'environment-id' not found")
 }
 
-func TestListCommand(t *testing.T) {
+func TestListCommandFlags(t *testing.T) {
 	require := require.New(t)
 
-	require.Equal("list [instance-id]", listCmd.Use)
-	require.Equal("List all snapshots for an instance", listCmd.Short)
+	require.Contains(listCmd.Use, "list")
+	require.Equal("List all snapshots for a service environment", listCmd.Short)
 	require.NotEmpty(listCmd.Example)
-}
 
-func TestDescribeCommand(t *testing.T) {
-	require := require.New(t)
+	serviceIDFlag := listCmd.Flags().Lookup("service-id")
+	require.NotNil(serviceIDFlag, "Expected flag 'service-id' not found")
 
-	require.Equal("describe [instance-id] [snapshot-id]", describeCmd.Use)
-	require.Equal("Describe a specific instance snapshot", describeCmd.Short)
-	require.NotEmpty(describeCmd.Example)
+	environmentIDFlag := listCmd.Flags().Lookup("environment-id")
+	require.NotNil(environmentIDFlag, "Expected flag 'environment-id' not found")
 }
 
 func TestRestoreCommandFlags(t *testing.T) {
@@ -85,7 +82,7 @@ func TestRestoreCommandFlags(t *testing.T) {
 	require.Contains(restoreCmd.Use, "restore")
 	require.NotEmpty(restoreCmd.Example)
 
-	flags := []string{"snapshot-id", "param", "param-file", "tierversion-override", "network-type"}
+	flags := []string{"service-id", "environment-id", "snapshot-id", "param", "param-file", "tierversion-override", "network-type"}
 	for _, flagName := range flags {
 		flag := restoreCmd.Flags().Lookup(flagName)
 		require.NotNil(flag, "Expected flag '%s' not found", flagName)

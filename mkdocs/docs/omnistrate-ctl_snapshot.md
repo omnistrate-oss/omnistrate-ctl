@@ -28,7 +28,6 @@ omnistrate-ctl snapshot [operation] [flags]
 * [omnistrate-ctl](omnistrate-ctl.md)	 - Manage your Omnistrate SaaS from the command line
 * [omnistrate-ctl snapshot copy](omnistrate-ctl_snapshot_copy.md)	 - Copy an instance snapshot to another region
 * [omnistrate-ctl snapshot delete](omnistrate-ctl_snapshot_delete.md)	 - Delete an instance snapshot
-* [omnistrate-ctl snapshot describe](omnistrate-ctl_snapshot_describe.md)	 - Describe a specific instance snapshot
-* [omnistrate-ctl snapshot list](omnistrate-ctl_snapshot_list.md)	 - List all snapshots for an instance
+* [omnistrate-ctl snapshot list](omnistrate-ctl_snapshot_list.md)	 - List all snapshots for a service environment
 * [omnistrate-ctl snapshot restore](omnistrate-ctl_snapshot_restore.md)	 - Create a new instance by restoring from a snapshot
 

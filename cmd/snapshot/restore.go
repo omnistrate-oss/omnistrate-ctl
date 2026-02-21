@@ -16,29 +16,37 @@ import (
 
 const (
 	restoreExample = `# Restore to a new instance from a snapshot
-omnistrate-ctl snapshot restore instance-abcd1234 --snapshot-id snapshot-xyz789 --param '{"key": "value"}'
+omnistrate-ctl snapshot restore --service-id service-abcd --environment-id env-1234 --snapshot-id snapshot-xyz789 --param '{"key": "value"}'
 
 # Restore using parameters from a file
-omnistrate-ctl snapshot restore instance-abcd1234 --snapshot-id snapshot-xyz789 --param-file /path/to/params.json`
+omnistrate-ctl snapshot restore --service-id service-abcd --environment-id env-1234 --snapshot-id snapshot-xyz789 --param-file /path/to/params.json`
 )
 
 var restoreCmd = &cobra.Command{
-	Use:          "restore [instance-id] --snapshot-id <snapshot-id> [--param=param] [--param-file=file-path] --tierversion-override <tier-version> --network-type PUBLIC / INTERNAL",
+	Use:          "restore --service-id <service-id> --environment-id <environment-id> --snapshot-id <snapshot-id>",
 	Short:        "Create a new instance by restoring from a snapshot",
-	Long:         `This command helps you create a new instance by restoring from a snapshot using an existing instance for context.`,
+	Long:         `This command helps you create a new instance by restoring from a snapshot.`,
 	Example:      restoreExample,
 	RunE:         runRestore,
 	SilenceUsage: true,
 }
 
 func init() {
-	restoreCmd.Args = cobra.ExactArgs(1)
-	restoreCmd.Flags().String("snapshot-id", "", "The ID of the snapshot to restore from")
+	restoreCmd.Args = cobra.NoArgs
+	restoreCmd.Flags().String("service-id", "", "The ID of the service (required)")
+	restoreCmd.Flags().String("environment-id", "", "The ID of the environment (required)")
+	restoreCmd.Flags().String("snapshot-id", "", "The ID of the snapshot to restore from (required)")
 	restoreCmd.Flags().String("param", "", "Parameters override for the instance deployment")
 	restoreCmd.Flags().String("param-file", "", "Json file containing parameters override for the instance deployment")
 	restoreCmd.Flags().String("tierversion-override", "", "Override the tier version for the restored instance")
 	restoreCmd.Flags().String("network-type", "", "Optional network type change for the instance deployment (PUBLIC / INTERNAL)")
 
+	if err := restoreCmd.MarkFlagRequired("service-id"); err != nil {
+		return
+	}
+	if err := restoreCmd.MarkFlagRequired("environment-id"); err != nil {
+		return
+	}
 	if err := restoreCmd.MarkFlagRequired("snapshot-id"); err != nil {
 		return
 	}
@@ -50,7 +58,16 @@ func init() {
 func runRestore(cmd *cobra.Command, args []string) error {
 	defer config.CleanupArgsAndFlags(cmd, &args)
 
-	instanceID := args[0]
+	serviceID, err := cmd.Flags().GetString("service-id")
+	if err != nil {
+		utils.PrintError(err)
+		return err
+	}
+	environmentID, err := cmd.Flags().GetString("environment-id")
+	if err != nil {
+		utils.PrintError(err)
+		return err
+	}
 	output, err := cmd.Flags().GetString("output")
 	if err != nil {
 		utils.PrintError(err)
@@ -81,27 +98,21 @@ func runRestore(cmd *cobra.Command, args []string) error {
 	var sm ysmrr.SpinnerManager
 	var spinner *ysmrr.Spinner
 
-	serviceID, environmentID, _, _, err := common.GetInstance(cmd.Context(), token, instanceID)
-	if err != nil {
-		utils.HandleSpinnerError(spinner, sm, err)
-		return err
-	}
-
 	formattedParams, err := common.FormatParams(param, paramFile)
 	if err != nil {
-		utils.HandleSpinnerError(spinner, sm, err)
+		utils.PrintError(err)
 		return err
 	}
 
 	tierVersionOverride, err := cmd.Flags().GetString("tierversion-override")
 	if err != nil {
-		utils.HandleSpinnerError(spinner, sm, err)
+		utils.PrintError(err)
 		return err
 	}
 
 	if tierVersionOverride != "" {
 		var choice string
-		choice, err = prompt.New().Ask(fmt.Sprintf("NOTICE: System is initiating restoration of instance with service ID %s, using service plan version %s override. Please verify plan compatibility with the target snapshot before proceeding. Continue to proceed?", serviceID, tierVersionOverride)).
+		choice, err = prompt.New().Ask(fmt.Sprintf("NOTICE: System is initiating restoration with service ID %s, using service plan version %s override. Please verify plan compatibility with the target snapshot before proceeding. Continue to proceed?", serviceID, tierVersionOverride)).
 			Choose([]string{
 				"Yes",
 				"No",
@@ -122,7 +133,7 @@ func runRestore(cmd *cobra.Command, args []string) error {
 
 	networkType, err := cmd.Flags().GetString("network-type")
 	if err != nil {
-		utils.HandleSpinnerError(spinner, sm, err)
+		utils.PrintError(err)
 		return err
 	}
 
@@ -132,7 +143,7 @@ func runRestore(cmd *cobra.Command, args []string) error {
 		sm.Start()
 	}
 
-	result, err := dataaccess.RestoreResourceInstanceSnapshot(cmd.Context(), token, serviceID, environmentID, snapshotID, formattedParams, tierVersionOverride, networkType)
+	result, err := dataaccess.RestoreSnapshot(cmd.Context(), token, serviceID, environmentID, snapshotID, formattedParams, tierVersionOverride, networkType)
 	if err != nil {
 		utils.HandleSpinnerError(spinner, sm, err)
 		return err

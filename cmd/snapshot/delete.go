@@ -69,7 +69,7 @@ func runDelete(cmd *cobra.Command, args []string) error {
 		sm.Start()
 	}
 
-	err = dataaccess.DeleteResourceInstanceSnapshot(cmd.Context(), token, serviceID, environmentID, snapshotID)
+	err = dataaccess.DeleteSnapshot(cmd.Context(), token, serviceID, environmentID, snapshotID)
 	if err != nil {
 		utils.HandleSpinnerError(spinner, sm, err)
 		return err
