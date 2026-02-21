@@ -31,5 +31,4 @@ omnistrate-ctl snapshot [operation] [flags]
 * [omnistrate-ctl snapshot describe](omnistrate-ctl_snapshot_describe.md)	 - Describe a specific instance snapshot
 * [omnistrate-ctl snapshot list](omnistrate-ctl_snapshot_list.md)	 - List all snapshots for an instance
 * [omnistrate-ctl snapshot restore](omnistrate-ctl_snapshot_restore.md)	 - Create a new instance by restoring from a snapshot
-* [omnistrate-ctl snapshot trigger-backup](omnistrate-ctl_snapshot_trigger-backup.md)	 - Trigger an automatic backup for your instance
 

@@ -18,7 +18,6 @@ func init() {
 	Cmd.AddCommand(describeCmd)
 	Cmd.AddCommand(deleteCmd)
 	Cmd.AddCommand(restoreCmd)
-	Cmd.AddCommand(triggerBackupCmd)
 }
 
 func run(cmd *cobra.Command, args []string) {

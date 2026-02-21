@@ -15,7 +15,6 @@ func TestSnapshotSubcommandsRegistered(t *testing.T) {
 		"describe",
 		"delete",
 		"restore",
-		"trigger-backup",
 	}
 
 	actualCommands := make([]string, 0)
@@ -91,13 +90,6 @@ func TestRestoreCommandFlags(t *testing.T) {
 		flag := restoreCmd.Flags().Lookup(flagName)
 		require.NotNil(flag, "Expected flag '%s' not found", flagName)
 	}
-}
-
-func TestTriggerBackupCommand(t *testing.T) {
-	require := require.New(t)
-
-	require.Equal("trigger-backup [instance-id]", triggerBackupCmd.Use)
-	require.NotEmpty(triggerBackupCmd.Example)
 }
 
 func TestFormatSnapshotDisplayTime(t *testing.T) {
