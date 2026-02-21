@@ -30,8 +30,10 @@ omnistrate-ctl instance [operation] [flags]
 * [omnistrate-ctl instance continue-deployment](omnistrate-ctl_instance_continue-deployment.md)	 - Continue instance deployment
 * [omnistrate-ctl instance copy-snapshot](omnistrate-ctl_instance_copy-snapshot.md)	 - Copy an instance snapshot to another region
 * [omnistrate-ctl instance create](omnistrate-ctl_instance_create.md)	 - Create an instance deployment
+* [omnistrate-ctl instance create-snapshot](omnistrate-ctl_instance_create-snapshot.md)	 - Create a snapshot for an instance
 * [omnistrate-ctl instance debug](omnistrate-ctl_instance_debug.md)	 - Debug instance resources
 * [omnistrate-ctl instance delete](omnistrate-ctl_instance_delete.md)	 - Delete an instance deployment
+* [omnistrate-ctl instance delete-snapshot](omnistrate-ctl_instance_delete-snapshot.md)	 - Delete an instance snapshot
 * [omnistrate-ctl instance deployment-parameters](omnistrate-ctl_instance_deployment-parameters.md)	 - List API parameters configurable for instance deployment
 * [omnistrate-ctl instance describe](omnistrate-ctl_instance_describe.md)	 - Describe an instance deployment for your service
 * [omnistrate-ctl instance describe-snapshot](omnistrate-ctl_instance_describe-snapshot.md)	 - Describe a specific instance snapshot

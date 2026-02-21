@@ -32,6 +32,8 @@ func init() {
 	Cmd.AddCommand(listSnapshotsCmd)
 	Cmd.AddCommand(describeSnapshotCmd)
 	Cmd.AddCommand(copySnapshotCmd)
+	Cmd.AddCommand(createSnapshotCmd)
+	Cmd.AddCommand(deleteSnapshotCmd)
 	Cmd.AddCommand(restoreCmd)
 	Cmd.AddCommand(adoptCmd)
 	Cmd.AddCommand(versionUpgradeCmd)

@@ -229,6 +229,31 @@ func CopyResourceInstanceSnapshot(ctx context.Context, token string, serviceID, 
 	return
 }
 
+func DeleteResourceInstanceSnapshot(ctx context.Context, token string, serviceID, environmentID, snapshotID string) (err error) {
+	ctxWithToken := context.WithValue(ctx, openapiclientfleet.ContextAccessToken, token)
+	apiClient := getFleetClient()
+
+	req := apiClient.InventoryApiAPI.InventoryApiDeleteResourceInstanceSnapshot(
+		ctxWithToken,
+		serviceID,
+		environmentID,
+		snapshotID,
+	)
+
+	var r *http.Response
+	defer func() {
+		if r != nil {
+			_ = r.Body.Close()
+		}
+	}()
+
+	r, err = req.Execute()
+	if err != nil {
+		return handleFleetError(err)
+	}
+	return
+}
+
 func DeleteResourceInstance(ctx context.Context, token, serviceID, environmentID, resourceID, instanceID string) (err error) {
 	ctxWithToken := context.WithValue(ctx, openapiclientfleet.ContextAccessToken, token)
 	apiClient := getFleetClient()
