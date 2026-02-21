@@ -4,24 +4,25 @@ Delete an instance snapshot
 
 ### Synopsis
 
-This command helps you delete a specific snapshot for your instance.
+This command helps you delete a specific snapshot.
 
 ```
-omnistrate-ctl instance delete-snapshot [instance-id] --snapshot-id <snapshot-id> [flags]
+omnistrate-ctl instance delete-snapshot [snapshot-id] --service-id <service-id> --environment-id <environment-id> [flags]
 ```
 
 ### Examples
 
 ```
 # Delete a specific snapshot
-omnistrate-ctl instance delete-snapshot instance-abcd1234 --snapshot-id snapshot-xyz789
+omnistrate-ctl instance delete-snapshot snapshot-xyz789 --service-id service-abcd --environment-id env-1234
 ```
 
 ### Options
 
 ```
-  -h, --help                 help for delete-snapshot
-      --snapshot-id string   The ID of the snapshot to delete (required)
+      --environment-id string   The ID of the environment (required)
+  -h, --help                    help for delete-snapshot
+      --service-id string       The ID of the service (required)
 ```
 
 ### Options inherited from parent commands

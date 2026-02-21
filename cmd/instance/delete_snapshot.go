@@ -11,13 +11,13 @@ import (
 
 const (
 	deleteSnapshotExample = `# Delete a specific snapshot
-omnistrate-ctl instance delete-snapshot instance-abcd1234 --snapshot-id snapshot-xyz789`
+omnistrate-ctl instance delete-snapshot snapshot-xyz789 --service-id service-abcd --environment-id env-1234`
 )
 
 var deleteSnapshotCmd = &cobra.Command{
-	Use:          "delete-snapshot [instance-id] --snapshot-id <snapshot-id>",
+	Use:          "delete-snapshot [snapshot-id] --service-id <service-id> --environment-id <environment-id>",
 	Short:        "Delete an instance snapshot",
-	Long:         `This command helps you delete a specific snapshot for your instance.`,
+	Long:         `This command helps you delete a specific snapshot.`,
 	Example:      deleteSnapshotExample,
 	RunE:         runDeleteSnapshot,
 	SilenceUsage: true,
@@ -25,9 +25,13 @@ var deleteSnapshotCmd = &cobra.Command{
 
 func init() {
 	deleteSnapshotCmd.Args = cobra.ExactArgs(1)
-	deleteSnapshotCmd.Flags().String("snapshot-id", "", "The ID of the snapshot to delete (required)")
+	deleteSnapshotCmd.Flags().String("service-id", "", "The ID of the service (required)")
+	deleteSnapshotCmd.Flags().String("environment-id", "", "The ID of the environment (required)")
 
-	if err := deleteSnapshotCmd.MarkFlagRequired("snapshot-id"); err != nil {
+	if err := deleteSnapshotCmd.MarkFlagRequired("service-id"); err != nil {
+		return
+	}
+	if err := deleteSnapshotCmd.MarkFlagRequired("environment-id"); err != nil {
 		return
 	}
 }
@@ -35,9 +39,15 @@ func init() {
 func runDeleteSnapshot(cmd *cobra.Command, args []string) error {
 	defer config.CleanupArgsAndFlags(cmd, &args)
 
-	instanceID := args[0]
+	snapshotID := args[0]
 
-	snapshotID, err := cmd.Flags().GetString("snapshot-id")
+	serviceID, err := cmd.Flags().GetString("service-id")
+	if err != nil {
+		utils.PrintError(err)
+		return err
+	}
+
+	environmentID, err := cmd.Flags().GetString("environment-id")
 	if err != nil {
 		utils.PrintError(err)
 		return err
@@ -57,12 +67,6 @@ func runDeleteSnapshot(cmd *cobra.Command, args []string) error {
 		sm = ysmrr.NewSpinnerManager()
 		spinner = sm.AddSpinner("Deleting snapshot...")
 		sm.Start()
-	}
-
-	serviceID, environmentID, _, _, err := getInstance(cmd.Context(), token, instanceID)
-	if err != nil {
-		utils.HandleSpinnerError(spinner, sm, err)
-		return err
 	}
 
 	err = dataaccess.DeleteResourceInstanceSnapshot(cmd.Context(), token, serviceID, environmentID, snapshotID)

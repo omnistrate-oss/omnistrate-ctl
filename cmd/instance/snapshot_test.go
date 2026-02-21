@@ -48,15 +48,19 @@ func TestCreateSnapshotCommand(t *testing.T) {
 func TestDeleteSnapshotCommand(t *testing.T) {
 	require := require.New(t)
 
-	require.Equal("delete-snapshot [instance-id] --snapshot-id <snapshot-id>", deleteSnapshotCmd.Use)
+	require.Equal("delete-snapshot [snapshot-id] --service-id <service-id> --environment-id <environment-id>", deleteSnapshotCmd.Use)
 	require.Equal("Delete an instance snapshot", deleteSnapshotCmd.Short)
 	require.NotEmpty(deleteSnapshotCmd.Example)
 	require.True(deleteSnapshotCmd.SilenceUsage)
 
-	// Verify snapshot-id flag exists
-	snapshotIDFlag := deleteSnapshotCmd.Flags().Lookup("snapshot-id")
-	require.NotNil(snapshotIDFlag, "Expected flag 'snapshot-id' not found")
-	require.Equal("string", snapshotIDFlag.Value.Type())
+	// Verify service-id and environment-id flags exist
+	serviceIDFlag := deleteSnapshotCmd.Flags().Lookup("service-id")
+	require.NotNil(serviceIDFlag, "Expected flag 'service-id' not found")
+	require.Equal("string", serviceIDFlag.Value.Type())
+
+	environmentIDFlag := deleteSnapshotCmd.Flags().Lookup("environment-id")
+	require.NotNil(environmentIDFlag, "Expected flag 'environment-id' not found")
+	require.Equal("string", environmentIDFlag.Value.Type())
 }
 
 func TestCopySnapshotCommandFlags(t *testing.T) {
