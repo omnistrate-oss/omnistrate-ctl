@@ -4,7 +4,7 @@ Create a snapshot for an instance
 
 ### Synopsis
 
-This command helps you create an on-demand snapshot of your instance.
+This command helps you create an on-demand snapshot of your instance. Optionally specify a target region for the snapshot.
 
 ```
 omnistrate-ctl instance create-snapshot [instance-id] [flags]
@@ -16,6 +16,9 @@ omnistrate-ctl instance create-snapshot [instance-id] [flags]
 # Create a snapshot for an instance
 omnistrate-ctl instance create-snapshot instance-abcd1234
 
+# Create a snapshot in a specific region
+omnistrate-ctl instance create-snapshot instance-abcd1234 --target-region us-east1
+
 # Create a snapshot with JSON output
 omnistrate-ctl instance create-snapshot instance-abcd1234 --output json
 ```
@@ -23,7 +26,8 @@ omnistrate-ctl instance create-snapshot instance-abcd1234 --output json
 ### Options
 
 ```
-  -h, --help   help for create-snapshot
+  -h, --help                   help for create-snapshot
+      --target-region string   The target region to create the snapshot in (defaults to the instance region)
 ```
 
 ### Options inherited from parent commands

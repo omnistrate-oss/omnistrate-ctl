@@ -63,6 +63,35 @@ func runXxx(cmd *cobra.Command, args []string) error {
 }
 ```
 
+## Output Utilities (MUST use these, never raw fmt.Printf)
+
+Always use the output utility functions from `internal/utils/print.go`:
+
+| Function | Use Case |
+|---|---|
+| `utils.PrintTextTableJsonOutput(output, obj)` | Single object with `--output` flag (text/table/json) |
+| `utils.PrintTextTableJsonArrayOutput(output, items)` | Array of objects with `--output` flag |
+| `utils.PrintSuccess(msg)` | Green success message (void/delete operations) |
+| `utils.PrintInfo(msg)` | Cyan informational message |
+| `utils.PrintWarning(msg)` | Yellow warning message |
+| `utils.PrintError(err)` | Red error message (always before returning error) |
+| `utils.PrintJSON(obj)` | Raw JSON dump (no format flag) |
+
+**Pattern for operations returning data:**
+```go
+utils.HandleSpinnerSuccess(spinner, sm, "Done")
+return utils.PrintTextTableJsonOutput(output, result)
+```
+
+**Pattern for void operations (delete, trigger):**
+```go
+utils.HandleSpinnerSuccess(spinner, sm, "Successfully deleted")
+utils.PrintSuccess("Successfully deleted resource")
+return nil
+```
+
+**Never use `fmt.Printf` / `fmt.Println` for user-facing output** — always use the utilities above so output is consistently styled with color formatting.
+
 ## Flags
 
 - Use `cmd.Flags().String("name", "default", "description")` for optional flags

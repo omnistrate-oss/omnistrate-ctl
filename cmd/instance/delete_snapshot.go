@@ -1,8 +1,6 @@
 package instance
 
 import (
-	"fmt"
-
 	"github.com/chelnak/ysmrr"
 	"github.com/omnistrate-oss/omnistrate-ctl/cmd/common"
 	"github.com/omnistrate-oss/omnistrate-ctl/internal/config"
@@ -75,6 +73,6 @@ func runDeleteSnapshot(cmd *cobra.Command, args []string) error {
 
 	utils.HandleSpinnerSuccess(spinner, sm, "Successfully deleted snapshot")
 
-	fmt.Printf("Successfully deleted snapshot '%s' from instance '%s'\n", snapshotID, instanceID)
+	utils.PrintSuccess("Successfully deleted snapshot")
 	return nil
 }

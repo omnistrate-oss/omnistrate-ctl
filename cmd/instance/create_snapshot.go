@@ -13,6 +13,9 @@ const (
 	createSnapshotExample = `# Create a snapshot for an instance
 omnistrate-ctl instance create-snapshot instance-abcd1234
 
+# Create a snapshot in a specific region
+omnistrate-ctl instance create-snapshot instance-abcd1234 --target-region us-east1
+
 # Create a snapshot with JSON output
 omnistrate-ctl instance create-snapshot instance-abcd1234 --output json`
 )
@@ -20,7 +23,7 @@ omnistrate-ctl instance create-snapshot instance-abcd1234 --output json`
 var createSnapshotCmd = &cobra.Command{
 	Use:          "create-snapshot [instance-id]",
 	Short:        "Create a snapshot for an instance",
-	Long:         `This command helps you create an on-demand snapshot of your instance.`,
+	Long:         `This command helps you create an on-demand snapshot of your instance. Optionally specify a target region for the snapshot.`,
 	Example:      createSnapshotExample,
 	RunE:         runCreateSnapshot,
 	SilenceUsage: true,
@@ -28,6 +31,7 @@ var createSnapshotCmd = &cobra.Command{
 
 func init() {
 	createSnapshotCmd.Args = cobra.ExactArgs(1)
+	createSnapshotCmd.Flags().String("target-region", "", "The target region to create the snapshot in (defaults to the instance region)")
 }
 
 func runCreateSnapshot(cmd *cobra.Command, args []string) error {
@@ -36,6 +40,12 @@ func runCreateSnapshot(cmd *cobra.Command, args []string) error {
 	instanceID := args[0]
 
 	output, err := cmd.Flags().GetString("output")
+	if err != nil {
+		utils.PrintError(err)
+		return err
+	}
+
+	targetRegion, err := cmd.Flags().GetString("target-region")
 	if err != nil {
 		utils.PrintError(err)
 		return err
@@ -61,7 +71,7 @@ func runCreateSnapshot(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	result, err := dataaccess.CreateInstanceSnapshot(cmd.Context(), token, serviceID, environmentID, instanceID)
+	result, err := dataaccess.CreateInstanceSnapshot(cmd.Context(), token, serviceID, environmentID, instanceID, targetRegion)
 	if err != nil {
 		utils.HandleSpinnerError(spinner, sm, err)
 		return err

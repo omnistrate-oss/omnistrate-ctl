@@ -38,6 +38,11 @@ func TestCreateSnapshotCommand(t *testing.T) {
 	require.Contains(createSnapshotCmd.Long, "on-demand snapshot")
 	require.NotEmpty(createSnapshotCmd.Example)
 	require.True(createSnapshotCmd.SilenceUsage)
+
+	// Verify target-region flag exists
+	targetRegionFlag := createSnapshotCmd.Flags().Lookup("target-region")
+	require.NotNil(targetRegionFlag, "Expected flag 'target-region' not found")
+	require.Equal("string", targetRegionFlag.Value.Type())
 }
 
 func TestDeleteSnapshotCommand(t *testing.T) {

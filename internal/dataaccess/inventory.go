@@ -80,7 +80,7 @@ func DescribeInstanceSnapshot(ctx context.Context, token, serviceID, environment
 	return
 }
 
-func CreateInstanceSnapshot(ctx context.Context, token, serviceID, environmentID, instanceID string) (resp *openapiclientfleet.FleetCreateInstanceSnapshotResult, err error) {
+func CreateInstanceSnapshot(ctx context.Context, token, serviceID, environmentID, instanceID, targetRegion string) (resp *openapiclientfleet.FleetCreateInstanceSnapshotResult, err error) {
 	ctxWithToken := context.WithValue(ctx, openapiclientfleet.ContextAccessToken, token)
 	apiClient := getFleetClient()
 
@@ -90,6 +90,12 @@ func CreateInstanceSnapshot(ctx context.Context, token, serviceID, environmentID
 		environmentID,
 		instanceID,
 	)
+
+	reqBody := *openapiclientfleet.NewFleetCreateInstanceSnapshotRequest2()
+	if targetRegion != "" {
+		reqBody.SetTargetRegion(targetRegion)
+	}
+	req = req.FleetCreateInstanceSnapshotRequest2(reqBody)
 
 	var r *http.Response
 	defer func() {
