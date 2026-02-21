@@ -74,7 +74,7 @@ func runDescribeSnapshot(cmd *cobra.Command, args []string) error {
 	}
 
 	// Describe snapshot
-	result, err := dataaccess.DescribeInstanceSnapshot(cmd.Context(), token, serviceID, environmentID, instanceID, snapshotID)
+	result, err := dataaccess.DescribeResourceInstanceSnapshot(cmd.Context(), token, serviceID, environmentID, instanceID, snapshotID)
 	if err != nil {
 		utils.HandleSpinnerError(spinner, sm, err)
 		return err
