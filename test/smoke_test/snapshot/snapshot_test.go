@@ -5,12 +5,14 @@ import (
 	"fmt"
 	"testing"
 
+	"github.com/google/uuid"
 	"github.com/omnistrate-oss/omnistrate-ctl/cmd"
+	"github.com/omnistrate-oss/omnistrate-ctl/cmd/build"
 	"github.com/omnistrate-oss/omnistrate-ctl/test/testutils"
 	"github.com/stretchr/testify/require"
 )
 
-func TestSnapshotListAndDeleteNonExistent(t *testing.T) {
+func TestSnapshotListEmpty(t *testing.T) {
 	testutils.SmokeTest(t)
 
 	ctx := context.TODO()
@@ -24,13 +26,54 @@ func TestSnapshotListAndDeleteNonExistent(t *testing.T) {
 	err = cmd.RootCmd.ExecuteContext(ctx)
 	require.NoError(t, err)
 
-	// List snapshots with a fake service/environment — should return an error (not found)
-	cmd.RootCmd.SetArgs([]string{"snapshot", "list", "--service-id", "s-fake123", "--environment-id", "se-fake456"})
+	// Build a service to get real service/environment IDs
+	serviceName := "snapshot-test-" + uuid.NewString()
+	cmd.RootCmd.SetArgs([]string{"build", "--file", "../composefiles/mysql.yaml", "--name", serviceName, "--environment=dev", "--environment-type=dev"})
 	err = cmd.RootCmd.ExecuteContext(ctx)
-	require.Error(t, err, "listing snapshots with non-existent service/environment should fail")
+	require.NoError(t, err)
+	require.NotEmpty(t, build.ServiceID)
+	require.NotEmpty(t, build.EnvironmentID)
 
-	// Delete a non-existent snapshot — should return an error (not found)
-	cmd.RootCmd.SetArgs([]string{"snapshot", "delete", "snap-nonexistent", "--service-id", "s-fake123", "--environment-id", "se-fake456"})
+	// List snapshots — should succeed with empty results
+	cmd.RootCmd.SetArgs([]string{"snapshot", "list", "--service-id", build.ServiceID, "--environment-id", build.EnvironmentID, "--output", "json"})
+	err = cmd.RootCmd.ExecuteContext(ctx)
+	require.NoError(t, err)
+
+	// Cleanup: delete the service
+	cmd.RootCmd.SetArgs([]string{"service", "delete", serviceName})
+	err = cmd.RootCmd.ExecuteContext(ctx)
+	require.NoError(t, err)
+}
+
+func TestSnapshotDeleteNonExistent(t *testing.T) {
+	testutils.SmokeTest(t)
+
+	ctx := context.TODO()
+
+	defer testutils.Cleanup()
+
+	// Login
+	testEmail, testPassword, err := testutils.GetTestAccount()
+	require.NoError(t, err)
+	cmd.RootCmd.SetArgs([]string{"login", fmt.Sprintf("--email=%s", testEmail), fmt.Sprintf("--password=%s", testPassword)})
+	err = cmd.RootCmd.ExecuteContext(ctx)
+	require.NoError(t, err)
+
+	// Build a service to get real service/environment IDs
+	serviceName := "snapshot-del-" + uuid.NewString()
+	cmd.RootCmd.SetArgs([]string{"build", "--file", "../composefiles/mysql.yaml", "--name", serviceName, "--environment=dev", "--environment-type=dev"})
+	err = cmd.RootCmd.ExecuteContext(ctx)
+	require.NoError(t, err)
+	require.NotEmpty(t, build.ServiceID)
+	require.NotEmpty(t, build.EnvironmentID)
+
+	// Delete a non-existent snapshot — should return an error
+	cmd.RootCmd.SetArgs([]string{"snapshot", "delete", "snap-nonexistent-id", "--service-id", build.ServiceID, "--environment-id", build.EnvironmentID})
 	err = cmd.RootCmd.ExecuteContext(ctx)
 	require.Error(t, err, "deleting a non-existent snapshot should fail")
+
+	// Cleanup: delete the service
+	cmd.RootCmd.SetArgs([]string{"service", "delete", serviceName})
+	err = cmd.RootCmd.ExecuteContext(ctx)
+	require.NoError(t, err)
 }
