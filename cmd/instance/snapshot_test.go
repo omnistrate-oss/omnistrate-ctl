@@ -43,6 +43,11 @@ func TestCreateSnapshotCommand(t *testing.T) {
 	targetRegionFlag := createSnapshotCmd.Flags().Lookup("target-region")
 	require.NotNil(targetRegionFlag, "Expected flag 'target-region' not found")
 	require.Equal("string", targetRegionFlag.Value.Type())
+
+	// Verify source-snapshot-id flag exists
+	sourceSnapshotIDFlag := createSnapshotCmd.Flags().Lookup("source-snapshot-id")
+	require.NotNil(sourceSnapshotIDFlag, "Expected flag 'source-snapshot-id' not found")
+	require.Equal("string", sourceSnapshotIDFlag.Value.Type())
 }
 
 func TestDeleteSnapshotCommand(t *testing.T) {

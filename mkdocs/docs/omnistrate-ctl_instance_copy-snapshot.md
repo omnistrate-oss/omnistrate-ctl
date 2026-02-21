@@ -25,7 +25,7 @@ omnistrate-ctl instance copy-snapshot instance-abcd1234 --target-region us-east1
 
 ```
   -h, --help                   help for copy-snapshot
-      --snapshot-id string     The ID of the snapshot to copy. If not provided, the latest snapshot will be used.
+      --snapshot-id string     The ID of the snapshot or backup to copy. If not provided, the latest snapshot will be used.
       --target-region string   The region to copy the snapshot into
 ```
 
