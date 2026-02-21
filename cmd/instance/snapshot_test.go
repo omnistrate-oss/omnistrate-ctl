@@ -11,7 +11,6 @@ func TestSnapshotCommandsRegistered(t *testing.T) {
 
 	// Verify all snapshot-related subcommands are registered
 	snapshotCommands := []string{
-		"create-snapshot",
 		"delete-snapshot",
 		"copy-snapshot",
 		"list-snapshots",
@@ -30,24 +29,10 @@ func TestSnapshotCommandsRegistered(t *testing.T) {
 	}
 }
 
-func TestCreateSnapshotCommand(t *testing.T) {
+func TestCopySnapshotHasCreateSnapshotAlias(t *testing.T) {
 	require := require.New(t)
 
-	require.Equal("create-snapshot [instance-id]", createSnapshotCmd.Use)
-	require.Equal("Create a snapshot for an instance", createSnapshotCmd.Short)
-	require.Contains(createSnapshotCmd.Long, "on-demand snapshot")
-	require.NotEmpty(createSnapshotCmd.Example)
-	require.True(createSnapshotCmd.SilenceUsage)
-
-	// Verify target-region flag exists
-	targetRegionFlag := createSnapshotCmd.Flags().Lookup("target-region")
-	require.NotNil(targetRegionFlag, "Expected flag 'target-region' not found")
-	require.Equal("string", targetRegionFlag.Value.Type())
-
-	// Verify source-snapshot-id flag exists
-	sourceSnapshotIDFlag := createSnapshotCmd.Flags().Lookup("source-snapshot-id")
-	require.NotNil(sourceSnapshotIDFlag, "Expected flag 'source-snapshot-id' not found")
-	require.Equal("string", sourceSnapshotIDFlag.Value.Type())
+	require.Contains(copySnapshotCmd.Aliases, "create-snapshot", "copy-snapshot should have create-snapshot as an alias")
 }
 
 func TestDeleteSnapshotCommand(t *testing.T) {
