@@ -30,6 +30,7 @@ import (
 	"github.com/omnistrate-oss/omnistrate-ctl/cmd/service"
 	"github.com/omnistrate-oss/omnistrate-ctl/cmd/serviceplan"
 	"github.com/omnistrate-oss/omnistrate-ctl/cmd/servicesorchestration"
+	"github.com/omnistrate-oss/omnistrate-ctl/cmd/snapshot"
 	"github.com/omnistrate-oss/omnistrate-ctl/cmd/subscription"
 	"github.com/omnistrate-oss/omnistrate-ctl/cmd/upgrade"
 	"github.com/omnistrate-oss/omnistrate-ctl/cmd/workflow"
@@ -131,6 +132,7 @@ func init() {
 	RootCmd.AddCommand(upgrade.Cmd)
 	RootCmd.AddCommand(helm.Cmd)
 	RootCmd.AddCommand(instance.Cmd)
+	RootCmd.AddCommand(snapshot.Cmd)
 	RootCmd.AddCommand(serviceplan.Cmd)
 	RootCmd.AddCommand(subscription.Cmd)
 	RootCmd.AddCommand(environment.Cmd)

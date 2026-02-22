@@ -207,19 +207,19 @@ func runAdopt(cmd *cobra.Command, args []string) error {
 		spinner = sm.AddSpinner(msg)
 		sm.Start()
 
-		fmt.Printf("Adopting resource instance:\n")
-		fmt.Printf("  Service ID: %s\n", serviceID)
-		fmt.Printf("  Service Plan ID: %s\n", servicePlanID)
-		fmt.Printf("  Host Cluster ID: %s\n", hostClusterID)
-		fmt.Printf("  Primary Resource Key: %s\n", primaryResourceKey)
+		utils.PrintInfo("Adopting resource instance:")
+		utils.PrintInfo(fmt.Sprintf("  Service ID: %s", serviceID))
+		utils.PrintInfo(fmt.Sprintf("  Service Plan ID: %s", servicePlanID))
+		utils.PrintInfo(fmt.Sprintf("  Host Cluster ID: %s", hostClusterID))
+		utils.PrintInfo(fmt.Sprintf("  Primary Resource Key: %s", primaryResourceKey))
 		if servicePlanVersion != "" {
-			fmt.Printf("  Service Plan Version: %s\n", servicePlanVersion)
+			utils.PrintInfo(fmt.Sprintf("  Service Plan Version: %s", servicePlanVersion))
 		}
 		if subscriptionID != "" {
-			fmt.Printf("  Subscription ID: %s\n", subscriptionID)
+			utils.PrintInfo(fmt.Sprintf("  Subscription ID: %s", subscriptionID))
 		}
 		if configFile != "" {
-			fmt.Printf("  Config File: %s\n", configFile)
+			utils.PrintInfo(fmt.Sprintf("  Config File: %s", configFile))
 		}
 	}
 
@@ -271,9 +271,10 @@ func runAdopt(cmd *cobra.Command, args []string) error {
 		return utils.PrintTextTableJsonOutput(output, result)
 	}
 
-	fmt.Printf("Adoption result:\n")
 	if result.GetId() != "" {
-		fmt.Printf("  Instance ID: %s\n", result.GetId())
+		utils.PrintSuccess(fmt.Sprintf("Adoption initiated successfully! Instance ID: %s", result.GetId()))
+	} else {
+		utils.PrintSuccess("Adoption initiated successfully!")
 	}
 
 	return nil
