@@ -58,14 +58,28 @@ func GetTokenWithLogin() (string, error) {
 	if isStdinPiped() {
 		return GetToken()
 	}
-	return getTokenWithRetry(0)
+	return getTokenWithRetry()
 }
 
-func getTokenWithRetry(retryCount int) (string, error) {
-	if retryCount >= maxTokenRetries {
-		return "", fmt.Errorf("maximum token validation retries (%d) exceeded, please try again later", maxTokenRetries)
+func getTokenWithRetry() (string, error) {
+	var lastErr error
+
+	for retryCount := 0; retryCount < maxTokenRetries; retryCount++ {
+		token, err := getTokenAttempt()
+		if err == nil {
+			return token, nil
+		}
+		lastErr = err
 	}
 
+	if lastErr != nil {
+		return "", fmt.Errorf("maximum token retries (%d) exceeded: %w", maxTokenRetries, lastErr)
+	}
+
+	return "", fmt.Errorf("maximum token retries (%d) exceeded, please try again later", maxTokenRetries)
+}
+
+func getTokenAttempt() (string, error) {
 	token, err := config.GetToken()
 	if err != nil && !errors.Is(err, config.ErrAuthConfigNotFound) && !errors.Is(err, config.ErrConfigFileNotFound) {
 		return "", errors.Wrap(err, "failed to retrieve authentication token")
@@ -74,14 +88,14 @@ func getTokenWithRetry(retryCount int) (string, error) {
 	// Validate existing token
 	if token != "" {
 		_, err = dataaccess.DescribeUser(context.Background(), token)
-		if err != nil {
-			if errors.Is(err, config.ErrTokenExpired) || errors.Is(err, config.ErrUnauthorized) {
-				_ = config.RemoveAuthConfig()
-			} else {
-				return "", errors.Wrap(err, "failed to validate token")
-			}
-		} else {
+		if err == nil {
 			return token, nil
+		}
+
+		if errors.Is(err, config.ErrTokenExpired) || errors.Is(err, config.ErrUnauthorized) {
+			_ = config.RemoveAuthConfig()
+		} else {
+			return "", errors.Wrap(err, "failed to validate token")
 		}
 	}
 
@@ -96,14 +110,8 @@ func getTokenWithRetry(retryCount int) (string, error) {
 		return "", errors.Wrap(err, "failed to retrieve token after login")
 	}
 
-	// Validate new token
-	_, err = dataaccess.DescribeUser(context.Background(), token)
-	if err != nil {
-		if errors.Is(err, config.ErrTokenExpired) || errors.Is(err, config.ErrUnauthorized) {
-			_ = config.RemoveAuthConfig()
-			return getTokenWithRetry(retryCount + 1)
-		}
-		return "", errors.Wrap(err, "failed to validate token after login")
+	if token == "" {
+		return "", fmt.Errorf("received empty token after login")
 	}
 
 	return token, nil
