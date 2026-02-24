@@ -17,11 +17,12 @@ const (
 	tabProgress  = 0
 	tabTfFiles   = 1
 	tabTfOutput  = 2
-	tabOpHistory = 3
-	numTabs      = 4
+	tabLogs      = 3
+	tabOpHistory = 4
+	numTabs      = 5
 )
 
-var tabNames = []string{"Progress", "Terraform Files", "Terraform Output", "Operation History"}
+var tabNames = []string{"Progress", "Terraform Files", "Terraform Output", "Logs", "Operation History"}
 
 // fileContentMsg is sent when file content has been fetched from the pod
 type fileContentMsg struct {
@@ -86,6 +87,16 @@ type terraformDetailModel struct {
 	outputCursor   int
 	outputScroll   int
 
+	// Logs tab data
+	logLines     []string
+	logChan      chan logLineMsg
+	logScroll    int
+	logFollow    bool // auto-scroll to bottom
+	logStreaming bool
+	logDone      bool
+	logErr       error
+	logLabel     string // describes which operation's log is shown
+
 	// Operation History tab data
 	historyCursor  int
 	historyDates   []dateSection
@@ -108,6 +119,8 @@ func newTerraformDetailModel(node PlanDAGNode, data DebugData) terraformDetailMo
 		loading:     true,
 		spinner:     s,
 		progressBar: p,
+		logChan:     make(chan logLineMsg, 50),
+		logFollow:   true,
 	}
 }
 
@@ -275,6 +288,11 @@ func (m terraformDetailModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				if m.historyCursor >= len(rows) {
 					m.historyCursor = len(rows) - 1
 				}
+			} else if m.activeTab == tabLogs {
+				m.logFollow = false
+				if m.logScroll > 0 {
+					m.logScroll--
+				}
 			} else if m.viewingFile {
 				if m.fileScroll > 0 {
 					m.fileScroll--
@@ -298,6 +316,12 @@ func (m terraformDetailModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				rows := flattenTimeline(m.historyDates)
 				if m.historyCursor < len(rows)-1 {
 					m.historyCursor++
+				}
+			} else if m.activeTab == tabLogs {
+				m.logFollow = false
+				m.logScroll++
+				if m.logScroll > m.logMaxScroll() {
+					m.logScroll = m.logMaxScroll()
 				}
 			} else if m.viewingFile {
 				m.fileScroll++
@@ -352,7 +376,13 @@ func (m terraformDetailModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 			}
 		case "pgup":
-			if m.viewingFile {
+			if m.activeTab == tabLogs {
+				m.logFollow = false
+				m.logScroll -= m.bodyHeight()
+				if m.logScroll < 0 {
+					m.logScroll = 0
+				}
+			} else if m.viewingFile {
 				m.fileScroll -= m.bodyHeight()
 				if m.fileScroll < 0 {
 					m.fileScroll = 0
@@ -364,10 +394,32 @@ func (m terraformDetailModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 			}
 		case "pgdown":
-			if m.viewingFile {
+			if m.activeTab == tabLogs {
+				m.logFollow = false
+				m.logScroll += m.bodyHeight()
+				if m.logScroll > m.logMaxScroll() {
+					m.logScroll = m.logMaxScroll()
+				}
+			} else if m.viewingFile {
 				m.fileScroll += m.bodyHeight()
 			} else {
 				m.scrollY += m.bodyHeight()
+			}
+		case "f":
+			if m.activeTab == tabLogs {
+				m.logFollow = !m.logFollow
+				if m.logFollow {
+					// Snap to bottom
+					bodyH := m.bodyHeight() - 4
+					if bodyH < 1 {
+						bodyH = 1
+					}
+					maxSc := len(m.logLines) - bodyH
+					if maxSc < 0 {
+						maxSc = 0
+					}
+					m.logScroll = maxSc
+				}
 			}
 		}
 	case terraformDataMsg:
@@ -382,10 +434,53 @@ func (m terraformDetailModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.tfOutputJSON != "" {
 			m.outputTree = buildOutputTreeFromJSON(msg.tfOutputJSON)
 		}
-		// Schedule auto-refresh if progress is still in-flight
-		if m.isProgressInFlight() {
-			return m, scheduleProgressRefresh()
+		// Start log watcher for apply/destroy logs from configmap
+		var cmds []tea.Cmd
+		if msg.k8sConn != nil {
+			m.logStreaming = true
+			cmds = append(cmds,
+				watchApplyDestroyLogs(msg.k8sConn, m.debugData.InstanceID, m.node.ID, m.history, m.logChan),
+				waitForLogLines(m.logChan),
+			)
 		}
+		if m.isProgressInFlight() {
+			cmds = append(cmds, scheduleProgressRefresh())
+		}
+		if len(cmds) > 0 {
+			return m, tea.Batch(cmds...)
+		}
+	case logLineMsg:
+		m.logLines = append(m.logLines, msg.lines...)
+		if msg.label != "" {
+			m.logLabel = msg.label
+		}
+		// If follow mode is on, snap to bottom
+		if m.logFollow {
+			bodyH := m.bodyHeight() - 4
+			if bodyH < 1 {
+				bodyH = 1
+			}
+			maxSc := len(m.logLines) - bodyH
+			if maxSc < 0 {
+				maxSc = 0
+			}
+			m.logScroll = maxSc
+		}
+		return m, waitForLogLines(m.logChan)
+	case logStreamDoneMsg:
+		m.logStreaming = false
+		if msg.err != nil {
+			// Transient error — restart the watcher after a delay
+			m.logChan = make(chan logLineMsg, 50)
+			m.logStreaming = true
+			m.logErr = nil
+			return m, tea.Batch(
+				tea.Tick(logPollInterval, func(time.Time) tea.Msg { return nil }),
+				watchApplyDestroyLogs(m.k8sConn, m.debugData.InstanceID, m.node.ID, m.history, m.logChan),
+				waitForLogLines(m.logChan),
+			)
+		}
+		m.logDone = true
 	case progressTickMsg:
 		if m.isProgressInFlight() && !m.refreshing {
 			m.refreshing = true
@@ -413,6 +508,18 @@ func (m terraformDetailModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 	}
 	return m, nil
+}
+
+func (m terraformDetailModel) logMaxScroll() int {
+	bodyH := m.bodyHeight() - 4
+	if bodyH < 1 {
+		bodyH = 1
+	}
+	maxScroll := len(m.logLines) - bodyH
+	if maxScroll < 0 {
+		maxScroll = 0
+	}
+	return maxScroll
 }
 
 func (m terraformDetailModel) bodyHeight() int {
@@ -545,6 +652,9 @@ func (m terraformDetailModel) getTabContent() string {
 	case tabTfOutput:
 		// Output tab handles its own scrolling
 		return m.renderTerraformOutputTab()
+	case tabLogs:
+		// Logs tab handles its own scrolling
+		return m.renderLogsTab()
 	case tabOpHistory:
 		// History tab handles its own scrolling
 		return m.renderOperationHistoryTab()
@@ -585,6 +695,8 @@ func (m terraformDetailModel) renderFooter() string {
 		text = "↑↓: navigate  enter: open/expand  tab/shift+tab: switch tabs  esc: back  q: quit"
 	} else if m.activeTab == tabTfOutput && len(m.outputTree) > 0 {
 		text = "↑↓: navigate  enter: expand/collapse  tab/shift+tab: switch tabs  esc: back  q: quit"
+	} else if m.activeTab == tabLogs {
+		text = "↑↓/pgup/pgdn: scroll  f: toggle follow  tab/shift+tab: switch tabs  esc: back  q: quit"
 	} else if m.activeTab == tabOpHistory && len(m.historyDates) > 0 {
 		text = "↑↓: navigate  enter: expand/collapse  tab/shift+tab: switch tabs  esc: back  q: quit"
 	} else {
