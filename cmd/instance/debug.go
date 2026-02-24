@@ -81,6 +81,19 @@ type TerraformData struct {
 	LiveLogs []dataaccess.LogsStream `json:"liveLogs"`
 }
 
+type debugResourceDeps struct {
+	ctx            context.Context
+	token          string
+	serviceID      string
+	environmentID  string
+	instanceID     string
+	instanceData   *fleet.ResourceInstance
+	logsService    *dataaccess.LogsService
+	logsEnabled    bool
+	resourceIndex  *resourceIndex
+	terraformIndex *terraformConfigMapIndex
+}
+
 func runDebug(cmd *cobra.Command, args []string) error {
 	instanceID := args[0]
 
@@ -100,6 +113,11 @@ func runDebug(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to get resource-key flag: %w", err)
 	}
 
+	resourceNameFilter, err := cmd.Flags().GetString("resource-name")
+	if err != nil {
+		return fmt.Errorf("failed to get resource-name flag: %w", err)
+	}
+
 	token, err := common.GetTokenWithLogin()
 	if err != nil {
 		return fmt.Errorf("failed to get token: %w", err)
@@ -113,15 +131,42 @@ func runDebug(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to get instance: %w", err)
 	}
 
-	// Get debug information
-	debugResult, err := dataaccess.DebugResourceInstance(ctx, token, serviceID, environmentID, instanceID)
-	if err != nil {
-		return fmt.Errorf("failed to get debug information: %w", err)
-	}
-
 	instanceData, err := dataaccess.DescribeResourceInstance(ctx, token, serviceID, environmentID, instanceID, true)
 	if err != nil {
 		return fmt.Errorf("failed to describe resource instance: %w", err)
+	}
+
+	resourceIndex, err := buildResourceIndex(ctx, token, serviceID, instanceData, resourceNameFilter != "")
+	if err != nil {
+		return fmt.Errorf("failed to build resource indexes: %w", err)
+	}
+
+	filter, err := resolveResourceFilter(rawResourceFilter{
+		key:  resourceKeyFilter,
+		name: resourceNameFilter,
+		id:   resourceID,
+	}, resourceIndex)
+	if err != nil {
+		return err
+	}
+
+	terraformOnly := resourceIndex.terraformOnly(filter)
+
+	var terraformConfigMapIndex *terraformConfigMapIndex
+	if resourceIndex.needsTerraformData(filter) {
+		terraformConfigMapIndex, err = loadTerraformConfigMapIndexForInstance(ctx, token, instanceData, instanceID)
+		if err != nil {
+			return fmt.Errorf("failed to load terraform configmaps: %w", err)
+		}
+	}
+
+	var debugResult *fleet.DebugResourceInstanceResult
+	if !terraformOnly {
+		// Get debug information
+		debugResult, err = dataaccess.DebugResourceInstance(ctx, token, serviceID, environmentID, instanceID)
+		if err != nil {
+			return fmt.Errorf("failed to get debug information: %w", err)
+		}
 	}
 
 	// Process debug result and identify resource types
@@ -135,9 +180,24 @@ func runDebug(cmd *cobra.Command, args []string) error {
 
 	// Use instanceData directly as a struct for BuildLogStreams and IsLogsEnabledStruct
 	logsService := dataaccess.NewLogsService()
-	IsLogsEnabled := logsService.IsLogsEnabled(instanceData)
+	logsEnabled := logsService.IsLogsEnabled(instanceData)
 
-	if debugResult.ResourcesDebug != nil {
+	deps := debugResourceDeps{
+		ctx:            ctx,
+		token:          token,
+		serviceID:      serviceID,
+		environmentID:  environmentID,
+		instanceID:     instanceID,
+		instanceData:   instanceData,
+		logsService:    logsService,
+		logsEnabled:    logsEnabled,
+		resourceIndex:  resourceIndex,
+		terraformIndex: terraformConfigMapIndex,
+	}
+
+	if terraformOnly {
+		data.Resources = append(data.Resources, buildTerraformResources(deps, filter)...)
+	} else if debugResult != nil && debugResult.ResourcesDebug != nil {
 		for resourceKey, resourceDebugInfo := range *debugResult.ResourcesDebug {
 			// Skip adding omnistrateobserv as a resource
 			if resourceKey == "omnistrateobserv" {
@@ -145,13 +205,13 @@ func runDebug(cmd *cobra.Command, args []string) error {
 			}
 
 			// Apply resource filtering if specified
-			if resourceKeyFilter != "" && resourceKeyFilter != resourceKey {
+			if filter.key != "" && filter.key != resourceKey {
 				// If resource-key filter is specified and doesn't match, skip
 				continue
 			}
 
 			// Process each resource based on its type
-			resourceInfo := processResourceByType(resourceKey, resourceDebugInfo, instanceData, instanceID, IsLogsEnabled, logsService, ctx, token, serviceID, environmentID, resourceID)
+			resourceInfo := processResourceByType(resourceKey, resourceDebugInfo, deps, filter)
 			if resourceInfo != nil {
 				data.Resources = append(data.Resources, *resourceInfo)
 			}
@@ -175,17 +235,18 @@ func runDebug(cmd *cobra.Command, args []string) error {
 }
 
 // processResourceByType identifies the resource type and processes it accordingly
-func processResourceByType(resourceKey string, resourceDebugInfo interface{}, instanceData *fleet.ResourceInstance, instanceID string, isLogsEnabled bool, logsService *dataaccess.LogsService, ctx context.Context, token, serviceID, environmentID string, resourceIDFilter string) *ResourceInfo {
-	// Get actual resource ID from resource name if needed for filtering
-	var actualResourceID string
-	if resourceIDFilter != "" {
-		var err error
-		actualResourceID, _, err = getResourceFromInstance(ctx, token, instanceID, resourceKey)
-		if err == nil && actualResourceID != "" {
-			// If resource ID filter is specified and doesn't match, return nil to skip this resource
-			if resourceIDFilter != actualResourceID {
-				return nil
-			}
+func processResourceByType(resourceKey string, resourceDebugInfo interface{}, deps debugResourceDeps, filter resourceFilter) *ResourceInfo {
+	actualResourceID := ""
+	if id, ok := deps.resourceIndex.resourceIDForKey(resourceKey); ok {
+		actualResourceID = id
+	}
+
+	if filter.id != "" {
+		if actualResourceID == "" {
+			actualResourceID = lookupResourceIDFallback(deps.ctx, deps.token, deps.instanceID, resourceKey)
+		}
+		if actualResourceID == "" || filter.id != actualResourceID {
+			return nil
 		}
 	}
 
@@ -221,37 +282,67 @@ func processResourceByType(resourceKey string, resourceDebugInfo interface{}, in
 	// debugData will be non-nil for most resource types, but may still be nil if unmarshalling fails or for unexpected types
 	actualDebugData, ok := debugData["debugData"].(map[string]interface{})
 	if !ok {
-		return processGenericResource(resourceInfo, instanceData, instanceID, isLogsEnabled, logsService, ctx, token, serviceID, environmentID)
+		return processGenericResource(resourceInfo, deps)
 	}
 
 	// Check if it's a helm resource
 	if _, hasChart := actualDebugData["chartRepoName"]; hasChart {
-		return processHelmResource(resourceInfo, actualDebugData, instanceData, instanceID, isLogsEnabled, logsService, ctx, token, serviceID, environmentID)
+		return processHelmResource(resourceInfo, actualDebugData, deps)
 	}
 
 	// Check if it's a terraform resource
-	if isTerraformResource(actualDebugData) {
-		return processTerraformResource(resourceInfo, actualDebugData, ctx, token, serviceID, environmentID, instanceID)
+	if isTerraformResource(actualDebugData) || deps.resourceIndex.isTerraformKey(resourceKey) {
+		return processTerraformResource(resourceInfo, deps, actualResourceID)
 	}
 
 	// Default to generic resource
-	return processGenericResource(resourceInfo, instanceData, instanceID, isLogsEnabled, logsService, ctx, token, serviceID, environmentID)
+	return processGenericResource(resourceInfo, deps)
+}
+
+func lookupResourceIDFallback(ctx context.Context, token, instanceID, resourceKey string) string {
+	resourceID, _, err := getResourceFromInstance(ctx, token, instanceID, resourceKey)
+	if err != nil {
+		return ""
+	}
+	return resourceID
+}
+
+func buildTerraformResources(deps debugResourceDeps, filter resourceFilter) []ResourceInfo {
+	entries := listTerraformResources(deps.instanceData, deps.resourceIndex, filter)
+	resources := make([]ResourceInfo, 0, len(entries))
+
+	for _, entry := range entries {
+		resourceInfo := &ResourceInfo{
+			ID:   entry.key,
+			Name: entry.key,
+		}
+		if entry.id != "" {
+			resourceInfo.ID = entry.id
+		}
+
+		resourceInfo = processTerraformResource(resourceInfo, deps, entry.id)
+		if resourceInfo != nil {
+			resources = append(resources, *resourceInfo)
+		}
+	}
+
+	return resources
 }
 
 // processHelmResource handles Helm resource processing
-func processHelmResource(resourceInfo *ResourceInfo, actualDebugData map[string]interface{}, instanceData *fleet.ResourceInstance, instanceID string, isLogsEnabled bool, logsService *dataaccess.LogsService, ctx context.Context, token, serviceID, environmentID string) *ResourceInfo {
+func processHelmResource(resourceInfo *ResourceInfo, actualDebugData map[string]interface{}, deps debugResourceDeps) *ResourceInfo {
 	resourceInfo.Type = "helm"
 	resourceInfo.HelmData = parseHelmData(actualDebugData)
 
-	if isLogsEnabled {
-		nodeData, err := logsService.BuildLogStreams(instanceData, instanceID, resourceInfo.ID)
+	if deps.logsEnabled {
+		nodeData, err := deps.logsService.BuildLogStreams(deps.instanceData, deps.instanceID, resourceInfo.ID)
 		if err == nil && nodeData != nil {
 			resourceInfo.HelmData.LiveLogs = nodeData
 		}
 	}
 
 	// Fetch workflow events for all resources in this instance
-	resourcesData, workflowInfo, err := dataaccess.GetDebugEventsForAllResources(ctx, token, serviceID, environmentID, instanceID, false, "")
+	resourcesData, workflowInfo, err := dataaccess.GetDebugEventsForAllResources(deps.ctx, deps.token, deps.serviceID, deps.environmentID, deps.instanceID, false, "")
 	if err == nil && len(resourcesData) > 0 {
 		// Find the matching resource and assign its events
 		for _, resData := range resourcesData {
@@ -273,12 +364,19 @@ func processHelmResource(resourceInfo *ResourceInfo, actualDebugData map[string]
 }
 
 // processTerraformResource handles Terraform resource processing
-func processTerraformResource(resourceInfo *ResourceInfo, actualDebugData map[string]interface{}, ctx context.Context, token, serviceID, environmentID, instanceID string) *ResourceInfo {
+func processTerraformResource(resourceInfo *ResourceInfo, deps debugResourceDeps, resourceID string) *ResourceInfo {
 	resourceInfo.Type = "terraform"
-	resourceInfo.TerraformData = parseTerraformData(actualDebugData)
+	if deps.terraformIndex != nil && resourceID != "" {
+		resourceInfo.TerraformData = deps.terraformIndex.terraformDataForResource(resourceID)
+	} else {
+		resourceInfo.TerraformData = &TerraformData{
+			Files: make(map[string]string),
+			Logs:  make(map[string]string),
+		}
+	}
 
 	// Fetch workflow events for all resources in this instance
-	resourcesData, workflowInfo, err := dataaccess.GetDebugEventsForAllResources(ctx, token, serviceID, environmentID, instanceID, false, "")
+	resourcesData, workflowInfo, err := dataaccess.GetDebugEventsForAllResources(deps.ctx, deps.token, deps.serviceID, deps.environmentID, deps.instanceID, false, "")
 	if err == nil && len(resourcesData) > 0 {
 		// Find the matching resource and assign its events
 		for _, resData := range resourcesData {
@@ -300,19 +398,19 @@ func processTerraformResource(resourceInfo *ResourceInfo, actualDebugData map[st
 }
 
 // processGenericResource handles Generic resource processing
-func processGenericResource(resourceInfo *ResourceInfo, instanceData *fleet.ResourceInstance, instanceID string, isLogsEnabled bool, logsService *dataaccess.LogsService, ctx context.Context, token, serviceID, environmentID string) *ResourceInfo {
+func processGenericResource(resourceInfo *ResourceInfo, deps debugResourceDeps) *ResourceInfo {
 	resourceInfo.Type = "generic"
 	resourceInfo.GenericData = &GenericData{}
 
-	if isLogsEnabled {
-		nodeData, err := logsService.BuildLogStreams(instanceData, instanceID, resourceInfo.ID)
+	if deps.logsEnabled {
+		nodeData, err := deps.logsService.BuildLogStreams(deps.instanceData, deps.instanceID, resourceInfo.ID)
 		if err == nil && nodeData != nil {
 			resourceInfo.GenericData.LiveLogs = nodeData
 		}
 	}
 
 	// Fetch workflow events for all resources in this instance
-	resourcesData, workflowInfo, err := dataaccess.GetDebugEventsForAllResources(ctx, token, serviceID, environmentID, instanceID, false, "")
+	resourcesData, workflowInfo, err := dataaccess.GetDebugEventsForAllResources(deps.ctx, deps.token, deps.serviceID, deps.environmentID, deps.instanceID, false, "")
 	if err == nil && len(resourcesData) > 0 {
 		// Find the matching resource and assign its events
 		for _, resData := range resourcesData {
@@ -384,26 +482,6 @@ func parseHelmData(debugData map[string]interface{}) *HelmData {
 	}
 
 	return helmData
-}
-
-func parseTerraformData(debugData map[string]interface{}) *TerraformData {
-	terraformData := &TerraformData{
-		Files: make(map[string]string),
-		Logs:  make(map[string]string),
-	}
-
-	// Parse all files and logs
-	for key, value := range debugData {
-		if strValue, ok := value.(string); ok {
-			if strings.HasPrefix(key, "rendered/") && strings.HasSuffix(key, ".tf") {
-				terraformData.Files[key] = strValue
-			} else if strings.HasPrefix(key, "log/") {
-				terraformData.Logs[key] = strValue
-			}
-		}
-	}
-
-	return terraformData
 }
 
 func launchDebugTUI(data DebugData) error {
@@ -2167,6 +2245,7 @@ func init() {
 	debugCmd.Flags().StringVarP(&outputFlag, "output", "o", "interactive", "Output format (interactive|json)")
 	debugCmd.Flags().String("resource-id", "", "Filter results by resource ID")
 	debugCmd.Flags().String("resource-key", "", "Filter results by resource key")
+	debugCmd.Flags().String("resource-name", "", "Filter results by resource name")
 
 	// Add subcommands
 	debugCmd.AddCommand(debugHelmLogsCmd)

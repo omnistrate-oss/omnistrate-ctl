@@ -20,10 +20,11 @@ omnistrate-ctl instance debug [instance-id] [flags]
 ### Options
 
 ```
-  -h, --help                  help for debug
-  -o, --output string         Output format (interactive|json) (default "interactive")
-      --resource-id string    Filter results by resource ID
-      --resource-key string   Filter results by resource key
+  -h, --help                   help for debug
+  -o, --output string          Output format (interactive|json) (default "interactive")
+      --resource-id string     Filter results by resource ID
+      --resource-key string    Filter results by resource key
+      --resource-name string   Filter results by resource name
 ```
 
 ### Options inherited from parent commands

@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"strings"
 
 	"github.com/omnistrate-oss/omnistrate-ctl/cmd/common"
 	"github.com/omnistrate-oss/omnistrate-ctl/internal/dataaccess"
@@ -36,7 +35,7 @@ type TerraformOutputsResource struct {
 func runDebugTerraformOutputs(cmd *cobra.Command, args []string) error {
 	instanceID := args[0]
 
-	resourceID, err := cmd.Flags().GetString("resource-id")
+	resourceIDFilter, err := cmd.Flags().GetString("resource-id")
 	if err != nil {
 		return fmt.Errorf("failed to get resource-id flag: %w", err)
 	}
@@ -44,6 +43,11 @@ func runDebugTerraformOutputs(cmd *cobra.Command, args []string) error {
 	resourceKeyFilter, err := cmd.Flags().GetString("resource-key")
 	if err != nil {
 		return fmt.Errorf("failed to get resource-key flag: %w", err)
+	}
+
+	resourceNameFilter, err := cmd.Flags().GetString("resource-name")
+	if err != nil {
+		return fmt.Errorf("failed to get resource-name flag: %w", err)
 	}
 
 	token, err := common.GetTokenWithLogin()
@@ -59,10 +63,31 @@ func runDebugTerraformOutputs(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to get instance: %w", err)
 	}
 
-	// Get debug information
-	debugResult, err := dataaccess.DebugResourceInstance(ctx, token, serviceID, environmentID, instanceID)
+	instanceData, err := dataaccess.DescribeResourceInstance(ctx, token, serviceID, environmentID, instanceID, true)
 	if err != nil {
-		return fmt.Errorf("failed to get debug information: %w", err)
+		return fmt.Errorf("failed to describe resource instance: %w", err)
+	}
+
+	resourceIndex, err := buildResourceIndex(ctx, token, serviceID, instanceData, resourceNameFilter != "")
+	if err != nil {
+		return fmt.Errorf("failed to build resource indexes: %w", err)
+	}
+
+	filter, err := resolveResourceFilter(rawResourceFilter{
+		key:  resourceKeyFilter,
+		name: resourceNameFilter,
+		id:   resourceIDFilter,
+	}, resourceIndex)
+	if err != nil {
+		return err
+	}
+
+	var terraformConfigMapIndex *terraformConfigMapIndex
+	if resourceIndex.needsTerraformData(filter) {
+		terraformConfigMapIndex, err = loadTerraformConfigMapIndexForInstance(ctx, token, instanceData, instanceID)
+		if err != nil {
+			return fmt.Errorf("failed to load terraform configmaps: %w", err)
+		}
 	}
 
 	output := TerraformOutputsOutput{
@@ -70,65 +95,22 @@ func runDebugTerraformOutputs(cmd *cobra.Command, args []string) error {
 		Resources:  []TerraformOutputsResource{},
 	}
 
-	if debugResult.ResourcesDebug != nil {
-		for resourceKey, resourceDebugInfo := range *debugResult.ResourcesDebug {
-			// Skip omnistrateobserv
-			if resourceKey == "omnistrateobserv" {
-				continue
-			}
-
-			// Apply resource-key filter if specified
-			if resourceKeyFilter != "" && resourceKeyFilter != resourceKey {
-				continue
-			}
-
-			// Get actual resource ID if filter is specified
-			var actualResourceID string
-			if resourceID != "" {
-				actualResourceID, _, err = getResourceFromInstance(ctx, token, instanceID, resourceKey)
-				if err == nil && actualResourceID != "" {
-					if resourceID != actualResourceID {
-						continue
-					}
-				}
-			}
-
-			// Get debug data from DebugResourceResult
-			debugDataInterface, ok := resourceDebugInfo.GetDebugDataOk()
-			if !ok || debugDataInterface == nil {
-				continue
-			}
-
-			// Convert to map
-			actualDebugData, ok := (*debugDataInterface).(map[string]interface{})
-			if !ok {
-				continue
-			}
-
-			// Check if it's a terraform resource (has rendered/*.tf files or log/terraform*)
-			isTerraform := false
-			for key := range actualDebugData {
-				if (strings.HasPrefix(key, "rendered/") && strings.HasSuffix(key, ".tf")) ||
-					(strings.HasPrefix(key, "log/") && strings.Contains(key, "terraform")) {
-					isTerraform = true
-					break
-				}
-			}
-			if !isTerraform {
-				continue
-			}
-
-			// Parse terraform data
-			terraformData := parseTerraformData(actualDebugData)
-
-			terraformOutputsResource := TerraformOutputsResource{
-				ResourceID:  actualResourceID,
-				ResourceKey: resourceKey,
-				Logs:        terraformData.Logs,
-			}
-
-			output.Resources = append(output.Resources, terraformOutputsResource)
+	for _, resource := range listTerraformResources(instanceData, resourceIndex, filter) {
+		terraformData := &TerraformData{
+			Files: make(map[string]string),
+			Logs:  make(map[string]string),
 		}
+		if terraformConfigMapIndex != nil && resource.id != "" {
+			terraformData = terraformConfigMapIndex.terraformDataForResource(resource.id)
+		}
+
+		terraformOutputsResource := TerraformOutputsResource{
+			ResourceID:  resource.id,
+			ResourceKey: resource.key,
+			Logs:        terraformData.Logs,
+		}
+
+		output.Resources = append(output.Resources, terraformOutputsResource)
 	}
 
 	// Output as JSON
@@ -143,4 +125,5 @@ func runDebugTerraformOutputs(cmd *cobra.Command, args []string) error {
 func init() {
 	debugTerraformOutputsCmd.Flags().String("resource-id", "", "Filter by resource ID")
 	debugTerraformOutputsCmd.Flags().String("resource-key", "", "Filter by resource key")
+	debugTerraformOutputsCmd.Flags().String("resource-name", "", "Filter by resource name")
 }
