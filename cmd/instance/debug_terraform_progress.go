@@ -77,13 +77,13 @@ func fetchTerraformProgress(ctx context.Context, token string, instanceData *ope
 		}
 	}
 	if !ok {
-		return nil, nil, nil, fmt.Errorf("no tf-state configmap found for resource %s", resourceID)
+		return nil, nil, nil, nil
 	}
 
 	// Parse history from the configmap
 	historyJSON, ok := stateConfigMap.Data["history"]
 	if !ok {
-		return nil, nil, nil, fmt.Errorf("no history found in tf-state configmap for resource %s", resourceID)
+		return nil, nil, nil, nil
 	}
 
 	var history []TerraformHistoryEntry
