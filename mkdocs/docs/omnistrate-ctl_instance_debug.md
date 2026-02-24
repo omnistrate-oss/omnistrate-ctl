@@ -1,10 +1,10 @@
 ## omnistrate-ctl instance debug
 
-Debug instance resources
+Visualize the instance plan DAG
 
 ### Synopsis
 
-Debug instance resources with an interactive TUI showing helm charts, terraform files, and logs. Use --output=json for non-interactive JSON output.
+Visualize the plan DAG for an instance based on its product tier version. Use --output=json for non-interactive output.
 
 ```
 omnistrate-ctl instance debug [instance-id] [flags]
@@ -20,11 +20,8 @@ omnistrate-ctl instance debug [instance-id] [flags]
 ### Options
 
 ```
-  -h, --help                   help for debug
-  -o, --output string          Output format (interactive|json) (default "interactive")
-      --resource-id string     Filter results by resource ID
-      --resource-key string    Filter results by resource key
-      --resource-name string   Filter results by resource name
+  -h, --help            help for debug
+  -o, --output string   Output format (interactive|json) (default "interactive")
 ```
 
 ### Options inherited from parent commands

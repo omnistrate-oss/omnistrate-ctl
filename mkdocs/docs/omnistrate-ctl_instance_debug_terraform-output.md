@@ -36,5 +36,5 @@ omnistrate-ctl instance debug terraform-output [instance-id] [flags]
 
 ### SEE ALSO
 
-* [omnistrate-ctl instance debug](omnistrate-ctl_instance_debug.md)	 - Debug instance resources
+* [omnistrate-ctl instance debug](omnistrate-ctl_instance_debug.md)	 - Visualize the instance plan DAG
 
