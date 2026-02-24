@@ -81,7 +81,12 @@ func (m dagModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.inDetail = false
 			m.detailModel = nil
 			m.rebuildLayout()
-			return m, nil
+			return m, tea.ClearScreen
+		case tea.WindowSizeMsg:
+			// Update parent dimensions too for when we return from detail
+			wsm := msg.(tea.WindowSizeMsg)
+			m.width = wsm.Width
+			m.height = wsm.Height
 		}
 		updated, cmd := m.detailModel.Update(msg)
 		m.detailModel = updated
@@ -93,6 +98,7 @@ func (m dagModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.width = msg.Width
 		m.height = msg.Height
 		m.rebuildLayout()
+		return m, tea.ClearScreen
 	case tea.KeyMsg:
 		switch msg.String() {
 		case "ctrl+c", "q":

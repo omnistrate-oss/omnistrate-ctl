@@ -75,8 +75,9 @@ func execInPod(ctx context.Context, conn *k8sConnection, namespace, podName stri
 
 // fetchTerraformFileTree lists files from the terraform executor pod and builds a tree
 func fetchTerraformFileTree(ctx context.Context, conn *k8sConnection, namespace, podName, basePath string) (*TerraformFileTree, error) {
+	// List files and directories, marking dirs with trailing /
 	output, err := execInPod(ctx, conn, namespace, podName, []string{
-		"find", basePath, "-type", "f", "-o", "-type", "d",
+		"sh", "-c", fmt.Sprintf("find %s -type d -exec sh -c 'echo \"$1/\"' _ {} \\; -o -type f -print", basePath),
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to list files: %w", err)
@@ -95,29 +96,46 @@ func fetchTerraformFileTree(ctx context.Context, conn *k8sConnection, namespace,
 		Expanded: true,
 	}
 
-	// Collect relative paths
+	// Collect relative paths, tracking which are directories
 	dirs := make(map[string]bool)
 	var relPaths []string
 	for _, line := range lines {
 		line = strings.TrimSpace(line)
-		if line == "" || line == basePath {
+		if line == "" {
+			continue
+		}
+		isDir := strings.HasSuffix(line, "/")
+		if isDir {
+			line = strings.TrimSuffix(line, "/")
+		}
+		if line == basePath {
 			continue
 		}
 		rel := strings.TrimPrefix(line, basePath+"/")
 		if rel == "" {
 			continue
 		}
+		if isDir {
+			dirs[rel] = true
+		}
 		relPaths = append(relPaths, rel)
-	}
-	sort.Strings(relPaths)
-
-	// Determine directories (paths that have children)
-	for _, rel := range relPaths {
+		// Also mark all parent paths as directories
 		parts := strings.Split(rel, "/")
 		for i := 1; i < len(parts); i++ {
 			dirs[strings.Join(parts[:i], "/")] = true
 		}
 	}
+	sort.Strings(relPaths)
+	// Deduplicate (a dir may appear both from -type d and as a parent)
+	deduped := relPaths[:0]
+	seen := make(map[string]bool)
+	for _, rel := range relPaths {
+		if !seen[rel] {
+			seen[rel] = true
+			deduped = append(deduped, rel)
+		}
+	}
+	relPaths = deduped
 
 	// Build tree structure
 	nodeMap := map[string]*TerraformFileEntry{".": root}

@@ -143,6 +143,7 @@ func (m terraformDetailModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.progressBar.Width < 20 {
 			m.progressBar.Width = 20
 		}
+		return m, tea.ClearScreen
 	case tea.KeyMsg:
 		switch msg.String() {
 		case "ctrl+c", "q":
@@ -545,7 +546,6 @@ func (m terraformDetailModel) renderTerraformFilesTab() string {
 	}
 
 	var b strings.Builder
-	b.WriteString("\n")
 
 	headerStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("255"))
 	b.WriteString(fmt.Sprintf("  %s\n\n", headerStyle.Render(fmt.Sprintf("Files in %s", m.fileTree.BasePath))))
@@ -554,7 +554,33 @@ func (m terraformDetailModel) renderTerraformFilesTab() string {
 	fileStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("252"))
 	selectedStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("230")).Bold(true).Background(lipgloss.Color("62"))
 
-	for i, entry := range m.fileTree.Flat {
+	// Viewport: reserve 3 lines for header + 1 for footer hint
+	visibleRows := m.bodyHeight() - 4
+	if visibleRows < 1 {
+		visibleRows = 1
+	}
+
+	totalEntries := len(m.fileTree.Flat)
+
+	// Compute scroll offset to keep cursor visible
+	scrollOffset := 0
+	if m.fileCursor >= visibleRows {
+		scrollOffset = m.fileCursor - visibleRows + 1
+	}
+	if scrollOffset > totalEntries-visibleRows {
+		scrollOffset = totalEntries - visibleRows
+	}
+	if scrollOffset < 0 {
+		scrollOffset = 0
+	}
+
+	end := scrollOffset + visibleRows
+	if end > totalEntries {
+		end = totalEntries
+	}
+
+	for i := scrollOffset; i < end; i++ {
+		entry := m.fileTree.Flat[i]
 		indent := strings.Repeat("  ", entry.Depth)
 		cursor := "  "
 		if i == m.fileCursor {
@@ -564,9 +590,9 @@ func (m terraformDetailModel) renderTerraformFilesTab() string {
 		var icon, name string
 		if entry.IsDir {
 			if entry.Expanded {
-				icon = "📂"
+				icon = "▾"
 			} else {
-				icon = "📁"
+				icon = "▸"
 			}
 			name = dirStyle.Render(entry.Name + "/")
 		} else {
@@ -575,7 +601,6 @@ func (m terraformDetailModel) renderTerraformFilesTab() string {
 		}
 
 		if i == m.fileCursor {
-			// Highlight the whole line
 			name = selectedStyle.Render(entry.Name)
 			if entry.IsDir {
 				name += "/"
@@ -585,7 +610,22 @@ func (m terraformDetailModel) renderTerraformFilesTab() string {
 		b.WriteString(fmt.Sprintf("  %s%s%s %s\n", cursor, indent, icon, name))
 	}
 
-	b.WriteString(fmt.Sprintf("\n  %s\n", lipgloss.NewStyle().Foreground(lipgloss.Color("241")).Render("↑↓: navigate  enter: open/expand  esc: back")))
+	// Scroll indicator
+	if totalEntries > visibleRows {
+		pos := ""
+		if scrollOffset == 0 {
+			pos = "top"
+		} else if end >= totalEntries {
+			pos = "end"
+		} else {
+			pct := (scrollOffset * 100) / (totalEntries - visibleRows)
+			pos = fmt.Sprintf("%d%%", pct)
+		}
+		dimStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("241"))
+		b.WriteString(fmt.Sprintf("\n  %s\n", dimStyle.Render(fmt.Sprintf("↑↓: navigate  enter: open/expand  esc: back  [%d/%d %s]", m.fileCursor+1, totalEntries, pos))))
+	} else {
+		b.WriteString(fmt.Sprintf("\n  %s\n", lipgloss.NewStyle().Foreground(lipgloss.Color("241")).Render("↑↓: navigate  enter: open/expand  esc: back")))
+	}
 
 	return b.String()
 }
@@ -611,7 +651,12 @@ func (m terraformDetailModel) renderFileContent() string {
 
 	lines := strings.Split(m.fileContent, "\n")
 	lineNumStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("241"))
-	codeStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("252"))
+
+	// Determine filename for syntax highlighting
+	filename := ""
+	if m.fileTree != nil && m.fileCursor >= 0 && m.fileCursor < len(m.fileTree.Flat) {
+		filename = m.fileTree.Flat[m.fileCursor].Name
+	}
 
 	bodyH := m.bodyHeight() - headerLines
 	if bodyH < 1 {
@@ -648,7 +693,7 @@ func (m terraformDetailModel) renderFileContent() string {
 			line = string(runes) + "…"
 		}
 		lineNum := lineNumStyle.Render(fmt.Sprintf("%4d", i+1))
-		code := codeStyle.Render(line)
+		code := syntaxHighlightLine(line, filename)
 		b.WriteString(fmt.Sprintf("  %s │ %s\n", lineNum, code))
 	}
 
@@ -659,19 +704,19 @@ func fileIcon(name string) string {
 	lower := strings.ToLower(name)
 	switch {
 	case strings.HasSuffix(lower, ".tf"):
-		return "📄"
+		return "⬡"
 	case strings.HasSuffix(lower, ".tfvars"):
-		return "📋"
+		return "≡"
 	case strings.HasSuffix(lower, ".json"):
-		return "📋"
+		return "{ }"
 	case strings.HasSuffix(lower, ".yaml"), strings.HasSuffix(lower, ".yml"):
-		return "📋"
+		return "―"
 	case strings.HasSuffix(lower, ".sh"):
-		return "📜"
+		return "$"
 	case strings.HasSuffix(lower, ".lock"), strings.HasSuffix(lower, ".lock.hcl"):
-		return "🔒"
+		return "⊘"
 	default:
-		return "📄"
+		return "·"
 	}
 }
 
