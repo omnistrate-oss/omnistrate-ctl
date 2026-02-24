@@ -30,11 +30,12 @@ type fileContentMsg struct {
 
 // Messages
 type terraformDataMsg struct {
-	progress *TerraformProgressData
-	history  []TerraformHistoryEntry
-	k8sConn  *k8sConnection
-	fileTree *TerraformFileTree
-	err      error
+	progress     *TerraformProgressData
+	history      []TerraformHistoryEntry
+	k8sConn      *k8sConnection
+	fileTree     *TerraformFileTree
+	tfOutputJSON string // latest terraform output JSON from configmap
+	err          error
 }
 
 type terraformDetailModel struct {
@@ -66,6 +67,12 @@ type terraformDetailModel struct {
 	fileContentErr error
 	fileLoading    bool
 	fileScroll     int
+
+	// Terraform Output tab data
+	tfOutputJSON   string // raw JSON from the latest output.log
+	outputTree     []outputNode
+	outputCursor   int
+	outputScroll   int
 }
 
 func newTerraformDetailModel(node PlanDAGNode, data DebugData) terraformDetailModel {
@@ -109,6 +116,32 @@ func (m terraformDetailModel) fetchData() tea.Cmd {
 			return terraformDataMsg{err: err}
 		}
 
+		// Fetch terraform output JSON from configmap Files (tf-state)
+		var tfOutputJSON string
+		if conn != nil {
+			index, indexErr := loadTerraformConfigMapIndex(ctx, conn.clientset, m.debugData.InstanceID)
+			if indexErr == nil && index != nil {
+				// Try multiple key formats for resource ID lookup
+				normalizedID := normalizeResourceIDForConfigMap(m.node.ID)
+				var tfData *TerraformData
+				for _, key := range []string{
+					normalizedID,
+					m.node.ID,
+					"tf-" + normalizedID,
+					"tf-" + strings.ToLower(m.node.ID),
+				} {
+					td := index.terraformDataForResource(key)
+					if td != nil && len(td.Files) > 0 {
+						tfData = td
+						break
+					}
+				}
+				if tfData != nil {
+					tfOutputJSON = findLatestOutputLog(tfData.Files, history)
+				}
+			}
+		}
+
 		// Fetch file tree from the terraform executor pod
 		var fileTree *TerraformFileTree
 		if progress != nil && conn != nil && progress.TerraformName != "" {
@@ -125,11 +158,12 @@ func (m terraformDetailModel) fetchData() tea.Cmd {
 		}
 
 		return terraformDataMsg{
-			progress: progress,
-			history:  history,
-			k8sConn:  conn,
-			fileTree: fileTree,
-			err:      err,
+			progress:     progress,
+			history:      history,
+			k8sConn:      conn,
+			fileTree:     fileTree,
+			tfOutputJSON: tfOutputJSON,
+			err:          err,
 		}
 	}
 }
@@ -173,6 +207,10 @@ func (m terraformDetailModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				if m.fileCursor > 0 {
 					m.fileCursor--
 				}
+			} else if m.activeTab == tabTfOutput && len(m.outputTree) > 0 {
+				if m.outputCursor > 0 {
+					m.outputCursor--
+				}
 			} else if m.viewingFile {
 				if m.fileScroll > 0 {
 					m.fileScroll--
@@ -187,6 +225,11 @@ func (m terraformDetailModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				if m.fileCursor < len(m.fileTree.Flat)-1 {
 					m.fileCursor++
 				}
+			} else if m.activeTab == tabTfOutput && len(m.outputTree) > 0 {
+				visibleNodes := flattenOutputTree(m.outputTree)
+				if m.outputCursor < len(visibleNodes)-1 {
+					m.outputCursor++
+				}
 			} else if m.viewingFile {
 				m.fileScroll++
 			} else {
@@ -199,7 +242,6 @@ func (m terraformDetailModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					if entry.IsDir {
 						entry.Expanded = !entry.Expanded
 						m.fileTree.rebuildFlat()
-						// Clamp cursor
 						if m.fileCursor >= len(m.fileTree.Flat) {
 							m.fileCursor = len(m.fileTree.Flat) - 1
 						}
@@ -208,6 +250,21 @@ func (m terraformDetailModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 						m.viewingFile = true
 						m.fileScroll = 0
 						return m, m.fetchFileContent(entry.Path)
+					}
+				}
+			} else if m.activeTab == tabTfOutput && len(m.outputTree) > 0 {
+				visibleNodes := flattenOutputTree(m.outputTree)
+				if m.outputCursor >= 0 && m.outputCursor < len(visibleNodes) {
+					node := visibleNodes[m.outputCursor]
+					if node.expandable {
+						node.expanded = !node.expanded
+					} else if node.sensitive {
+						node.sensitiveShown = !node.sensitiveShown
+						if node.sensitiveShown {
+							node.value = node.realValue
+						} else {
+							node.value = "••••••••  (sensitive, press enter to reveal)"
+						}
 					}
 				}
 			}
@@ -237,6 +294,10 @@ func (m terraformDetailModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.history = msg.history
 		m.k8sConn = msg.k8sConn
 		m.fileTree = msg.fileTree
+		m.tfOutputJSON = msg.tfOutputJSON
+		if msg.tfOutputJSON != "" {
+			m.outputTree = buildOutputTreeFromJSON(msg.tfOutputJSON)
+		}
 	case fileContentMsg:
 		m.fileLoading = false
 		m.fileContent = msg.content
@@ -379,7 +440,8 @@ func (m terraformDetailModel) getTabContent() string {
 		// Files tab handles its own scrolling via fileCursor and fileScroll
 		return m.renderTerraformFilesTab()
 	case tabTfOutput:
-		content = m.renderPlaceholderTab("Terraform Output")
+		// Output tab handles its own scrolling
+		return m.renderTerraformOutputTab()
 	case tabOpHistory:
 		content = m.renderPlaceholderTab("Operation History")
 	}
@@ -417,6 +479,8 @@ func (m terraformDetailModel) renderFooter() string {
 		text = "esc: back to files  ↑↓/pgup/pgdn: scroll  q: quit"
 	} else if m.activeTab == tabTfFiles && m.fileTree != nil && len(m.fileTree.Flat) > 0 {
 		text = "↑↓: navigate  enter: open/expand  tab/shift+tab: switch tabs  esc: back  q: quit"
+	} else if m.activeTab == tabTfOutput && len(m.outputTree) > 0 {
+		text = "↑↓: navigate  enter: expand/collapse  tab/shift+tab: switch tabs  esc: back  q: quit"
 	} else {
 		text = "tab/shift+tab: switch tabs  ↑↓: scroll  esc: back  q: quit"
 	}
