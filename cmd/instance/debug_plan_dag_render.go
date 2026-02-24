@@ -544,16 +544,18 @@ type dagCanvas struct {
 }
 
 type nodeCard struct {
-	title       string
-	meta1       string
-	meta2       string
-	icon        rune
-	iconStyle   lipgloss.Style
-	keyLabel    string
-	keyValue    string
-	theme       cardTheme
-	progress    ResourceProgress
-	hasProgress bool
+	title           string
+	meta1           string
+	meta2           string
+	icon            rune
+	iconStyle       lipgloss.Style
+	keyLabel        string
+	keyValue        string
+	theme           cardTheme
+	progress        ResourceProgress
+	hasProgress     bool
+	progressLoading bool
+	spinnerRune     rune
 }
 
 type cardTheme struct {
@@ -649,6 +651,13 @@ func drawPlanDAGStyled(plan *PlanDAG, width int, selectedNodeID string) []string
 	for id, node := range plan.Nodes {
 		progress, ok := progressForNode(plan, node)
 		card := buildNodeCard(node, progress, ok)
+		// Mark all nodes as loading while progress fetch is in flight
+		if plan.ProgressLoading {
+			card.progressLoading = true
+			card.hasProgress = true
+			frames := []rune{'⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'}
+			card.spinnerRune = frames[plan.SpinnerTick%len(frames)]
+		}
 		cards[id] = card
 
 		line1 := 2 + len([]rune(card.title))
@@ -910,6 +919,27 @@ func drawProgressBar(canvas *dagCanvas, x, y, width int, card nodeCard, bgStyle 
 	}
 
 	if !card.hasProgress {
+		return
+	}
+
+	// Show loading spinner while progress is being fetched
+	if card.progressLoading {
+		shimmerStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("241"))
+		spinnerStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("205"))
+		r := card.spinnerRune
+		if r == 0 {
+			r = '⠋'
+		}
+		// bar of ░ then space then spinner rune
+		barWidth := width - 2
+		if barWidth < 1 {
+			barWidth = 1
+		}
+		for i := 0; i < barWidth; i++ {
+			canvas.set(x+i, y, '░', shimmerStyle)
+		}
+		canvas.set(x+barWidth, y, ' ', bgStyle)
+		canvas.set(x+barWidth+1, y, r, spinnerStyle)
 		return
 	}
 

@@ -104,10 +104,6 @@ func fetchDebugData(instanceID, token string) tea.Cmd {
 				Errors: []string{err.Error()},
 			}
 		}
-		if planDAG != nil {
-			attachWorkflowProgress(ctx, token, serviceID, environmentID, instanceID, planDAG)
-		}
-
 		return debugDataMsg{
 			data: DebugData{
 				InstanceID:    instanceID,

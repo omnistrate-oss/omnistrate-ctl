@@ -98,8 +98,9 @@ type terraformDetailModel struct {
 	logLabel     string // describes which operation's log is shown
 
 	// Operation History tab data
-	historyCursor  int
-	historyDates   []dateSection
+	historyCursor    int
+	historyDates     []dateSection
+	errorExpandedIdx int // index in flattened rows of entry whose error is shown, -1 = none
 }
 
 func newTerraformDetailModel(node PlanDAGNode, data DebugData) terraformDetailModel {
@@ -113,14 +114,15 @@ func newTerraformDetailModel(node PlanDAGNode, data DebugData) terraformDetailMo
 	)
 
 	return terraformDetailModel{
-		node:        node,
-		debugData:   data,
-		activeTab:   tabProgress,
-		loading:     true,
-		spinner:     s,
-		progressBar: p,
-		logChan:     make(chan logLineMsg, 50),
-		logFollow:   true,
+		node:             node,
+		debugData:        data,
+		activeTab:        tabProgress,
+		loading:          true,
+		spinner:          s,
+		progressBar:      p,
+		logChan:          make(chan logLineMsg, 50),
+		logFollow:        true,
+		errorExpandedIdx: -1,
 	}
 }
 
@@ -325,8 +327,14 @@ func (m terraformDetailModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 			} else if m.viewingFile {
 				m.fileScroll++
+				if m.fileScroll > m.fileScrollMax() {
+					m.fileScroll = m.fileScrollMax()
+				}
 			} else {
 				m.scrollY++
+				if m.scrollY > m.progressMaxScroll() {
+					m.scrollY = m.progressMaxScroll()
+				}
 			}
 		case "enter":
 			if m.activeTab == tabTfFiles && m.fileTree != nil && !m.viewingFile {
@@ -368,6 +376,13 @@ func (m terraformDetailModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 						row.date.expanded = !row.date.expanded
 					} else if row.isGroupHeader {
 						row.group.expanded = !row.group.expanded
+					} else if row.entry != nil && row.entry.Error != "" {
+						// Toggle error detail for failed entries
+						if m.errorExpandedIdx == m.historyCursor {
+							m.errorExpandedIdx = -1
+						} else {
+							m.errorExpandedIdx = m.historyCursor
+						}
 					}
 					newRows := flattenTimeline(m.historyDates)
 					if m.historyCursor >= len(newRows) {
@@ -402,8 +417,14 @@ func (m terraformDetailModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 			} else if m.viewingFile {
 				m.fileScroll += m.bodyHeight()
+				if m.fileScroll > m.fileScrollMax() {
+					m.fileScroll = m.fileScrollMax()
+				}
 			} else {
 				m.scrollY += m.bodyHeight()
+				if m.scrollY > m.progressMaxScroll() {
+					m.scrollY = m.progressMaxScroll()
+				}
 			}
 		case "f":
 			if m.activeTab == tabLogs {
@@ -450,7 +471,11 @@ func (m terraformDetailModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, tea.Batch(cmds...)
 		}
 	case logLineMsg:
-		m.logLines = append(m.logLines, msg.lines...)
+		if msg.replace {
+			m.logLines = msg.lines
+		} else {
+			m.logLines = append(m.logLines, msg.lines...)
+		}
 		if msg.label != "" {
 			m.logLabel = msg.label
 		}
@@ -491,7 +516,10 @@ func (m terraformDetailModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.err == nil {
 			m.tfProgress = msg.progress
 			m.history = msg.history
-			m.historyDates = buildTimelineSections(msg.history)
+			// Don't rebuild timeline while user is reading an expanded error
+			if m.errorExpandedIdx < 0 {
+				m.historyDates = buildTimelineSections(msg.history)
+			}
 		}
 		if m.isProgressInFlight() {
 			return m, scheduleProgressRefresh()
@@ -501,7 +529,7 @@ func (m terraformDetailModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.fileContent = msg.content
 		m.fileContentErr = msg.err
 	case spinner.TickMsg:
-		if m.loading || m.fileLoading || m.refreshing {
+		if m.loading || m.fileLoading || m.refreshing || m.isProgressInFlight() || m.logStreaming {
 			var cmd tea.Cmd
 			m.spinner, cmd = m.spinner.Update(msg)
 			return m, cmd
@@ -516,6 +544,34 @@ func (m terraformDetailModel) logMaxScroll() int {
 		bodyH = 1
 	}
 	maxScroll := len(m.logLines) - bodyH
+	if maxScroll < 0 {
+		maxScroll = 0
+	}
+	return maxScroll
+}
+
+func (m terraformDetailModel) progressMaxScroll() int {
+	content := m.renderProgressTab()
+	lines := strings.Split(content, "\n")
+	bodyH := m.bodyHeight()
+	maxScroll := len(lines) - bodyH
+	if maxScroll < 0 {
+		maxScroll = 0
+	}
+	return maxScroll
+}
+
+func (m terraformDetailModel) fileScrollMax() int {
+	if m.fileContent == "" {
+		return 0
+	}
+	lines := strings.Split(m.fileContent, "\n")
+	// headerLines in renderFileContentView is 2
+	bodyH := m.bodyHeight() - 2
+	if bodyH < 1 {
+		bodyH = 1
+	}
+	maxScroll := len(lines) - bodyH
 	if maxScroll < 0 {
 		maxScroll = 0
 	}
@@ -727,11 +783,8 @@ func (m terraformDetailModel) renderProgressTab() string {
 	b.WriteString("\n")
 	statusStyle := styleForStatus(p.Status)
 	statusLine := fmt.Sprintf("  Status: %s", statusStyle.Render(p.Status))
-	if m.refreshing {
-		statusLine += lipgloss.NewStyle().Foreground(lipgloss.Color("241")).Render("  ↻ refreshing…")
-	} else if m.isProgressInFlight() {
-		statusLine += lipgloss.NewStyle().Foreground(lipgloss.Color("241")).Render(
-			fmt.Sprintf("  (auto-refresh every %ds)", int(progressRefreshInterval.Seconds())))
+	if m.isProgressInFlight() {
+		statusLine += fmt.Sprintf("  %s", m.spinner.View())
 	}
 	b.WriteString(statusLine + "\n")
 
@@ -1059,7 +1112,7 @@ func (m terraformDetailModel) renderOperationHistoryTab() string {
 			// Child entry row
 			e := row.entry
 			connector := "│   ├─"
-			if row.isLastChild {
+			if row.isLastChild && m.errorExpandedIdx != idx {
 				connector = "│   └─"
 			}
 
@@ -1072,12 +1125,22 @@ func (m terraformDetailModel) renderOperationHistoryTab() string {
 				timeRange += " → " + formatHistoryTimeOnly(e.CompletedAt)
 			}
 
-			line := fmt.Sprintf("  %s %s %s  %s  %s",
+			errorHint := ""
+			if e.Error != "" {
+				if m.errorExpandedIdx == idx {
+					errorHint = dimStyle.Render("  ▾ error")
+				} else {
+					errorHint = lipgloss.NewStyle().Foreground(lipgloss.Color("203")).Render("  ▸ error")
+				}
+			}
+
+			line := fmt.Sprintf("  %s %s %s  %s  %s%s",
 				dimStyle.Render(connector),
 				sIcon,
 				operation,
 				status,
 				timeStyle.Render(timeRange),
+				errorHint,
 			)
 
 			if selected {
@@ -1085,6 +1148,28 @@ func (m terraformDetailModel) renderOperationHistoryTab() string {
 			}
 
 			b.WriteString(fmt.Sprintf("  %s%s\n", cursor, line))
+
+			// Render error detail if expanded
+			if m.errorExpandedIdx == idx && e.Error != "" {
+				errStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("203"))
+				errPrefix := dimStyle.Render("│       ")
+				errorText := strings.ReplaceAll(e.Error, "\\n", "\n")
+				maxErrWidth := m.contentWidth() - 12
+				if maxErrWidth < 20 {
+					maxErrWidth = 20
+				}
+				for _, errLine := range strings.Split(errorText, "\n") {
+					trimmed := strings.TrimSpace(errLine)
+					if trimmed == "" {
+						continue
+					}
+					runes := []rune(trimmed)
+					if len(runes) > maxErrWidth {
+						trimmed = string(runes[:maxErrWidth-1]) + "…"
+					}
+					b.WriteString(fmt.Sprintf("  %s %s\n", errPrefix, errStyle.Render(trimmed)))
+				}
+			}
 		}
 	}
 

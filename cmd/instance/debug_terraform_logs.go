@@ -14,8 +14,9 @@ tea "github.com/charmbracelet/bubbletea"
 
 // logLineMsg delivers a batch of new log lines
 type logLineMsg struct {
-lines []string
-label string
+lines   []string
+label   string
+replace bool // if true, replace all existing lines instead of appending
 }
 
 // logStreamDoneMsg signals the log polling has ended
@@ -67,7 +68,7 @@ continue
 }
 op := strings.ToLower(entry.Operation)
 key := entry.OperationID + "-" + op + ".log"
-if content, ok := cmData[key]; ok {
+if content, ok := cmData[key]; ok && strings.TrimSpace(content) != "" {
 entries = append(entries, opLog{operation: op, content: content, index: i})
 }
 }
@@ -112,7 +113,12 @@ lines = append(lines, "")
 }
 lines = append(lines, fmt.Sprintf("─── %s ───", e.operation))
 lines = append(lines, "")
-lines = append(lines, strings.Split(e.content, "\n")...)
+contentLines := strings.Split(e.content, "\n")
+// Trim trailing empty lines to avoid phantom growth on each poll
+for len(contentLines) > 0 && strings.TrimSpace(contentLines[len(contentLines)-1]) == "" {
+contentLines = contentLines[:len(contentLines)-1]
+}
+lines = append(lines, contentLines...)
 }
 
 return lines, label
@@ -176,10 +182,11 @@ history = newHistory
 
 if len(lines) > 0 {
 if opID != prevOpID && prevOpID != "" {
-// New operation ID — send separator and full content
+// New operation ID — replace with separator and full content
 ch <- logLineMsg{
-lines: append([]string{"", "═══ new operation ═══", ""}, lines...),
-label: label,
+lines:   append([]string{"", "═══ new operation ═══", ""}, lines...),
+label:   label,
+replace: true,
 }
 prevLines = lines
 } else if len(prevLines) == 0 {
@@ -194,8 +201,8 @@ label: label,
 }
 prevLines = lines
 } else if !slicesEqual(lines, prevLines) {
-// Content changed (e.g. new sub-operation appeared)
-ch <- logLineMsg{lines: lines, label: label}
+// Content changed (e.g. new sub-operation appeared) — replace all
+ch <- logLineMsg{lines: lines, label: label, replace: true}
 prevLines = lines
 }
 prevOpID = opID
@@ -250,7 +257,7 @@ var b strings.Builder
 headerStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("255"))
 statusText := ""
 if m.logStreaming {
-statusText = lipgloss.NewStyle().Foreground(lipgloss.Color("82")).Render("  ● live")
+statusText = fmt.Sprintf("  %s", m.spinner.View()) + lipgloss.NewStyle().Foreground(lipgloss.Color("82")).Render(" live")
 } else if m.logDone {
 statusText = lipgloss.NewStyle().Foreground(lipgloss.Color("245")).Render("  ○ ended")
 }

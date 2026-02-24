@@ -47,6 +47,7 @@ type TerraformHistoryEntry struct {
 	StartedAt   string `json:"startedAt"`
 	CompletedAt string `json:"completedAt"`
 	OperationID string `json:"operationId"`
+	Error       string `json:"error,omitempty"`
 }
 
 // fetchTerraformProgress fetches and parses terraform progress for a given resource node
