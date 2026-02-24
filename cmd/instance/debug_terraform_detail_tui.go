@@ -73,6 +73,10 @@ type terraformDetailModel struct {
 	outputTree     []outputNode
 	outputCursor   int
 	outputScroll   int
+
+	// Operation History tab data
+	historyCursor int
+	historyGroups []operationGroup
 }
 
 func newTerraformDetailModel(node PlanDAGNode, data DebugData) terraformDetailModel {
@@ -211,6 +215,14 @@ func (m terraformDetailModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				if m.outputCursor > 0 {
 					m.outputCursor--
 				}
+			} else if m.activeTab == tabOpHistory && len(m.historyGroups) > 0 {
+				rows := flattenTimeline(m.historyGroups)
+				if m.historyCursor > 0 {
+					m.historyCursor--
+				}
+				if m.historyCursor >= len(rows) {
+					m.historyCursor = len(rows) - 1
+				}
 			} else if m.viewingFile {
 				if m.fileScroll > 0 {
 					m.fileScroll--
@@ -229,6 +241,11 @@ func (m terraformDetailModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				visibleNodes := flattenOutputTree(m.outputTree)
 				if m.outputCursor < len(visibleNodes)-1 {
 					m.outputCursor++
+				}
+			} else if m.activeTab == tabOpHistory && len(m.historyGroups) > 0 {
+				rows := flattenTimeline(m.historyGroups)
+				if m.historyCursor < len(rows)-1 {
+					m.historyCursor++
 				}
 			} else if m.viewingFile {
 				m.fileScroll++
@@ -267,6 +284,18 @@ func (m terraformDetailModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 						}
 					}
 				}
+			} else if m.activeTab == tabOpHistory && len(m.historyGroups) > 0 {
+				rows := flattenTimeline(m.historyGroups)
+				if m.historyCursor >= 0 && m.historyCursor < len(rows) {
+					row := rows[m.historyCursor]
+					if row.isGroupHeader {
+						row.group.expanded = !row.group.expanded
+						newRows := flattenTimeline(m.historyGroups)
+						if m.historyCursor >= len(newRows) {
+							m.historyCursor = len(newRows) - 1
+						}
+					}
+				}
 			}
 		case "pgup":
 			if m.viewingFile {
@@ -292,6 +321,7 @@ func (m terraformDetailModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.loadErr = msg.err
 		m.tfProgress = msg.progress
 		m.history = msg.history
+		m.historyGroups = buildOperationGroups(msg.history)
 		m.k8sConn = msg.k8sConn
 		m.fileTree = msg.fileTree
 		m.tfOutputJSON = msg.tfOutputJSON
@@ -443,7 +473,8 @@ func (m terraformDetailModel) getTabContent() string {
 		// Output tab handles its own scrolling
 		return m.renderTerraformOutputTab()
 	case tabOpHistory:
-		content = m.renderPlaceholderTab("Operation History")
+		// History tab handles its own scrolling
+		return m.renderOperationHistoryTab()
 	}
 
 	lines := strings.Split(content, "\n")
@@ -480,6 +511,8 @@ func (m terraformDetailModel) renderFooter() string {
 	} else if m.activeTab == tabTfFiles && m.fileTree != nil && len(m.fileTree.Flat) > 0 {
 		text = "↑↓: navigate  enter: open/expand  tab/shift+tab: switch tabs  esc: back  q: quit"
 	} else if m.activeTab == tabTfOutput && len(m.outputTree) > 0 {
+		text = "↑↓: navigate  enter: expand/collapse  tab/shift+tab: switch tabs  esc: back  q: quit"
+	} else if m.activeTab == tabOpHistory && len(m.historyGroups) > 0 {
 		text = "↑↓: navigate  enter: expand/collapse  tab/shift+tab: switch tabs  esc: back  q: quit"
 	} else {
 		text = "tab/shift+tab: switch tabs  ↑↓: scroll  esc: back  q: quit"
@@ -576,9 +609,298 @@ func (m terraformDetailModel) renderProgressTab() string {
 	return b.String()
 }
 
-func (m terraformDetailModel) renderPlaceholderTab(name string) string {
-	style := lipgloss.NewStyle().Foreground(lipgloss.Color("245"))
-	return fmt.Sprintf("\n  %s\n", style.Render(fmt.Sprintf("%s — not yet implemented", name)))
+type operationGroup struct {
+	operationID string
+	entries     []TerraformHistoryEntry
+	summary     string // "diff → apply → output"
+	status      string // overall status from last entry
+	startedAt   string
+	completedAt string
+	expanded    bool
+}
+
+// timelineRow is a single renderable row in the flattened timeline
+type timelineRow struct {
+	isGroupHeader bool
+	group         *operationGroup
+	entry         *TerraformHistoryEntry
+	isLastChild   bool // last entry in group's children
+	isLastGroup   bool // this group is the final one
+}
+
+func buildOperationGroups(history []TerraformHistoryEntry) []operationGroup {
+	if len(history) == 0 {
+		return nil
+	}
+
+	// Group by operation ID, preserving order of first appearance (reversed = newest first)
+	groupMap := make(map[string]*operationGroup)
+	var order []string
+
+	// Walk history in reverse (newest first)
+	for i := len(history) - 1; i >= 0; i-- {
+		entry := history[i]
+		opID := entry.OperationID
+		if opID == "" {
+			opID = "(unknown)"
+		}
+		g, exists := groupMap[opID]
+		if !exists {
+			g = &operationGroup{operationID: opID}
+			groupMap[opID] = g
+			order = append(order, opID)
+		}
+		g.entries = append(g.entries, entry)
+	}
+
+	// Build summaries and pick status/times
+	var groups []operationGroup
+	for _, opID := range order {
+		g := groupMap[opID]
+
+		// Reverse entries to chronological order (oldest first)
+		for i, j := 0, len(g.entries)-1; i < j; i, j = i+1, j-1 {
+			g.entries[i], g.entries[j] = g.entries[j], g.entries[i]
+		}
+
+		// Summary: list of operations in chronological order (including duplicates)
+		var ops []string
+		for _, e := range g.entries {
+			ops = append(ops, e.Operation)
+		}
+		g.summary = strings.Join(ops, " → ")
+
+		// Overall status from last entry (newest)
+		g.status = g.entries[len(g.entries)-1].Status
+
+		// Time range: earliest start, latest completion
+		g.startedAt = g.entries[0].StartedAt
+		for _, e := range g.entries {
+			if e.CompletedAt != "" {
+				g.completedAt = e.CompletedAt
+			}
+		}
+		if g.startedAt == "" {
+			g.startedAt = g.entries[0].StartedAt
+		}
+
+		g.expanded = false
+		groups = append(groups, *g)
+	}
+
+	// Auto-expand the first (newest) group
+	if len(groups) > 0 {
+		groups[0].expanded = true
+	}
+
+	return groups
+}
+
+func flattenTimeline(groups []operationGroup) []timelineRow {
+	var rows []timelineRow
+	for i := range groups {
+		g := &groups[i]
+		isLast := i == len(groups)-1
+		rows = append(rows, timelineRow{
+			isGroupHeader: true,
+			group:         g,
+			isLastGroup:   isLast,
+		})
+		if g.expanded {
+			for j := range g.entries {
+				rows = append(rows, timelineRow{
+					group:       g,
+					entry:       &g.entries[j],
+					isLastChild: j == len(g.entries)-1,
+					isLastGroup: isLast,
+				})
+			}
+		}
+	}
+	return rows
+}
+
+func (m terraformDetailModel) renderOperationHistoryTab() string {
+	if m.loading {
+		return fmt.Sprintf("\n  %s Fetching operation history...", m.spinner.View())
+	}
+	if m.loadErr != nil {
+		errStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("203"))
+		return fmt.Sprintf("\n  %s\n", errStyle.Render(fmt.Sprintf("Error: %v", m.loadErr)))
+	}
+
+	if len(m.historyGroups) == 0 {
+		subtleStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("245"))
+		return fmt.Sprintf("\n  %s\n", subtleStyle.Render("No operation history available for this resource."))
+	}
+
+	var b strings.Builder
+
+	headerStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("255"))
+	b.WriteString(fmt.Sprintf("  %s\n\n", headerStyle.Render(
+		fmt.Sprintf("Operation History (%d operations, %d entries)", len(m.historyGroups), len(m.history)))))
+
+	rows := flattenTimeline(m.historyGroups)
+
+	// Viewport clipping
+	visibleRows := m.bodyHeight() - 4
+	if visibleRows < 1 {
+		visibleRows = 1
+	}
+	totalRows := len(rows)
+
+	scrollOffset := 0
+	if m.historyCursor >= visibleRows {
+		scrollOffset = m.historyCursor - visibleRows + 1
+	}
+	if scrollOffset > totalRows-visibleRows {
+		scrollOffset = totalRows - visibleRows
+	}
+	if scrollOffset < 0 {
+		scrollOffset = 0
+	}
+
+	end := scrollOffset + visibleRows
+	if end > totalRows {
+		end = totalRows
+	}
+
+	// Styles
+	opIDStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("117"))
+	summaryStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("252"))
+	timeStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("245"))
+	selectedBg := lipgloss.NewStyle().Background(lipgloss.Color("236"))
+	dimStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("241"))
+	opNameStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("252"))
+
+	for idx := scrollOffset; idx < end; idx++ {
+		row := rows[idx]
+		selected := idx == m.historyCursor
+
+		cursor := "  "
+		if selected {
+			cursor = "▶ "
+		}
+
+		if row.isGroupHeader {
+			g := row.group
+
+			// Timeline node
+			statusIcon := timelineStatusIcon(g.status)
+
+			// Truncate operation ID for display
+			displayID := g.operationID
+			if len(displayID) > 8 {
+				displayID = displayID[:8] + "…"
+			}
+
+			// Time range
+			timeRange := formatHistoryTime(g.startedAt)
+			if g.completedAt != "" && g.completedAt != g.startedAt {
+				timeRange += " → " + formatHistoryTime(g.completedAt)
+			}
+
+			line := fmt.Sprintf("%s  %s  %s  %s",
+				opIDStyle.Render(displayID),
+				summaryStyle.Render(g.summary),
+				styleForStatus(g.status).Render(g.status),
+				timeStyle.Render(timeRange),
+			)
+
+			arrow := "▸"
+			if g.expanded {
+				arrow = "▾"
+			}
+
+			line = fmt.Sprintf("%s %s %s", statusIcon, arrow, line)
+
+			if selected {
+				line = selectedBg.Render(line)
+			}
+
+			b.WriteString(fmt.Sprintf("  %s%s\n", cursor, line))
+		} else {
+			// Child entry row
+			e := row.entry
+			connector := "├─"
+			if row.isLastChild {
+				connector = "└─"
+			}
+
+			sIcon := timelineStatusIcon(e.Status)
+			operation := opNameStyle.Render(fmt.Sprintf("%-10s", e.Operation))
+			status := styleForStatus(e.Status).Render(fmt.Sprintf("%-12s", e.Status))
+
+			timeRange := formatHistoryTime(e.StartedAt)
+			if e.CompletedAt != "" && e.CompletedAt != e.StartedAt {
+				timeRange += " → " + formatHistoryTime(e.CompletedAt)
+			}
+
+			line := fmt.Sprintf("  %s %s %s  %s  %s",
+				dimStyle.Render(connector),
+				sIcon,
+				operation,
+				status,
+				timeStyle.Render(timeRange),
+			)
+
+			if selected {
+				line = selectedBg.Render(line)
+			}
+
+			b.WriteString(fmt.Sprintf("  %s%s\n", cursor, line))
+		}
+	}
+
+	// Scroll indicator
+	if totalRows > visibleRows {
+		pos := ""
+		if scrollOffset == 0 {
+			pos = "top"
+		} else if end >= totalRows {
+			pos = "end"
+		} else {
+			pct := (scrollOffset * 100) / (totalRows - visibleRows)
+			pos = fmt.Sprintf("%d%%", pct)
+		}
+		b.WriteString(fmt.Sprintf("\n  %s\n", dimStyle.Render(
+			fmt.Sprintf("↑↓: navigate  enter: expand/collapse  [%d/%d %s]", m.historyCursor+1, totalRows, pos))))
+	}
+
+	return b.String()
+}
+
+func timelineStatusIcon(status string) string {
+	switch strings.ToLower(status) {
+	case "completed", "success", "ready":
+		return lipgloss.NewStyle().Foreground(lipgloss.Color("82")).Render("●")
+	case "failed", "error":
+		return lipgloss.NewStyle().Foreground(lipgloss.Color("203")).Render("●")
+	case "in_progress", "running", "creating", "updating":
+		return lipgloss.NewStyle().Foreground(lipgloss.Color("220")).Render("◐")
+	default:
+		return lipgloss.NewStyle().Foreground(lipgloss.Color("245")).Render("○")
+	}
+}
+
+func formatHistoryTime(t string) string {
+	if t == "" {
+		return "—"
+	}
+	// Strip timezone suffix for compact display if it's a full ISO timestamp
+	if len(t) > 19 {
+		t = t[:19]
+	}
+	// Replace T with space: "2026-02-24T16:08:57" → "2026-02-24 16:08:57"
+	t = strings.Replace(t, "T", " ", 1)
+	// Bold the time portion
+	parts := strings.SplitN(t, " ", 2)
+	if len(parts) == 2 {
+		datePart := lipgloss.NewStyle().Foreground(lipgloss.Color("245")).Render(parts[0])
+		timePart := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("252")).Render(parts[1])
+		return datePart + " " + timePart
+	}
+	return t
 }
 
 func (m terraformDetailModel) fetchFileContent(filePath string) tea.Cmd {
