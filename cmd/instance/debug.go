@@ -26,8 +26,11 @@ var debugCmd = &cobra.Command{
 }
 
 type DebugData struct {
-	InstanceID string   `json:"instanceId"`
-	PlanDAG    *PlanDAG `json:"planDag,omitempty"`
+	InstanceID    string   `json:"instanceId"`
+	PlanDAG       *PlanDAG `json:"planDag,omitempty"`
+	ServiceID     string   `json:"-"`
+	EnvironmentID string   `json:"-"`
+	Token         string   `json:"-"`
 }
 
 // Messages for the loading spinner model
@@ -107,8 +110,11 @@ func fetchDebugData(instanceID, token string) tea.Cmd {
 
 		return debugDataMsg{
 			data: DebugData{
-				InstanceID: instanceID,
-				PlanDAG:    planDAG,
+				InstanceID:    instanceID,
+				PlanDAG:       planDAG,
+				ServiceID:     serviceID,
+				EnvironmentID: environmentID,
+				Token:         token,
 			},
 		}
 	}

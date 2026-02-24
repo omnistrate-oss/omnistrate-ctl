@@ -2,6 +2,7 @@ package instance
 
 import (
 	"fmt"
+	"sort"
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -9,7 +10,11 @@ import (
 	"github.com/charmbracelet/x/ansi"
 )
 
+// backToDagMsg signals the detail view wants to return to DAG
+type backToDagMsg struct{}
+
 type dagModel struct {
+	debugData    DebugData
 	instanceID   string
 	plan         *PlanDAG
 	lines        []string
@@ -18,6 +23,15 @@ type dagModel struct {
 	scrollY      int
 	width        int
 	height       int
+
+	// Node selection
+	selectableNodes []string // ordered node IDs
+	cursorIndex     int
+	showCursor      bool
+
+	// Sub-view
+	detailModel tea.Model
+	inDetail    bool
 }
 
 func launchDebugTUI(data DebugData) error {
@@ -31,11 +45,28 @@ func launchDebugTUI(data DebugData) error {
 }
 
 func newDagModel(data DebugData) dagModel {
+	nodes := buildSelectableNodeList(data.PlanDAG)
 	return dagModel{
-		instanceID: data.InstanceID,
-		plan:       data.PlanDAG,
-		lines:      []string{},
+		debugData:       data,
+		instanceID:      data.InstanceID,
+		plan:            data.PlanDAG,
+		lines:           []string{},
+		selectableNodes: nodes,
+		showCursor:      len(nodes) > 0,
 	}
+}
+
+func buildSelectableNodeList(plan *PlanDAG) []string {
+	if plan == nil || len(plan.Levels) == 0 {
+		return nil
+	}
+	var nodes []string
+	for _, level := range plan.Levels {
+		sorted := append([]string{}, level...)
+		sort.Strings(sorted)
+		nodes = append(nodes, sorted...)
+	}
+	return nodes
 }
 
 func (m dagModel) Init() tea.Cmd {
@@ -43,6 +74,20 @@ func (m dagModel) Init() tea.Cmd {
 }
 
 func (m dagModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	// If in detail sub-view, delegate
+	if m.inDetail && m.detailModel != nil {
+		switch msg.(type) {
+		case backToDagMsg:
+			m.inDetail = false
+			m.detailModel = nil
+			m.rebuildLayout()
+			return m, nil
+		}
+		updated, cmd := m.detailModel.Update(msg)
+		m.detailModel = updated
+		return m, cmd
+	}
+
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
@@ -68,6 +113,20 @@ func (m dagModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.scrollY = 0
 		case "end", "G":
 			m.scrollY = m.maxScrollY()
+		case "tab":
+			if m.showCursor && len(m.selectableNodes) > 0 {
+				m.cursorIndex = (m.cursorIndex + 1) % len(m.selectableNodes)
+				m.rebuildLayout()
+			}
+		case "shift+tab":
+			if m.showCursor && len(m.selectableNodes) > 0 {
+				m.cursorIndex = (m.cursorIndex - 1 + len(m.selectableNodes)) % len(m.selectableNodes)
+				m.rebuildLayout()
+			}
+		case "enter":
+			if m.showCursor && len(m.selectableNodes) > 0 {
+				return m.openNodeDetail()
+			}
 		}
 		m.clampScroll()
 	}
@@ -75,7 +134,36 @@ func (m dagModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
+func (m dagModel) openNodeDetail() (tea.Model, tea.Cmd) {
+	nodeID := m.selectableNodes[m.cursorIndex]
+	node, ok := m.plan.Nodes[nodeID]
+	if !ok {
+		return m, nil
+	}
+
+	lower := strings.ToLower(node.Type)
+	if strings.Contains(lower, "terraform") {
+		detail := newTerraformDetailModel(node, m.debugData)
+		detail.width = m.width
+		detail.height = m.height
+		detail.progressBar.Width = m.width - 40
+		if detail.progressBar.Width < 20 {
+			detail.progressBar.Width = 20
+		}
+		m.detailModel = detail
+		m.inDetail = true
+		return m, detail.Init()
+	}
+
+	// For non-terraform resources, do nothing for now
+	return m, nil
+}
+
 func (m dagModel) View() string {
+	if m.inDetail && m.detailModel != nil {
+		return m.detailModel.View()
+	}
+
 	if m.width == 0 || m.height == 0 {
 		return "Loading..."
 	}
@@ -114,7 +202,15 @@ func (m dagModel) renderHeader() string {
 
 func (m dagModel) renderHelp() string {
 	style := lipgloss.NewStyle().Foreground(lipgloss.Color("241")).Padding(0, 1)
-	text := "arrows: scroll  pgup/pgdn: page  home/end: jump  q: quit"
+	var text string
+	if m.showCursor && len(m.selectableNodes) > 0 {
+		nodeID := m.selectableNodes[m.cursorIndex]
+		node := m.plan.Nodes[nodeID]
+		selectedStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("230")).Bold(true)
+		text = fmt.Sprintf("tab/shift+tab: select resource  enter: open  arrows: scroll  q: quit  │  %s", selectedStyle.Render(nodeLabel(node)))
+	} else {
+		text = "arrows: scroll  pgup/pgdn: page  home/end: jump  q: quit"
+	}
 	return lipgloss.Place(m.width, 1, lipgloss.Left, lipgloss.Top, style.Render(text))
 }
 
@@ -184,7 +280,13 @@ func (m *dagModel) rebuildLayout() {
 	if bodyWidth < 1 {
 		bodyWidth = m.width
 	}
-	m.lines = renderPlanDAGStyled(m.plan, bodyWidth)
+
+	selectedNodeID := ""
+	if m.showCursor && len(m.selectableNodes) > 0 {
+		selectedNodeID = m.selectableNodes[m.cursorIndex]
+	}
+
+	m.lines = renderPlanDAGStyledWithSelection(m.plan, bodyWidth, selectedNodeID)
 	m.contentWidth = maxLineWidthANSI(m.lines)
 	m.clampScroll()
 }

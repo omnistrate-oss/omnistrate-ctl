@@ -2,7 +2,9 @@ package instance
 
 import (
 	"context"
+	"encoding/base64"
 	"fmt"
+	"os"
 	"regexp"
 	"strings"
 
@@ -11,6 +13,9 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/rest"
+	"k8s.io/client-go/tools/clientcmd"
+	clientcmdapi "k8s.io/client-go/tools/clientcmd/api"
 )
 
 const (
@@ -27,14 +32,26 @@ type terraformConfigMapIndex struct {
 	progress        []*corev1.ConfigMap
 }
 
-func loadTerraformConfigMapIndexForInstance(ctx context.Context, token string, instanceData *openapiclientfleet.ResourceInstance, instanceID string) (*terraformConfigMapIndex, error) {
+// k8sConnection holds both the clientset and rest config for k8s operations
+type k8sConnection struct {
+	clientset  *kubernetes.Clientset
+	restConfig *rest.Config
+}
+
+func loadTerraformConfigMapIndexForInstance(ctx context.Context, token string, instanceData *openapiclientfleet.ResourceInstance, instanceID string) (*terraformConfigMapIndex, *k8sConnection, error) {
 	if instanceData == nil || instanceData.DeploymentCellID == nil || *instanceData.DeploymentCellID == "" {
-		return nil, fmt.Errorf("deployment cell ID not found for instance %s", instanceID)
+		return nil, nil, fmt.Errorf("deployment cell ID not found for instance %s", instanceID)
 	}
 
-	clientset, err := dataaccess.NewK8sClientForDeploymentCell(ctx, token, *instanceData.DeploymentCellID, "cluster-admin")
+	deploymentCellID := *instanceData.DeploymentCellID
+	kubeConfig, err := dataaccess.GetKubeConfigForHostCluster(ctx, token, deploymentCellID, "cluster-admin")
 	if err != nil {
-		return nil, fmt.Errorf("failed to create Kubernetes client for deployment cell %s: %w", *instanceData.DeploymentCellID, err)
+		return nil, nil, fmt.Errorf("failed to get kubeconfig for deployment cell %s: %w", deploymentCellID, err)
+	}
+
+	conn, err := newK8sConnectionFromKubeConfigResult(kubeConfig)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to create Kubernetes client for deployment cell %s: %w", deploymentCellID, err)
 	}
 
 	actualInstanceID := instanceID
@@ -42,7 +59,84 @@ func loadTerraformConfigMapIndexForInstance(ctx context.Context, token string, i
 		actualInstanceID = id
 	}
 
-	return loadTerraformConfigMapIndex(ctx, clientset, actualInstanceID)
+	index, err := loadTerraformConfigMapIndex(ctx, conn.clientset, actualInstanceID)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	return index, conn, nil
+}
+
+// newK8sConnectionFromKubeConfigResult writes a temp kubeconfig file from the API result and creates a k8s connection.
+func newK8sConnectionFromKubeConfigResult(kubeConfig *openapiclientfleet.KubeConfigHostClusterResult) (*k8sConnection, error) {
+	if kubeConfig == nil {
+		return nil, fmt.Errorf("kubeconfig is nil")
+	}
+
+	clusterName := fmt.Sprintf("omnistrate-%s", kubeConfig.GetId())
+	userName := fmt.Sprintf("omnistrate-%s", kubeConfig.GetUserName())
+	contextName := clusterName
+
+	apiServer := kubeConfig.GetApiServerEndpoint()
+	if !strings.HasPrefix(apiServer, "https://") {
+		apiServer = "https://" + apiServer
+	}
+
+	cluster := clientcmdapi.NewCluster()
+	cluster.Server = apiServer
+
+	caData, err := base64.StdEncoding.DecodeString(kubeConfig.GetCaDataBase64())
+	if err == nil {
+		cluster.CertificateAuthorityData = caData
+	}
+
+	authInfo := clientcmdapi.NewAuthInfo()
+	certData, _ := base64.StdEncoding.DecodeString(kubeConfig.GetClientCertificateDataBase64())
+	keyData, _ := base64.StdEncoding.DecodeString(kubeConfig.GetClientKeyDataBase64())
+	if len(certData) > 0 && len(keyData) > 0 {
+		authInfo.ClientCertificateData = certData
+		authInfo.ClientKeyData = keyData
+	}
+	if kubeConfig.GetServiceAccountToken() != "" {
+		authInfo.Token = kubeConfig.GetServiceAccountToken()
+	}
+
+	kubeConfigObj := clientcmdapi.NewConfig()
+	kubeConfigObj.Clusters[clusterName] = cluster
+	kubeConfigObj.AuthInfos[userName] = authInfo
+	kubeConfigObj.Contexts[contextName] = &clientcmdapi.Context{
+		Cluster:  clusterName,
+		AuthInfo: userName,
+	}
+	kubeConfigObj.CurrentContext = contextName
+
+	// Write to a temp file
+	tmpFile, err := os.CreateTemp("", "omnistrate-kubeconfig-*")
+	if err != nil {
+		return nil, fmt.Errorf("failed to create temp kubeconfig file: %w", err)
+	}
+	tmpPath := tmpFile.Name()
+	tmpFile.Close()
+	defer os.Remove(tmpPath)
+
+	if err := clientcmd.WriteToFile(*kubeConfigObj, tmpPath); err != nil {
+		return nil, fmt.Errorf("failed to write temp kubeconfig: %w", err)
+	}
+
+	restConfig, err := clientcmd.NewNonInteractiveDeferredLoadingClientConfig(
+		&clientcmd.ClientConfigLoadingRules{ExplicitPath: tmpPath},
+		&clientcmd.ConfigOverrides{CurrentContext: contextName},
+	).ClientConfig()
+	if err != nil {
+		return nil, fmt.Errorf("failed to build rest config from kubeconfig: %w", err)
+	}
+
+	clientset, err := kubernetes.NewForConfig(restConfig)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create kubernetes clientset: %w", err)
+	}
+
+	return &k8sConnection{clientset: clientset, restConfig: restConfig}, nil
 }
 
 func loadTerraformConfigMapIndex(ctx context.Context, clientset kubernetes.Interface, instanceID string) (*terraformConfigMapIndex, error) {

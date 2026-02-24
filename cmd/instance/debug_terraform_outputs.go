@@ -84,7 +84,7 @@ func runDebugTerraformOutputs(cmd *cobra.Command, args []string) error {
 
 	var terraformConfigMapIndex *terraformConfigMapIndex
 	if resourceIndex.needsTerraformData(filter) {
-		terraformConfigMapIndex, err = loadTerraformConfigMapIndexForInstance(ctx, token, instanceData, instanceID)
+		terraformConfigMapIndex, _, err = loadTerraformConfigMapIndexForInstance(ctx, token, instanceData, instanceID)
 		if err != nil {
 			return fmt.Errorf("failed to load terraform configmaps: %w", err)
 		}

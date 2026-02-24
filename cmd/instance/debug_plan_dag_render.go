@@ -595,13 +595,49 @@ func renderPlanDAGStyled(plan *PlanDAG, width int) []string {
 		lines = append(lines, "")
 	}
 
-	diagram := drawPlanDAGStyled(plan, width)
+	diagram := drawPlanDAGStyled(plan, width, "")
 	lines = append(lines, diagram...)
 
 	return lines
 }
 
-func drawPlanDAGStyled(plan *PlanDAG, width int) []string {
+func renderPlanDAGStyledWithSelection(plan *PlanDAG, width int, selectedNodeID string) []string {
+	if plan == nil {
+		style := lipgloss.NewStyle().Foreground(lipgloss.Color("1")).Bold(true)
+		return []string{style.Render("Deployment plan unavailable")}
+	}
+
+	if width <= 0 {
+		width = 120
+	}
+
+	subtleStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("245"))
+	warnStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("1")).Bold(true)
+
+	var lines []string
+
+	if len(plan.Errors) > 0 {
+		lines = append(lines, warnStyle.Render("Warnings:"))
+		for _, err := range plan.Errors {
+			for _, line := range wrapText(err, width-4) {
+				lines = append(lines, "  "+subtleStyle.Render(line))
+			}
+		}
+		lines = append(lines, "")
+	}
+
+	if plan.HasCycle {
+		lines = append(lines, warnStyle.Render("Cycle detected in dependencies; layout may be incomplete."))
+		lines = append(lines, "")
+	}
+
+	diagram := drawPlanDAGStyled(plan, width, selectedNodeID)
+	lines = append(lines, diagram...)
+
+	return lines
+}
+
+func drawPlanDAGStyled(plan *PlanDAG, width int, selectedNodeID string) []string {
 	layout := orderPlanLevels(plan)
 	levels := layout.levels
 	if len(levels) == 0 {
@@ -715,7 +751,20 @@ func drawPlanDAGStyled(plan *PlanDAG, width int) []string {
 		for _, nodeID := range level {
 			pos := placements[nodeID]
 			card := cards[nodeID]
-			drawCard(canvas, pos.x, pos.y, cardWidth, cardHeight, card)
+			isSelected := nodeID == selectedNodeID
+			drawCard(canvas, pos.x, pos.y, cardWidth, cardHeight, card, isSelected)
+		}
+	}
+
+	// Draw selection indicator arrow to the left of the selected card
+	if selectedNodeID != "" {
+		if pos, ok := placements[selectedNodeID]; ok {
+			arrowStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("205")).Bold(true)
+			arrowY := pos.y + cardHeight/2
+			arrowX := pos.x - 1
+			if arrowX >= 0 {
+				canvas.set(arrowX, arrowY, '▶', arrowStyle)
+			}
 		}
 	}
 
@@ -793,7 +842,7 @@ func iconForType(tag string, theme cardTheme) (rune, lipgloss.Style) {
 	}
 }
 
-func drawCard(canvas *dagCanvas, x, y, width, height int, card nodeCard) {
+func drawCard(canvas *dagCanvas, x, y, width, height int, card nodeCard, selected bool) {
 	if width < 4 || height < 3 {
 		return
 	}
@@ -804,6 +853,14 @@ func drawCard(canvas *dagCanvas, x, y, width, height int, card nodeCard) {
 	titleStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color(card.theme.title))
 	labelStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(card.theme.label))
 	valueStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(card.theme.value))
+
+	if selected {
+		borderStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("205")).Bold(true)
+		titleStyle = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("230"))
+		// Draw outer glow border 1 cell outside the card
+		glowStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("205"))
+		canvas.drawBorder(x-1, y-1, width+2, height+2, glowStyle)
+	}
 
 	canvas.drawBorder(x, y, width, height, borderStyle)
 
