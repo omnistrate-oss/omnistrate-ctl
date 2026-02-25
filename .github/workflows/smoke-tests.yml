@@ -44,7 +44,6 @@ jobs:
             "service/...",
             "serviceplan/...",
             "customnetwork/...",
-            "servicesorchestration/...",
             "subscription/...",
           ]
 
