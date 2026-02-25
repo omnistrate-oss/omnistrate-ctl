@@ -28,7 +28,7 @@ It automatically handles:
 Main modes of operation:
 
   - Build from repository and deploy
-      Triggered when no spec file is provided and no supported spec is found in
+	  Triggered when no spec file is provided and no supported spec is found in
       the current directory. The command detects a Dockerfile, builds an image,
       creates the service, generates the Omnistrate spec, and deploys an instance.
 
@@ -64,7 +64,8 @@ omnistrate-ctl deploy [--file=file] [--product-name=service-name] [--dry-run] [-
 ```
 
 # Build and deploy using the default spec in the current directory
-# Looks for omnistrate-compose.yaml, if no spec file is found, deploy falls back to build-from-repo.
+# Looks for omnistrate-compose.yaml first, then spec.yaml.
+# If no supported spec file is found, deploy falls back to build-from-repo.
 omnistrate-ctl deploy
 
 # Deploy using a specific Omnistrate spec
