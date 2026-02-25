@@ -66,9 +66,9 @@ type dagModel struct {
 	progressLoading bool
 	wfResolved      bool
 	tfResolved      bool
-	wfResult        *wfProgressMsg                // stored until both resolve
-	tfNodeProgress  map[string]ResourceProgress   // terraform progress by node ID
-	refreshing      bool                          // true during periodic refresh
+	wfResult        *wfProgressMsg              // stored until both resolve
+	tfNodeProgress  map[string]ResourceProgress // terraform progress by node ID
+	refreshing      bool                        // true during periodic refresh
 	spinner         spinner.Model
 }
 
@@ -231,7 +231,7 @@ func (m dagModel) fetchTerraformProgressForDAG() tea.Cmd {
 func (m dagModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	// If in detail sub-view, delegate
 	if m.inDetail && m.detailModel != nil {
-		switch msg.(type) {
+		switch dmsg := msg.(type) {
 		case backToDagMsg:
 			m.inDetail = false
 			m.detailModel = nil
@@ -253,26 +253,23 @@ func (m dagModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, tea.Batch(cmds...)
 		case tea.WindowSizeMsg:
 			// Update parent dimensions too for when we return from detail
-			wsm := msg.(tea.WindowSizeMsg)
-			m.width = wsm.Width
-			m.height = wsm.Height
+			m.width = dmsg.Width
+			m.height = dmsg.Height
 		case wfProgressMsg:
 			// Capture workflow progress even while in detail view
-			wmsg := msg.(wfProgressMsg)
 			m.wfResolved = true
-			m.wfResult = &wmsg
-			if m.plan != nil && wmsg.workflowID != "" {
-				m.plan.WorkflowID = wmsg.workflowID
+			m.wfResult = &dmsg
+			if m.plan != nil && dmsg.workflowID != "" {
+				m.plan.WorkflowID = dmsg.workflowID
 			}
-			if wmsg.errors != nil && m.plan != nil {
-				m.plan.Errors = append(m.plan.Errors, wmsg.errors...)
+			if dmsg.errors != nil && m.plan != nil {
+				m.plan.Errors = append(m.plan.Errors, dmsg.errors...)
 			}
 			m.applyProgressIfReady()
 		case tfProgressUpdateMsg:
 			// Capture terraform progress even while in detail view
-			tmsg := msg.(tfProgressUpdateMsg)
 			m.tfResolved = true
-			m.tfNodeProgress = tmsg.progressByID
+			m.tfNodeProgress = dmsg.progressByID
 			m.applyProgressIfReady()
 		case dagRefreshTickMsg:
 			// Handle DAG refresh even while in detail view
@@ -283,7 +280,6 @@ func (m dagModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, tea.Batch(cmd, m.fetchDagRefresh())
 			}
 		case dagRefreshMsg:
-			dmsg := msg.(dagRefreshMsg)
 			m.refreshing = false
 			m.wfResult = &dmsg.wf
 			m.tfNodeProgress = dmsg.tf.progressByID
@@ -745,20 +741,20 @@ func (m dagModel) pageSize() int {
 
 func (m dagModel) maxScrollY() int {
 	_, height := m.bodySize()
-	max := len(m.lines) - height
-	if max < 0 {
+	maxVal := len(m.lines) - height
+	if maxVal < 0 {
 		return 0
 	}
-	return max
+	return maxVal
 }
 
 func (m dagModel) maxScrollX() int {
 	bodyWidth, _ := m.bodySize()
-	max := m.contentWidth - bodyWidth
-	if max < 0 {
+	maxVal := m.contentWidth - bodyWidth
+	if maxVal < 0 {
 		return 0
 	}
-	return max
+	return maxVal
 }
 
 func (m *dagModel) clampScroll() {
@@ -798,14 +794,14 @@ func (m *dagModel) rebuildLayout() {
 }
 
 func maxLineWidthANSI(lines []string) int {
-	max := 0
+	maxVal := 0
 	for _, line := range lines {
 		width := ansi.StringWidth(line)
-		if width > max {
-			max = width
+		if width > maxVal {
+			maxVal = width
 		}
 	}
-	return max
+	return maxVal
 }
 
 func sliceLineANSI(line string, start, width int) string {
@@ -827,12 +823,12 @@ func padRightANSI(text string, width int) string {
 	return text + strings.Repeat(" ", width-length)
 }
 
-func clamp(value, min, max int) int {
-	if value < min {
-		return min
+func clamp(value, lo, hi int) int {
+	if value < lo {
+		return lo
 	}
-	if value > max {
-		return max
+	if value > hi {
+		return hi
 	}
 	return value
 }

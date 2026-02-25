@@ -258,13 +258,13 @@ func (m terraformDetailModel) renderTerraformOutputTab() string {
 		end = totalEntries
 	}
 
-	keyStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("117"))    // blue
-	strStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("114"))    // green
-	numStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("178"))    // yellow
-	boolStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("178"))   // yellow
-	nullStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("241"))   // dim
-	braceStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("245"))  // dim
-	selectedBg := lipgloss.NewStyle().Background(lipgloss.Color("236"))  // subtle highlight
+	keyStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("117"))   // blue
+	strStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("114"))   // green
+	numStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("178"))   // yellow
+	boolStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("178"))  // yellow
+	nullStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("241"))  // dim
+	braceStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("245")) // dim
+	selectedBg := lipgloss.NewStyle().Background(lipgloss.Color("236")) // subtle highlight
 
 	maxValWidth := m.contentWidth() - 20
 	if maxValWidth < 20 {

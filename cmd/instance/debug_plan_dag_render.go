@@ -38,134 +38,6 @@ const (
 	turnUpLeft    = '╯' // coming from below, going left (or from right, going up)
 )
 
-func renderPlanDAGASCII(plan *PlanDAG, width int) string {
-	if plan == nil {
-		return "Plan DAG unavailable"
-	}
-
-	if width <= 0 {
-		width = 120
-	}
-
-	lines := []string{"Plan DAG (dependencies flow left -> right)"}
-
-	if len(plan.Errors) > 0 {
-		lines = append(lines, "")
-		lines = append(lines, "Warnings:")
-		for _, err := range plan.Errors {
-			for i, line := range wrapText(err, width-4) {
-				prefix := "  - "
-				if i > 0 {
-					prefix = "    "
-				}
-				lines = append(lines, prefix+line)
-			}
-		}
-	}
-
-	if plan.HasCycle {
-		lines = append(lines, "")
-		for _, line := range wrapText("Cycle detected in dependencies; layout may be incomplete.", width) {
-			lines = append(lines, line)
-		}
-	}
-
-	if len(plan.Levels) == 0 {
-		lines = append(lines, "")
-		lines = append(lines, "No resources found for this plan version.")
-		return strings.Join(lines, "\n")
-	}
-
-	diagram, skipped := drawPlanDAGDiagram(plan, width)
-	lines = append(lines, "")
-	lines = append(lines, diagram...)
-
-	if skipped > 0 {
-		lines = append(lines, "")
-		note := fmt.Sprintf("Note: %d back edge(s) omitted from the diagram.", skipped)
-		for _, line := range wrapText(note, width) {
-			lines = append(lines, line)
-		}
-	}
-
-	return strings.Join(lines, "\n")
-}
-
-func drawPlanDAGDiagram(plan *PlanDAG, width int) ([]string, int) {
-	layout := orderPlanLevels(plan)
-	levels := layout.levels
-	columns := len(levels)
-	if columns == 0 {
-		return []string{"No resources to render."}, 0
-	}
-
-	maxNodes := maxLevelSize(levels)
-	boxHeight := 3
-	vGap := 1
-	if maxNodes > 20 {
-		vGap = 0
-	}
-
-	headerRows := 2
-	totalRows := headerRows + maxNodes*boxHeight + (maxNodes-1)*vGap
-	if totalRows < 1 {
-		totalRows = 1
-	}
-
-	boxWidth, hGap := computeBoxLayout(width, columns, plan)
-	totalWidth := columns*boxWidth + (columns-1)*hGap
-	if totalWidth < 1 {
-		totalWidth = 1
-	}
-
-	grid := newRuneGrid(totalRows, totalWidth)
-
-	placements := make(map[string]planDAGPlacement)
-	for col, level := range levels {
-		for row, nodeID := range level {
-			x := col * (boxWidth + hGap)
-			y := headerRows + row*(boxHeight+vGap)
-			placements[nodeID] = planDAGPlacement{col: col, x: x, y: y}
-		}
-	}
-
-	for col := range levels {
-		label := fmt.Sprintf("L%d", col)
-		writeCentered(grid, col*(boxWidth+hGap), 0, boxWidth, label)
-	}
-
-	skippedEdges := 0
-	for _, edge := range plan.Edges {
-		from, okFrom := placements[edge.From]
-		to, okTo := placements[edge.To]
-		if !okFrom || !okTo {
-			continue
-		}
-		if from.col >= to.col {
-			skippedEdges++
-			continue
-		}
-		drawEdgeRight(grid, from, to, boxWidth)
-	}
-
-	for _, level := range levels {
-		for _, nodeID := range level {
-			pos := placements[nodeID]
-			label := labelForNode(plan, nodeID)
-			writeBox(grid, pos.x, pos.y, boxWidth, label)
-		}
-	}
-
-	lines := make([]string, len(grid))
-	for i, row := range grid {
-		line := string(row)
-		line = strings.TrimRight(line, " ")
-		lines[i] = line
-	}
-
-	return lines, skippedEdges
-}
-
 func orderPlanLevels(plan *PlanDAG) planDAGLayout {
 	levels := make([][]string, len(plan.Levels))
 	for i, level := range plan.Levels {
@@ -299,217 +171,6 @@ func maxLevelSize(levels [][]string) int {
 	return maxSize
 }
 
-func computeBoxLayout(width, columns int, plan *PlanDAG) (int, int) {
-	minInner := 6
-	maxInner := 28
-
-	maxLabel := 0
-	for id := range plan.Nodes {
-		labelLen := len([]rune(labelForNode(plan, id)))
-		if labelLen > maxLabel {
-			maxLabel = labelLen
-		}
-	}
-
-	if maxLabel < minInner {
-		maxLabel = minInner
-	}
-	if maxLabel > maxInner {
-		maxLabel = maxInner
-	}
-
-	desiredBoxWidth := maxLabel + 2
-	if columns <= 0 {
-		return desiredBoxWidth, 4
-	}
-
-	hGap := 4
-	boxWidth := desiredBoxWidth
-	if width <= 0 {
-		return boxWidth, hGap
-	}
-
-	fits := func() bool {
-		return columns*boxWidth+(columns-1)*hGap <= width
-	}
-
-	if !fits() {
-		boxWidth = (width - (columns-1)*hGap) / columns
-	}
-	if !fits() {
-		hGap = 2
-		boxWidth = (width - (columns-1)*hGap) / columns
-	}
-	if !fits() {
-		hGap = 1
-		boxWidth = (width - (columns-1)*hGap) / columns
-	}
-	if boxWidth < minInner+2 {
-		boxWidth = minInner + 2
-	}
-
-	return boxWidth, hGap
-}
-
-func newRuneGrid(rows, cols int) [][]rune {
-	grid := make([][]rune, rows)
-	for i := range grid {
-		grid[i] = make([]rune, cols)
-		for j := range grid[i] {
-			grid[i][j] = ' '
-		}
-	}
-	return grid
-}
-
-func writeCentered(grid [][]rune, x, y, width int, text string) {
-	if y < 0 || y >= len(grid) || width <= 0 {
-		return
-	}
-	text = truncateLabel(text, width)
-	pad := width - len(text)
-	leftPad := pad / 2
-	start := x + leftPad
-	for i, r := range text {
-		setRune(grid, start+i, y, r)
-	}
-}
-
-func writeBox(grid [][]rune, x, y, width int, label string) {
-	if width < 4 {
-		return
-	}
-	inner := width - 2
-	label = truncateLabel(label, inner)
-	label = padRight(label, inner)
-
-	setRune(grid, x, y, boxTopLeft)
-	setRune(grid, x+width-1, y, boxTopRight)
-	for i := 1; i < width-1; i++ {
-		setRune(grid, x+i, y, boxHLine)
-	}
-
-	setRune(grid, x, y+1, boxVLine)
-	setRune(grid, x+width-1, y+1, boxVLine)
-	for i, r := range label {
-		setRune(grid, x+1+i, y+1, r)
-	}
-
-	setRune(grid, x, y+2, boxBottomLeft)
-	setRune(grid, x+width-1, y+2, boxBottomRight)
-	for i := 1; i < width-1; i++ {
-		setRune(grid, x+i, y+2, boxHLine)
-	}
-}
-
-func drawEdgeRight(grid [][]rune, from, to planDAGPlacement, boxWidth int) {
-	fromY := from.y + 1
-	toY := to.y + 1
-	startX := from.x + boxWidth
-	endX := to.x - 1
-	if endX < startX {
-		endX = startX
-	}
-
-	midX := startX
-	if endX > startX {
-		midX = startX + (endX-startX)/2
-	}
-
-	drawHorizontal(grid, fromY, startX, midX)
-	if fromY != toY {
-		drawVertical(grid, midX, fromY, toY)
-	}
-	if midX < endX {
-		drawHorizontal(grid, toY, midX, endX-1)
-	}
-	setArrowRune(grid, endX, toY)
-}
-
-func drawHorizontal(grid [][]rune, y, x1, x2 int) {
-	if y < 0 || y >= len(grid) {
-		return
-	}
-	if x2 < x1 {
-		x1, x2 = x2, x1
-	}
-	for x := x1; x <= x2; x++ {
-		drawLineRune(grid, x, y, boxHLine)
-	}
-}
-
-func drawVertical(grid [][]rune, x, y1, y2 int) {
-	if len(grid) == 0 || x < 0 || x >= len(grid[0]) {
-		return
-	}
-	if y2 < y1 {
-		y1, y2 = y2, y1
-	}
-	for y := y1; y <= y2; y++ {
-		drawLineRune(grid, x, y, boxVLine)
-	}
-}
-
-func drawLineRune(grid [][]rune, x, y int, r rune) {
-	if y < 0 || y >= len(grid) || x < 0 || x >= len(grid[0]) {
-		return
-	}
-	current := grid[y][x]
-	if current == ' ' {
-		grid[y][x] = r
-		return
-	}
-	if current == boxHLine && r == boxHLine {
-		return
-	}
-	if current == boxVLine && r == boxVLine {
-		return
-	}
-	if current == boxCross {
-		return
-	}
-	if (current == boxHLine && r == boxVLine) || (current == boxVLine && r == boxHLine) {
-		grid[y][x] = boxCross
-		return
-	}
-}
-
-func setArrowRune(grid [][]rune, x, y int) {
-	if y < 0 || y >= len(grid) || x < 0 || x >= len(grid[0]) {
-		return
-	}
-	grid[y][x] = arrowHead
-}
-
-func setRune(grid [][]rune, x, y int, r rune) {
-	if y < 0 || y >= len(grid) || x < 0 || x >= len(grid[0]) {
-		return
-	}
-	grid[y][x] = r
-}
-
-func truncateLabel(label string, maxLen int) string {
-	if maxLen <= 0 {
-		return ""
-	}
-	runes := []rune(label)
-	if len(runes) <= maxLen {
-		return label
-	}
-	if maxLen <= 3 {
-		return string(runes[:maxLen])
-	}
-	return string(runes[:maxLen-3]) + "..."
-}
-
-func padRight(text string, width int) string {
-	runes := []rune(text)
-	if len(runes) >= width {
-		return text
-	}
-	return text + strings.Repeat(" ", width-len(runes))
-}
-
 func wrapText(text string, width int) []string {
 	if width <= 0 {
 		return []string{text}
@@ -567,42 +228,6 @@ type cardTheme struct {
 	icon   string
 }
 
-func renderPlanDAGStyled(plan *PlanDAG, width int) []string {
-	if plan == nil {
-		style := lipgloss.NewStyle().Foreground(lipgloss.Color("1")).Bold(true)
-		return []string{style.Render("Deployment plan unavailable")}
-	}
-
-	if width <= 0 {
-		width = 120
-	}
-
-	subtleStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("245"))
-	warnStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("1")).Bold(true)
-
-	var lines []string
-
-	if len(plan.Errors) > 0 {
-		lines = append(lines, warnStyle.Render("Warnings:"))
-		for _, err := range plan.Errors {
-			for _, line := range wrapText(err, width-4) {
-				lines = append(lines, "  "+subtleStyle.Render(line))
-			}
-		}
-		lines = append(lines, "")
-	}
-
-	if plan.HasCycle {
-		lines = append(lines, warnStyle.Render("Cycle detected in dependencies; layout may be incomplete."))
-		lines = append(lines, "")
-	}
-
-	diagram := drawPlanDAGStyled(plan, width, "")
-	lines = append(lines, diagram...)
-
-	return lines
-}
-
 func renderPlanDAGStyledWithSelection(plan *PlanDAG, width int, selectedNodeID string) []string {
 	if plan == nil {
 		style := lipgloss.NewStyle().Foreground(lipgloss.Color("1")).Bold(true)
@@ -639,7 +264,7 @@ func renderPlanDAGStyledWithSelection(plan *PlanDAG, width int, selectedNodeID s
 	return lines
 }
 
-func drawPlanDAGStyled(plan *PlanDAG, width int, selectedNodeID string) []string {
+func drawPlanDAGStyled(plan *PlanDAG, _ int, selectedNodeID string) []string {
 	layout := orderPlanLevels(plan)
 	levels := layout.levels
 	if len(levels) == 0 {
@@ -822,11 +447,14 @@ func formatTypeTag(resourceType string) string {
 	case strings.Contains(lower, "kustomize"):
 		return "Kustomize"
 	default:
-		return strings.Title(lower)
+		if len(lower) == 0 {
+			return "Resource"
+		}
+		return strings.ToUpper(lower[:1]) + lower[1:]
 	}
 }
 
-func themeForType(tag string) cardTheme {
+func themeForType(_ string) cardTheme {
 	return cardTheme{
 		bg:     "",
 		border: "245",
@@ -1152,12 +780,12 @@ func maxInt(a, b int) int {
 	return b
 }
 
-func clampInt(value, min, max int) int {
-	if value < min {
-		return min
+func clampInt(value, lo, hi int) int {
+	if value < lo {
+		return lo
 	}
-	if value > max {
-		return max
+	if value > hi {
+		return hi
 	}
 	return value
 }

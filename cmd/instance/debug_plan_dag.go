@@ -11,17 +11,17 @@ import (
 )
 
 type PlanDAG struct {
-	Nodes              map[string]PlanDAGNode      `json:"nodes"`
-	Edges              []PlanDAGEdge               `json:"edges"`
-	Levels             [][]string                  `json:"levels"`
-	Errors             []string                    `json:"errors,omitempty"`
-	HasCycle           bool                        `json:"hasCycle"`
-	WorkflowID         string                      `json:"workflowId,omitempty"`
-	ProgressByID       map[string]ResourceProgress `json:"progressById,omitempty"`
-	ProgressByKey      map[string]ResourceProgress `json:"progressByKey,omitempty"`
-	ProgressByName     map[string]ResourceProgress `json:"progressByName,omitempty"`
-	ProgressLoading    bool                        `json:"-"`
-	SpinnerTick        int                         `json:"-"`
+	Nodes           map[string]PlanDAGNode      `json:"nodes"`
+	Edges           []PlanDAGEdge               `json:"edges"`
+	Levels          [][]string                  `json:"levels"`
+	Errors          []string                    `json:"errors,omitempty"`
+	HasCycle        bool                        `json:"hasCycle"`
+	WorkflowID      string                      `json:"workflowId,omitempty"`
+	ProgressByID    map[string]ResourceProgress `json:"progressById,omitempty"`
+	ProgressByKey   map[string]ResourceProgress `json:"progressByKey,omitempty"`
+	ProgressByName  map[string]ResourceProgress `json:"progressByName,omitempty"`
+	ProgressLoading bool                        `json:"-"`
+	SpinnerTick     int                         `json:"-"`
 }
 
 type PlanDAGNode struct {

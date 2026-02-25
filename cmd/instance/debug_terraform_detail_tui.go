@@ -82,10 +82,9 @@ type terraformDetailModel struct {
 	fileScroll     int
 
 	// Terraform Output tab data
-	tfOutputJSON   string // raw JSON from the latest output.log
-	outputTree     []outputNode
-	outputCursor   int
-	outputScroll   int
+	tfOutputJSON string // raw JSON from the latest output.log
+	outputTree   []outputNode
+	outputCursor int
 
 	// Logs tab data
 	logLines     []string
@@ -688,7 +687,7 @@ func (m terraformDetailModel) renderTabsWithBody() string {
 		BorderForeground(highlightColor).
 		Border(lipgloss.NormalBorder()).
 		UnsetBorderTop().
-		Width(m.width - 2).
+		Width(m.width-2).
 		Height(bodyH).
 		Padding(0, 1)
 
@@ -1202,26 +1201,6 @@ func timelineStatusIcon(status string) string {
 	default:
 		return lipgloss.NewStyle().Foreground(lipgloss.Color("245")).Render("○")
 	}
-}
-
-func formatHistoryTime(t string) string {
-	if t == "" {
-		return "—"
-	}
-	// Strip timezone suffix for compact display if it's a full ISO timestamp
-	if len(t) > 19 {
-		t = t[:19]
-	}
-	// Replace T with space: "2026-02-24T16:08:57" → "2026-02-24 16:08:57"
-	t = strings.Replace(t, "T", " ", 1)
-	// Bold the time portion
-	parts := strings.SplitN(t, " ", 2)
-	if len(parts) == 2 {
-		datePart := lipgloss.NewStyle().Foreground(lipgloss.Color("245")).Render(parts[0])
-		timePart := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("252")).Render(parts[1])
-		return datePart + " " + timePart
-	}
-	return t
 }
 
 func formatHistoryTimeOnly(t string) string {

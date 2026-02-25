@@ -333,7 +333,7 @@ func (m helmDetailModel) renderHelmTabsWithBody() string {
 		BorderForeground(highlightColor).
 		Border(lipgloss.NormalBorder()).
 		UnsetBorderTop().
-		Width(m.width - 2).
+		Width(m.width-2).
 		Height(bodyH).
 		Padding(0, 1)
 

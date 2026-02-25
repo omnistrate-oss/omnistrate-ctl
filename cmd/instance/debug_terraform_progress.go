@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"sort"
 	"strings"
 	"time"
 
@@ -67,10 +66,10 @@ func fetchTerraformProgress(ctx context.Context, token string, instanceData *ope
 	var stateConfigMap *corev1.ConfigMap
 	var ok bool
 	for _, key := range []string{
-		normalizedResourceID,                            // reialbqvwcd
-		resourceID,                                      // r-EIAlBQvwCd
-		"tf-" + normalizedResourceID,                    // tf-reialbqvwcd
-		"tf-" + strings.ToLower(resourceID),             // tf-r-eialbqvwcd
+		normalizedResourceID,                // reialbqvwcd
+		resourceID,                          // r-EIAlBQvwCd
+		"tf-" + normalizedResourceID,        // tf-reialbqvwcd
+		"tf-" + strings.ToLower(resourceID), // tf-r-eialbqvwcd
 	} {
 		stateConfigMap, ok = index.stateByResource[key]
 		if ok {
@@ -143,50 +142,6 @@ func normalizeResourceIDForConfigMap(resourceID string) string {
 	id := strings.ToLower(resourceID)
 	id = strings.ReplaceAll(id, "-", "")
 	return id
-}
-
-// findLatestOperationID finds the latest operation ID from history that has a progress configmap
-func findLatestOperationID(history []TerraformHistoryEntry) string {
-	if len(history) == 0 {
-		return ""
-	}
-
-	// Group by operation ID and find the latest start time
-	type opInfo struct {
-		id        string
-		latestAt  time.Time
-		hasNonErr bool
-	}
-	ops := make(map[string]*opInfo)
-
-	for _, entry := range history {
-		info, ok := ops[entry.OperationID]
-		if !ok {
-			info = &opInfo{id: entry.OperationID}
-			ops[entry.OperationID] = info
-		}
-		if entry.Status != "failed" && entry.Status != "error" {
-			info.hasNonErr = true
-		}
-		t, err := time.Parse(time.RFC3339Nano, entry.StartedAt)
-		if err == nil && t.After(info.latestAt) {
-			info.latestAt = t
-		}
-	}
-
-	// Sort operations by latest timestamp descending
-	sorted := make([]*opInfo, 0, len(ops))
-	for _, info := range ops {
-		sorted = append(sorted, info)
-	}
-	sort.Slice(sorted, func(i, j int) bool {
-		return sorted[i].latestAt.After(sorted[j].latestAt)
-	})
-
-	if len(sorted) > 0 {
-		return sorted[0].id
-	}
-	return ""
 }
 
 // fetchInstanceDataForResource gets the resource instance data needed for k8s access

@@ -343,7 +343,7 @@ func isConfigMapNewer(candidate, existing *corev1.ConfigMap) bool {
 	if candidate == nil || existing == nil {
 		return false
 	}
-	return candidate.CreationTimestamp.Time.After(existing.CreationTimestamp.Time)
+	return candidate.CreationTimestamp.After(existing.CreationTimestamp.Time)
 }
 
 func normalizeInstanceIDForConfigMap(instanceID string) string {

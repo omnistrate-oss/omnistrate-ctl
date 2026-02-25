@@ -208,11 +208,7 @@ func consumeHCLString(runes []rune, start int) (string, int) {
 					i++
 				} else if runes[i] == '}' {
 					depth--
-					if depth == 0 {
-						result.WriteString(hclInterpStyle.Render("}"))
-					} else {
-						result.WriteString(hclInterpStyle.Render("}"))
-					}
+					result.WriteString(hclInterpStyle.Render("}"))
 					i++
 				} else if runes[i] == '"' {
 					// Nested string inside interpolation
