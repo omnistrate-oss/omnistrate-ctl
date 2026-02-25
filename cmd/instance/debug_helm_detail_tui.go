@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/charmbracelet/bubbles/spinner"
 	tea "github.com/charmbracelet/bubbletea"
@@ -49,6 +50,9 @@ type helmDetailModel struct {
 	// Values tab (tree explorer)
 	valuesTree   []outputNode
 	valuesCursor int
+
+	// Clipboard flash message
+	clipboardMsg string
 }
 
 func newHelmDetailModel(node PlanDAGNode, data DebugData) helmDetailModel {
@@ -221,7 +225,22 @@ func (m helmDetailModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					}
 				}
 			}
+		case "y":
+			text := m.helmCopyableContent()
+			if text != "" {
+				m.clipboardMsg = "Copying..."
+				return m, copyToClipboardCmd(text)
+			}
 		}
+	case clipboardResultMsg:
+		if msg.err != nil {
+			m.clipboardMsg = fmt.Sprintf("✗ %v", msg.err)
+		} else {
+			m.clipboardMsg = "✓ Copied to clipboard"
+		}
+		return m, tea.Tick(2*time.Second, func(time.Time) tea.Msg { return clearClipboardMsg{} })
+	case clearClipboardMsg:
+		m.clipboardMsg = ""
 	}
 	return m, nil
 }
@@ -574,13 +593,35 @@ func (m helmDetailModel) renderHelmFooter() string {
 	style := lipgloss.NewStyle().Foreground(lipgloss.Color("241")).Padding(0, 1)
 	var text string
 	if m.activeTab == helmTabLogs {
-		text = "↑↓/pgup/pgdn: scroll  tab/shift+tab: switch tabs  esc: back  q: quit"
+		text = "↑↓/pgup/pgdn: scroll  y: copy  tab/shift+tab: switch tabs  esc: back  q: quit"
 	} else if m.activeTab == helmTabValues && len(m.valuesTree) > 0 {
-		text = "↑↓: navigate  ←→/enter: expand/collapse  tab/shift+tab: switch tabs  esc: back  q: quit"
+		text = "↑↓: navigate  ←→/enter: expand/collapse  y: copy  tab/shift+tab: switch tabs  esc: back  q: quit"
 	} else {
 		text = "tab/shift+tab: switch tabs  esc: back  q: quit"
 	}
+	if m.clipboardMsg != "" {
+		clipStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("82"))
+		text = clipStyle.Render(m.clipboardMsg) + "  " + text
+	}
 	return lipgloss.Place(m.width, 1, lipgloss.Left, lipgloss.Top, style.Render(text))
+}
+
+// helmCopyableContent returns the plain text content appropriate for the current tab.
+func (m helmDetailModel) helmCopyableContent() string {
+	switch m.activeTab {
+	case helmTabLogs:
+		if len(m.logLines) > 0 {
+			return strings.Join(m.logLines, "\n")
+		}
+	case helmTabValues:
+		if m.helmData != nil && len(m.helmData.ChartValues) > 0 {
+			raw, err := json.Marshal(m.helmData.ChartValues)
+			if err == nil {
+				return string(raw)
+			}
+		}
+	}
+	return ""
 }
 
 func (m helmDetailModel) helmBodyHeight() int {
