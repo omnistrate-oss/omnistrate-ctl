@@ -50,6 +50,8 @@ type progressRefreshMsg struct {
 // progressTickMsg triggers a progress data refresh
 type progressTickMsg struct{}
 
+type clearClipboardMsg struct{}
+
 type terraformDetailModel struct {
 	node      PlanDAGNode
 	debugData DebugData
@@ -98,9 +100,16 @@ type terraformDetailModel struct {
 	logLabel     string // describes which operation's log is shown
 
 	// Operation History tab data
-	historyCursor    int
-	historyDates     []dateSection
-	errorExpandedIdx int // index in flattened rows of entry whose error is shown, -1 = none
+	historyCursor int
+	historyDates  []dateSection
+
+	// Error modal (shown over operation history)
+	errorModalText   string // raw error text; non-empty means modal is open
+	errorModalScroll int
+	errorModalOp     string // operation name for the modal title
+
+	// Clipboard flash message
+	clipboardMsg string
 }
 
 func newTerraformDetailModel(node PlanDAGNode, data DebugData) terraformDetailModel {
@@ -114,15 +123,14 @@ func newTerraformDetailModel(node PlanDAGNode, data DebugData) terraformDetailMo
 	)
 
 	return terraformDetailModel{
-		node:             node,
-		debugData:        data,
-		activeTab:        tabProgress,
-		loading:          true,
-		spinner:          s,
-		progressBar:      p,
-		logChan:          make(chan logLineMsg, 50),
-		logFollow:        true,
-		errorExpandedIdx: -1,
+		node:        node,
+		debugData:   data,
+		activeTab:   tabProgress,
+		loading:     true,
+		spinner:     s,
+		progressBar: p,
+		logChan:     make(chan logLineMsg, 50),
+		logFollow:   true,
 	}
 }
 
@@ -250,6 +258,12 @@ func (m terraformDetailModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			return m, tea.Quit
 		case "esc":
+			if m.errorModalText != "" {
+				m.errorModalText = ""
+				m.errorModalScroll = 0
+				m.errorModalOp = ""
+				return m, nil
+			}
 			if m.viewingFile {
 				m.viewingFile = false
 				m.fileContent = ""
@@ -264,16 +278,28 @@ func (m terraformDetailModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// Signal back to DAG view
 			return m, func() tea.Msg { return backToDagMsg{} }
 		case "tab", "right":
+			if m.errorModalText != "" {
+				return m, nil // block tab switching while modal is open
+			}
 			if !m.viewingFile {
 				m.activeTab = (m.activeTab + 1) % numTabs
 				m.scrollY = 0
 			}
 		case "shift+tab", "left":
+			if m.errorModalText != "" {
+				return m, nil
+			}
 			if !m.viewingFile {
 				m.activeTab = (m.activeTab - 1 + numTabs) % numTabs
 				m.scrollY = 0
 			}
 		case "up", "k":
+			if m.errorModalText != "" {
+				if m.errorModalScroll > 0 {
+					m.errorModalScroll--
+				}
+				return m, nil
+			}
 			if m.activeTab == tabTfFiles && !m.viewingFile && m.fileTree != nil {
 				if m.fileCursor > 0 {
 					m.fileCursor--
@@ -305,6 +331,14 @@ func (m terraformDetailModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 			}
 		case "down", "j":
+			if m.errorModalText != "" {
+				m.errorModalScroll++
+				maxScroll := m.errorModalMaxScroll()
+				if m.errorModalScroll > maxScroll {
+					m.errorModalScroll = maxScroll
+				}
+				return m, nil
+			}
 			if m.activeTab == tabTfFiles && !m.viewingFile && m.fileTree != nil {
 				if m.fileCursor < len(m.fileTree.Flat)-1 {
 					m.fileCursor++
@@ -377,12 +411,10 @@ func (m terraformDetailModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					} else if row.isGroupHeader {
 						row.group.expanded = !row.group.expanded
 					} else if row.entry != nil && row.entry.Error != "" {
-						// Toggle error detail for failed entries
-						if m.errorExpandedIdx == m.historyCursor {
-							m.errorExpandedIdx = -1
-						} else {
-							m.errorExpandedIdx = m.historyCursor
-						}
+						// Open error modal
+						m.errorModalText = strings.ReplaceAll(row.entry.Error, "\\n", "\n")
+						m.errorModalOp = row.entry.Operation
+						m.errorModalScroll = 0
 					}
 					newRows := flattenTimeline(m.historyDates)
 					if m.historyCursor >= len(newRows) {
@@ -391,6 +423,13 @@ func (m terraformDetailModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 			}
 		case "pgup":
+			if m.errorModalText != "" {
+				m.errorModalScroll -= m.bodyHeight()
+				if m.errorModalScroll < 0 {
+					m.errorModalScroll = 0
+				}
+				return m, nil
+			}
 			if m.activeTab == tabLogs {
 				m.logFollow = false
 				m.logScroll -= m.bodyHeight()
@@ -409,6 +448,14 @@ func (m terraformDetailModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 			}
 		case "pgdown":
+			if m.errorModalText != "" {
+				m.errorModalScroll += m.bodyHeight()
+				maxScroll := m.errorModalMaxScroll()
+				if m.errorModalScroll > maxScroll {
+					m.errorModalScroll = maxScroll
+				}
+				return m, nil
+			}
 			if m.activeTab == tabLogs {
 				m.logFollow = false
 				m.logScroll += m.bodyHeight()
@@ -442,7 +489,22 @@ func (m terraformDetailModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.logScroll = maxSc
 				}
 			}
+		case "y":
+			text := m.copyableContent()
+			if text != "" {
+				m.clipboardMsg = "Copying..."
+				return m, copyToClipboardCmd(text)
+			}
 		}
+	case clipboardResultMsg:
+		if msg.err != nil {
+			m.clipboardMsg = fmt.Sprintf("✗ %v", msg.err)
+		} else {
+			m.clipboardMsg = "✓ Copied to clipboard"
+		}
+		return m, tea.Tick(2*time.Second, func(time.Time) tea.Msg { return clearClipboardMsg{} })
+	case clearClipboardMsg:
+		m.clipboardMsg = ""
 	case terraformDataMsg:
 		m.loading = false
 		m.loadErr = msg.err
@@ -523,8 +585,8 @@ func (m terraformDetailModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.err == nil {
 			m.tfProgress = msg.progress
 			m.history = msg.history
-			// Don't rebuild timeline while user is reading an expanded error
-			if m.errorExpandedIdx < 0 {
+			// Don't rebuild timeline while user is reading error modal
+			if m.errorModalText == "" {
 				m.historyDates = buildTimelineSections(msg.history)
 			}
 		}
@@ -594,6 +656,102 @@ func (m terraformDetailModel) bodyHeight() int {
 	return h
 }
 
+// errorModalLines returns the non-empty lines of the error modal text.
+func (m terraformDetailModel) errorModalLines() []string {
+	var lines []string
+	for _, line := range strings.Split(m.errorModalText, "\n") {
+		trimmed := strings.TrimSpace(line)
+		if trimmed == "" {
+			continue
+		}
+		lines = append(lines, trimmed)
+	}
+	return lines
+}
+
+func (m terraformDetailModel) errorModalMaxScroll() int {
+	// header(1) + border(2) + footer(1) + padding(2) = 6
+	bodyH := m.height - 6
+	if bodyH < 1 {
+		bodyH = 1
+	}
+	maxScroll := len(m.errorModalLines()) - bodyH
+	if maxScroll < 0 {
+		maxScroll = 0
+	}
+	return maxScroll
+}
+
+func (m terraformDetailModel) renderErrorModal() string {
+	errStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("203"))
+	lineNumStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("241"))
+
+	// Header
+	titleStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("230")).Background(lipgloss.Color("124")).Padding(0, 1)
+	title := fmt.Sprintf("Error Detail · %s", m.errorModalOp)
+	header := lipgloss.Place(m.width, 1, lipgloss.Left, lipgloss.Top, titleStyle.Render(title))
+
+	// Body
+	bodyH := m.height - 4 // header + footer + padding
+	if bodyH < 1 {
+		bodyH = 1
+	}
+	maxCodeWidth := m.width - 10
+	if maxCodeWidth < 20 {
+		maxCodeWidth = 20
+	}
+
+	lines := m.errorModalLines()
+	totalLines := len(lines)
+
+	scroll := m.errorModalScroll
+	maxScroll := m.errorModalMaxScroll()
+	if scroll > maxScroll {
+		scroll = maxScroll
+	}
+
+	end := scroll + bodyH
+	if end > totalLines {
+		end = totalLines
+	}
+
+	var b strings.Builder
+	for i := scroll; i < end; i++ {
+		line := lines[i]
+		runes := []rune(line)
+		if len(runes) > maxCodeWidth {
+			line = string(runes[:maxCodeWidth-1]) + "…"
+		}
+		lineNum := lineNumStyle.Render(fmt.Sprintf("%4d", i+1))
+		b.WriteString(fmt.Sprintf("  %s │ %s\n", lineNum, errStyle.Render(line)))
+	}
+	// Pad remaining lines
+	for i := end - scroll; i < bodyH; i++ {
+		b.WriteString("\n")
+	}
+
+	// Footer
+	footerStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("241")).Padding(0, 1)
+	pos := ""
+	if totalLines <= bodyH {
+		pos = "all"
+	} else if scroll == 0 {
+		pos = "top"
+	} else if end >= totalLines {
+		pos = "end"
+	} else if maxScroll > 0 {
+		pos = fmt.Sprintf("%d%%", (scroll*100)/maxScroll)
+	}
+	footerText := fmt.Sprintf("↑↓/pgup/pgdn: scroll  y: copy  esc: close  [%d/%d %s]", scroll+bodyH, totalLines, pos)
+	if m.clipboardMsg != "" {
+		clipStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("82"))
+		footerText = clipStyle.Render(m.clipboardMsg) + "  " + footerText
+	}
+	footer := lipgloss.Place(m.width, 1, lipgloss.Left, lipgloss.Top, footerStyle.Render(footerText))
+
+	return lipgloss.JoinVertical(lipgloss.Left, header, b.String(), footer)
+}
+
 // contentWidth returns the usable width inside the content window (minus borders and padding)
 func (m terraformDetailModel) contentWidth() int {
 	// window border(2) + window padding(2) = 4
@@ -604,9 +762,34 @@ func (m terraformDetailModel) contentWidth() int {
 	return w
 }
 
+// copyableContent returns the plain text content appropriate for the current tab/view.
+func (m terraformDetailModel) copyableContent() string {
+	if m.errorModalText != "" {
+		return m.errorModalText
+	}
+	if m.viewingFile && m.fileContent != "" {
+		return m.fileContent
+	}
+	switch m.activeTab {
+	case tabLogs:
+		if len(m.logLines) > 0 {
+			return strings.Join(m.logLines, "\n")
+		}
+	case tabTfOutput:
+		if m.tfOutputJSON != "" {
+			return m.tfOutputJSON
+		}
+	}
+	return ""
+}
+
 func (m terraformDetailModel) View() string {
 	if m.width == 0 || m.height == 0 {
 		return "Loading..."
+	}
+
+	if m.errorModalText != "" {
+		return m.renderErrorModal()
 	}
 
 	header := m.renderHeader()
@@ -753,17 +936,21 @@ func (m terraformDetailModel) renderFooter() string {
 	style := lipgloss.NewStyle().Foreground(lipgloss.Color("241")).Padding(0, 1)
 	var text string
 	if m.viewingFile {
-		text = "esc: back to files  ↑↓/pgup/pgdn: scroll  q: quit"
+		text = "esc: back to files  ↑↓/pgup/pgdn: scroll  y: copy  q: quit"
 	} else if m.activeTab == tabTfFiles && m.fileTree != nil && len(m.fileTree.Flat) > 0 {
 		text = "↑↓: navigate  enter: open/expand  tab/shift+tab: switch tabs  esc: back  q: quit"
 	} else if m.activeTab == tabTfOutput && len(m.outputTree) > 0 {
-		text = "↑↓: navigate  enter: expand/collapse  tab/shift+tab: switch tabs  esc: back  q: quit"
+		text = "↑↓: navigate  enter: expand/collapse  y: copy  tab/shift+tab: switch tabs  esc: back  q: quit"
 	} else if m.activeTab == tabLogs {
-		text = "↑↓/pgup/pgdn: scroll  f: toggle follow  tab/shift+tab: switch tabs  esc: back  q: quit"
+		text = "↑↓/pgup/pgdn: scroll  f: toggle follow  y: copy  tab/shift+tab: switch tabs  esc: back  q: quit"
 	} else if m.activeTab == tabOpHistory && len(m.historyDates) > 0 {
 		text = "↑↓: navigate  enter: expand/collapse  tab/shift+tab: switch tabs  esc: back  q: quit"
 	} else {
 		text = "tab/shift+tab: switch tabs  ↑↓: scroll  esc: back  q: quit"
+	}
+	if m.clipboardMsg != "" {
+		clipStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("82"))
+		text = clipStyle.Render(m.clipboardMsg) + "  " + text
 	}
 	return lipgloss.Place(m.width, 1, lipgloss.Left, lipgloss.Top, style.Render(text))
 }
@@ -1028,12 +1215,12 @@ func (m terraformDetailModel) renderOperationHistoryTab() string {
 
 	rows := flattenTimeline(m.historyDates)
 
-	// Viewport clipping
+	// Simple row-based viewport clipping (each row = 1 line, no inline expansion)
+	totalRows := len(rows)
 	visibleRows := m.bodyHeight() - 4
 	if visibleRows < 1 {
 		visibleRows = 1
 	}
-	totalRows := len(rows)
 
 	scrollOffset := 0
 	if m.historyCursor >= visibleRows {
@@ -1119,7 +1306,7 @@ func (m terraformDetailModel) renderOperationHistoryTab() string {
 			// Child entry row
 			e := row.entry
 			connector := "│   ├─"
-			if row.isLastChild && m.errorExpandedIdx != idx {
+			if row.isLastChild {
 				connector = "│   └─"
 			}
 
@@ -1134,11 +1321,7 @@ func (m terraformDetailModel) renderOperationHistoryTab() string {
 
 			errorHint := ""
 			if e.Error != "" {
-				if m.errorExpandedIdx == idx {
-					errorHint = dimStyle.Render("  ▾ error")
-				} else {
-					errorHint = lipgloss.NewStyle().Foreground(lipgloss.Color("203")).Render("  ▸ error")
-				}
+				errorHint = lipgloss.NewStyle().Foreground(lipgloss.Color("203")).Render("  ▸ error (enter to view)")
 			}
 
 			line := fmt.Sprintf("  %s %s %s  %s  %s%s",
@@ -1155,40 +1338,22 @@ func (m terraformDetailModel) renderOperationHistoryTab() string {
 			}
 
 			b.WriteString(fmt.Sprintf("  %s%s\n", cursor, line))
-
-			// Render error detail if expanded
-			if m.errorExpandedIdx == idx && e.Error != "" {
-				errStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("203"))
-				errPrefix := dimStyle.Render("│       ")
-				errorText := strings.ReplaceAll(e.Error, "\\n", "\n")
-				maxErrWidth := m.contentWidth() - 12
-				if maxErrWidth < 20 {
-					maxErrWidth = 20
-				}
-				for _, errLine := range strings.Split(errorText, "\n") {
-					trimmed := strings.TrimSpace(errLine)
-					if trimmed == "" {
-						continue
-					}
-					runes := []rune(trimmed)
-					if len(runes) > maxErrWidth {
-						trimmed = string(runes[:maxErrWidth-1]) + "…"
-					}
-					b.WriteString(fmt.Sprintf("  %s %s\n", errPrefix, errStyle.Render(trimmed)))
-				}
-			}
 		}
 	}
 
 	// Scroll indicator
 	if totalRows > visibleRows {
 		pos := ""
+		maxOffset := totalRows - visibleRows
+		if maxOffset < 1 {
+			maxOffset = 1
+		}
 		if scrollOffset == 0 {
 			pos = "top"
 		} else if end >= totalRows {
 			pos = "end"
 		} else {
-			pct := (scrollOffset * 100) / (totalRows - visibleRows)
+			pct := (scrollOffset * 100) / maxOffset
 			pos = fmt.Sprintf("%d%%", pct)
 		}
 		b.WriteString(fmt.Sprintf("\n  %s\n", dimStyle.Render(
