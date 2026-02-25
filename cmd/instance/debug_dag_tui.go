@@ -618,7 +618,16 @@ func (m dagModel) openNodeDetail() (tea.Model, tea.Cmd) {
 		return m, detail.Init()
 	}
 
-	// For non-terraform resources, do nothing for now
+	if strings.Contains(lower, "helm") {
+		detail := newHelmDetailModel(node, m.debugData)
+		detail.width = m.width
+		detail.height = m.height
+		m.detailModel = detail
+		m.inDetail = true
+		return m, detail.Init()
+	}
+
+	// For other resource types, do nothing for now
 	return m, nil
 }
 
