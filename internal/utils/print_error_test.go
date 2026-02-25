@@ -4,26 +4,27 @@ import (
 	"errors"
 	"io"
 	"os"
-	"strings"
 	"testing"
 
-	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestPrintErrorWritesToStderr(t *testing.T) {
+	require := require.New(t)
+
 	// Set OMNISTRATE_DRY_RUN so PrintError doesn't call os.Exit
 	t.Setenv("OMNISTRATE_DRY_RUN", "true")
 
 	// Capture stderr
 	origStderr := os.Stderr
 	r, w, err := os.Pipe()
-	assert.NoError(t, err)
+	require.NoError(err)
 	os.Stderr = w
 
 	// Capture stdout
 	origStdout := os.Stdout
 	rOut, wOut, err := os.Pipe()
-	assert.NoError(t, err)
+	require.NoError(err)
 	os.Stdout = wOut
 
 	// Call PrintError
@@ -35,15 +36,15 @@ func TestPrintErrorWritesToStderr(t *testing.T) {
 	os.Stderr = origStderr
 	os.Stdout = origStdout
 
-	stderrBytes, _ := io.ReadAll(r)
+	stderrBytes, err := io.ReadAll(r)
+	require.NoError(err)
 	stderrOutput := string(stderrBytes)
 
-	stdoutBytes, _ := io.ReadAll(rOut)
+	stdoutBytes, err := io.ReadAll(rOut)
+	require.NoError(err)
 	stdoutOutput := string(stdoutBytes)
 
 	// Error should appear on stderr, not stdout
-	assert.True(t, strings.Contains(stderrOutput, "test error message"),
-		"expected error on stderr, got: %s", stderrOutput)
-	assert.Empty(t, stdoutOutput,
-		"expected nothing on stdout, got: %s", stdoutOutput)
+	require.Contains(stderrOutput, "test error message")
+	require.Empty(stdoutOutput, "expected nothing on stdout, got: %s", stdoutOutput)
 }
