@@ -21,9 +21,10 @@ omnistrate-ctl instance debug terraform-files [instance-id] [flags]
 ### Options
 
 ```
-  -h, --help                  help for terraform-files
-      --resource-id string    Filter by resource ID
-      --resource-key string   Filter by resource key
+  -h, --help                   help for terraform-files
+      --resource-id string     Filter by resource ID
+      --resource-key string    Filter by resource key
+      --resource-name string   Filter by resource name
 ```
 
 ### Options inherited from parent commands
@@ -35,5 +36,5 @@ omnistrate-ctl instance debug terraform-files [instance-id] [flags]
 
 ### SEE ALSO
 
-* [omnistrate-ctl instance debug](omnistrate-ctl_instance_debug.md)	 - Debug instance resources
+* [omnistrate-ctl instance debug](omnistrate-ctl_instance_debug.md)	 - Visualize the instance plan DAG
 
