@@ -236,15 +236,44 @@ func (m dagModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.inDetail = false
 			m.detailModel = nil
 			m.rebuildLayout()
-			if m.isAnyNodeInProgress() {
-				return m, tea.Batch(tea.ClearScreen, scheduleDagRefresh())
+			var cmds []tea.Cmd
+			cmds = append(cmds, tea.ClearScreen)
+			// Resume progress loading if it was interrupted
+			if m.progressLoading && (!m.wfResolved || !m.tfResolved) {
+				if !m.wfResolved {
+					cmds = append(cmds, m.fetchWorkflowProgressForDAG())
+				}
+				if !m.tfResolved {
+					cmds = append(cmds, m.fetchTerraformProgressForDAG())
+				}
+				cmds = append(cmds, m.spinner.Tick)
+			} else if m.isAnyNodeInProgress() {
+				cmds = append(cmds, scheduleDagRefresh())
 			}
-			return m, tea.ClearScreen
+			return m, tea.Batch(cmds...)
 		case tea.WindowSizeMsg:
 			// Update parent dimensions too for when we return from detail
 			wsm := msg.(tea.WindowSizeMsg)
 			m.width = wsm.Width
 			m.height = wsm.Height
+		case wfProgressMsg:
+			// Capture workflow progress even while in detail view
+			wmsg := msg.(wfProgressMsg)
+			m.wfResolved = true
+			m.wfResult = &wmsg
+			if m.plan != nil && wmsg.workflowID != "" {
+				m.plan.WorkflowID = wmsg.workflowID
+			}
+			if wmsg.errors != nil && m.plan != nil {
+				m.plan.Errors = append(m.plan.Errors, wmsg.errors...)
+			}
+			m.applyProgressIfReady()
+		case tfProgressUpdateMsg:
+			// Capture terraform progress even while in detail view
+			tmsg := msg.(tfProgressUpdateMsg)
+			m.tfResolved = true
+			m.tfNodeProgress = tmsg.progressByID
+			m.applyProgressIfReady()
 		case dagRefreshTickMsg:
 			// Handle DAG refresh even while in detail view
 			if !m.refreshing && m.isAnyNodeInProgress() {
