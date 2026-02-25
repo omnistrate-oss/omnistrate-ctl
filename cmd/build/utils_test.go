@@ -412,7 +412,7 @@ services:
 	assert.Contains(t, info.ArtifactPaths, "/operator/artifacts")
 }
 
-func TestParseServicePlanSpec_ExtractsArtifactPaths_EmptyWhenNoArtifactPaths(t *testing.T) {
+func TestParseServicePlanSpec_ExtractsArtifactPaths_FallbackToTerraformPath(t *testing.T) {
 	yamlContent := `
 name: NoArtifacts
 deployment:
@@ -427,7 +427,14 @@ services:
 `
 	info, err := ParseServicePlanSpec([]byte(yamlContent))
 	require.NoError(t, err)
-	assert.Nil(t, info.ArtifactPaths)
+	// When artifactsLocalPath is not specified, terraformPath is used as fallback
+	assert.NotNil(t, info.ArtifactPaths)
+	assert.Len(t, info.ArtifactPaths, 1)
+	assert.Contains(t, info.ArtifactPaths, "/")
+	// Also check artifact uploads
+	assert.Len(t, info.ArtifactUploads, 1)
+	assert.Equal(t, "/", info.ArtifactUploads[0].Path)
+	assert.Equal(t, "aws", info.ArtifactUploads[0].CloudProvider)
 }
 
 func TestParseServicePlanSpec_ExtractsArtifactPaths_NoServicesSection(t *testing.T) {
@@ -440,6 +447,126 @@ deployment:
 	info, err := ParseServicePlanSpec([]byte(yamlContent))
 	require.NoError(t, err)
 	assert.Nil(t, info.ArtifactPaths)
+}
+
+func TestParseServicePlanSpec_ExtractsArtifactPaths_MixedTerraformFallback(t *testing.T) {
+	yamlContent := `
+name: MixedTerraform
+deployment:
+  hostedDeployment:
+    AwsAccountId: "111111111111"
+services:
+  - name: terraformResource
+    type: terraform
+    terraformConfigurations:
+      configurationPerCloudProvider:
+        aws:
+          terraformPath: /aws/tf
+          artifactsLocalPath: /aws/artifacts
+        gcp:
+          terraformPath: /gcp/tf
+        azure:
+          terraformPath: /azure/tf
+          artifactsLocalPath: /azure/artifacts
+`
+	info, err := ParseServicePlanSpec([]byte(yamlContent))
+	require.NoError(t, err)
+	assert.NotNil(t, info.ArtifactPaths)
+	// aws uses artifactsLocalPath, gcp falls back to terraformPath, azure uses artifactsLocalPath
+	assert.Len(t, info.ArtifactPaths, 3)
+	assert.Contains(t, info.ArtifactPaths, "/aws/artifacts")
+	assert.Contains(t, info.ArtifactPaths, "/gcp/tf")
+	assert.Contains(t, info.ArtifactPaths, "/azure/artifacts")
+	// Artifact uploads should have 3 entries
+	assert.Len(t, info.ArtifactUploads, 3)
+}
+
+func TestParseServicePlanSpec_ExtractsArtifactPaths_TerraformFallbackDeduplicates(t *testing.T) {
+	yamlContent := `
+name: TerraformDedup
+deployment:
+  hostedDeployment: {}
+services:
+  - name: terraformResource
+    type: terraform
+    terraformConfigurations:
+      configurationPerCloudProvider:
+        aws:
+          terraformPath: /shared
+        gcp:
+          terraformPath: /shared
+        azure:
+          terraformPath: /shared
+`
+	info, err := ParseServicePlanSpec([]byte(yamlContent))
+	require.NoError(t, err)
+	assert.NotNil(t, info.ArtifactPaths)
+	// Same terraformPath should be deduplicated in ArtifactPaths
+	assert.Len(t, info.ArtifactPaths, 1)
+	assert.Contains(t, info.ArtifactPaths, "/shared")
+	// But ArtifactUploads should have 3 entries (one per cloud provider)
+	assert.Len(t, info.ArtifactUploads, 3)
+}
+
+func TestParseServicePlanSpec_ExtractsArtifactPaths_SkipFallbackWithGitConfig(t *testing.T) {
+	yamlContent := `
+name: TerraformGit
+deployment:
+  hostedDeployment:
+    AwsAccountId: "111111111111"
+services:
+  - name: terraformResource
+    type: terraform
+    terraformConfigurations:
+      configurationPerCloudProvider:
+        aws:
+          terraformPath: /terraform-spec
+          gitConfiguration:
+            reference: refs/tags/2.3
+            repositoryUrl: https://github.com/example/repo.git
+        gcp:
+          terraformPath: /terraform-spec
+          gitConfiguration:
+            reference: refs/tags/2.3
+            repositoryUrl: https://github.com/example/repo.git
+`
+	info, err := ParseServicePlanSpec([]byte(yamlContent))
+	require.NoError(t, err)
+	// gitConfiguration is present, so terraformPath should NOT be used as fallback
+	assert.Nil(t, info.ArtifactPaths)
+	assert.Len(t, info.ArtifactUploads, 0)
+}
+
+func TestParseServicePlanSpec_ExtractsArtifactPaths_MixedGitAndLocal(t *testing.T) {
+	yamlContent := `
+name: TerraformMixed
+deployment:
+  hostedDeployment:
+    AwsAccountId: "111111111111"
+services:
+  - name: terraformResource
+    type: terraform
+    terraformConfigurations:
+      configurationPerCloudProvider:
+        aws:
+          terraformPath: /terraform-spec
+          gitConfiguration:
+            reference: refs/tags/2.3
+            repositoryUrl: https://github.com/example/repo.git
+        gcp:
+          terraformPath: /local/path
+        azure:
+          terraformPath: /azure/tf
+          artifactsLocalPath: /azure/artifacts
+`
+	info, err := ParseServicePlanSpec([]byte(yamlContent))
+	require.NoError(t, err)
+	assert.NotNil(t, info.ArtifactPaths)
+	// aws has gitConfiguration so skipped, gcp falls back to terraformPath, azure uses artifactsLocalPath
+	assert.Len(t, info.ArtifactPaths, 2)
+	assert.Contains(t, info.ArtifactPaths, "/local/path")
+	assert.Contains(t, info.ArtifactPaths, "/azure/artifacts")
+	assert.Len(t, info.ArtifactUploads, 2)
 }
 
 func TestArchiveArtifactPaths_CreatesBase64Archive(t *testing.T) {

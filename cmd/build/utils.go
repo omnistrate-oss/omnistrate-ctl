@@ -293,6 +293,7 @@ func extractArtifactPaths(yamlContent map[string]interface{}) []string {
 }
 
 // extractArtifactPathsFromTerraform extracts artifactsLocalPath from terraformConfigurations
+// Falls back to terraformPath if artifactsLocalPath is not specified
 func extractArtifactPathsFromTerraform(svcMap map[string]interface{}, pathSet map[string]struct{}) {
 	terraformConfigs, ok := svcMap["terraformConfigurations"].(map[string]interface{})
 	if !ok {
@@ -313,7 +314,16 @@ func extractArtifactPathsFromTerraform(svcMap map[string]interface{}, pathSet ma
 			continue
 		}
 
-		if path, ok := cpConfig["artifactsLocalPath"].(string); ok && path != "" {
+		path, ok := cpConfig["artifactsLocalPath"].(string)
+		if !ok || path == "" {
+			// Skip fallback if gitConfiguration is present (git-based configs don't need local artifacts)
+			if _, hasGit := cpConfig["gitConfiguration"]; hasGit {
+				continue
+			}
+			// Fallback to terraformPath if artifactsLocalPath is not specified
+			path, ok = cpConfig["terraformPath"].(string)
+		}
+		if ok && path != "" {
 			pathSet[path] = struct{}{}
 		}
 	}
@@ -391,6 +401,7 @@ func extractArtifactUploads(yamlContent map[string]interface{}) []*ArtifactUploa
 }
 
 // extractTerraformArtifactUploads extracts artifact uploads from terraform configurations
+// Falls back to terraformPath if artifactsLocalPath is not specified
 func extractTerraformArtifactUploads(svcMap map[string]interface{}, uploads *[]*ArtifactUploadInfo, seen map[string]bool) {
 	terraformConfigs, ok := svcMap["terraformConfigurations"].(map[string]interface{})
 	if !ok {
@@ -409,7 +420,16 @@ func extractTerraformArtifactUploads(svcMap map[string]interface{}, uploads *[]*
 			continue
 		}
 
-		if path, ok := cpConfig["artifactsLocalPath"].(string); ok && path != "" {
+		path, pathOk := cpConfig["artifactsLocalPath"].(string)
+		if !pathOk || path == "" {
+			// Skip fallback if gitConfiguration is present (git-based configs don't need local artifacts)
+			if _, hasGit := cpConfig["gitConfiguration"]; hasGit {
+				continue
+			}
+			// Fallback to terraformPath if artifactsLocalPath is not specified
+			path, pathOk = cpConfig["terraformPath"].(string)
+		}
+		if pathOk && path != "" {
 			key := path + "|" + cp
 			if !seen[key] {
 				seen[key] = true
