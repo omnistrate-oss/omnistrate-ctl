@@ -89,6 +89,7 @@ type terraformDetailModel struct {
 	// Logs tab data
 	logLines     []string
 	logChan      chan logLineMsg
+	logCancel    context.CancelFunc // cancels the log polling goroutine
 	logScroll    int
 	logFollow    bool // auto-scroll to bottom
 	logStreaming bool
@@ -191,15 +192,8 @@ func (m terraformDetailModel) fetchData() tea.Cmd {
 		if conn != nil {
 			index, indexErr := loadTerraformConfigMapIndex(ctx, conn.clientset, m.debugData.InstanceID)
 			if indexErr == nil && index != nil {
-				// Try multiple key formats for resource ID lookup
-				normalizedID := normalizeResourceIDForConfigMap(m.node.ID)
 				var tfData *TerraformData
-				for _, key := range []string{
-					normalizedID,
-					m.node.ID,
-					"tf-" + normalizedID,
-					"tf-" + strings.ToLower(m.node.ID),
-				} {
+				for _, key := range resourceConfigMapKeys(m.node.ID) {
 					td := index.terraformDataForResource(key)
 					if td != nil && len(td.Files) > 0 {
 						tfData = td
@@ -251,6 +245,9 @@ func (m terraformDetailModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.KeyMsg:
 		switch msg.String() {
 		case "ctrl+c", "q":
+			if m.logCancel != nil {
+				m.logCancel()
+			}
 			return m, tea.Quit
 		case "esc":
 			if m.viewingFile {
@@ -259,6 +256,10 @@ func (m terraformDetailModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.fileContentErr = nil
 				m.fileScroll = 0
 				return m, nil
+			}
+			// Cancel log polling goroutine before leaving
+			if m.logCancel != nil {
+				m.logCancel()
 			}
 			// Signal back to DAG view
 			return m, func() tea.Msg { return backToDagMsg{} }
@@ -457,9 +458,11 @@ func (m terraformDetailModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// Start log watcher for apply/destroy logs from configmap
 		var cmds []tea.Cmd
 		if msg.k8sConn != nil {
+			ctx, cancel := context.WithCancel(context.Background())
+			m.logCancel = cancel
 			m.logStreaming = true
 			cmds = append(cmds,
-				watchApplyDestroyLogs(msg.k8sConn, m.debugData.InstanceID, m.node.ID, m.history, m.logChan),
+				watchApplyDestroyLogs(ctx, msg.k8sConn, m.debugData.InstanceID, m.node.ID, m.history, m.logChan),
 				waitForLogLines(m.logChan),
 			)
 		}
@@ -494,13 +497,18 @@ func (m terraformDetailModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case logStreamDoneMsg:
 		m.logStreaming = false
 		if msg.err != nil {
-			// Transient error — restart the watcher after a delay
+			// Cancel previous context if any, then restart
+			if m.logCancel != nil {
+				m.logCancel()
+			}
+			ctx, cancel := context.WithCancel(context.Background())
+			m.logCancel = cancel
 			m.logChan = make(chan logLineMsg, 50)
 			m.logStreaming = true
 			m.logErr = nil
 			return m, tea.Batch(
 				tea.Tick(logPollInterval, func(time.Time) tea.Msg { return nil }),
-				watchApplyDestroyLogs(m.k8sConn, m.debugData.InstanceID, m.node.ID, m.history, m.logChan),
+				watchApplyDestroyLogs(ctx, m.k8sConn, m.debugData.InstanceID, m.node.ID, m.history, m.logChan),
 				waitForLogLines(m.logChan),
 			)
 		}

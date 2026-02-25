@@ -131,14 +131,8 @@ func fetchLogsFromConfigMap(ctx context.Context, conn *k8sConnection, instanceID
 		return nil, "", "", history, nil
 	}
 
-	normalizedID := normalizeResourceIDForConfigMap(resourceID)
 	var cmData map[string]string
-	for _, key := range []string{
-		normalizedID,
-		resourceID,
-		"tf-" + normalizedID,
-		"tf-" + strings.ToLower(resourceID),
-	} {
+	for _, key := range resourceConfigMapKeys(resourceID) {
 		if cm, ok := index.stateByResource[key]; ok && cm != nil {
 			cmData = cm.Data
 			break
@@ -162,16 +156,20 @@ func fetchLogsFromConfigMap(ctx context.Context, conn *k8sConnection, instanceID
 }
 
 // watchApplyDestroyLogs polls the configmap for log updates for the latest operation ID
-// and sends new lines via the channel.
-func watchApplyDestroyLogs(conn *k8sConnection, instanceID, resourceID string, history []TerraformHistoryEntry, ch chan logLineMsg) tea.Cmd {
+// and sends new lines via the channel. The polling loop exits when ctx is cancelled.
+func watchApplyDestroyLogs(ctx context.Context, conn *k8sConnection, instanceID, resourceID string, history []TerraformHistoryEntry, ch chan logLineMsg) tea.Cmd {
 	return func() tea.Msg {
-		ctx := context.Background()
 		var prevLines []string
 		prevOpID := ""
 
 		for {
 			lines, label, opID, newHistory, err := fetchLogsFromConfigMap(ctx, conn, instanceID, resourceID, history)
 			if err != nil {
+				// If cancelled, treat as clean shutdown
+				if ctx.Err() != nil {
+					close(ch)
+					return logStreamDoneMsg{}
+				}
 				close(ch)
 				return logStreamDoneMsg{err: err}
 			}
@@ -180,32 +178,57 @@ func watchApplyDestroyLogs(conn *k8sConnection, instanceID, resourceID string, h
 			if len(lines) > 0 {
 				if opID != prevOpID && prevOpID != "" {
 					// New operation ID — replace with separator and full content
-					ch <- logLineMsg{
+					select {
+					case ch <- logLineMsg{
 						lines:   append([]string{"", "═══ new operation ═══", ""}, lines...),
 						label:   label,
 						replace: true,
+					}:
+					case <-ctx.Done():
+						close(ch)
+						return logStreamDoneMsg{}
 					}
 					prevLines = lines
 				} else if len(prevLines) == 0 {
 					// First fetch — send full content
-					ch <- logLineMsg{lines: lines, label: label}
+					select {
+					case ch <- logLineMsg{lines: lines, label: label}:
+					case <-ctx.Done():
+						close(ch)
+						return logStreamDoneMsg{}
+					}
 					prevLines = lines
 				} else if len(lines) > len(prevLines) {
 					// Same operation, more content — send only new lines
-					ch <- logLineMsg{
+					select {
+					case ch <- logLineMsg{
 						lines: lines[len(prevLines):],
 						label: label,
+					}:
+					case <-ctx.Done():
+						close(ch)
+						return logStreamDoneMsg{}
 					}
 					prevLines = lines
 				} else if !slicesEqual(lines, prevLines) {
 					// Content changed (e.g. new sub-operation appeared) — replace all
-					ch <- logLineMsg{lines: lines, label: label, replace: true}
+					select {
+					case ch <- logLineMsg{lines: lines, label: label, replace: true}:
+					case <-ctx.Done():
+						close(ch)
+						return logStreamDoneMsg{}
+					}
 					prevLines = lines
 				}
 				prevOpID = opID
 			}
 
-			time.Sleep(logPollInterval)
+			select {
+			case <-ctx.Done():
+				close(ch)
+				return logStreamDoneMsg{}
+			case <-time.After(logPollInterval):
+			}
 		}
 	}
 }

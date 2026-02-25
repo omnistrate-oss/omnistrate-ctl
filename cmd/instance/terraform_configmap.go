@@ -86,13 +86,20 @@ func newK8sConnectionFromKubeConfigResult(kubeConfig *openapiclientfleet.KubeCon
 	cluster.Server = apiServer
 
 	caData, err := base64.StdEncoding.DecodeString(kubeConfig.GetCaDataBase64())
-	if err == nil {
-		cluster.CertificateAuthorityData = caData
+	if err != nil {
+		return nil, fmt.Errorf("invalid CA data: %w", err)
 	}
+	cluster.CertificateAuthorityData = caData
 
 	authInfo := clientcmdapi.NewAuthInfo()
-	certData, _ := base64.StdEncoding.DecodeString(kubeConfig.GetClientCertificateDataBase64())
-	keyData, _ := base64.StdEncoding.DecodeString(kubeConfig.GetClientKeyDataBase64())
+	certData, err := base64.StdEncoding.DecodeString(kubeConfig.GetClientCertificateDataBase64())
+	if err != nil {
+		return nil, fmt.Errorf("invalid client certificate data: %w", err)
+	}
+	keyData, err := base64.StdEncoding.DecodeString(kubeConfig.GetClientKeyDataBase64())
+	if err != nil {
+		return nil, fmt.Errorf("invalid client key data: %w", err)
+	}
 	if len(certData) > 0 && len(keyData) > 0 {
 		authInfo.ClientCertificateData = certData
 		authInfo.ClientKeyData = keyData

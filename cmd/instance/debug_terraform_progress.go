@@ -56,21 +56,10 @@ func fetchTerraformProgress(ctx context.Context, token string, instanceData *ope
 		return nil, nil, nil, fmt.Errorf("failed to load terraform configmap index: %w", err)
 	}
 
-	// Normalize resource ID for configmap lookup
-	// Configmap names use format: tf-state-tf-r-{lowercased_resource_id}-instance-{instance_id}
-	// The index key extracted by regex is "tf-r-{lowercased_resource_id}"
-	// The node's resource ID is like "r-EIAlBQvwCd"
-	normalizedResourceID := normalizeResourceIDForConfigMap(resourceID)
-
 	// Find the tf-state configmap for this resource, trying multiple key formats
 	var stateConfigMap *corev1.ConfigMap
 	var ok bool
-	for _, key := range []string{
-		normalizedResourceID,                // reialbqvwcd
-		resourceID,                          // r-EIAlBQvwCd
-		"tf-" + normalizedResourceID,        // tf-reialbqvwcd
-		"tf-" + strings.ToLower(resourceID), // tf-r-eialbqvwcd
-	} {
+	for _, key := range resourceConfigMapKeys(resourceID) {
 		stateConfigMap, ok = index.stateByResource[key]
 		if ok {
 			break
@@ -142,6 +131,23 @@ func normalizeResourceIDForConfigMap(resourceID string) string {
 	id := strings.ToLower(resourceID)
 	id = strings.ReplaceAll(id, "-", "")
 	return id
+}
+
+// resourceConfigMapKeys returns the ordered list of index keys to try when
+// looking up a resource in stateByResource. Configmap names follow the
+// pattern tf-state-tf-r-{lowercased_resource_id}-instance-{instance_id},
+// so the regex-extracted index key is "tf-r-{lowercased_resource_id}".
+// We try the documented format first, then fall back to less common variants.
+func resourceConfigMapKeys(resourceID string) []string {
+	lowered := strings.ToLower(resourceID)     // r-eialbqvwcd
+	normalized := normalizeResourceIDForConfigMap(resourceID) // reialbqvwcd
+	return []string{
+		"tf-" + lowered,  // tf-r-eialbqvwcd  (documented format)
+		lowered,          // r-eialbqvwcd
+		resourceID,       // r-EIAlBQvwCd     (raw, exact case)
+		"tf-" + normalized, // tf-reialbqvwcd (fallback, no dashes)
+		normalized,         // reialbqvwcd    (fallback, no dashes)
+	}
 }
 
 // fetchInstanceDataForResource gets the resource instance data needed for k8s access
