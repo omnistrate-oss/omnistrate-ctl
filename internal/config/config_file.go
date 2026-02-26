@@ -37,6 +37,8 @@ var (
 	ErrConfigFileNotFound = errors.New("auth failure: config file not found, please login first")
 	ErrAuthConfigNotFound = errors.New("auth failure: auth credentials not found, please login first")
 	ErrGitHubPATNotFound  = errors.New("no github personal access token found")
+	ErrTokenExpired       = errors.New("auth failure: token has expired, please login again")
+	ErrUnauthorized       = errors.New("auth failure: unauthorized access, please login again")
 )
 
 // New initializes a config file for the given file path.
