@@ -100,3 +100,34 @@ func BuildServiceFromComposeSpec(ctx context.Context, token string, request open
 
 	return resp, nil
 }
+
+// CreateService creates a new service
+func CreateService(ctx context.Context, token, name, description string) (serviceID string, err error) {
+	ctxWithToken := context.WithValue(ctx, openapiclient.ContextAccessToken, token)
+
+	apiClient := getV1Client()
+
+	// Use empty string as default for description if not provided
+	if description == "" {
+		description = "Created by omnistrate-ctl"
+	}
+
+	req := openapiclient.CreateServiceRequest2{
+		Name:        name,
+		Description: description,
+	}
+
+	serviceID, r, err := apiClient.ServiceApiAPI.ServiceApiCreateService(ctxWithToken).
+		CreateServiceRequest2(req).
+		Execute()
+	defer func() {
+		if r != nil {
+			_ = r.Body.Close()
+		}
+	}()
+	if err != nil {
+		return "", handleV1Error(err)
+	}
+
+	return serviceID, nil
+}
