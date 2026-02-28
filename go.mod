@@ -93,7 +93,7 @@ require (
 	github.com/mattn/go-shellwords v1.0.12 // indirect
 	github.com/mitchellh/mapstructure v1.5.0 // indirect
 	github.com/moby/spdystream v0.5.0 // indirect
-	github.com/modelcontextprotocol/go-sdk v1.2.0 // indirect
+	github.com/modelcontextprotocol/go-sdk v1.3.1 // indirect
 	github.com/modern-go/concurrent v0.0.0-20180306012644-bacd9c7ef1dd // indirect
 	github.com/modern-go/reflect2 v1.0.3-0.20250322232337-35a7c28c31ee // indirect
 	github.com/mschoch/smat v0.2.0 // indirect
@@ -106,6 +106,8 @@ require (
 	github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2 // indirect
 	github.com/rivo/uniseg v0.4.7 // indirect
 	github.com/russross/blackfriday/v2 v2.1.0 // indirect
+	github.com/segmentio/asm v1.1.3 // indirect
+	github.com/segmentio/encoding v0.5.3 // indirect
 	github.com/sirupsen/logrus v1.9.3 // indirect
 	github.com/stretchr/objx v0.5.2 // indirect
 	github.com/x448/float16 v0.8.4 // indirect
