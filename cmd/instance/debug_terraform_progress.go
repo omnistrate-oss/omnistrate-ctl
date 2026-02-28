@@ -139,12 +139,12 @@ func normalizeResourceIDForConfigMap(resourceID string) string {
 // so the regex-extracted index key is "tf-r-{lowercased_resource_id}".
 // We try the documented format first, then fall back to less common variants.
 func resourceConfigMapKeys(resourceID string) []string {
-	lowered := strings.ToLower(resourceID)     // r-eialbqvwcd
+	lowered := strings.ToLower(resourceID)                    // r-eialbqvwcd
 	normalized := normalizeResourceIDForConfigMap(resourceID) // reialbqvwcd
 	return []string{
-		"tf-" + lowered,  // tf-r-eialbqvwcd  (documented format)
-		lowered,          // r-eialbqvwcd
-		resourceID,       // r-EIAlBQvwCd     (raw, exact case)
+		"tf-" + lowered,    // tf-r-eialbqvwcd  (documented format)
+		lowered,            // r-eialbqvwcd
+		resourceID,         // r-EIAlBQvwCd     (raw, exact case)
 		"tf-" + normalized, // tf-reialbqvwcd (fallback, no dashes)
 		normalized,         // reialbqvwcd    (fallback, no dashes)
 	}

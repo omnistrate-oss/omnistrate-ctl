@@ -28,6 +28,7 @@ omnistrate-ctl docs [operation] [flags]
 
 * [omnistrate-ctl](omnistrate-ctl.md)	 - Manage your Omnistrate SaaS from the command line
 * [omnistrate-ctl docs compose-spec](omnistrate-ctl_docs_compose-spec.md)	 - Compose spec documentation
+* [omnistrate-ctl docs plan-spec](omnistrate-ctl_docs_plan-spec.md)	 - Plan spec documentation
 * [omnistrate-ctl docs search](omnistrate-ctl_docs_search.md)	 - Search through Omnistrate documentation
 * [omnistrate-ctl docs system-parameters](omnistrate-ctl_docs_system-parameters.md)	 - Get the JSON schema for system parameters
 
