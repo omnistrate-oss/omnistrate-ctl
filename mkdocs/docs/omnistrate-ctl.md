@@ -65,6 +65,7 @@ omnistrate-ctl [flags]
 * [omnistrate-ctl secret](omnistrate-ctl_secret.md)	 - Manage secrets
 * [omnistrate-ctl service](omnistrate-ctl_service.md)	 - Manage Services for your account
 * [omnistrate-ctl service-plan](omnistrate-ctl_service-plan.md)	 - Manage Service Plans for your service
+* [omnistrate-ctl snapshot](omnistrate-ctl_snapshot.md)	 - Manage instance snapshots and backups
 * [omnistrate-ctl subscription](omnistrate-ctl_subscription.md)	 - Manage Customer Subscriptions for your service
 * [omnistrate-ctl upgrade](omnistrate-ctl_upgrade.md)	 - Upgrade Instance Deployments to a newer or older version
 * [omnistrate-ctl workflow](omnistrate-ctl_workflow.md)	 - Manage service workflows
