@@ -646,15 +646,142 @@ func TestArchiveArtifactPaths_NonExistentPath(t *testing.T) {
 }
 
 func TestArchiveArtifactPaths_FileNotDirectory(t *testing.T) {
-	// Create a temporary file (not a directory)
-	tmpFile, err := os.CreateTemp("", "test-file-*")
+	// Create a temporary file (not a directory and not tar.gz)
+	tmpFile, err := os.CreateTemp("", "test-file-*.txt")
 	require.NoError(t, err)
 	defer os.Remove(tmpFile.Name())
 	tmpFile.Close()
 
 	_, err = ArchiveArtifactPaths(filepath.Dir(tmpFile.Name()), []string{filepath.Base(tmpFile.Name())})
 	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "is not a directory")
+	assert.Contains(t, err.Error(), "is not a directory or a .tar.gz file")
+}
+
+func TestArchiveArtifactPaths_TarGzFilePassthrough(t *testing.T) {
+	// Create a temporary directory with a real tar.gz file inside
+	sourceDir, err := os.MkdirTemp("", "test-source-*")
+	require.NoError(t, err)
+	defer os.RemoveAll(sourceDir)
+
+	// Create a subdirectory, archive it, then use the resulting tar.gz as input
+	artifactDir := filepath.Join(sourceDir, "myartifacts")
+	err = os.MkdirAll(artifactDir, 0755)
+	require.NoError(t, err)
+	err = os.WriteFile(filepath.Join(artifactDir, "hello.txt"), []byte("hello world"), 0644)
+	require.NoError(t, err)
+
+	// First, archive the directory to get valid tar.gz content
+	base64Content, err := createTarGzBase64(artifactDir)
+	require.NoError(t, err)
+	rawTarGz, err := base64.StdEncoding.DecodeString(base64Content)
+	require.NoError(t, err)
+
+	// Write the tar.gz content to a .tar.gz file
+	tarGzPath := filepath.Join(sourceDir, "myartifacts.tar.gz")
+	err = os.WriteFile(tarGzPath, rawTarGz, 0644)
+	require.NoError(t, err)
+
+	// Archive should detect the file is already tar.gz and just base64 encode it
+	result, err := ArchiveArtifactPaths(sourceDir, []string{"myartifacts.tar.gz"})
+	require.NoError(t, err)
+	assert.Len(t, result, 1)
+	assert.Contains(t, result, "myartifacts.tar.gz")
+
+	// The base64 output should decode to exactly the same bytes we wrote
+	decoded, err := base64.StdEncoding.DecodeString(result["myartifacts.tar.gz"])
+	require.NoError(t, err)
+	assert.Equal(t, rawTarGz, decoded)
+}
+
+func TestArchiveArtifactPaths_TgzFilePassthrough(t *testing.T) {
+	// Create a temporary directory with a .tgz file inside
+	sourceDir, err := os.MkdirTemp("", "test-source-*")
+	require.NoError(t, err)
+	defer os.RemoveAll(sourceDir)
+
+	artifactDir := filepath.Join(sourceDir, "myartifacts")
+	err = os.MkdirAll(artifactDir, 0755)
+	require.NoError(t, err)
+	err = os.WriteFile(filepath.Join(artifactDir, "data.txt"), []byte("some data"), 0644)
+	require.NoError(t, err)
+
+	base64Content, err := createTarGzBase64(artifactDir)
+	require.NoError(t, err)
+	rawTarGz, err := base64.StdEncoding.DecodeString(base64Content)
+	require.NoError(t, err)
+
+	tgzPath := filepath.Join(sourceDir, "myartifacts.tgz")
+	err = os.WriteFile(tgzPath, rawTarGz, 0644)
+	require.NoError(t, err)
+
+	result, err := ArchiveArtifactPaths(sourceDir, []string{"myartifacts.tgz"})
+	require.NoError(t, err)
+	assert.Len(t, result, 1)
+	assert.Contains(t, result, "myartifacts.tgz")
+
+	decoded, err := base64.StdEncoding.DecodeString(result["myartifacts.tgz"])
+	require.NoError(t, err)
+	assert.Equal(t, rawTarGz, decoded)
+}
+
+func TestIsGzipTarFile(t *testing.T) {
+	tests := []struct {
+		name     string
+		filename string
+		content  []byte
+		expected bool
+	}{
+		{
+			name:     "tar.gz extension with gzip magic",
+			filename: "archive.tar.gz",
+			content:  []byte{0x1f, 0x8b, 0x08, 0x00},
+			expected: true,
+		},
+		{
+			name:     "tgz extension with gzip magic",
+			filename: "archive.tgz",
+			content:  []byte{0x1f, 0x8b, 0x08, 0x00},
+			expected: true,
+		},
+		{
+			name:     "tar.gz extension without gzip magic",
+			filename: "fake.tar.gz",
+			content:  []byte("not gzip"),
+			expected: true, // extension match is enough
+		},
+		{
+			name:     "no extension but has gzip magic bytes",
+			filename: "archive.bin",
+			content:  []byte{0x1f, 0x8b, 0x08, 0x00},
+			expected: true, // magic bytes match is enough
+		},
+		{
+			name:     "plain text file",
+			filename: "readme.txt",
+			content:  []byte("hello world"),
+			expected: false,
+		},
+		{
+			name:     "empty file with tar.gz extension",
+			filename: "empty.tar.gz",
+			content:  []byte{},
+			expected: true, // extension match is enough
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tmpDir, err := os.MkdirTemp("", "test-isgzip-*")
+			require.NoError(t, err)
+			defer os.RemoveAll(tmpDir)
+
+			filePath := filepath.Join(tmpDir, tt.filename)
+			err = os.WriteFile(filePath, tt.content, 0644)
+			require.NoError(t, err)
+
+			assert.Equal(t, tt.expected, isGzipTarFile(filePath))
+		})
+	}
 }
 
 func TestArchiveArtifactPaths_NestedDirectories(t *testing.T) {

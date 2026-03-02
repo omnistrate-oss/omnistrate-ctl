@@ -603,13 +603,24 @@ func ArchiveArtifactPaths(baseDir string, artifactPaths []string) (map[string]st
 		// Clean the path
 		resolvedPath = filepath.Clean(resolvedPath)
 
-		// Check if the directory exists
+		// Check if the path exists
 		info, err := os.Stat(resolvedPath)
 		if err != nil {
 			return nil, fmt.Errorf("artifact path '%s' does not exist: %w", artifactPath, err)
 		}
+
 		if !info.IsDir() {
-			return nil, fmt.Errorf("artifact path '%s' is not a directory", artifactPath)
+			// Path is a file - check if it's already a .tar.gz / .tgz file
+			if isGzipTarFile(resolvedPath) {
+				// Already a tar.gz file, just read and base64 encode it directly
+				fileContent, readErr := os.ReadFile(resolvedPath)
+				if readErr != nil {
+					return nil, fmt.Errorf("failed to read tar.gz file '%s': %w", artifactPath, readErr)
+				}
+				result[artifactPath] = base64.StdEncoding.EncodeToString(fileContent)
+				continue
+			}
+			return nil, fmt.Errorf("artifact path '%s' is not a directory or a .tar.gz file", artifactPath)
 		}
 
 		// Create the tar.gz archive in memory and encode to base64
@@ -707,6 +718,29 @@ func createTarGzBase64(sourceDir string) (string, error) {
 	base64Content := base64.StdEncoding.EncodeToString(buf.Bytes())
 
 	return base64Content, nil
+}
+
+// isGzipTarFile checks whether a file is already in tar.gz (.tar.gz or .tgz) format.
+// It checks both the file extension and the gzip magic bytes (0x1f, 0x8b) at the start of the file.
+func isGzipTarFile(filePath string) bool {
+	lower := strings.ToLower(filePath)
+	hasExtension := strings.HasSuffix(lower, ".tar.gz") || strings.HasSuffix(lower, ".tgz")
+
+	// Also verify by reading the first two bytes (gzip magic number)
+	f, err := os.Open(filePath)
+	if err != nil {
+		return hasExtension
+	}
+	defer f.Close()
+
+	magic := make([]byte, 2)
+	n, err := f.Read(magic)
+	if err != nil || n < 2 {
+		return hasExtension
+	}
+
+	hasMagic := magic[0] == 0x1f && magic[1] == 0x8b
+	return hasExtension || hasMagic
 }
 
 // MatchedAccountConfigs holds the matched account config IDs for each cloud provider
