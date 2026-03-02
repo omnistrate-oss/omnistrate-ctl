@@ -178,95 +178,8 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("authentication error: %w", err)
 	}
 
-	// Retrieve flags
-	file, err := cmd.Flags().GetString("file")
+	deployOpts, err := parseDeployOptions(cmd)
 	if err != nil {
-		return err
-	}
-
-	// Check if file was explicitly provided
-	fileExplicit := cmd.Flags().Changed("file")
-
-	// Get service name for further validation
-	productName, err := cmd.Flags().GetString("product-name")
-	if err != nil {
-		utils.PrintError(fmt.Errorf("failed to read product-name: %v", err))
-		return err
-	}
-
-	// Get cloud provider account flags
-	cloudProvider, err := cmd.Flags().GetString("cloud-provider")
-	if err != nil {
-		return err
-	}
-	region, err := cmd.Flags().GetString("region")
-	if err != nil {
-		return err
-	}
-
-	skipDockerBuild, err := cmd.Flags().GetBool("skip-docker-build")
-	if err != nil {
-		return err
-	}
-
-	platforms, err := cmd.Flags().GetStringArray("platforms")
-	if err != nil {
-		return err
-	}
-
-	// Get dry-run flags
-	dryRun, err := cmd.Flags().GetBool("dry-run")
-	if err != nil {
-		return err
-	}
-
-	// Get instance-id flag value
-	instanceID, err := cmd.Flags().GetString("instance-id")
-	if err != nil {
-		return err
-	}
-
-	// Get resource-id flag value
-	resourceID, err := cmd.Flags().GetString("resource-id")
-	if err != nil {
-		return err
-	}
-
-	param, err := cmd.Flags().GetString("param")
-	if err != nil {
-		utils.PrintError(err)
-		return err
-	}
-	paramFile, err := cmd.Flags().GetString("param-file")
-	if err != nil {
-		utils.PrintError(err)
-		return err
-	}
-
-	// Get env type and name flag value
-	environmentType, err := cmd.Flags().GetString("environment-type")
-	if err != nil {
-		return err
-	}
-
-	environmentTypeUpper := strings.ToUpper(environmentType)
-
-	environment, err := cmd.Flags().GetString("environment")
-	if err != nil {
-		utils.PrintError(err)
-		return err
-	}
-
-	deploymentType, err := cmd.Flags().GetString("deployment-type")
-	if err != nil {
-		utils.PrintError(err)
-		return err
-	}
-
-	// Validate deployment-type
-	if deploymentType != build.DeploymentTypeHosted && deploymentType != build.DeploymentTypeByoa {
-		err := fmt.Errorf("invalid deployment-type '%s'. Valid values are: hosted, byoa", deploymentType)
-		utils.PrintError(err)
 		return err
 	}
 
@@ -284,8 +197,8 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 	var buildFromRepo = false
 
 	// 1. If user provided a file via --file or arg, use it
-	if fileExplicit && file != "" {
-		specFile = file
+	if deployOpts.FileExplicit && deployOpts.File != "" {
+		specFile = deployOpts.File
 	} else if len(args) > 0 && args[0] != "" {
 		specFile = args[0]
 	} else if specFile == "" {
@@ -380,23 +293,22 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 
 	spinner.UpdateMessage("Step 1/2: Checking cloud provider accounts...")
 
-	isAccountId := false
+	isAccountID := false
 	awsAccountID, awsBootstrapRoleARN, gcpProjectID, gcpProjectNumber, gcpServiceAccountEmail, azureSubscriptionID, azureTenantID, extractDeploymentType :=
 		extractCloudAccountsFromProcessedData(processedData)
 
 	if awsAccountID != "" || gcpProjectID != "" || azureSubscriptionID != "" {
-		isAccountId = true
+		isAccountID = true
 	}
 
 	// Explain precedence between spec deploymentType and CLI deploymentType
-	if extractDeploymentType != "" && extractDeploymentType != deploymentType {
+	if extractDeploymentType != "" && extractDeploymentType != deployOpts.DeploymentType {
 		spinner.UpdateMessage(
 			fmt.Sprintf(
 				"⚠️  deployment-type override:\n  Spec file: %s\n  CLI flag: %s\n  Using:    %s (CLI value has precedence)",
-				extractDeploymentType, deploymentType, extractDeploymentType,
+				extractDeploymentType, deployOpts.DeploymentType, deployOpts.DeploymentType,
 			),
 		)
-		deploymentType = extractDeploymentType
 		spinner.Complete()
 		spinner = sm.AddSpinner("Step 1/2: Checking cloud provider accounts...")
 	}
@@ -546,12 +458,12 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 				utils.HandleSpinnerSuccess(spinner, sm, "No cloud provider accounts found. Starting cloud account creation flow...")
 
 				// Determine which cloud provider to use and get credentials
-				if cloudProvider == "" {
-					cloudProvider = promptForCloudProvider()
+				if deployOpts.CloudProvider == "" {
+					deployOpts.CloudProvider = promptForCloudProvider()
 				}
 
 				// Get cloud-specific credentials
-				paramsJSON, err := promptForCloudCredentials(cloudProvider)
+				paramsJSON, err := promptForCloudCredentials(deployOpts.CloudProvider)
 				if err != nil {
 					return fmt.Errorf("failed to get cloud credentials: %w", err)
 				}
@@ -564,10 +476,10 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 
 				// Create account params based on cloud provider
 				accountParams := account.CloudAccountParams{
-					Name: fmt.Sprintf("%s-account-%d", cloudProvider, time.Now().Unix()),
+					Name: fmt.Sprintf("%s-account-%d", deployOpts.CloudProvider, time.Now().Unix()),
 				}
 
-				switch cloudProvider {
+				switch deployOpts.CloudProvider {
 				case "aws":
 					if awsAccountID, ok := paramsMap["aws_account_id"].(string); ok {
 						accountParams.AwsAccountID = awsAccountID
@@ -639,7 +551,7 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 	spinner = sm.AddSpinner("Step 1/2: Determining service name...")
 
 	var serviceNameToUse string
-	serviceNameToUse = productName
+	serviceNameToUse = deployOpts.ProductName
 	if serviceNameToUse == "" {
 		if specFile == "" {
 			// Use current directory name for repository-based builds
@@ -694,10 +606,10 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 			serviceNameToUse,
 			"",
 			false,
-			dryRun,
-			skipDockerBuild,
+			deployOpts.DryRun,
+			deployOpts.SkipDockerBuild,
 			false,
-			deploymentType,
+			deployOpts.DeploymentType,
 			awsAccountID,
 			gcpProjectID,
 			gcpProjectNumber,
@@ -706,7 +618,7 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 			sm,
 			build.OmnistrateComposeFileName,
 			[]string{},
-			platforms,
+			deployOpts.Platforms,
 			false,
 		)
 		if err != nil {
@@ -719,10 +631,10 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 
 	} else {
 
-		if !isAccountId {
+		if !isAccountID {
 			// Use createDeploymentYAML to generate the deployment section
 			deploymentSection := createDeploymentYAML(
-				deploymentType,
+				deployOpts.DeploymentType,
 				specType,
 				awsAccountID,
 				awsBootstrapRoleARN,
@@ -788,12 +700,12 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 			specType,
 			nil,
 			nil,
-			&environment,
-			&environmentTypeUpper,
+			&deployOpts.Environment,
+			&deployOpts.EnvironmentTypeUpper,
 			true,
 			true,
 			nil,
-			dryRun,
+			deployOpts.DryRun,
 			false,
 		)
 		if err != nil {
@@ -805,7 +717,7 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 	}
 
 	// Dry-run exit point
-	if dryRun {
+	if deployOpts.DryRun {
 		spinner.UpdateMessage("Step 1/2: Simulated service build completed successfully (dry run)")
 		spinner.Complete()
 		fmt.Println()
@@ -815,7 +727,7 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 		fmt.Println("To proceed with actual deployment, run the command without the --dry-run flag.")
 		return nil
 	}
-	spinner.UpdateMessage(fmt.Sprintf("Step 1/2: Built service '%s' in environment %s (%s), Service ID: %s", serviceNameToUse, environment, environmentTypeUpper, serviceID))
+	spinner.UpdateMessage(fmt.Sprintf("Step 1/2: Built service '%s' in environment %s (%s), Service ID: %s", serviceNameToUse, deployOpts.Environment, deployOpts.EnvironmentTypeUpper, serviceID))
 	spinner.Complete()
 
 	// Print warning if there are any undefined resources
@@ -830,12 +742,111 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 	}
 
 	// Execute post-service-build deployment workflow
-	err = executeDeploymentWorkflow(cmd, sm, token, serviceID, environmentID, planID, serviceNameToUse, environment, environmentTypeUpper, instanceID, cloudProvider, region, param, paramFile, resourceID, deploymentType)
+	err = executeDeploymentWorkflow(
+		cmd,
+		sm,
+		token,
+		serviceID,
+		environmentID,
+		planID,
+		serviceNameToUse,
+		deployOpts.Environment,
+		deployOpts.EnvironmentTypeUpper,
+		deployOpts.InstanceID,
+		deployOpts.CloudProvider,
+		deployOpts.Region,
+		deployOpts.Param,
+		deployOpts.ParamFile,
+		deployOpts.ResourceID,
+		deployOpts.DeploymentType,
+	)
 	if err != nil {
 		return err
 	}
 
 	return nil
+}
+
+type deployOptions struct {
+	File                 string
+	FileExplicit         bool
+	ProductName          string
+	CloudProvider        string
+	Region               string
+	SkipDockerBuild      bool
+	Platforms            []string
+	DryRun               bool
+	InstanceID           string
+	ResourceID           string
+	Param                string
+	ParamFile            string
+	EnvironmentType      string
+	EnvironmentTypeUpper string
+	Environment          string
+	DeploymentType       string
+}
+
+func parseDeployOptions(cmd *cobra.Command) (*deployOptions, error) {
+	opts := &deployOptions{FileExplicit: cmd.Flags().Changed("file")}
+
+	var err error
+	if opts.File, err = cmd.Flags().GetString("file"); err != nil {
+		return nil, err
+	}
+	if opts.ProductName, err = cmd.Flags().GetString("product-name"); err != nil {
+		utils.PrintError(fmt.Errorf("failed to read product-name: %v", err))
+		return nil, err
+	}
+	if opts.CloudProvider, err = cmd.Flags().GetString("cloud-provider"); err != nil {
+		return nil, err
+	}
+	if opts.Region, err = cmd.Flags().GetString("region"); err != nil {
+		return nil, err
+	}
+	if opts.SkipDockerBuild, err = cmd.Flags().GetBool("skip-docker-build"); err != nil {
+		return nil, err
+	}
+	if opts.Platforms, err = cmd.Flags().GetStringArray("platforms"); err != nil {
+		return nil, err
+	}
+	if opts.DryRun, err = cmd.Flags().GetBool("dry-run"); err != nil {
+		return nil, err
+	}
+	if opts.InstanceID, err = cmd.Flags().GetString("instance-id"); err != nil {
+		return nil, err
+	}
+	if opts.ResourceID, err = cmd.Flags().GetString("resource-id"); err != nil {
+		return nil, err
+	}
+	if opts.Param, err = cmd.Flags().GetString("param"); err != nil {
+		utils.PrintError(err)
+		return nil, err
+	}
+	if opts.ParamFile, err = cmd.Flags().GetString("param-file"); err != nil {
+		utils.PrintError(err)
+		return nil, err
+	}
+	if opts.EnvironmentType, err = cmd.Flags().GetString("environment-type"); err != nil {
+		return nil, err
+	}
+	if opts.Environment, err = cmd.Flags().GetString("environment"); err != nil {
+		utils.PrintError(err)
+		return nil, err
+	}
+	if opts.DeploymentType, err = cmd.Flags().GetString("deployment-type"); err != nil {
+		utils.PrintError(err)
+		return nil, err
+	}
+
+	opts.EnvironmentTypeUpper = strings.ToUpper(opts.EnvironmentType)
+
+	if opts.DeploymentType != build.DeploymentTypeHosted && opts.DeploymentType != build.DeploymentTypeByoa {
+		err := fmt.Errorf("invalid deployment-type '%s'. Valid values are: hosted, byoa", opts.DeploymentType)
+		utils.PrintError(err)
+		return nil, err
+	}
+
+	return opts, nil
 }
 
 // executeDeploymentWorkflow handles the complete post-service-build deployment workflow
@@ -1160,14 +1171,7 @@ func createInstanceUnified(ctx context.Context, token, serviceID, environmentID,
 		// Select default cloudProvider and region from offering.CloudProviders if available
 
 		if len(offering.CloudProviders) > 0 && cloudProvider != "" {
-			found := false
-			for _, cp := range offering.CloudProviders {
-				if cp == cloudProvider {
-					found = true
-					break
-				}
-			}
-			if !found {
+			if !containsString(offering.CloudProviders, cloudProvider) {
 				// fallback to first available provider, but explain
 				return "", fmt.Errorf("cloud provider '%s' is not supported for this service plan. Supported providers: %v", cloudProvider, offering.CloudProviders)
 			}
@@ -1184,38 +1188,7 @@ func createInstanceUnified(ctx context.Context, token, serviceID, environmentID,
 
 		if cloudProvider == "" && region != "" {
 			// If region is specified but not cloud provider, try to infer cloud provider from region
-
-			gcpRegions := offering.GcpRegions
-			awsRegions := offering.AwsRegions
-			azureRegions := offering.AzureRegions
-
-			// Check GCP regions first
-			for _, gcpRegion := range gcpRegions {
-				if gcpRegion == region {
-					cloudProvider = "gcp"
-					break
-				}
-			}
-
-			// check AWS regions
-			if cloudProvider == "" {
-				for _, awsRegion := range awsRegions {
-					if awsRegion == region {
-						cloudProvider = "aws"
-						break
-					}
-				}
-			}
-
-			// check Azure regions
-			if cloudProvider == "" {
-				for _, azureRegion := range azureRegions {
-					if azureRegion == region {
-						cloudProvider = "azure"
-						break
-					}
-				}
-			}
+			cloudProvider = inferCloudProviderFromRegion(region, offering.GcpRegions, offering.AwsRegions, offering.AzureRegions)
 
 			// If not found in any provider, return error
 			if cloudProvider == "" {
@@ -1224,22 +1197,8 @@ func createInstanceUnified(ctx context.Context, token, serviceID, environmentID,
 		}
 
 		if cloudProvider != "" {
-			var regions []string
-			switch cloudProvider {
-			case "gcp":
-				regions = offering.GcpRegions
-			case "aws":
-				regions = offering.AwsRegions
-			case "azure":
-				regions = offering.AzureRegions
-			}
-			found := false
-			for _, rk := range regions {
-				if rk == region {
-					found = true
-					break
-				}
-			}
+			regions := getRegionsForProvider(cloudProvider, offering.GcpRegions, offering.AwsRegions, offering.AzureRegions)
+			found := containsString(regions, region)
 			if region == "" && len(regions) > 0 {
 				found = true // skip check if region is not specified
 				region = regions[0]
@@ -1263,15 +1222,15 @@ func createInstanceUnified(ctx context.Context, token, serviceID, environmentID,
 		utils.HandleSpinnerSuccess(spinner, nil, fmt.Sprintf("Step 2/2: Using cloud provider '%s' and region '%s'", cloudProvider, region))
 
 		// Try to describe service offering resource - this is optional for parameter validation
-		resApiParams, err := dataaccess.DescribeServiceOfferingResource(ctx, token, serviceID, resourceID, "none", productTierID, version)
+		resAPIParams, err := dataaccess.DescribeServiceOfferingResource(ctx, token, serviceID, resourceID, "none", productTierID, version)
 
 		if err != nil {
 			return "", fmt.Errorf("failed to describe service offering resource: %w", err)
 		}
 
 		// Extract CREATE verb parameters and set defaults
-		if len(resApiParams.ConsumptionDescribeServiceOfferingResourceResult.Apis) > 0 {
-			for _, apiSpec := range resApiParams.ConsumptionDescribeServiceOfferingResourceResult.Apis {
+		if len(resAPIParams.ConsumptionDescribeServiceOfferingResourceResult.Apis) > 0 {
+			for _, apiSpec := range resAPIParams.ConsumptionDescribeServiceOfferingResourceResult.Apis {
 				if apiSpec.Verb == "CREATE" {
 
 					for _, inputParam := range apiSpec.InputParameters {
@@ -1307,12 +1266,7 @@ func createInstanceUnified(ctx context.Context, token, serviceID, environmentID,
 		}
 
 		// Check for missing required parameters
-		var defaultRequiredParams []string
-		for k, v := range defaultParams {
-			if isMissingParamValue(v) {
-				defaultRequiredParams = append(defaultRequiredParams, k)
-			}
-		}
+		defaultRequiredParams := collectMissingParamKeys(defaultParams)
 
 		var promptErr error
 		if len(defaultRequiredParams) > 0 {
@@ -1320,12 +1274,7 @@ func createInstanceUnified(ctx context.Context, token, serviceID, environmentID,
 		}
 
 		// Validate that all required parameters have values
-		var stillMissingParams []string
-		for k, v := range defaultParams {
-			if isMissingParamValue(v) {
-				stillMissingParams = append(stillMissingParams, k)
-			}
-		}
+		stillMissingParams := collectMissingParamKeys(defaultParams)
 		if len(stillMissingParams) > 0 {
 			if promptErr != nil {
 				return "", fmt.Errorf("missing required parameters for instance creation: %v (%w)", stillMissingParams, promptErr)
@@ -1889,6 +1838,42 @@ func containsString(slice []string, item string) bool {
 		}
 	}
 	return false
+}
+
+func getRegionsForProvider(cloudProvider string, gcpRegions, awsRegions, azureRegions []string) []string {
+	switch cloudProvider {
+	case "gcp":
+		return gcpRegions
+	case "aws":
+		return awsRegions
+	case "azure":
+		return azureRegions
+	default:
+		return nil
+	}
+}
+
+func inferCloudProviderFromRegion(region string, gcpRegions, awsRegions, azureRegions []string) string {
+	if containsString(gcpRegions, region) {
+		return "gcp"
+	}
+	if containsString(awsRegions, region) {
+		return "aws"
+	}
+	if containsString(azureRegions, region) {
+		return "azure"
+	}
+	return ""
+}
+
+func collectMissingParamKeys(params map[string]interface{}) []string {
+	var missing []string
+	for key, value := range params {
+		if isMissingParamValue(value) {
+			missing = append(missing, key)
+		}
+	}
+	return missing
 }
 
 // CloudInstanceStatus holds cloud account instances grouped by status
