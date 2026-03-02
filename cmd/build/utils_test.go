@@ -10,7 +10,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestParseServicePlanSpec_ServicePlanSpecType_ExtractsProductTierName(t *testing.T) {
+func TestParseServicePlanSpec_ExtractsProductTierName(t *testing.T) {
 	yamlContent := `
 name: Terraform
 deployment:
@@ -23,7 +23,7 @@ deployment:
 	assert.Equal(t, TenancyTypeCustom, info.TenancyType)
 }
 
-func TestParseServicePlanSpec_ServicePlanSpecType_ExtractsAWSAccountConfig(t *testing.T) {
+func TestParseServicePlanSpec_ExtractsAWSAccountConfig(t *testing.T) {
 	yamlContent := `
 name: TestPlan
 deployment:
@@ -39,7 +39,7 @@ deployment:
 	assert.Equal(t, DeploymentModelCustomerHosted, info.DeploymentModelType)
 }
 
-func TestParseServicePlanSpec_ServicePlanSpecType_ExtractsGCPAccountConfig(t *testing.T) {
+func TestParseServicePlanSpec_ExtractsGCPAccountConfig(t *testing.T) {
 	yamlContent := `
 name: TestPlan
 deployment:
@@ -55,7 +55,7 @@ deployment:
 	assert.Equal(t, "test-sa@test-gcp-project-dev.iam.gserviceaccount.com", info.GcpServiceAccountEmail)
 }
 
-func TestParseServicePlanSpec_ServicePlanSpecType_ExtractsOCIAccountConfig(t *testing.T) {
+func TestParseServicePlanSpec_ExtractsOCIAccountConfig(t *testing.T) {
 	yamlContent := `
 name: TestPlan
 deployment:
@@ -71,7 +71,7 @@ deployment:
 	assert.Equal(t, "ocid1.domain.oc1..aaaaaaaa2222222222222222222222222222222222222222222222222222", info.OCIDomainID)
 }
 
-func TestParseServicePlanSpec_ServicePlanSpecType_HandlesByoaDeployment(t *testing.T) {
+func TestParseServicePlanSpec_BYOADeployment(t *testing.T) {
 	yamlContent := `
 name: TestPlan
 deployment:
@@ -267,7 +267,7 @@ func TestContainsOmnistrateKey(t *testing.T) {
 	}
 }
 
-func TestParseServicePlanSpec_ExtractsArtifactPaths_FromTerraform(t *testing.T) {
+func TestParseServicePlanSpec_ArtifactPathsFromTerraform(t *testing.T) {
 	yamlContent := `
 name: Terraform
 deployment:
@@ -297,7 +297,7 @@ services:
 	assert.Contains(t, info.ArtifactPaths, "/path/to/azure/artifacts")
 }
 
-func TestParseServicePlanSpec_ExtractsArtifactPaths_Deduplicates(t *testing.T) {
+func TestParseServicePlanSpec_ArtifactPathsDeduplication(t *testing.T) {
 	yamlContent := `
 name: Terraform
 deployment:
@@ -326,7 +326,7 @@ services:
 	assert.Contains(t, info.ArtifactPaths, "/shared/artifacts")
 }
 
-func TestParseServicePlanSpec_ExtractsArtifactPaths_FromMultipleServices(t *testing.T) {
+func TestParseServicePlanSpec_ArtifactPathsFromMultipleServices(t *testing.T) {
 	yamlContent := `
 name: MultiService
 deployment:
@@ -358,7 +358,7 @@ services:
 	assert.Contains(t, info.ArtifactPaths, "/kustomize/artifacts")
 }
 
-func TestParseServicePlanSpec_ExtractsArtifactPaths_FromHelm(t *testing.T) {
+func TestParseServicePlanSpec_ArtifactPathsFromHelm(t *testing.T) {
 	yamlContent := `
 name: HelmService
 deployment:
@@ -376,7 +376,7 @@ services:
 	assert.Contains(t, info.ArtifactPaths, "/helm/redis/artifacts")
 }
 
-func TestParseServicePlanSpec_ExtractsArtifactPaths_FromKustomize(t *testing.T) {
+func TestParseServicePlanSpec_ArtifactPathsFromKustomize(t *testing.T) {
 	yamlContent := `
 name: KustomizeService
 deployment:
@@ -394,7 +394,7 @@ services:
 	assert.Contains(t, info.ArtifactPaths, "/kustomize/app/artifacts")
 }
 
-func TestParseServicePlanSpec_ExtractsArtifactPaths_FromOperator(t *testing.T) {
+func TestParseServicePlanSpec_ArtifactPathsFromOperator(t *testing.T) {
 	yamlContent := `
 name: OperatorService
 deployment:
@@ -412,7 +412,7 @@ services:
 	assert.Contains(t, info.ArtifactPaths, "/operator/artifacts")
 }
 
-func TestParseServicePlanSpec_ExtractsArtifactPaths_FallbackToTerraformPath(t *testing.T) {
+func TestParseServicePlanSpec_TerraformFallbackToCurrentDir(t *testing.T) {
 	yamlContent := `
 name: NoArtifacts
 deployment:
@@ -427,17 +427,17 @@ services:
 `
 	info, err := ParseServicePlanSpec([]byte(yamlContent))
 	require.NoError(t, err)
-	// When artifactsLocalPath is not specified, terraformPath is used as fallback
+	// When artifactsLocalPath is not specified and no gitConfiguration, falls back to current directory
 	assert.NotNil(t, info.ArtifactPaths)
 	assert.Len(t, info.ArtifactPaths, 1)
-	assert.Contains(t, info.ArtifactPaths, "/")
+	assert.Contains(t, info.ArtifactPaths, "./")
 	// Also check artifact uploads
 	assert.Len(t, info.ArtifactUploads, 1)
-	assert.Equal(t, "/", info.ArtifactUploads[0].Path)
+	assert.Equal(t, "./", info.ArtifactUploads[0].Path)
 	assert.Equal(t, "aws", info.ArtifactUploads[0].CloudProvider)
 }
 
-func TestParseServicePlanSpec_ExtractsArtifactPaths_NoServicesSection(t *testing.T) {
+func TestParseServicePlanSpec_NoServicesSection(t *testing.T) {
 	yamlContent := `
 name: NoServices
 deployment:
@@ -449,7 +449,7 @@ deployment:
 	assert.Nil(t, info.ArtifactPaths)
 }
 
-func TestParseServicePlanSpec_ExtractsArtifactPaths_MixedTerraformFallback(t *testing.T) {
+func TestParseServicePlanSpec_MixedTerraformFallback(t *testing.T) {
 	yamlContent := `
 name: MixedTerraform
 deployment:
@@ -472,16 +472,16 @@ services:
 	info, err := ParseServicePlanSpec([]byte(yamlContent))
 	require.NoError(t, err)
 	assert.NotNil(t, info.ArtifactPaths)
-	// aws uses artifactsLocalPath, gcp falls back to terraformPath, azure uses artifactsLocalPath
+	// aws uses artifactsLocalPath, gcp falls back to current directory, azure uses artifactsLocalPath
 	assert.Len(t, info.ArtifactPaths, 3)
 	assert.Contains(t, info.ArtifactPaths, "/aws/artifacts")
-	assert.Contains(t, info.ArtifactPaths, "/gcp/tf")
+	assert.Contains(t, info.ArtifactPaths, "./")
 	assert.Contains(t, info.ArtifactPaths, "/azure/artifacts")
 	// Artifact uploads should have 3 entries
 	assert.Len(t, info.ArtifactUploads, 3)
 }
 
-func TestParseServicePlanSpec_ExtractsArtifactPaths_TerraformFallbackDeduplicates(t *testing.T) {
+func TestParseServicePlanSpec_TerraformFallbackDeduplication(t *testing.T) {
 	yamlContent := `
 name: TerraformDedup
 deployment:
@@ -501,14 +501,14 @@ services:
 	info, err := ParseServicePlanSpec([]byte(yamlContent))
 	require.NoError(t, err)
 	assert.NotNil(t, info.ArtifactPaths)
-	// Same terraformPath should be deduplicated in ArtifactPaths
+	// All cloud providers fall back to current directory "./" which deduplicates
 	assert.Len(t, info.ArtifactPaths, 1)
-	assert.Contains(t, info.ArtifactPaths, "/shared")
+	assert.Contains(t, info.ArtifactPaths, "./")
 	// But ArtifactUploads should have 3 entries (one per cloud provider)
 	assert.Len(t, info.ArtifactUploads, 3)
 }
 
-func TestParseServicePlanSpec_ExtractsArtifactPaths_SkipFallbackWithGitConfig(t *testing.T) {
+func TestParseServicePlanSpec_SkipFallbackWithGitConfig(t *testing.T) {
 	yamlContent := `
 name: TerraformGit
 deployment:
@@ -537,7 +537,7 @@ services:
 	assert.Len(t, info.ArtifactUploads, 0)
 }
 
-func TestParseServicePlanSpec_ExtractsArtifactPaths_MixedGitAndLocal(t *testing.T) {
+func TestParseServicePlanSpec_MixedGitAndLocalArtifacts(t *testing.T) {
 	yamlContent := `
 name: TerraformMixed
 deployment:
@@ -562,9 +562,9 @@ services:
 	info, err := ParseServicePlanSpec([]byte(yamlContent))
 	require.NoError(t, err)
 	assert.NotNil(t, info.ArtifactPaths)
-	// aws has gitConfiguration so skipped, gcp falls back to terraformPath, azure uses artifactsLocalPath
+	// aws has gitConfiguration so skipped, gcp falls back to current directory, azure uses artifactsLocalPath
 	assert.Len(t, info.ArtifactPaths, 2)
-	assert.Contains(t, info.ArtifactPaths, "/local/path")
+	assert.Contains(t, info.ArtifactPaths, "./")
 	assert.Contains(t, info.ArtifactPaths, "/azure/artifacts")
 	assert.Len(t, info.ArtifactUploads, 2)
 }

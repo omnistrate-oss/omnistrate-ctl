@@ -645,6 +645,14 @@ func runBuild(cmd *cobra.Command, args []string) error {
 			// For BYOA/on-prem, all cloud providers use the same account config, so we only upload once
 			dedupedUploads := DeduplicateArtifactUploads(specInfo.ArtifactUploads, specInfo.DeploymentModelType, accountResult)
 
+			// Warn if any artifact upload uses current directory as fallback
+			for _, upload := range dedupedUploads {
+				if upload.Path == "./" {
+					fmt.Fprintf(os.Stderr, "WARNING: artifactsLocalPath not specified in terraform configuration, uploading all from current directory\n")
+					break
+				}
+			}
+
 			spinner1.UpdateMessage(fmt.Sprintf("Uploading %d artifact(s)...", len(dedupedUploads)))
 
 			// Upload each artifact to its corresponding account config

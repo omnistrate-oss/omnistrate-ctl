@@ -293,7 +293,7 @@ func extractArtifactPaths(yamlContent map[string]interface{}) []string {
 }
 
 // extractArtifactPathsFromTerraform extracts artifactsLocalPath from terraformConfigurations
-// Falls back to terraformPath if artifactsLocalPath is not specified
+// Falls back to current directory ("./") if artifactsLocalPath is not specified and no gitConfiguration is present
 func extractArtifactPathsFromTerraform(svcMap map[string]interface{}, pathSet map[string]struct{}) {
 	terraformConfigs, ok := svcMap["terraformConfigurations"].(map[string]interface{})
 	if !ok {
@@ -314,16 +314,17 @@ func extractArtifactPathsFromTerraform(svcMap map[string]interface{}, pathSet ma
 			continue
 		}
 
-		path, ok := cpConfig["artifactsLocalPath"].(string)
-		if !ok || path == "" {
+		path, pathFound := cpConfig["artifactsLocalPath"].(string)
+		if !pathFound || path == "" {
 			// Skip fallback if gitConfiguration is present (git-based configs don't need local artifacts)
 			if _, hasGit := cpConfig["gitConfiguration"]; hasGit {
 				continue
 			}
-			// Fallback to terraformPath if artifactsLocalPath is not specified
-			path, ok = cpConfig["terraformPath"].(string)
+			// Fallback to current directory if artifactsLocalPath is not specified
+			path = "./"
+			pathFound = true
 		}
-		if ok && path != "" {
+		if pathFound && path != "" {
 			pathSet[path] = struct{}{}
 		}
 	}
@@ -401,7 +402,7 @@ func extractArtifactUploads(yamlContent map[string]interface{}) []*ArtifactUploa
 }
 
 // extractTerraformArtifactUploads extracts artifact uploads from terraform configurations
-// Falls back to terraformPath if artifactsLocalPath is not specified
+// Falls back to current directory ("./") if artifactsLocalPath is not specified and no gitConfiguration is present
 func extractTerraformArtifactUploads(svcMap map[string]interface{}, uploads *[]*ArtifactUploadInfo, seen map[string]bool) {
 	terraformConfigs, ok := svcMap["terraformConfigurations"].(map[string]interface{})
 	if !ok {
@@ -426,8 +427,9 @@ func extractTerraformArtifactUploads(svcMap map[string]interface{}, uploads *[]*
 			if _, hasGit := cpConfig["gitConfiguration"]; hasGit {
 				continue
 			}
-			// Fallback to terraformPath if artifactsLocalPath is not specified
-			path, pathOk = cpConfig["terraformPath"].(string)
+			// Fallback to current directory if artifactsLocalPath is not specified
+			path = "./"
+			pathOk = true
 		}
 		if pathOk && path != "" {
 			key := path + "|" + cp
