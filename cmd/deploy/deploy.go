@@ -1,6 +1,7 @@
 package deploy
 
 import (
+	"bufio"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -1308,18 +1309,28 @@ func createInstanceUnified(ctx context.Context, token, serviceID, environmentID,
 		// Check for missing required parameters
 		var defaultRequiredParams []string
 		for k, v := range defaultParams {
-			if v == nil {
-				defaultRequiredParams = append(defaultRequiredParams, k)
-				continue
-			}
-			if reflect.TypeOf(v).Kind() == reflect.String && v == "" {
+			if isMissingParamValue(v) {
 				defaultRequiredParams = append(defaultRequiredParams, k)
 			}
 		}
 
-		// Validate that all required parameters have values
+		var promptErr error
 		if len(defaultRequiredParams) > 0 {
-			return "", fmt.Errorf("missing required parameters for instance creation: %v", defaultRequiredParams)
+			promptErr = promptForMissingRequiredParams(defaultParams, defaultRequiredParams)
+		}
+
+		// Validate that all required parameters have values
+		var stillMissingParams []string
+		for k, v := range defaultParams {
+			if isMissingParamValue(v) {
+				stillMissingParams = append(stillMissingParams, k)
+			}
+		}
+		if len(stillMissingParams) > 0 {
+			if promptErr != nil {
+				return "", fmt.Errorf("missing required parameters for instance creation: %v (%w)", stillMissingParams, promptErr)
+			}
+			return "", fmt.Errorf("missing required parameters for instance creation: %v", stillMissingParams)
 		}
 
 		// Check for unused parameters from formattedParams
@@ -2280,4 +2291,76 @@ func printMissingParamsGuidance(err error) {
 			"  - Or provide a JSON file with --param-file",
 		err.Error(),
 	))
+}
+
+func isMissingParamValue(value interface{}) bool {
+	if value == nil {
+		return true
+	}
+	if s, ok := value.(string); ok {
+		return strings.TrimSpace(s) == ""
+	}
+	return false
+}
+
+func isInteractivePromptEnabled() bool {
+	if strings.EqualFold(os.Getenv("OMNISTRATE_NON_INTERACTIVE"), "true") {
+		return false
+	}
+	stdinInfo, err := os.Stdin.Stat()
+	if err != nil {
+		return false
+	}
+	return (stdinInfo.Mode() & os.ModeCharDevice) != 0
+}
+
+func promptForMissingRequiredParams(defaultParams map[string]interface{}, requiredParams []string) error {
+	if len(requiredParams) == 0 {
+		return nil
+	}
+	if !isInteractivePromptEnabled() {
+		return fmt.Errorf("cannot prompt for required parameters in non-interactive mode")
+	}
+
+	fmt.Println()
+	fmt.Println("ℹ️  Missing required instance launch parameters. Please enter values to continue deployment.")
+
+	reader := bufio.NewReader(os.Stdin)
+	return applyPromptedParamValues(defaultParams, requiredParams, func(paramKey string) (string, error) {
+		for {
+			fmt.Printf("Enter value for '%s': ", paramKey)
+			value, err := reader.ReadString('\n')
+			if err != nil {
+				return "", fmt.Errorf("failed to read value for '%s': %w", paramKey, err)
+			}
+			value = strings.TrimSpace(value)
+			if value == "" {
+				fmt.Println("Value cannot be empty. Please try again.")
+				continue
+			}
+			return value, nil
+		}
+	})
+}
+
+func applyPromptedParamValues(defaultParams map[string]interface{}, requiredParams []string, readValue func(string) (string, error)) error {
+	for _, paramKey := range requiredParams {
+		if !isMissingParamValue(defaultParams[paramKey]) {
+			continue
+		}
+		value, err := readValue(paramKey)
+		if err != nil {
+			return err
+		}
+		defaultParams[paramKey] = parsePromptInputValue(value)
+	}
+	return nil
+}
+
+func parsePromptInputValue(value string) interface{} {
+	var parsed interface{}
+	if err := json.Unmarshal([]byte(value), &parsed); err == nil {
+		return parsed
+	}
+	return value
 }

@@ -3,6 +3,7 @@ package deploy
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -855,4 +856,54 @@ services:
 	for i := 0; i < b.N; i++ {
 		extractCloudAccountsFromProcessedData(data)
 	}
+}
+
+func TestParsePromptInputValue(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    string
+		expected interface{}
+	}{
+		{name: "json integer", input: "42", expected: float64(42)},
+		{name: "json boolean", input: "true", expected: true},
+		{name: "json array", input: `["a","b"]`, expected: []interface{}{"a", "b"}},
+		{name: "plain string", input: "db-user", expected: "db-user"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			require.Equal(t, tt.expected, parsePromptInputValue(tt.input))
+		})
+	}
+}
+
+func TestApplyPromptedParamValues(t *testing.T) {
+	t.Run("fills only missing required values", func(t *testing.T) {
+		params := map[string]interface{}{
+			"username": "",
+			"count":    nil,
+			"region":   "us-east-1",
+		}
+		reads := map[string]string{
+			"username": "admin",
+			"count":    "3",
+		}
+
+		err := applyPromptedParamValues(params, []string{"username", "count", "region"}, func(paramKey string) (string, error) {
+			return reads[paramKey], nil
+		})
+		require.NoError(t, err)
+		require.Equal(t, "admin", params["username"])
+		require.Equal(t, float64(3), params["count"])
+		require.Equal(t, "us-east-1", params["region"])
+	})
+
+	t.Run("returns read error", func(t *testing.T) {
+		params := map[string]interface{}{"password": nil}
+		err := applyPromptedParamValues(params, []string{"password"}, func(string) (string, error) {
+			return "", errors.New("read failed")
+		})
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "read failed")
+	})
 }
