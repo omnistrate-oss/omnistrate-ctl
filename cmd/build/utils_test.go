@@ -53,6 +53,8 @@ deployment:
 	assert.Equal(t, "test-gcp-project-dev", info.GcpProjectID)
 	assert.Equal(t, "12345678901", info.GcpProjectNumber)
 	assert.Equal(t, "test-sa@test-gcp-project-dev.iam.gserviceaccount.com", info.GcpServiceAccountEmail)
+	// hostedDeployment with account info is CUSTOMER_HOSTED
+	assert.Equal(t, DeploymentModelCustomerHosted, info.DeploymentModelType)
 }
 
 func TestParseServicePlanSpec_ExtractsOCIAccountConfig(t *testing.T) {
@@ -69,6 +71,8 @@ deployment:
 	require.NoError(t, err)
 	assert.Equal(t, "ocid1.tenancy.oc1..aaaaaaaa1111111111111111111111111111111111111111111111111111", info.OCITenancyID)
 	assert.Equal(t, "ocid1.domain.oc1..aaaaaaaa2222222222222222222222222222222222222222222222222222", info.OCIDomainID)
+	// hostedDeployment with account info is CUSTOMER_HOSTED
+	assert.Equal(t, DeploymentModelCustomerHosted, info.DeploymentModelType)
 }
 
 func TestParseServicePlanSpec_BYOADeployment(t *testing.T) {
@@ -84,6 +88,70 @@ deployment:
 	assert.Equal(t, "555555555555", info.AwsAccountID)
 	assert.Equal(t, "ocid1.tenancy.oc1..testbyoa", info.OCITenancyID)
 	assert.Equal(t, DeploymentModelBYOA, info.DeploymentModelType)
+}
+
+func TestParseServicePlanSpec_NoDeploymentSection(t *testing.T) {
+	yamlContent := `
+name: Cloud Native Postgres
+services:
+  - name: CNPG
+    operatorCRDConfiguration:
+      crdName: myoperator
+`
+	info, err := ParseServicePlanSpec([]byte(yamlContent))
+	require.NoError(t, err)
+	assert.Equal(t, "Cloud Native Postgres", info.ProductTierName)
+	// Missing deployment section defaults to OMNISTRATE_HOSTED
+	assert.Equal(t, DeploymentModelOmnistrateHosted, info.DeploymentModelType)
+}
+
+func TestParseServicePlanSpec_HostedDeploymentWithoutAccountInfo(t *testing.T) {
+	yamlContent := `
+name: HostedNoAccount
+deployment:
+  hostedDeployment: {}
+services:
+  - name: app
+    helmChartConfiguration:
+      chartName: redis
+`
+	info, err := ParseServicePlanSpec([]byte(yamlContent))
+	require.NoError(t, err)
+	assert.Equal(t, "HostedNoAccount", info.ProductTierName)
+	// hostedDeployment without any account info is OMNISTRATE_HOSTED
+	assert.Equal(t, DeploymentModelOmnistrateHosted, info.DeploymentModelType)
+}
+
+func TestParseServicePlanSpec_EmptyDeploymentSection(t *testing.T) {
+	yamlContent := `
+name: EmptyDeploy
+deployment:
+`
+	info, err := ParseServicePlanSpec([]byte(yamlContent))
+	require.NoError(t, err)
+	// Empty deployment section defaults to OMNISTRATE_HOSTED
+	assert.Equal(t, DeploymentModelOmnistrateHosted, info.DeploymentModelType)
+}
+
+func TestDeploymentModelToServiceModelType(t *testing.T) {
+	tests := []struct {
+		name           string
+		deploymentType string
+		expected       string
+	}{
+		{"omnistrate hosted", DeploymentModelOmnistrateHosted, ServiceModelTypeOmnistrateHosted},
+		{"customer hosted", DeploymentModelCustomerHosted, ServiceModelTypeCustomerHosted},
+		{"byoa", DeploymentModelBYOA, ServiceModelTypeBYOA},
+		{"on-prem", DeploymentModelOnPrem, ServiceModelTypeOnPrem},
+		{"on-prem copilot", DeploymentModelOnPremCopilot, ServiceModelTypeOnPremCopilot},
+		{"unknown defaults to omnistrate hosted", "unknownType", ServiceModelTypeOmnistrateHosted},
+		{"empty defaults to omnistrate hosted", "", ServiceModelTypeOmnistrateHosted},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.expected, DeploymentModelToServiceModelType(tt.deploymentType))
+		})
+	}
 }
 
 func TestMatchedAccountConfigs_HasAnyAccountConfigID(t *testing.T) {
