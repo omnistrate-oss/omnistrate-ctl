@@ -265,7 +265,6 @@ func DescribeResourceInstance(ctx context.Context, token string, serviceID, envi
 		serviceID,
 		environmentID,
 		instanceID,
-		
 	)
 
 	var r *http.Response
