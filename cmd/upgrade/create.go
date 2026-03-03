@@ -151,10 +151,11 @@ func runCreate(cmd *cobra.Command, args []string) error {
 		}
 
 		var found bool
-		var serviceID, productTierID, sourceVersion, targetVersion string
+		var serviceID, environmentID, productTierID, sourceVersion, targetVersion string
 		for _, instance := range searchRes.ResourceInstanceResults {
 			if instance.Id == instanceID {
 				serviceID = instance.ServiceId
+				environmentID = instance.ServiceEnvironmentId
 				productTierID = instance.ProductTierId
 				if instance.ProductTierVersion != nil {
 					sourceVersion = *instance.ProductTierVersion
@@ -167,6 +168,16 @@ func runCreate(cmd *cobra.Command, args []string) error {
 			err = fmt.Errorf("%s not found. Please check the instance ID and try again", instanceID)
 			utils.HandleSpinnerError(spinner, sm, err)
 			return nil
+		}
+
+		// Fall back to a lightweight describe if version wasn't in search results
+		if sourceVersion == "" {
+			describeRes, descErr := dataaccess.DescribeResourceInstance(cmd.Context(), token, serviceID, environmentID, instanceID, false)
+			if descErr != nil {
+				utils.HandleSpinnerError(spinner, sm, descErr)
+				return descErr
+			}
+			sourceVersion = describeRes.TierVersion
 		}
 
 		// Get the target version
