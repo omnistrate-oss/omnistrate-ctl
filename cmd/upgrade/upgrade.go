@@ -197,7 +197,7 @@ func run(cmd *cobra.Command, args []string) error {
 		}
 
 		// Find the source version of the instance
-		describeRes, err := dataaccess.DescribeResourceInstance(cmd.Context(), token, serviceID, environmentID, instanceID, true)
+		describeRes, err := dataaccess.DescribeResourceInstance(cmd.Context(), token, serviceID, environmentID, instanceID)
 		if err != nil {
 			utils.HandleSpinnerError(spinner, sm, err)
 			return err
