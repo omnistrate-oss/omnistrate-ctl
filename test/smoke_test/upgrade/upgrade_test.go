@@ -170,6 +170,114 @@ func Test_upgrade_basic(t *testing.T) {
 	require.Contains(err.Error(), "upgrade-invalid not found")
 }
 
+func Test_upgrade_create(t *testing.T) {
+	testutils.SmokeTest(t)
+
+	ctx := context.TODO()
+
+	require := require.New(t)
+	defer testutils.Cleanup()
+
+	testEmail, testPassword, err := testutils.GetTestAccount()
+	require.NoError(err)
+	cmd.RootCmd.SetArgs([]string{"login", fmt.Sprintf("--email=%s", testEmail), fmt.Sprintf("--password=%s", testPassword)})
+	err = cmd.RootCmd.ExecuteContext(ctx)
+	require.NoError(err)
+
+	// PASS: build service
+	serviceName := "mysql" + uuid.NewString()
+	cmd.RootCmd.SetArgs([]string{"build", "--file", "../composefiles/mysql.yaml", "--name", serviceName, "--environment=dev", "--environment-type=dev"})
+	err = cmd.RootCmd.ExecuteContext(ctx)
+	require.NoError(err)
+	serviceID := build.ServiceID
+	productTierID := build.ProductTierID
+
+	// PASS: create instance
+	cmd.RootCmd.SetArgs([]string{"instance", "create",
+		fmt.Sprintf("--service=%s", serviceName),
+		"--environment=dev",
+		fmt.Sprintf("--plan=%s", serviceName),
+		"--version=latest",
+		"--resource=mySQL",
+		"--cloud-provider=aws",
+		"--region=ca-central-1",
+		"--param", `{"databaseName":"default","password":"a_secure_password","rootPassword":"a_secure_root_password","username":"user"}`})
+	err = cmd.RootCmd.ExecuteContext(ctx)
+	require.NoError(err)
+	instanceID := instance.InstanceID
+	require.NotEmpty(t, instanceID)
+
+	// PASS: wait for instance to reach running status
+	err = testutils.WaitForInstanceToReachStatus(ctx, instanceID, instance.InstanceStatusRunning)
+	require.NoError(err)
+
+	// PASS: release service plan
+	cmd.RootCmd.SetArgs([]string{"service-plan", "release", "--service-id", serviceID, "--plan-id", productTierID, "--release-as-preferred", "--release-description", "v1.0.0-alpha"})
+	err = cmd.RootCmd.ExecuteContext(ctx)
+	require.NoError(err)
+
+	// PASS: upgrade create with latest version
+	cmd.RootCmd.SetArgs([]string{"upgrade", "create", instanceID, "--version", "latest"})
+	err = cmd.RootCmd.ExecuteContext(ctx)
+	require.NoError(err)
+
+	// PASS: wait for instance to reach running status
+	time.Sleep(5 * time.Second)
+	err = testutils.WaitForInstanceToReachStatus(ctx, instanceID, instance.InstanceStatusRunning)
+	require.NoError(err)
+
+	// PASS: upgrade create with specific version
+	cmd.RootCmd.SetArgs([]string{"upgrade", "create", instanceID, "--version", "1.0"})
+	err = cmd.RootCmd.ExecuteContext(ctx)
+	require.NoError(err)
+
+	// PASS: wait for instance to reach running status
+	time.Sleep(5 * time.Second)
+	err = testutils.WaitForInstanceToReachStatus(ctx, instanceID, instance.InstanceStatusRunning)
+	require.NoError(err)
+
+	// PASS: upgrade create with preferred version
+	cmd.RootCmd.SetArgs([]string{"upgrade", "create", instanceID, "--version", "preferred"})
+	err = cmd.RootCmd.ExecuteContext(ctx)
+	require.NoError(err)
+
+	// PASS: wait for instance to reach running status
+	time.Sleep(5 * time.Second)
+	err = testutils.WaitForInstanceToReachStatus(ctx, instanceID, instance.InstanceStatusRunning)
+	require.NoError(err)
+
+	// PASS: upgrade create with version name
+	cmd.RootCmd.SetArgs([]string{"upgrade", "create", instanceID, "--version-name", "v1.0.0-alpha"})
+	err = cmd.RootCmd.ExecuteContext(ctx)
+	require.NoError(err)
+
+	// PASS: delete instance
+	cmd.RootCmd.SetArgs([]string{"instance", "delete", instanceID, "--yes"})
+	err = cmd.RootCmd.ExecuteContext(ctx)
+	require.NoError(err)
+
+	// Wait for the instance to be deleted
+	for {
+		cmd.RootCmd.SetArgs([]string{"instance", "describe", instanceID})
+		err1 := cmd.RootCmd.ExecuteContext(ctx)
+		if err1 != nil {
+			break
+		}
+		time.Sleep(5 * time.Second)
+	}
+
+	// PASS: delete service
+	cmd.RootCmd.SetArgs([]string{"service", "delete", serviceName})
+	err = cmd.RootCmd.ExecuteContext(ctx)
+	require.NoError(err)
+
+	// FAIL: upgrade create with invalid instance ID
+	cmd.RootCmd.SetArgs([]string{"upgrade", "create", "instance-invalid", "--version", "latest"})
+	err = cmd.RootCmd.ExecuteContext(ctx)
+	require.Error(err)
+	require.Contains(err.Error(), "instance-invalid not found. Please check the instance ID and try again")
+}
+
 func validateScheduledAndCancel(ctx context.Context, instanceID string, targetVersion string, shouldSkipInstance bool) error {
 	// Upgrade instance with latest version
 	scheduledDate := time.Now().Add(3 * time.Hour).Truncate(time.Hour).Format(time.RFC3339)
