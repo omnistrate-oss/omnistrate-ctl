@@ -15,12 +15,13 @@ import (
 )
 
 const (
-	helmTabLogs   = 0
-	helmTabValues = 1
-	helmNumTabs   = 2
+	helmTabLogs       = 0
+	helmTabValues     = 1
+	helmTabWfErrors   = 2
+	helmNumTabs       = 3
 )
 
-var helmTabNames = []string{"Helm Logs", "Chart Values"}
+var helmTabNames = []string{"Helm Logs", "Chart Values", "Workflow Events"}
 
 // helmDataMsg is sent when helm debug data has been fetched
 type helmDataMsg struct {
@@ -56,6 +57,9 @@ type helmDetailModel struct {
 	// Values tab (tree explorer)
 	valuesTree   []outputNode
 	valuesCursor int
+
+	// Workflow Errors tab
+	wfErrors workflowErrorsState
 
 	// Clipboard flash message
 	clipboardMsg string
@@ -325,6 +329,10 @@ func (m helmDetailModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.valuesCursor--
 				}
 				_ = visibleNodes
+			} else if m.activeTab == helmTabWfErrors {
+				if m.wfErrors.scroll > 0 {
+					m.wfErrors.scroll--
+				}
 			}
 		case "down", "j":
 			if m.activeTab == helmTabLogs {
@@ -338,6 +346,12 @@ func (m helmDetailModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				if m.valuesCursor < len(visibleNodes)-1 {
 					m.valuesCursor++
 				}
+			} else if m.activeTab == helmTabWfErrors {
+				max := m.helmWfErrorsMaxScroll()
+				m.wfErrors.scroll++
+				if m.wfErrors.scroll > max {
+					m.wfErrors.scroll = max
+				}
 			}
 		case "pgup":
 			if m.activeTab == helmTabLogs {
@@ -346,6 +360,11 @@ func (m helmDetailModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				if m.logScroll < 0 {
 					m.logScroll = 0
 				}
+			} else if m.activeTab == helmTabWfErrors {
+				m.wfErrors.scroll -= m.helmBodyHeight()
+				if m.wfErrors.scroll < 0 {
+					m.wfErrors.scroll = 0
+				}
 			}
 		case "pgdown":
 			if m.activeTab == helmTabLogs {
@@ -353,6 +372,12 @@ func (m helmDetailModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.logScroll += m.helmBodyHeight()
 				if m.logScroll > m.helmLogMaxScroll() {
 					m.logScroll = m.helmLogMaxScroll()
+				}
+			} else if m.activeTab == helmTabWfErrors {
+				max := m.helmWfErrorsMaxScroll()
+				m.wfErrors.scroll += m.helmBodyHeight()
+				if m.wfErrors.scroll > max {
+					m.wfErrors.scroll = max
 				}
 			}
 		case "f":
@@ -532,6 +557,8 @@ func (m helmDetailModel) getHelmTabContent() string {
 		return m.renderHelmLogsTab()
 	case helmTabValues:
 		return m.renderHelmValuesTab()
+	case helmTabWfErrors:
+		return m.renderHelmWfErrorsTab()
 	}
 	return ""
 }
@@ -775,6 +802,8 @@ func (m helmDetailModel) renderHelmFooter() string {
 		text = fmt.Sprintf("↑↓/pgup/pgdn: scroll  %s  y: copy  tab/shift+tab: switch tabs  esc: back  q: quit", followHint)
 	} else if m.activeTab == helmTabValues && len(m.valuesTree) > 0 {
 		text = "↑↓: navigate  ←→/enter: expand/collapse  y: copy  tab/shift+tab: switch tabs  esc: back  q: quit"
+	} else if m.activeTab == helmTabWfErrors {
+		text = "↑↓/pgup/pgdn: scroll  y: copy  tab/shift+tab: switch tabs  esc: back  q: quit"
 	} else {
 		text = "tab/shift+tab: switch tabs  esc: back  q: quit"
 	}
@@ -799,6 +828,8 @@ func (m helmDetailModel) helmCopyableContent() string {
 				return string(raw)
 			}
 		}
+	case helmTabWfErrors:
+		return workflowEventsCopyText(m.getWfEvents())
 	}
 	return ""
 }
@@ -830,6 +861,22 @@ func (m helmDetailModel) helmLogMaxScroll() int {
 		maxScroll = 0
 	}
 	return maxScroll
+}
+
+func (m helmDetailModel) getWfEvents() *ResourceWorkflowSteps {
+	if m.debugData.PlanDAG != nil && m.debugData.PlanDAG.WorkflowStepsByKey != nil {
+		return m.debugData.PlanDAG.WorkflowStepsByKey[m.node.Key]
+	}
+	return nil
+}
+
+func (m helmDetailModel) renderHelmWfErrorsTab() string {
+	loading := m.debugData.PlanDAG != nil && m.debugData.PlanDAG.ProgressLoading
+	return renderWorkflowEventsTab(m.getWfEvents(), m.wfErrors.scroll, m.helmBodyHeight(), m.helmContentWidth(), loading, m.spinner.View())
+}
+
+func (m helmDetailModel) helmWfErrorsMaxScroll() int {
+	return workflowEventsMaxScroll(m.getWfEvents(), m.helmContentWidth(), m.helmBodyHeight())
 }
 
 // buildHelmValuesTree builds a tree of outputNodes from helm chart values (a plain map).

@@ -324,8 +324,8 @@ func drawPlanDAGStyled(plan *PlanDAG, _ int, selectedNodeID string) []string {
 	// Account for level separator dotted lines (one between each pair of levels)
 	numSeparators := len(levels) - 1
 
-	totalWidth := innerTotalWidth + 2*outerPadX + 2 // +2 for border chars
-	totalHeight := innerTotalHeight + 2*outerPadY + 2 + numSeparators
+	totalWidth := innerTotalWidth + 2*outerPadX + 2 + numSeparators // +numSeparators for level separator columns
+	totalHeight := innerTotalHeight + 2*outerPadY + 2
 	if totalWidth < cardWidth+2*outerPadX+2 {
 		totalWidth = cardWidth + 2*outerPadX + 2
 	}

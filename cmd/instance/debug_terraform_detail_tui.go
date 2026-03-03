@@ -19,10 +19,11 @@ const (
 	tabTfOutput  = 2
 	tabLogs      = 3
 	tabOpHistory = 4
-	numTabs      = 5
+	tabWfErrors  = 5
+	numTabs      = 6
 )
 
-var tabNames = []string{"Progress", "Terraform Files", "Terraform Output", "Logs", "Operation History"}
+var tabNames = []string{"Progress", "Terraform Files", "Terraform Output", "Logs", "Operation History", "Workflow Events"}
 
 // fileContentMsg is sent when file content has been fetched from the pod
 type fileContentMsg struct {
@@ -107,6 +108,9 @@ type terraformDetailModel struct {
 	errorModalText   string // raw error text; non-empty means modal is open
 	errorModalScroll int
 	errorModalOp     string // operation name for the modal title
+
+	// Workflow Errors tab
+	wfErrors workflowErrorsState
 
 	// Clipboard flash message
 	clipboardMsg string
@@ -321,6 +325,10 @@ func (m terraformDetailModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				if m.logScroll > 0 {
 					m.logScroll--
 				}
+			} else if m.activeTab == tabWfErrors {
+				if m.wfErrors.scroll > 0 {
+					m.wfErrors.scroll--
+				}
 			} else if m.viewingFile {
 				if m.fileScroll > 0 {
 					m.fileScroll--
@@ -358,6 +366,12 @@ func (m terraformDetailModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.logScroll++
 				if m.logScroll > m.logMaxScroll() {
 					m.logScroll = m.logMaxScroll()
+				}
+			} else if m.activeTab == tabWfErrors {
+				max := m.tfWfErrorsMaxScroll()
+				m.wfErrors.scroll++
+				if m.wfErrors.scroll > max {
+					m.wfErrors.scroll = max
 				}
 			} else if m.viewingFile {
 				m.fileScroll++
@@ -436,6 +450,11 @@ func (m terraformDetailModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				if m.logScroll < 0 {
 					m.logScroll = 0
 				}
+			} else if m.activeTab == tabWfErrors {
+				m.wfErrors.scroll -= m.bodyHeight()
+				if m.wfErrors.scroll < 0 {
+					m.wfErrors.scroll = 0
+				}
 			} else if m.viewingFile {
 				m.fileScroll -= m.bodyHeight()
 				if m.fileScroll < 0 {
@@ -461,6 +480,12 @@ func (m terraformDetailModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.logScroll += m.bodyHeight()
 				if m.logScroll > m.logMaxScroll() {
 					m.logScroll = m.logMaxScroll()
+				}
+			} else if m.activeTab == tabWfErrors {
+				max := m.tfWfErrorsMaxScroll()
+				m.wfErrors.scroll += m.bodyHeight()
+				if m.wfErrors.scroll > max {
+					m.wfErrors.scroll = max
 				}
 			} else if m.viewingFile {
 				m.fileScroll += m.bodyHeight()
@@ -779,6 +804,8 @@ func (m terraformDetailModel) copyableContent() string {
 		if m.tfOutputJSON != "" {
 			return m.tfOutputJSON
 		}
+	case tabWfErrors:
+		return workflowEventsCopyText(m.getTfWfEvents())
 	}
 	return ""
 }
@@ -904,6 +931,8 @@ func (m terraformDetailModel) getTabContent() string {
 	case tabOpHistory:
 		// History tab handles its own scrolling
 		return m.renderOperationHistoryTab()
+	case tabWfErrors:
+		return m.renderTfWfErrorsTab()
 	}
 
 	lines := strings.Split(content, "\n")
@@ -945,6 +974,8 @@ func (m terraformDetailModel) renderFooter() string {
 		text = "↑↓/pgup/pgdn: scroll  f: toggle follow  y: copy  tab/shift+tab: switch tabs  esc: back  q: quit"
 	} else if m.activeTab == tabOpHistory && len(m.historyDates) > 0 {
 		text = "↑↓: navigate  enter: expand/collapse  tab/shift+tab: switch tabs  esc: back  q: quit"
+	} else if m.activeTab == tabWfErrors {
+		text = "↑↓/pgup/pgdn: scroll  y: copy  tab/shift+tab: switch tabs  esc: back  q: quit"
 	} else {
 		text = "tab/shift+tab: switch tabs  ↑↓: scroll  esc: back  q: quit"
 	}
@@ -1665,4 +1696,20 @@ func styleForStatus(status string) lipgloss.Style {
 	default:
 		return lipgloss.NewStyle().Foreground(lipgloss.Color("245"))
 	}
+}
+
+func (m terraformDetailModel) getTfWfEvents() *ResourceWorkflowSteps {
+	if m.debugData.PlanDAG != nil && m.debugData.PlanDAG.WorkflowStepsByKey != nil {
+		return m.debugData.PlanDAG.WorkflowStepsByKey[m.node.Key]
+	}
+	return nil
+}
+
+func (m terraformDetailModel) renderTfWfErrorsTab() string {
+	loading := m.debugData.PlanDAG != nil && m.debugData.PlanDAG.ProgressLoading
+	return renderWorkflowEventsTab(m.getTfWfEvents(), m.wfErrors.scroll, m.bodyHeight(), m.contentWidth(), loading, m.spinner.View())
+}
+
+func (m terraformDetailModel) tfWfErrorsMaxScroll() int {
+	return workflowEventsMaxScroll(m.getTfWfEvents(), m.contentWidth(), m.bodyHeight())
 }
