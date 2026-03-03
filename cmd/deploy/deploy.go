@@ -917,7 +917,7 @@ func executeDeploymentWorkflow(cmd *cobra.Command, sm ysmrr.SpinnerManager, toke
 		spinner = sm.AddSpinner(fmt.Sprintf("Step 2/2: Upgrading existing instance %s to latest version...", finalInstanceID))
 		spinner.Complete()
 		spinner = sm.AddSpinner("Step 2/2: Upgrading existing instance")
-		upgradeErr := upgradeExistingInstance(cmd.Context(), token, []string{finalInstanceID}, serviceID, planID)
+		upgradeErr := upgradeExistingInstance(cmd.Context(), token, []string{finalInstanceID}, serviceID, environmentID, planID)
 		instanceActionType = "upgrade"
 		if upgradeErr != nil {
 			utils.HandleSpinnerError(spinner, sm, upgradeErr)
@@ -1447,24 +1447,14 @@ func listInstances(ctx context.Context, token, serviceID, environmentID, service
 }
 
 // upgradeExistingInstance upgrades an existing instance to the latest version
-func upgradeExistingInstance(ctx context.Context, token string, instanceIDs []string, serviceID, productTierID string) error {
+func upgradeExistingInstance(ctx context.Context, token string, instanceIDs []string, serviceID, environmentID, productTierID string) error {
 	// Get the latest version
 	latestVersion, err := dataaccess.FindLatestVersion(ctx, token, serviceID, productTierID)
 	if err != nil {
 		return fmt.Errorf("failed to find latest version: %w", err)
 	}
 
-	// Get instance details to find environment ID
 	for _, id := range instanceIDs {
-		searchRes, err := dataaccess.SearchInventory(ctx, token, fmt.Sprintf("resourceinstance:%s", id))
-		if err != nil {
-			return fmt.Errorf("failed to find instance details for %s: %w", id, err)
-		}
-		if len(searchRes.ResourceInstanceResults) == 0 {
-			return fmt.Errorf("instance not found: %s", id)
-		}
-
-		environmentID := searchRes.ResourceInstanceResults[0].ServiceEnvironmentId
 		resourceOverrideConfig := make(map[string]openapiclientfleet.ResourceOneOffPatchConfigurationOverride)
 		err = dataaccess.OneOffPatchResourceInstance(ctx, token,
 			serviceID,
