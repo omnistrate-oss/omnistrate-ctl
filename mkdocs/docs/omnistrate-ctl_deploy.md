@@ -28,7 +28,7 @@ It automatically handles:
 Main modes of operation:
 
   - Build from repository and deploy
-	  Triggered when no spec file is provided and no supported spec is found in
+      Triggered when no spec file is provided and no supported spec is found in
       the current directory. The command detects a Dockerfile, builds an image,
       creates the service, generates the Omnistrate spec, and deploys an instance.
 
