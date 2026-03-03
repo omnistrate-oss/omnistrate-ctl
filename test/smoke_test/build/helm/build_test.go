@@ -137,7 +137,8 @@ func Test_build_dry_run(t *testing.T) {
 		"--service-id", initialServiceID,
 		"--output", "json",
 	})
-	require.Equal(initialJsonOutput, utils.LastPrintedString, "Service configuration should not change after dry-run")
+	dryRunOutput := utils.LastPrintedString
+	require.Equal(initialJsonOutput, dryRunOutput, "Service configuration should not change after dry-run")
 
 	// Step 3b: Apply the actual changes - Should modify service
 	cmd.RootCmd.SetArgs([]string{

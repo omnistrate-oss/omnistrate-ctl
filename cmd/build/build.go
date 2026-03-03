@@ -630,6 +630,13 @@ func runBuild(cmd *cobra.Command, args []string) error {
 		EnvironmentID = hierarchyResult.EnvironmentID
 		ProductTierID = hierarchyResult.ProductTierID
 
+		// If a new product tier was created, automatically release as preferred
+		// to keep consistent behavior (unless user explicitly opted out with --no-release-as-preferred)
+		if hierarchyResult.IsNewTier && !noReleaseAsPreferred {
+			release = true
+			releaseAsPreferred = true
+		}
+
 		// Step 2: Upload artifacts if any are specified in the spec
 		if len(specInfo.ArtifactUploads) > 0 && !dryRun {
 			uniquePaths := UniqueArtifactPaths(specInfo.ArtifactUploads)
@@ -757,17 +764,21 @@ func runBuild(cmd *cobra.Command, args []string) error {
 		IsNewServicePlanVersionCreated: isNewVersionCreated,
 	}
 
-	if !dryRun && (release || releaseAsPreferred) {
+	if release || releaseAsPreferred {
 		versionDetails, err := dataaccess.DescribeLatestVersion(cmd.Context(), token, ServiceID, ProductTierID)
 		if err != nil {
-			err = errors.Wrap(err, "failed to get the latest version")
-			return err
+			// For dry-run, it's okay if there's no version yet - just skip
+			if !dryRun {
+				err = errors.Wrap(err, "failed to get the latest version")
+				return err
+			}
+		} else {
+			servicePlanDetails.Version = versionDetails.Version
+			if versionDetails.Name != nil {
+				servicePlanDetails.ReleaseDescription = *versionDetails.Name
+			}
+			servicePlanDetails.VersionSetStatus = versionDetails.Status
 		}
-		servicePlanDetails.Version = versionDetails.Version
-		if versionDetails.Name != nil {
-			servicePlanDetails.ReleaseDescription = *versionDetails.Name
-		}
-		servicePlanDetails.VersionSetStatus = versionDetails.Status
 	}
 
 	if err = utils.PrintTextTableJsonOutput(output, servicePlanDetails); err != nil {
