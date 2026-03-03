@@ -86,7 +86,7 @@ func runListEndpoints(cmd *cobra.Command, args []string) error {
 	}
 
 	// Get detailed instance information
-	detailedInstance, err := dataaccess.DescribeResourceInstance(cmd.Context(), token, serviceID, environmentID, instanceID, true)
+	detailedInstance, err := dataaccess.DescribeResourceInstance(cmd.Context(), token, serviceID, environmentID, instanceID)
 	if err != nil {
 		utils.HandleSpinnerError(spinner, sm, err)
 		return err

@@ -93,7 +93,7 @@ func fetchDebugData(instanceID, token string) tea.Cmd {
 			return debugDataMsg{err: fmt.Errorf("failed to get instance: %w", err)}
 		}
 
-		instanceData, err := dataaccess.DescribeResourceInstance(ctx, token, serviceID, environmentID, instanceID, true)
+		instanceData, err := dataaccess.DescribeResourceInstance(ctx, token, serviceID, environmentID, instanceID)
 		if err != nil {
 			return debugDataMsg{err: fmt.Errorf("failed to describe resource instance: %w", err)}
 		}
@@ -168,7 +168,7 @@ func runDebugJSON(instanceID, token string) error {
 		return fmt.Errorf("failed to get instance: %w", err)
 	}
 
-	instanceData, err := dataaccess.DescribeResourceInstance(ctx, token, serviceID, environmentID, instanceID, true)
+	instanceData, err := dataaccess.DescribeResourceInstance(ctx, token, serviceID, environmentID, instanceID)
 	if err != nil {
 		return fmt.Errorf("failed to describe resource instance: %w", err)
 	}

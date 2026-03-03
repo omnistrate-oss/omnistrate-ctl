@@ -152,7 +152,7 @@ func resourceConfigMapKeys(resourceID string) []string {
 
 // fetchInstanceDataForResource gets the resource instance data needed for k8s access
 func fetchInstanceDataForResource(ctx context.Context, token, serviceID, environmentID, instanceID string) (*openapiclientfleet.ResourceInstance, error) {
-	instanceData, err := dataaccess.DescribeResourceInstance(ctx, token, serviceID, environmentID, instanceID, true)
+	instanceData, err := dataaccess.DescribeResourceInstance(ctx, token, serviceID, environmentID, instanceID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to describe resource instance: %w", err)
 	}
