@@ -19,7 +19,7 @@ var (
 func PrintError(err error) {
 	errorMsg := color.New(color.FgRed, color.Bold).SprintFunc()
 	msg := fmt.Sprintf("%s %s", errorMsg("Error: "), err.Error())
-	fmt.Println(msg)
+	fmt.Fprintln(os.Stderr, msg)
 	if !config.IsDryRun() {
 		os.Exit(1)
 	}

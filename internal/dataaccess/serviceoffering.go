@@ -8,12 +8,11 @@ import (
 	openapiclientv1 "github.com/omnistrate-oss/omnistrate-sdk-go/v1"
 )
 
-func ListServiceOfferings(ctx context.Context, token, orgID string) (inventory *openapiclientfleet.InventoryListServiceOfferingsResult, err error) {
+func ListServiceOfferings(ctx context.Context, token string) (inventory *openapiclientfleet.InventoryListServiceOfferingsResult, err error) {
 	ctxWithToken := context.WithValue(ctx, openapiclientfleet.ContextAccessToken, token)
 	apiClient := getFleetClient()
 
 	req := apiClient.InventoryApiAPI.InventoryApiListServiceOfferings(ctxWithToken)
-	req = req.OrgId(orgID)
 
 	var r *http.Response
 	defer func() {
