@@ -741,6 +741,81 @@ func GetComposeSpecHeaders(composeSpecURL string) ([]string, error) {
 	return headers, nil
 }
 
+// PlanSpecResult represents a plan spec search result
+type PlanSpecResult struct {
+	Tag     string `json:"tag"`
+	URL     string `json:"url"`
+	Content string `json:"content,omitempty"`
+}
+
+// PlanSpecAvailableTag represents a tag that is available in the plan spec documentation
+type PlanSpecAvailableTag struct {
+	AvailableTag string `json:"available_tag"`
+}
+
+// SearchPlanSpecSections retrieves plan spec sections matching the given tag
+func SearchPlanSpecSections(tag string) ([]PlanSpecResult, error) {
+	if len(strings.TrimSpace(tag)) == 0 {
+		return []PlanSpecResult{}, nil
+	}
+
+	planSpecURL := config.GetPlanSpecUrl()
+
+	content, err := fetchContentFromURL(planSpecURL)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch plan spec documentation: %w", err)
+	}
+
+	h3Sections, err := ParseH3Sections(content)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse tag information: %w", err)
+	}
+
+	if len(h3Sections) == 0 {
+		return nil, fmt.Errorf("no tag information found in the plan spec documentation")
+	}
+
+	var results []PlanSpecResult
+	lowerTag := strings.ToLower(tag)
+	for _, section := range h3Sections {
+		if strings.Contains(strings.ToLower(section.Header), lowerTag) {
+			results = append(results, PlanSpecResult{
+				Tag:     section.Header,
+				Content: section.Content,
+				URL:     strings.TrimSuffix(planSpecURL, "index.md") + "#" + url.QueryEscape(strings.ReplaceAll(strings.ToLower(section.Header), " ", "-")),
+			})
+		}
+	}
+	return results, nil
+}
+
+// ListPlanSpecSections retrieves all plan spec tag sections
+func ListPlanSpecSections() ([]PlanSpecAvailableTag, error) {
+	planSpecURL := config.GetPlanSpecUrl()
+
+	content, err := fetchContentFromURL(planSpecURL)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch plan spec documentation: %w", err)
+	}
+
+	h3Sections, err := ParseH3Sections(content)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse tag information: %w", err)
+	}
+
+	if len(h3Sections) == 0 {
+		return nil, fmt.Errorf("no tag information found in the plan spec documentation")
+	}
+
+	var results []PlanSpecAvailableTag
+	for _, section := range h3Sections {
+		results = append(results, PlanSpecAvailableTag{
+			AvailableTag: section.Header,
+		})
+	}
+	return results, nil
+}
+
 func fetchContentFromURL(url string) (string, error) {
 	// Make HTTP request to fetch the content
 	// retryablehttp gives us automatic retries with exponential backoff.

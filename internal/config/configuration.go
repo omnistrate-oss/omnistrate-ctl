@@ -33,6 +33,10 @@ func GetComposeSpecUrl() string {
 	return fmt.Sprintf("https://%s/spec-guides/compose-spec/index.md", GetOmnistrateDocsDomain())
 }
 
+func GetPlanSpecUrl() string {
+	return fmt.Sprintf("https://%s/spec-guides/plan-spec/index.md", GetOmnistrateDocsDomain())
+}
+
 func GetLlmsTxtURL() string {
 	return fmt.Sprintf("https://%s/llms.txt", GetOmnistrateDocsDomain())
 }
