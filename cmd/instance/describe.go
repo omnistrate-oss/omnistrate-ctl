@@ -81,7 +81,6 @@ func init() {
 	describeCmd.Flags().String("resource-id", "", "Filter results by resource ID")
 	describeCmd.Flags().String("resource-key", "", "Filter results by resource key")
 	describeCmd.Flags().Bool("deployment-status", false, "Return compact deployment status information instead of full instance details")
-	describeCmd.Flags().Bool("detail", false, "Include detailed information in the response")
 }
 
 func runDescribe(cmd *cobra.Command, args []string) error {
@@ -110,12 +109,6 @@ func runDescribe(cmd *cobra.Command, args []string) error {
 	}
 
 	deploymentStatus, err := cmd.Flags().GetBool("deployment-status")
-	if err != nil {
-		utils.PrintError(err)
-		return err
-	}
-
-	detail, err := cmd.Flags().GetBool("detail")
 	if err != nil {
 		utils.PrintError(err)
 		return err
@@ -154,7 +147,7 @@ func runDescribe(cmd *cobra.Command, args []string) error {
 
 	// Describe instance
 	var instance *openapiclientfleet.ResourceInstance
-	instance, err = dataaccess.DescribeResourceInstance(cmd.Context(), token, serviceID, environmentID, instanceID, detail)
+	instance, err = dataaccess.DescribeResourceInstance(cmd.Context(), token, serviceID, environmentID, instanceID)
 	if err != nil {
 		utils.HandleSpinnerError(spinner, sm, err)
 		return err
@@ -250,7 +243,7 @@ func getResourceFromInstance(ctx context.Context, token string, instanceID strin
 	}
 
 	// Retrieve resource ID
-	instanceDes, err := dataaccess.DescribeResourceInstance(ctx, token, serviceID, environmentID, instanceID, true)
+	instanceDes, err := dataaccess.DescribeResourceInstance(ctx, token, serviceID, environmentID, instanceID)
 	if err != nil {
 		return
 	}

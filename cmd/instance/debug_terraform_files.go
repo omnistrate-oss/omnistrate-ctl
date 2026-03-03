@@ -63,7 +63,7 @@ func runDebugTerraformFiles(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to get instance: %w", err)
 	}
 
-	instanceData, err := dataaccess.DescribeResourceInstance(ctx, token, serviceID, environmentID, instanceID, true)
+	instanceData, err := dataaccess.DescribeResourceInstance(ctx, token, serviceID, environmentID, instanceID)
 	if err != nil {
 		return fmt.Errorf("failed to describe resource instance: %w", err)
 	}
