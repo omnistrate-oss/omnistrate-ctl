@@ -1266,9 +1266,10 @@ func waitForArtifactsReady(ctx context.Context, token string, artifactIDs []stri
 				return fmt.Errorf("failed to describe artifact %s: %w", artifactID, err)
 			}
 
-			if result.Status == statusReady {
+			switch result.Status {
+			case statusReady:
 				delete(pendingArtifacts, artifactID)
-			} else if result.Status == statusFailed {
+			case statusFailed:
 				return fmt.Errorf("artifact %s failed to process", artifactID)
 			}
 			// If status is UPLOADING, continue waiting

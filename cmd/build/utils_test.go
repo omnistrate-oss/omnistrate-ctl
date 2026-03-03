@@ -581,7 +581,7 @@ func TestArchiveArtifactPaths_CreatesBase64Archive(t *testing.T) {
 	require.NoError(t, err)
 
 	// Create some test files
-	err = os.WriteFile(filepath.Join(artifactDir, "test.txt"), []byte("test content"), 0644)
+	err = os.WriteFile(filepath.Join(artifactDir, "test.txt"), []byte("test content"), 0600)
 	require.NoError(t, err)
 
 	// Archive the directory
@@ -610,12 +610,12 @@ func TestArchiveArtifactPaths_MultipleDirectories(t *testing.T) {
 	// Create subdirectories
 	err = os.MkdirAll(filepath.Join(sourceDir, "dir1"), 0755)
 	require.NoError(t, err)
-	err = os.WriteFile(filepath.Join(sourceDir, "dir1", "file1.txt"), []byte("content1"), 0644)
+	err = os.WriteFile(filepath.Join(sourceDir, "dir1", "file1.txt"), []byte("content1"), 0600)
 	require.NoError(t, err)
 
 	err = os.MkdirAll(filepath.Join(sourceDir, "dir2"), 0755)
 	require.NoError(t, err)
-	err = os.WriteFile(filepath.Join(sourceDir, "dir2", "file2.txt"), []byte("content2"), 0644)
+	err = os.WriteFile(filepath.Join(sourceDir, "dir2", "file2.txt"), []byte("content2"), 0600)
 	require.NoError(t, err)
 
 	// Archive multiple directories
@@ -667,7 +667,7 @@ func TestArchiveArtifactPaths_TarGzFilePassthrough(t *testing.T) {
 	artifactDir := filepath.Join(sourceDir, "myartifacts")
 	err = os.MkdirAll(artifactDir, 0755)
 	require.NoError(t, err)
-	err = os.WriteFile(filepath.Join(artifactDir, "hello.txt"), []byte("hello world"), 0644)
+	err = os.WriteFile(filepath.Join(artifactDir, "hello.txt"), []byte("hello world"), 0600)
 	require.NoError(t, err)
 
 	// First, archive the directory to get valid tar.gz content
@@ -678,7 +678,7 @@ func TestArchiveArtifactPaths_TarGzFilePassthrough(t *testing.T) {
 
 	// Write the tar.gz content to a .tar.gz file
 	tarGzPath := filepath.Join(sourceDir, "myartifacts.tar.gz")
-	err = os.WriteFile(tarGzPath, rawTarGz, 0644)
+	err = os.WriteFile(tarGzPath, rawTarGz, 0600)
 	require.NoError(t, err)
 
 	// Archive should detect the file is already tar.gz and just base64 encode it
@@ -702,7 +702,7 @@ func TestArchiveArtifactPaths_TgzFilePassthrough(t *testing.T) {
 	artifactDir := filepath.Join(sourceDir, "myartifacts")
 	err = os.MkdirAll(artifactDir, 0755)
 	require.NoError(t, err)
-	err = os.WriteFile(filepath.Join(artifactDir, "data.txt"), []byte("some data"), 0644)
+	err = os.WriteFile(filepath.Join(artifactDir, "data.txt"), []byte("some data"), 0600)
 	require.NoError(t, err)
 
 	base64Content, err := createTarGzBase64(artifactDir)
@@ -711,7 +711,7 @@ func TestArchiveArtifactPaths_TgzFilePassthrough(t *testing.T) {
 	require.NoError(t, err)
 
 	tgzPath := filepath.Join(sourceDir, "myartifacts.tgz")
-	err = os.WriteFile(tgzPath, rawTarGz, 0644)
+	err = os.WriteFile(tgzPath, rawTarGz, 0600)
 	require.NoError(t, err)
 
 	result, err := ArchiveArtifactPaths(sourceDir, []string{"myartifacts.tgz"})
@@ -776,7 +776,7 @@ func TestIsGzipTarFile(t *testing.T) {
 			defer os.RemoveAll(tmpDir)
 
 			filePath := filepath.Join(tmpDir, tt.filename)
-			err = os.WriteFile(filePath, tt.content, 0644)
+			err = os.WriteFile(filePath, tt.content, 0600)
 			require.NoError(t, err)
 
 			assert.Equal(t, tt.expected, isGzipTarFile(filePath))
@@ -796,11 +796,11 @@ func TestArchiveArtifactPaths_NestedDirectories(t *testing.T) {
 	require.NoError(t, err)
 
 	// Create files at different levels
-	err = os.WriteFile(filepath.Join(sourceDir, "artifacts", "root.txt"), []byte("root"), 0644)
+	err = os.WriteFile(filepath.Join(sourceDir, "artifacts", "root.txt"), []byte("root"), 0600)
 	require.NoError(t, err)
-	err = os.WriteFile(filepath.Join(sourceDir, "artifacts", "subdir1", "level1.txt"), []byte("level1"), 0644)
+	err = os.WriteFile(filepath.Join(sourceDir, "artifacts", "subdir1", "level1.txt"), []byte("level1"), 0600)
 	require.NoError(t, err)
-	err = os.WriteFile(filepath.Join(nestedDir, "level2.txt"), []byte("level2"), 0644)
+	err = os.WriteFile(filepath.Join(nestedDir, "level2.txt"), []byte("level2"), 0600)
 	require.NoError(t, err)
 
 	// Archive the directory
