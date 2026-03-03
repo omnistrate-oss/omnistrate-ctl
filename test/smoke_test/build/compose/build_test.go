@@ -410,7 +410,6 @@ func Test_build_dry_run(t *testing.T) {
 	err = cmd.RootCmd.ExecuteContext(ctx)
 	require.NoError(err)
 	initialJsonOutput := utils.LastPrintedString
-	utils.LastPrintedString = "" // Clear after storing initial output
 
 	// Step 3a: Test dry-run mode - Should not modify service
 	cmd.RootCmd.SetArgs([]string{
@@ -437,7 +436,6 @@ func Test_build_dry_run(t *testing.T) {
 	err = cmd.RootCmd.ExecuteContext(ctx)
 	require.NoError(err)
 	require.Equal(initialJsonOutput, utils.LastPrintedString, "Service configuration should not change after dry-run")
-	utils.LastPrintedString = "" // Clear for next command
 
 	// Step 3b: Apply the actual changes - Should modify service
 	cmd.RootCmd.SetArgs([]string{
