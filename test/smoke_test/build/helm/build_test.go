@@ -125,7 +125,6 @@ func Test_build_dry_run(t *testing.T) {
 		"--environment", "dev",
 		"--environment-type", "dev",
 		"--release",
-		"--release-as-preferred",
 		"--dry-run",
 	})
 	err = cmd.RootCmd.ExecuteContext(ctx)
@@ -154,7 +153,6 @@ func Test_build_dry_run(t *testing.T) {
 		"--environment", "dev",
 		"--environment-type", "dev",
 		"--release",
-		"--release-as-preferred",
 	})
 	err = cmd.RootCmd.ExecuteContext(ctx)
 	require.NoError(err)
