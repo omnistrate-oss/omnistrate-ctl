@@ -63,7 +63,7 @@ name: TestPlan
 deployment:
   hostedDeployment:
     AwsAccountId: "444444444444"
-    AWSBootstrapRoleAccountArn: arn:aws:iam::444444444444:role/test-bootstrap-role
+    AwsBootstrapRoleAccountArn: arn:aws:iam::444444444444:role/test-bootstrap-role
     OCITenancyId: "ocid1.tenancy.oc1..aaaaaaaa1111111111111111111111111111111111111111111111111111"
     OCIDomainId: "ocid1.domain.oc1..aaaaaaaa2222222222222222222222222222222222222222222222222222"
 `
@@ -115,11 +115,9 @@ services:
     helmChartConfiguration:
       chartName: redis
 `
-	info, err := ParseServicePlanSpec([]byte(yamlContent))
-	require.NoError(t, err)
-	assert.Equal(t, "HostedNoAccount", info.ProductTierName)
-	// hostedDeployment without any account info is OMNISTRATE_HOSTED
-	assert.Equal(t, DeploymentModelOmnistrateHosted, info.DeploymentModelType)
+	_, err := ParseServicePlanSpec([]byte(yamlContent))
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "hostedDeployment requires at least one cloud provider account config")
 }
 
 func TestParseServicePlanSpec_EmptyDeploymentSection(t *testing.T) {
@@ -358,11 +356,12 @@ services:
 `
 	info, err := ParseServicePlanSpec([]byte(yamlContent))
 	require.NoError(t, err)
-	assert.NotNil(t, info.ArtifactPaths)
-	assert.Len(t, info.ArtifactPaths, 3)
-	assert.Contains(t, info.ArtifactPaths, "/path/to/aws/artifacts")
-	assert.Contains(t, info.ArtifactPaths, "/path/to/gcp/artifacts")
-	assert.Contains(t, info.ArtifactPaths, "/path/to/azure/artifacts")
+	paths := UniqueArtifactPaths(info.ArtifactUploads)
+	assert.NotNil(t, paths)
+	assert.Len(t, paths, 3)
+	assert.Contains(t, paths, "/path/to/aws/artifacts")
+	assert.Contains(t, paths, "/path/to/gcp/artifacts")
+	assert.Contains(t, paths, "/path/to/azure/artifacts")
 }
 
 func TestParseServicePlanSpec_ArtifactPathsDeduplication(t *testing.T) {
@@ -388,10 +387,11 @@ services:
 `
 	info, err := ParseServicePlanSpec([]byte(yamlContent))
 	require.NoError(t, err)
-	assert.NotNil(t, info.ArtifactPaths)
+	paths := UniqueArtifactPaths(info.ArtifactUploads)
+	assert.NotNil(t, paths)
 	// Same path should be deduplicated
-	assert.Len(t, info.ArtifactPaths, 1)
-	assert.Contains(t, info.ArtifactPaths, "/shared/artifacts")
+	assert.Len(t, paths, 1)
+	assert.Contains(t, paths, "/shared/artifacts")
 }
 
 func TestParseServicePlanSpec_ArtifactPathsFromMultipleServices(t *testing.T) {
@@ -419,18 +419,17 @@ services:
 `
 	info, err := ParseServicePlanSpec([]byte(yamlContent))
 	require.NoError(t, err)
-	assert.NotNil(t, info.ArtifactPaths)
-	assert.Len(t, info.ArtifactPaths, 3)
-	assert.Contains(t, info.ArtifactPaths, "/terraform/artifacts")
-	assert.Contains(t, info.ArtifactPaths, "/helm/artifacts")
-	assert.Contains(t, info.ArtifactPaths, "/kustomize/artifacts")
+	paths := UniqueArtifactPaths(info.ArtifactUploads)
+	assert.NotNil(t, paths)
+	assert.Len(t, paths, 3)
+	assert.Contains(t, paths, "/terraform/artifacts")
+	assert.Contains(t, paths, "/helm/artifacts")
+	assert.Contains(t, paths, "/kustomize/artifacts")
 }
 
 func TestParseServicePlanSpec_ArtifactPathsFromHelm(t *testing.T) {
 	yamlContent := `
 name: HelmService
-deployment:
-  hostedDeployment: {}
 services:
   - name: redis
     helmChartConfiguration:
@@ -439,16 +438,15 @@ services:
 `
 	info, err := ParseServicePlanSpec([]byte(yamlContent))
 	require.NoError(t, err)
-	assert.NotNil(t, info.ArtifactPaths)
-	assert.Len(t, info.ArtifactPaths, 1)
-	assert.Contains(t, info.ArtifactPaths, "/helm/redis/artifacts")
+	paths := UniqueArtifactPaths(info.ArtifactUploads)
+	assert.NotNil(t, paths)
+	assert.Len(t, paths, 1)
+	assert.Contains(t, paths, "/helm/redis/artifacts")
 }
 
 func TestParseServicePlanSpec_ArtifactPathsFromKustomize(t *testing.T) {
 	yamlContent := `
 name: KustomizeService
-deployment:
-  hostedDeployment: {}
 services:
   - name: app
     kustomizeConfiguration:
@@ -457,16 +455,15 @@ services:
 `
 	info, err := ParseServicePlanSpec([]byte(yamlContent))
 	require.NoError(t, err)
-	assert.NotNil(t, info.ArtifactPaths)
-	assert.Len(t, info.ArtifactPaths, 1)
-	assert.Contains(t, info.ArtifactPaths, "/kustomize/app/artifacts")
+	paths := UniqueArtifactPaths(info.ArtifactUploads)
+	assert.NotNil(t, paths)
+	assert.Len(t, paths, 1)
+	assert.Contains(t, paths, "/kustomize/app/artifacts")
 }
 
 func TestParseServicePlanSpec_ArtifactPathsFromOperator(t *testing.T) {
 	yamlContent := `
 name: OperatorService
-deployment:
-  hostedDeployment: {}
 services:
   - name: operator
     operatorCRDConfiguration:
@@ -475,16 +472,15 @@ services:
 `
 	info, err := ParseServicePlanSpec([]byte(yamlContent))
 	require.NoError(t, err)
-	assert.NotNil(t, info.ArtifactPaths)
-	assert.Len(t, info.ArtifactPaths, 1)
-	assert.Contains(t, info.ArtifactPaths, "/operator/artifacts")
+	paths := UniqueArtifactPaths(info.ArtifactUploads)
+	assert.NotNil(t, paths)
+	assert.Len(t, paths, 1)
+	assert.Contains(t, paths, "/operator/artifacts")
 }
 
 func TestParseServicePlanSpec_TerraformFallbackToCurrentDir(t *testing.T) {
 	yamlContent := `
 name: NoArtifacts
-deployment:
-  hostedDeployment: {}
 services:
   - name: terraformResource
     type: terraform
@@ -496,9 +492,10 @@ services:
 	info, err := ParseServicePlanSpec([]byte(yamlContent))
 	require.NoError(t, err)
 	// When artifactsLocalPath is not specified and no gitConfiguration, falls back to current directory
-	assert.NotNil(t, info.ArtifactPaths)
-	assert.Len(t, info.ArtifactPaths, 1)
-	assert.Contains(t, info.ArtifactPaths, "./")
+	paths := UniqueArtifactPaths(info.ArtifactUploads)
+	assert.NotNil(t, paths)
+	assert.Len(t, paths, 1)
+	assert.Contains(t, paths, "./")
 	// Also check artifact uploads
 	assert.Len(t, info.ArtifactUploads, 1)
 	assert.Equal(t, "./", info.ArtifactUploads[0].Path)
@@ -514,7 +511,7 @@ deployment:
 `
 	info, err := ParseServicePlanSpec([]byte(yamlContent))
 	require.NoError(t, err)
-	assert.Nil(t, info.ArtifactPaths)
+	assert.Nil(t, UniqueArtifactPaths(info.ArtifactUploads))
 }
 
 func TestParseServicePlanSpec_MixedTerraformFallback(t *testing.T) {
@@ -539,12 +536,13 @@ services:
 `
 	info, err := ParseServicePlanSpec([]byte(yamlContent))
 	require.NoError(t, err)
-	assert.NotNil(t, info.ArtifactPaths)
+	paths := UniqueArtifactPaths(info.ArtifactUploads)
+	assert.NotNil(t, paths)
 	// aws uses artifactsLocalPath, gcp falls back to current directory, azure uses artifactsLocalPath
-	assert.Len(t, info.ArtifactPaths, 3)
-	assert.Contains(t, info.ArtifactPaths, "/aws/artifacts")
-	assert.Contains(t, info.ArtifactPaths, "./")
-	assert.Contains(t, info.ArtifactPaths, "/azure/artifacts")
+	assert.Len(t, paths, 3)
+	assert.Contains(t, paths, "/aws/artifacts")
+	assert.Contains(t, paths, "./")
+	assert.Contains(t, paths, "/azure/artifacts")
 	// Artifact uploads should have 3 entries
 	assert.Len(t, info.ArtifactUploads, 3)
 }
@@ -552,8 +550,6 @@ services:
 func TestParseServicePlanSpec_TerraformFallbackDeduplication(t *testing.T) {
 	yamlContent := `
 name: TerraformDedup
-deployment:
-  hostedDeployment: {}
 services:
   - name: terraformResource
     type: terraform
@@ -568,10 +564,11 @@ services:
 `
 	info, err := ParseServicePlanSpec([]byte(yamlContent))
 	require.NoError(t, err)
-	assert.NotNil(t, info.ArtifactPaths)
+	paths := UniqueArtifactPaths(info.ArtifactUploads)
+	assert.NotNil(t, paths)
 	// All cloud providers fall back to current directory "./" which deduplicates
-	assert.Len(t, info.ArtifactPaths, 1)
-	assert.Contains(t, info.ArtifactPaths, "./")
+	assert.Len(t, paths, 1)
+	assert.Contains(t, paths, "./")
 	// But ArtifactUploads should have 3 entries (one per cloud provider)
 	assert.Len(t, info.ArtifactUploads, 3)
 }
@@ -601,7 +598,7 @@ services:
 	info, err := ParseServicePlanSpec([]byte(yamlContent))
 	require.NoError(t, err)
 	// gitConfiguration is present, so terraformPath should NOT be used as fallback
-	assert.Nil(t, info.ArtifactPaths)
+	assert.Nil(t, UniqueArtifactPaths(info.ArtifactUploads))
 	assert.Len(t, info.ArtifactUploads, 0)
 }
 
@@ -629,11 +626,12 @@ services:
 `
 	info, err := ParseServicePlanSpec([]byte(yamlContent))
 	require.NoError(t, err)
-	assert.NotNil(t, info.ArtifactPaths)
+	paths := UniqueArtifactPaths(info.ArtifactUploads)
+	assert.NotNil(t, paths)
 	// aws has gitConfiguration so skipped, gcp falls back to current directory, azure uses artifactsLocalPath
-	assert.Len(t, info.ArtifactPaths, 2)
-	assert.Contains(t, info.ArtifactPaths, "./")
-	assert.Contains(t, info.ArtifactPaths, "/azure/artifacts")
+	assert.Len(t, paths, 2)
+	assert.Contains(t, paths, "./")
+	assert.Contains(t, paths, "/azure/artifacts")
 	assert.Len(t, info.ArtifactUploads, 2)
 }
 

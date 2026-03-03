@@ -632,10 +632,11 @@ func runBuild(cmd *cobra.Command, args []string) error {
 
 		// Step 2: Upload artifacts if any are specified in the spec
 		if len(specInfo.ArtifactUploads) > 0 && !dryRun {
-			spinner1.UpdateMessage(fmt.Sprintf("Archiving %d artifact director(ies)...", len(specInfo.ArtifactPaths)))
+			uniquePaths := UniqueArtifactPaths(specInfo.ArtifactUploads)
+			spinner1.UpdateMessage(fmt.Sprintf("Archiving %d artifact director(ies)...", len(uniquePaths)))
 
 			// Archive all unique artifact paths (gzip + tar + base64 encode)
-			artifactArchives, archiveErr := ArchiveArtifactPaths(cwd, specInfo.ArtifactPaths)
+			artifactArchives, archiveErr := ArchiveArtifactPaths(cwd, uniquePaths)
 			if archiveErr != nil {
 				utils.HandleSpinnerError(spinner1, sm1, archiveErr)
 				return archiveErr

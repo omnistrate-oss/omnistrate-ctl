@@ -132,7 +132,6 @@ type ServicePlanSpecInfo struct {
 	AzureTenantID          string
 	OCITenancyID           string
 	OCIDomainID            string
-	ArtifactPaths          []string              // Deduplicated list of artifact local paths from services configurations
 	ArtifactUploads        []*ArtifactUploadInfo // List of artifact uploads - each entry is a (path, cloudProvider) pair
 }
 
@@ -160,9 +159,9 @@ func ParseServicePlanSpec(fileData []byte) (*ServicePlanSpecInfo, error) {
 	// Service plan spec defaults to CUSTOM_TENANCY
 	info.TenancyType = TenancyTypeCustom
 	// Extract deployment model type and account configs from top-level deployment section
-	extractDeploymentInfo(yamlContent, info)
-	// Extract and deduplicate artifact paths from services configurations
-	info.ArtifactPaths = extractArtifactPaths(yamlContent)
+	if err := extractDeploymentInfo(yamlContent, info); err != nil {
+		return nil, err
+	}
 	// Extract artifact uploads with cloud provider info
 	info.ArtifactUploads = extractArtifactUploads(yamlContent)
 
@@ -170,22 +169,23 @@ func ParseServicePlanSpec(fileData []byte) (*ServicePlanSpecInfo, error) {
 }
 
 // extractDeploymentInfo extracts deployment model type and account configs from deployment section
-func extractDeploymentInfo(yamlContent map[string]interface{}, info *ServicePlanSpecInfo) {
+func extractDeploymentInfo(yamlContent map[string]interface{}, info *ServicePlanSpecInfo) error {
 	if deployment, exists := yamlContent["deployment"]; exists {
 		if depMap, ok := deployment.(map[string]interface{}); ok {
 			if hosted, exists := depMap["hostedDeployment"]; exists {
 				if hostedMap, ok := hosted.(map[string]interface{}); ok {
 					extractAccountFromMap(hostedMap, info)
-					// hostedDeployment with account info is CUSTOMER_HOSTED,
-					// hostedDeployment without account info is OMNISTRATE_HOSTED
 					if info.AwsAccountID != "" || info.GcpProjectID != "" || info.AzureSubscriptionID != "" || info.OCITenancyID != "" {
 						info.DeploymentModelType = DeploymentModelCustomerHosted
 					} else {
-						info.DeploymentModelType = DeploymentModelOmnistrateHosted
+						return fmt.Errorf("hostedDeployment requires at least one cloud provider account config " +
+							"(e.g., AwsAccountId, GcpProjectId, AzureSubscriptionId, or OCITenancyId). " +
+							"If you want omnistrate-hosted deployment, remove the deployment section entirely")
 					}
 				} else {
-					// hostedDeployment exists but is not a map (e.g., empty/null) - treat as OMNISTRATE_HOSTED
-					info.DeploymentModelType = DeploymentModelOmnistrateHosted
+					return fmt.Errorf("hostedDeployment requires at least one cloud provider account config " +
+						"(e.g., AwsAccountId, GcpProjectId, AzureSubscriptionId, or OCITenancyId). " +
+						"If you want omnistrate-hosted deployment, remove the deployment section entirely")
 				}
 			}
 			if byoa, exists := depMap["byoaDeployment"]; exists {
@@ -213,167 +213,58 @@ func extractDeploymentInfo(yamlContent map[string]interface{}, info *ServicePlan
 	if info.DeploymentModelType == "" {
 		info.DeploymentModelType = DeploymentModelOmnistrateHosted
 	}
+	return nil
 }
 
 // extractAccountFromMap extracts cloud provider account information from a map
 func extractAccountFromMap(m map[string]interface{}, info *ServicePlanSpecInfo) {
-	getFirstString := func(m map[string]interface{}, keys ...string) string {
-		for _, key := range keys {
-			if v, ok := m[key].(string); ok && v != "" {
-				return v
-			}
-			if v, ok := m[key].(int); ok {
-				return fmt.Sprintf("%d", v)
-			}
+	getString := func(key string) string {
+		if v, ok := m[key].(string); ok {
+			return v
 		}
 		return ""
 	}
 
 	if info.AwsAccountID == "" {
-		info.AwsAccountID = getFirstString(m, "AwsAccountId", "awsAccountId", "awsAccountID", "AwsAccountID")
+		info.AwsAccountID = getString("AwsAccountId")
 	}
 	if info.AwsBootstrapRoleARN == "" {
-		info.AwsBootstrapRoleARN = getFirstString(m, "AwsBootstrapRoleAccountArn", "awsBootstrapRoleAccountArn", "awsBootstrapRoleARN", "AwsBootstrapRoleARN", "AWSBootstrapRoleAccountArn")
+		info.AwsBootstrapRoleARN = getString("AwsBootstrapRoleAccountArn")
 	}
 	if info.GcpProjectID == "" {
-		info.GcpProjectID = getFirstString(m, "GcpProjectId", "gcpProjectId", "gcpProjectID", "GcpProjectID")
+		info.GcpProjectID = getString("GcpProjectId")
 	}
 	if info.GcpProjectNumber == "" {
-		info.GcpProjectNumber = getFirstString(m, "GcpProjectNumber", "gcpProjectNumber")
+		info.GcpProjectNumber = getString("GcpProjectNumber")
 	}
 	if info.GcpServiceAccountEmail == "" {
-		info.GcpServiceAccountEmail = getFirstString(m, "GcpServiceAccountEmail", "gcpServiceAccountEmail")
+		info.GcpServiceAccountEmail = getString("GcpServiceAccountEmail")
 	}
 	if info.AzureSubscriptionID == "" {
-		info.AzureSubscriptionID = getFirstString(m, "AzureSubscriptionId", "azureSubscriptionId", "azureSubscriptionID", "AzureSubscriptionID")
+		info.AzureSubscriptionID = getString("AzureSubscriptionId")
 	}
 	if info.AzureTenantID == "" {
-		info.AzureTenantID = getFirstString(m, "AzureTenantId", "azureTenantId", "azureTenantID", "AzureTenantID")
+		info.AzureTenantID = getString("AzureTenantId")
 	}
 	if info.OCITenancyID == "" {
-		info.OCITenancyID = getFirstString(m, "OCITenancyId", "ociTenancyId", "ociTenancyID", "OCITenancyID")
+		info.OCITenancyID = getString("OCITenancyId")
 	}
 	if info.OCIDomainID == "" {
-		info.OCIDomainID = getFirstString(m, "OCIDomainId", "ociDomainId", "ociDomainID", "OCIDomainID")
+		info.OCIDomainID = getString("OCIDomainId")
 	}
 }
 
-// extractArtifactPaths extracts and deduplicates all artifactsLocalPath values from the services section
-// It looks for artifactsLocalPath in terraform, helm, kustomize, and operator configurations
-func extractArtifactPaths(yamlContent map[string]interface{}) []string {
-	pathSet := make(map[string]struct{})
-
-	// Get services array
-	services, ok := yamlContent["services"].([]interface{})
-	if !ok {
-		return nil
-	}
-
-	// Iterate through each service
-	for _, svc := range services {
-		svcMap, ok := svc.(map[string]interface{})
-		if !ok {
-			continue
+// UniqueArtifactPaths returns deduplicated artifact paths from ArtifactUploads
+func UniqueArtifactPaths(uploads []*ArtifactUploadInfo) []string {
+	seen := make(map[string]struct{})
+	var paths []string
+	for _, u := range uploads {
+		if _, ok := seen[u.Path]; !ok {
+			seen[u.Path] = struct{}{}
+			paths = append(paths, u.Path)
 		}
-
-		// Extract from terraformConfigurations
-		extractArtifactPathsFromTerraform(svcMap, pathSet)
-
-		// Extract from helmChartConfiguration
-		extractArtifactPathsFromHelm(svcMap, pathSet)
-
-		// Extract from kustomizeConfiguration
-		extractArtifactPathsFromKustomize(svcMap, pathSet)
-
-		// Extract from operatorCRDConfiguration
-		extractArtifactPathsFromOperator(svcMap, pathSet)
 	}
-
-	// Convert set to slice
-	if len(pathSet) == 0 {
-		return nil
-	}
-
-	paths := make([]string, 0, len(pathSet))
-	for path := range pathSet {
-		paths = append(paths, path)
-	}
-
 	return paths
-}
-
-// extractArtifactPathsFromTerraform extracts artifactsLocalPath from terraformConfigurations
-// Falls back to current directory ("./") if artifactsLocalPath is not specified and no gitConfiguration is present
-func extractArtifactPathsFromTerraform(svcMap map[string]interface{}, pathSet map[string]struct{}) {
-	terraformConfigs, ok := svcMap["terraformConfigurations"].(map[string]interface{})
-	if !ok {
-		return
-	}
-
-	// Check configurationPerCloudProvider
-	perCloudProvider, ok := terraformConfigs["configurationPerCloudProvider"].(map[string]interface{})
-	if !ok {
-		return
-	}
-
-	// Iterate through each cloud provider (aws, gcp, azure, oci)
-	cloudProviders := []string{"aws", "gcp", "azure", "oci"}
-	for _, cp := range cloudProviders {
-		cpConfig, ok := perCloudProvider[cp].(map[string]interface{})
-		if !ok {
-			continue
-		}
-
-		path, pathFound := cpConfig["artifactsLocalPath"].(string)
-		if !pathFound || path == "" {
-			// Skip fallback if gitConfiguration is present (git-based configs don't need local artifacts)
-			if _, hasGit := cpConfig["gitConfiguration"]; hasGit {
-				continue
-			}
-			// Fallback to current directory if artifactsLocalPath is not specified
-			path = "./"
-			pathFound = true
-		}
-		if pathFound && path != "" {
-			pathSet[path] = struct{}{}
-		}
-	}
-}
-
-// extractArtifactPathsFromHelm extracts artifactsLocalPath from helmChartConfiguration
-func extractArtifactPathsFromHelm(svcMap map[string]interface{}, pathSet map[string]struct{}) {
-	helmConfig, ok := svcMap["helmChartConfiguration"].(map[string]interface{})
-	if !ok {
-		return
-	}
-
-	if path, ok := helmConfig["artifactsLocalPath"].(string); ok && path != "" {
-		pathSet[path] = struct{}{}
-	}
-}
-
-// extractArtifactPathsFromKustomize extracts artifactsLocalPath from kustomizeConfiguration
-func extractArtifactPathsFromKustomize(svcMap map[string]interface{}, pathSet map[string]struct{}) {
-	kustomizeConfig, ok := svcMap["kustomizeConfiguration"].(map[string]interface{})
-	if !ok {
-		return
-	}
-
-	if path, ok := kustomizeConfig["artifactsLocalPath"].(string); ok && path != "" {
-		pathSet[path] = struct{}{}
-	}
-}
-
-// extractArtifactPathsFromOperator extracts artifactsLocalPath from operatorCRDConfiguration
-func extractArtifactPathsFromOperator(svcMap map[string]interface{}, pathSet map[string]struct{}) {
-	operatorConfig, ok := svcMap["operatorCRDConfiguration"].(map[string]interface{})
-	if !ok {
-		return
-	}
-
-	if path, ok := operatorConfig["artifactsLocalPath"].(string); ok && path != "" {
-		pathSet[path] = struct{}{}
-	}
 }
 
 // extractArtifactUploads extracts all artifact upload pairs (path, cloudProvider) from services configurations
@@ -520,9 +411,7 @@ func getAccountConfigIDForArtifact(
 	accountResult *AccountMatchResult,
 ) string {
 	// For BYOA or on-prem models, always use the first available account config
-	if deploymentModelType == DeploymentModelBYOA ||
-		deploymentModelType == DeploymentModelOnPrem ||
-		deploymentModelType == DeploymentModelOnPremCopilot {
+	if usesCentralAccountConfig(deploymentModelType) {
 		if accountResult != nil && accountResult.Matched.HasAnyAccountConfigID() {
 			ids := accountResult.Matched.ToSlice()
 			if len(ids) > 0 {
@@ -1017,9 +906,8 @@ func FindOrCreateServiceHierarchy(
 	}
 	result.ServiceAPIID = serviceAPIID
 
-	// Validate that CUSTOMER_HOSTED, BYOA, ON_PREM, and ON_PREM_COPILOT model types have account config IDs
-	// OMNISTRATE_HOSTED does not require account config IDs
-	if (serviceModelType == ServiceModelTypeCustomerHosted || serviceModelType == ServiceModelTypeBYOA || serviceModelType == ServiceModelTypeOnPrem || serviceModelType == ServiceModelTypeOnPremCopilot) && len(accountConfigIDs) == 0 {
+	// Validate that non-hosted model types have account config IDs
+	if requiresAccountConfig(serviceModelType) && len(accountConfigIDs) == 0 {
 		return nil, fmt.Errorf("%s deployment requires at least one linked cloud account. "+
 			"Please ensure your spec includes a deployment section with valid cloud provider account info "+
 			"(e.g., AwsAccountId, GcpProjectId, AzureSubscriptionId, or OCITenancyId) and that these accounts "+
@@ -1207,6 +1095,28 @@ func findOrCreateServiceModel(ctx context.Context, token, serviceID, serviceAPII
 	}
 
 	return serviceModelID, nil
+}
+
+// requiresAccountConfig returns true if the service model type requires account config IDs.
+// OMNISTRATE_HOSTED does not require account config IDs.
+func requiresAccountConfig(serviceModelType string) bool {
+	switch serviceModelType {
+	case ServiceModelTypeCustomerHosted, ServiceModelTypeBYOA, ServiceModelTypeOnPrem, ServiceModelTypeOnPremCopilot:
+		return true
+	default:
+		return false
+	}
+}
+
+// usesCentralAccountConfig returns true if the deployment model uses a single central account
+// config rather than per-cloud-provider accounts (BYOA and on-prem models).
+func usesCentralAccountConfig(deploymentModelType string) bool {
+	switch deploymentModelType {
+	case DeploymentModelBYOA, DeploymentModelOnPrem, DeploymentModelOnPremCopilot:
+		return true
+	default:
+		return false
+	}
 }
 
 // DeploymentModelToServiceModelType converts deployment model type to service model type
