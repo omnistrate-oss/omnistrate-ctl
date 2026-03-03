@@ -172,7 +172,7 @@ func runCreate(cmd *cobra.Command, args []string) error {
 
 		// Fall back to a lightweight describe if version wasn't in search results
 		if sourceVersion == "" {
-			describeRes, descErr := dataaccess.DescribeResourceInstance(cmd.Context(), token, serviceID, environmentID, instanceID, false)
+			describeRes, descErr := dataaccess.DescribeResourceInstance(cmd.Context(), token, serviceID, environmentID, instanceID)
 			if descErr != nil {
 				utils.HandleSpinnerError(spinner, sm, descErr)
 				return descErr
