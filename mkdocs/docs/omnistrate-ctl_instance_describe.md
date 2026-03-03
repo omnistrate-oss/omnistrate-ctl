@@ -27,7 +27,6 @@ omnistrate-ctl instance describe instance-abcd1234 --deployment-status --resourc
 
 ```
       --deployment-status     Return compact deployment status information instead of full instance details
-      --detail                Include detailed information in the response
   -h, --help                  help for describe
   -o, --output string         Output format. Only json is supported (default "json")
       --resource-id string    Filter results by resource ID
