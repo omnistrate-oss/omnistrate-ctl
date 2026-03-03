@@ -764,21 +764,17 @@ func runBuild(cmd *cobra.Command, args []string) error {
 		IsNewServicePlanVersionCreated: isNewVersionCreated,
 	}
 
-	if release || releaseAsPreferred {
+	if !dryRun && (release || releaseAsPreferred) {
 		versionDetails, err := dataaccess.DescribeLatestVersion(cmd.Context(), token, ServiceID, ProductTierID)
 		if err != nil {
-			// For dry-run, it's okay if there's no version yet - just skip
-			if !dryRun {
-				err = errors.Wrap(err, "failed to get the latest version")
-				return err
-			}
-		} else {
-			servicePlanDetails.Version = versionDetails.Version
-			if versionDetails.Name != nil {
-				servicePlanDetails.ReleaseDescription = *versionDetails.Name
-			}
-			servicePlanDetails.VersionSetStatus = versionDetails.Status
+			err = errors.Wrap(err, "failed to get the latest version")
+			return err
 		}
+		servicePlanDetails.Version = versionDetails.Version
+		if versionDetails.Name != nil {
+			servicePlanDetails.ReleaseDescription = *versionDetails.Name
+		}
+		servicePlanDetails.VersionSetStatus = versionDetails.Status
 	}
 
 	if err = utils.PrintTextTableJsonOutput(output, servicePlanDetails); err != nil {
