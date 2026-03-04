@@ -238,7 +238,7 @@ type cardTheme struct {
 	icon   string
 }
 
-func renderPlanDAGStyledWithSelection(plan *PlanDAG, width int, selectedNodeID string, expandedNodes map[string]bool) []string {
+func renderPlanDAGStyledWithSelection(plan *PlanDAG, width int, selectedNodeID string, expandedNodes map[string]bool, highlightDeps bool) []string {
 	if plan == nil {
 		style := lipgloss.NewStyle().Foreground(lipgloss.Color("1")).Bold(true)
 		return []string{style.Render("Deployment plan unavailable")}
@@ -268,13 +268,13 @@ func renderPlanDAGStyledWithSelection(plan *PlanDAG, width int, selectedNodeID s
 		lines = append(lines, "")
 	}
 
-	diagram := drawPlanDAGStyled(plan, width, selectedNodeID, expandedNodes)
+	diagram := drawPlanDAGStyled(plan, width, selectedNodeID, expandedNodes, highlightDeps)
 	lines = append(lines, diagram...)
 
 	return lines
 }
 
-func drawPlanDAGStyled(plan *PlanDAG, _ int, selectedNodeID string, expandedNodes map[string]bool) []string {
+func drawPlanDAGStyled(plan *PlanDAG, _ int, selectedNodeID string, expandedNodes map[string]bool, highlightDeps bool) []string {
 	layout := orderPlanLevels(plan)
 	levels := layout.levels
 	if len(levels) == 0 {
@@ -431,19 +431,46 @@ func drawPlanDAGStyled(plan *PlanDAG, _ int, selectedNodeID string, expandedNode
 		}
 	}
 
+	// Compute ancestor highlight set: selected node + all its ancestors
+	highlightSet := make(map[string]bool)
+	if highlightDeps && selectedNodeID != "" {
+		highlightSet[selectedNodeID] = true
+		for id := range findAncestors(selectedNodeID, parentIDs) {
+			highlightSet[id] = true
+		}
+	}
+
 	connectorStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("172"))
-	for _, edge := range plan.Edges {
-		from, okFrom := placements[edge.From]
-		to, okTo := placements[edge.To]
-		if !okFrom || !okTo {
-			continue
+	dimConnStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("239"))
+
+	// Draw dimmed connectors first, then highlighted ones on top,
+	// so highlighted lines are never overwritten by dimmed ones.
+	for pass := 0; pass < 2; pass++ {
+		for _, edge := range plan.Edges {
+			from, okFrom := placements[edge.From]
+			to, okTo := placements[edge.To]
+			if !okFrom || !okTo {
+				continue
+			}
+			if from.col >= to.col {
+				continue
+			}
+			fromH := nodeHeight[edge.From]
+			toH := nodeHeight[edge.To]
+			isHighlighted := selectedNodeID == "" || (highlightSet[edge.From] && highlightSet[edge.To])
+			// pass 0: dimmed only, pass 1: highlighted only
+			if pass == 0 && isHighlighted {
+				continue
+			}
+			if pass == 1 && !isHighlighted {
+				continue
+			}
+			style := connectorStyle
+			if !isHighlighted {
+				style = dimConnStyle
+			}
+			drawConnectorDynamic(canvas, from, to, cardWidth, fromH, toH, style)
 		}
-		if from.col >= to.col {
-			continue
-		}
-		fromH := nodeHeight[edge.From]
-		toH := nodeHeight[edge.To]
-		drawConnectorDynamic(canvas, from, to, cardWidth, fromH, toH, connectorStyle)
 	}
 
 	for _, level := range levels {
@@ -452,7 +479,8 @@ func drawPlanDAGStyled(plan *PlanDAG, _ int, selectedNodeID string, expandedNode
 			card := cards[nodeID]
 			h := nodeHeight[nodeID]
 			isSelected := nodeID == selectedNodeID
-			drawCard(canvas, pos.x, pos.y, cardWidth, h, card, isSelected)
+			isDimmed := selectedNodeID != "" && !highlightSet[nodeID]
+			drawCard(canvas, pos.x, pos.y, cardWidth, h, card, isSelected, isDimmed)
 		}
 	}
 
@@ -533,7 +561,26 @@ func iconForType(tag string, theme cardTheme) (rune, lipgloss.Style) {
 	}
 }
 
-func drawCard(canvas *dagCanvas, x, y, width, height int, card nodeCard, selected bool) {
+// findAncestors returns the set of all ancestor node IDs for the given node (not including itself).
+func findAncestors(nodeID string, parentIDs map[string][]string) map[string]bool {
+	ancestors := make(map[string]bool)
+	queue := []string{nodeID}
+	visited := map[string]bool{nodeID: true}
+	for len(queue) > 0 {
+		current := queue[0]
+		queue = queue[1:]
+		for _, parent := range parentIDs[current] {
+			if !visited[parent] {
+				visited[parent] = true
+				ancestors[parent] = true
+				queue = append(queue, parent)
+			}
+		}
+	}
+	return ancestors
+}
+
+func drawCard(canvas *dagCanvas, x, y, width, height int, card nodeCard, selected bool, dimmed bool) {
 	if width < 4 || height < 3 {
 		return
 	}
@@ -544,6 +591,14 @@ func drawCard(canvas *dagCanvas, x, y, width, height int, card nodeCard, selecte
 	titleStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color(card.theme.title))
 	labelStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(card.theme.label))
 	valueStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(card.theme.value))
+
+	if dimmed {
+		dimColor := lipgloss.Color("239")
+		borderStyle = lipgloss.NewStyle().Foreground(dimColor)
+		titleStyle = lipgloss.NewStyle().Foreground(dimColor)
+		labelStyle = lipgloss.NewStyle().Foreground(dimColor)
+		valueStyle = lipgloss.NewStyle().Foreground(dimColor)
+	}
 
 	if selected {
 		borderStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("205")).Bold(true)
@@ -579,7 +634,7 @@ func drawCard(canvas *dagCanvas, x, y, width, height int, card nodeCard, selecte
 	offset := 0
 	if card.hasProgress {
 		offset = 1
-		drawProgressBar(canvas, x+1, y+1, inner, card, noStyle)
+		drawProgressBar(canvas, x+1, y+1, inner, card, noStyle, dimmed)
 	}
 
 	titleY := y + 1 + offset
@@ -592,6 +647,9 @@ func drawCard(canvas *dagCanvas, x, y, width, height int, card nodeCard, selecte
 	isFailed := card.hasProgress && (card.progress.Status == "failed" || card.progress.Status == "error")
 	if isFailed && remaining >= 2 {
 		failStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("203")).Bold(true)
+		if dimmed {
+			failStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("239"))
+		}
 		canvas.set(contentX, titleY, '!', failStyle)
 		contentX++
 		remaining--
@@ -608,11 +666,15 @@ func drawCard(canvas *dagCanvas, x, y, width, height int, card nodeCard, selecte
 	writeLabelValue(canvas, x+1, keyY, card.keyLabel+":", card.keyValue, inner, labelStyle, valueStyle)
 
 	// Dependency checklist
+	dimColor := lipgloss.Color("239")
 	depsStartY := keyY + 1
 	if len(card.deps) > 0 {
 		if card.expanded {
 			// Header line
 			depsHeaderStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("245")).Bold(true)
+			if dimmed {
+				depsHeaderStyle = lipgloss.NewStyle().Foreground(dimColor)
+			}
 			writeText(canvas, x+1, depsStartY, "▾ Depends on:", depsHeaderStyle, inner)
 			depsStartY++
 			// One line per dependency with status icon
@@ -622,8 +684,14 @@ func drawCard(canvas *dagCanvas, x, y, width, height int, card nodeCard, selecte
 					break
 				}
 				icon, iconSt := depStatusIcon(dep.status)
+				if dimmed {
+					iconSt = lipgloss.NewStyle().Foreground(dimColor)
+				}
 				canvas.set(x+2, depY, icon, iconSt)
 				depNameStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("252"))
+				if dimmed {
+					depNameStyle = lipgloss.NewStyle().Foreground(dimColor)
+				}
 				writeText(canvas, x+4, depY, dep.name, depNameStyle, inner-3)
 			}
 		} else {
@@ -637,7 +705,9 @@ func drawCard(canvas *dagCanvas, x, y, width, height int, card nodeCard, selecte
 					done++
 				}
 			}
-			if done == len(card.deps) {
+			if dimmed {
+				collapsedStyle = lipgloss.NewStyle().Foreground(dimColor)
+			} else if done == len(card.deps) {
 				summary = fmt.Sprintf("▸ %d deps ✓", len(card.deps))
 				collapsedStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("82"))
 			} else {
@@ -661,7 +731,7 @@ func depStatusIcon(status string) (rune, lipgloss.Style) {
 	}
 }
 
-func drawProgressBar(canvas *dagCanvas, x, y, width int, card nodeCard, bgStyle lipgloss.Style) {
+func drawProgressBar(canvas *dagCanvas, x, y, width int, card nodeCard, bgStyle lipgloss.Style, dimmed bool) {
 	if width <= 0 {
 		return
 	}
@@ -674,6 +744,11 @@ func drawProgressBar(canvas *dagCanvas, x, y, width int, card nodeCard, bgStyle 
 	if card.progressLoading {
 		shimmerStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("241"))
 		spinnerStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("205"))
+		if dimmed {
+			dimColor := lipgloss.Color("239")
+			shimmerStyle = lipgloss.NewStyle().Foreground(dimColor)
+			spinnerStyle = lipgloss.NewStyle().Foreground(dimColor)
+		}
 		r := card.spinnerRune
 		if r == 0 {
 			r = '⠋'
@@ -693,6 +768,13 @@ func drawProgressBar(canvas *dagCanvas, x, y, width int, card nodeCard, bgStyle 
 
 	progress := card.progress
 	fillStyle, emptyStyle, textStyle := progressStyles(card.theme, progress.Status)
+
+	if dimmed {
+		dimColor := lipgloss.Color("239")
+		fillStyle = lipgloss.NewStyle().Foreground(dimColor)
+		emptyStyle = lipgloss.NewStyle().Foreground(dimColor)
+		textStyle = lipgloss.NewStyle().Foreground(dimColor)
+	}
 
 	label := fmt.Sprintf("%3d%%", clampInt(progress.Percent, 0, 100))
 	labelWidth := len([]rune(label))
@@ -864,6 +946,8 @@ func drawConnRuneStyled(canvas *dagCanvas, x, y int, r rune, style lipgloss.Styl
 		return
 	}
 	if current == r {
+		// Allow re-drawing same rune with new style (e.g., highlighted over dimmed)
+		canvas.set(x, y, r, style)
 		return
 	}
 	canvas.set(x, y, r, style)

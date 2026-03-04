@@ -59,6 +59,7 @@ type dagModel struct {
 	cursorIndex     int
 	showCursor      bool
 	expandedNodes   map[string]bool // nodes with expanded dependency checklist
+	highlightDeps   bool            // whether to highlight ancestor dependency chain
 
 	// Sub-view
 	detailModel tea.Model
@@ -102,6 +103,7 @@ func newDagModel(data DebugData) dagModel {
 		nodeLevels:      levels,
 		showCursor:      len(nodes) > 0,
 		expandedNodes:   make(map[string]bool),
+		highlightDeps:   true,
 		progressLoading: hasNodes,
 		spinner:         s,
 	}
@@ -358,6 +360,9 @@ func (m dagModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.expandedNodes[nodeID] = !m.expandedNodes[nodeID]
 				m.rebuildLayout()
 			}
+		case "d":
+			m.highlightDeps = !m.highlightDeps
+			m.rebuildLayout()
 		}
 		m.clampScroll()
 	case wfProgressMsg:
@@ -724,7 +729,7 @@ func (m dagModel) renderHelp() string {
 		nodeID := m.selectableNodes[m.cursorIndex]
 		node := m.plan.Nodes[nodeID]
 		selectedStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("230")).Bold(true)
-		text = fmt.Sprintf("tab/shift+tab: select  space: deps  enter: open  arrows: scroll  q: quit  │  %s", selectedStyle.Render(nodeLabel(node)))
+		text = fmt.Sprintf("tab/shift+tab: select  space: deps  d: highlight  enter: open  arrows: scroll  q: quit  │  %s", selectedStyle.Render(nodeLabel(node)))
 	} else {
 		text = "arrows: scroll  pgup/pgdn: page  home/end: jump  q: quit"
 	}
@@ -808,7 +813,7 @@ func (m *dagModel) rebuildLayout() {
 		m.plan.SpinnerTick++
 	}
 
-	m.lines = renderPlanDAGStyledWithSelection(m.plan, bodyWidth, selectedNodeID, m.expandedNodes)
+	m.lines = renderPlanDAGStyledWithSelection(m.plan, bodyWidth, selectedNodeID, m.expandedNodes, m.highlightDeps)
 	m.contentWidth = maxLineWidthANSI(m.lines)
 	m.clampScroll()
 }
