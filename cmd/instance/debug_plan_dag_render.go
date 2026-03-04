@@ -217,6 +217,13 @@ type nodeCard struct {
 	hasProgress     bool
 	progressLoading bool
 	spinnerRune     rune
+	deps            []depEntry // parent dependencies with status
+	expanded        bool       // whether to show deps checklist
+}
+
+type depEntry struct {
+	name   string
+	status string // "completed", "running", "pending", "failed", etc.
 }
 
 type cardTheme struct {
@@ -228,7 +235,7 @@ type cardTheme struct {
 	icon   string
 }
 
-func renderPlanDAGStyledWithSelection(plan *PlanDAG, width int, selectedNodeID string) []string {
+func renderPlanDAGStyledWithSelection(plan *PlanDAG, width int, selectedNodeID string, expandedNodes map[string]bool) []string {
 	if plan == nil {
 		style := lipgloss.NewStyle().Foreground(lipgloss.Color("1")).Bold(true)
 		return []string{style.Render("Deployment plan unavailable")}
@@ -258,17 +265,27 @@ func renderPlanDAGStyledWithSelection(plan *PlanDAG, width int, selectedNodeID s
 		lines = append(lines, "")
 	}
 
-	diagram := drawPlanDAGStyled(plan, width, selectedNodeID)
+	diagram := drawPlanDAGStyled(plan, width, selectedNodeID, expandedNodes)
 	lines = append(lines, diagram...)
 
 	return lines
 }
 
-func drawPlanDAGStyled(plan *PlanDAG, _ int, selectedNodeID string) []string {
+func drawPlanDAGStyled(plan *PlanDAG, _ int, selectedNodeID string, expandedNodes map[string]bool) []string {
 	layout := orderPlanLevels(plan)
 	levels := layout.levels
 	if len(levels) == 0 {
 		return []string{"No resources found for this plan version."}
+	}
+
+	if expandedNodes == nil {
+		expandedNodes = make(map[string]bool)
+	}
+
+	// Build reverse dependency map: nodeID → list of parent node IDs
+	parentIDs := make(map[string][]string)
+	for _, edge := range plan.Edges {
+		parentIDs[edge.To] = append(parentIDs[edge.To], edge.From)
 	}
 
 	cards := make(map[string]nodeCard)
@@ -276,6 +293,26 @@ func drawPlanDAGStyled(plan *PlanDAG, _ int, selectedNodeID string) []string {
 	for id, node := range plan.Nodes {
 		progress, ok := progressForNode(plan, node)
 		card := buildNodeCard(node, progress, ok)
+
+		// Build dependency entries from parents
+		for _, parentID := range parentIDs[id] {
+			parentNode, exists := plan.Nodes[parentID]
+			if !exists {
+				continue
+			}
+			dep := depEntry{name: nodeLabel(parentNode), status: "pending"}
+			if parentProgress, pOk := progressForNode(plan, parentNode); pOk {
+				dep.status = strings.ToLower(parentProgress.Status)
+			}
+			card.deps = append(card.deps, dep)
+		}
+		// Sort deps by name for stable display
+		sort.Slice(card.deps, func(i, j int) bool {
+			return card.deps[i].name < card.deps[j].name
+		})
+
+		card.expanded = expandedNodes[id]
+
 		// Mark all nodes as loading while progress fetch is in flight
 		if plan.ProgressLoading {
 			card.progressLoading = true
@@ -303,9 +340,9 @@ func drawPlanDAGStyled(plan *PlanDAG, _ int, selectedNodeID string) []string {
 			break
 		}
 	}
-	cardHeight := 5
+	baseCardHeight := 5
 	if anyProgress {
-		cardHeight = 6
+		baseCardHeight = 6
 	}
 	hGap := 6
 	vGap := 2
@@ -313,24 +350,47 @@ func drawPlanDAGStyled(plan *PlanDAG, _ int, selectedNodeID string) []string {
 		hGap = 4
 	}
 
+	// Compute per-node card height (base + expanded dep lines + collapsed indicator)
+	nodeHeight := make(map[string]int)
+	for id, card := range cards {
+		h := baseCardHeight
+		if len(card.deps) > 0 && !card.expanded {
+			h++ // collapsed: one line showing "▸ N dependencies"
+		} else if card.expanded && len(card.deps) > 0 {
+			h += len(card.deps) + 1 // header line + one line per dep
+		}
+		nodeHeight[id] = h
+	}
+
 	// Outer border padding
 	outerPadX := 2
 	outerPadY := 1
 
-	maxNodes := maxLevelSize(levels)
-	innerTotalWidth := len(levels)*cardWidth + (len(levels)-1)*hGap
-	innerTotalHeight := maxNodes*cardHeight + (maxNodes-1)*vGap
+	// Compute max column height (sum of node heights + gaps in that column)
+	maxColHeight := 0
+	for _, level := range levels {
+		colH := 0
+		for i, nodeID := range level {
+			colH += nodeHeight[nodeID]
+			if i > 0 {
+				colH += vGap
+			}
+		}
+		if colH > maxColHeight {
+			maxColHeight = colH
+		}
+	}
 
-	// Account for level separator dotted lines (one between each pair of levels)
+	innerTotalWidth := len(levels)*cardWidth + (len(levels)-1)*hGap
 	numSeparators := len(levels) - 1
 
-	totalWidth := innerTotalWidth + 2*outerPadX + 2 + numSeparators // +numSeparators for level separator columns
-	totalHeight := innerTotalHeight + 2*outerPadY + 2
+	totalWidth := innerTotalWidth + 2*outerPadX + 2 + numSeparators
+	totalHeight := maxColHeight + 2*outerPadY + 2
 	if totalWidth < cardWidth+2*outerPadX+2 {
 		totalWidth = cardWidth + 2*outerPadX + 2
 	}
-	if totalHeight < cardHeight+2*outerPadY+2 {
-		totalHeight = cardHeight + 2*outerPadY + 2
+	if totalHeight < baseCardHeight+2*outerPadY+2 {
+		totalHeight = baseCardHeight + 2*outerPadY + 2
 	}
 
 	canvas := newDagCanvas(totalWidth, totalHeight)
@@ -340,22 +400,22 @@ func drawPlanDAGStyled(plan *PlanDAG, _ int, selectedNodeID string) []string {
 	outerBorderStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
 	canvas.drawBorder(0, 0, totalWidth, totalHeight, outerBorderStyle)
 
-	// Compute x-offset for each level column, accounting for separators before it
-	offsetX := outerPadX + 1 // +1 for left border char
-	offsetY := outerPadY + 1 // +1 for top border char
+	// Compute x-offset for each level column
+	offsetX := outerPadX + 1
+	offsetY := outerPadY + 1
 
-	// Build level x-positions (each separator adds 1 column of width)
 	levelX := make([]int, len(levels))
 	for col := range levels {
-		levelX[col] = offsetX + col*(cardWidth+hGap) + col // +col for separator columns before this level
+		levelX[col] = offsetX + col*(cardWidth+hGap) + col
 	}
 
+	// Place nodes with cumulative Y per column (dynamic heights)
 	placements := make(map[string]planDAGPlacement)
 	for col, level := range levels {
-		for row, nodeID := range level {
-			x := levelX[col]
-			y := offsetY + row*(cardHeight+vGap)
-			placements[nodeID] = planDAGPlacement{col: col, x: x, y: y}
+		curY := offsetY
+		for _, nodeID := range level {
+			placements[nodeID] = planDAGPlacement{col: col, x: levelX[col], y: curY}
+			curY += nodeHeight[nodeID] + vGap
 		}
 	}
 
@@ -378,15 +438,18 @@ func drawPlanDAGStyled(plan *PlanDAG, _ int, selectedNodeID string) []string {
 		if from.col >= to.col {
 			continue
 		}
-		drawConnector(canvas, from, to, cardWidth, cardHeight, connectorStyle)
+		fromH := nodeHeight[edge.From]
+		toH := nodeHeight[edge.To]
+		drawConnectorDynamic(canvas, from, to, cardWidth, fromH, toH, connectorStyle)
 	}
 
 	for _, level := range levels {
 		for _, nodeID := range level {
 			pos := placements[nodeID]
 			card := cards[nodeID]
+			h := nodeHeight[nodeID]
 			isSelected := nodeID == selectedNodeID
-			drawCard(canvas, pos.x, pos.y, cardWidth, cardHeight, card, isSelected)
+			drawCard(canvas, pos.x, pos.y, cardWidth, h, card, isSelected)
 		}
 	}
 
@@ -394,7 +457,8 @@ func drawPlanDAGStyled(plan *PlanDAG, _ int, selectedNodeID string) []string {
 	if selectedNodeID != "" {
 		if pos, ok := placements[selectedNodeID]; ok {
 			arrowStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("205")).Bold(true)
-			arrowY := pos.y + cardHeight/2
+			selH := nodeHeight[selectedNodeID]
+			arrowY := pos.y + selH/2
 			arrowX := pos.x - 1
 			if arrowX >= 0 {
 				canvas.set(arrowX, arrowY, '▶', arrowStyle)
@@ -508,10 +572,8 @@ func drawCard(canvas *dagCanvas, x, y, width, height int, card nodeCard, selecte
 	}
 
 	offset := 0
-	if height >= 6 {
-		offset = 1
-	}
 	if card.hasProgress {
+		offset = 1
 		drawProgressBar(canvas, x+1, y+1, inner, card, noStyle)
 	}
 
@@ -539,6 +601,59 @@ func drawCard(canvas *dagCanvas, x, y, width, height int, card nodeCard, selecte
 
 	writeLabelValue(canvas, x+1, typeY, "Type:", strings.TrimPrefix(card.meta1, "Type: "), inner, labelStyle, valueStyle)
 	writeLabelValue(canvas, x+1, keyY, card.keyLabel+":", card.keyValue, inner, labelStyle, valueStyle)
+
+	// Dependency checklist
+	depsStartY := keyY + 1
+	if len(card.deps) > 0 {
+		if card.expanded {
+			// Header line
+			depsHeaderStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("245")).Bold(true)
+			writeText(canvas, x+1, depsStartY, "▾ Depends on:", depsHeaderStyle, inner)
+			depsStartY++
+			// One line per dependency with status icon
+			for i, dep := range card.deps {
+				depY := depsStartY + i
+				if depY >= y+height-1 {
+					break
+				}
+				icon, iconSt := depStatusIcon(dep.status)
+				canvas.set(x+2, depY, icon, iconSt)
+				depNameStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("252"))
+				writeText(canvas, x+4, depY, dep.name, depNameStyle, inner-3)
+			}
+		} else {
+			// Collapsed: show summary
+			collapsedStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("245"))
+			summary := fmt.Sprintf("▸ %d deps", len(card.deps))
+			// Show count of completed vs total
+			done := 0
+			for _, dep := range card.deps {
+				if dep.status == "completed" || dep.status == "success" {
+					done++
+				}
+			}
+			if done == len(card.deps) {
+				summary = fmt.Sprintf("▸ %d deps ✓", len(card.deps))
+				collapsedStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("82"))
+			} else {
+				summary = fmt.Sprintf("▸ %d/%d deps ready", done, len(card.deps))
+			}
+			writeText(canvas, x+1, depsStartY, summary, collapsedStyle, inner)
+		}
+	}
+}
+
+func depStatusIcon(status string) (rune, lipgloss.Style) {
+	switch strings.ToLower(status) {
+	case "completed", "success":
+		return '✓', lipgloss.NewStyle().Foreground(lipgloss.Color("82"))
+	case "failed", "error":
+		return '✗', lipgloss.NewStyle().Foreground(lipgloss.Color("203"))
+	case "running", "in_progress", "in-progress", "started":
+		return '●', lipgloss.NewStyle().Foreground(lipgloss.Color("220"))
+	default:
+		return '○', lipgloss.NewStyle().Foreground(lipgloss.Color("245"))
+	}
 }
 
 func drawProgressBar(canvas *dagCanvas, x, y, width int, card nodeCard, bgStyle lipgloss.Style) {
@@ -649,6 +764,55 @@ func writeText(canvas *dagCanvas, x, y int, text string, style lipgloss.Style, m
 		canvas.set(x+i, y, r, style)
 	}
 	return len(runes)
+}
+
+func drawConnectorDynamic(canvas *dagCanvas, from, to planDAGPlacement, cardWidth, fromHeight, toHeight int, style lipgloss.Style) {
+	fromY := from.y + fromHeight/2
+	toY := to.y + toHeight/2
+	startX := from.x + cardWidth
+	endX := to.x - 1
+	if endX < startX {
+		endX = startX
+	}
+	midX := startX
+	if endX > startX {
+		midX = startX + (endX-startX)/2
+	}
+
+	if fromY == toY {
+		drawHorizontalStyled(canvas, fromY, startX, endX-1, style)
+		canvas.set(endX, toY, arrowHead, style)
+		return
+	}
+
+	if midX > startX {
+		drawHorizontalStyled(canvas, fromY, startX, midX-1, style)
+	}
+
+	if fromY < toY {
+		canvas.set(midX, fromY, turnDownLeft, style)
+	} else {
+		canvas.set(midX, fromY, turnUpLeft, style)
+	}
+
+	minY, maxY := fromY, toY
+	if maxY < minY {
+		minY, maxY = maxY, minY
+	}
+	if maxY-minY > 1 {
+		drawVerticalStyled(canvas, midX, minY+1, maxY-1, style)
+	}
+
+	if fromY < toY {
+		canvas.set(midX, toY, turnUpRight, style)
+	} else {
+		canvas.set(midX, toY, turnDownRight, style)
+	}
+
+	if endX-1 > midX {
+		drawHorizontalStyled(canvas, toY, midX+1, endX-1, style)
+	}
+	canvas.set(endX, toY, arrowHead, style)
 }
 
 func drawConnector(canvas *dagCanvas, from, to planDAGPlacement, cardWidth, cardHeight int, style lipgloss.Style) {
