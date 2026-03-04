@@ -453,19 +453,6 @@ func drawPlanDAGStyled(plan *PlanDAG, _ int, selectedNodeID string, expandedNode
 		}
 	}
 
-	// Draw selection indicator arrow to the left of the selected card
-	if selectedNodeID != "" {
-		if pos, ok := placements[selectedNodeID]; ok {
-			arrowStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("205")).Bold(true)
-			selH := nodeHeight[selectedNodeID]
-			arrowY := pos.y + selH/2
-			arrowX := pos.x - 1
-			if arrowX >= 0 {
-				canvas.set(arrowX, arrowY, '▶', arrowStyle)
-			}
-		}
-	}
-
 	return canvas.render()
 }
 
@@ -558,9 +545,24 @@ func drawCard(canvas *dagCanvas, x, y, width, height int, card nodeCard, selecte
 	if selected {
 		borderStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("205")).Bold(true)
 		titleStyle = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("230"))
-		// Draw outer glow border 1 cell outside the card
-		glowStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("205"))
-		canvas.drawBorder(x-1, y-1, width+2, height+2, glowStyle)
+		// Draw thick outer glow border 1 cell outside the card
+		glowStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("205")).Bold(true)
+		gx, gy, gw, gh := x-1, y-1, width+2, height+2
+		// Heavy horizontal lines top/bottom
+		for col := 0; col < gw; col++ {
+			canvas.set(gx+col, gy, '━', glowStyle)
+			canvas.set(gx+col, gy+gh-1, '━', glowStyle)
+		}
+		// Heavy vertical lines left/right
+		for row := 1; row < gh-1; row++ {
+			canvas.set(gx, gy+row, '┃', glowStyle)
+			canvas.set(gx+gw-1, gy+row, '┃', glowStyle)
+		}
+		// Heavy corners
+		canvas.set(gx, gy, '┏', glowStyle)
+		canvas.set(gx+gw-1, gy, '┓', glowStyle)
+		canvas.set(gx, gy+gh-1, '┗', glowStyle)
+		canvas.set(gx+gw-1, gy+gh-1, '┛', glowStyle)
 	}
 
 	canvas.drawBorder(x, y, width, height, borderStyle)
