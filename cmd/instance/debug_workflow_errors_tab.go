@@ -1,33 +1,183 @@
 package instance
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
 
+	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/omnistrate-oss/omnistrate-ctl/internal/dataaccess"
 	"github.com/omnistrate-oss/omnistrate-ctl/internal/model"
 )
 
-// workflowErrorsState holds the scroll state for the workflow events tab.
+// workflowErrorsState holds the scroll and selection state for the workflow events tab.
 type workflowErrorsState struct {
-	scroll int
+	scroll         int
+	cursor         int
+	modalText      string // non-empty means event detail modal is open
+	modalTitle     string
+	modalScroll    int
+	refreshing     bool      // true while fetching fresh workflow events
+	lastRefresh    time.Time // when the last successful refresh completed
+}
+
+// wfEventsRefreshMsg carries refreshed workflow steps for a resource.
+type wfEventsRefreshMsg struct {
+	steps *ResourceWorkflowSteps
+	err   error
+}
+
+// wfCountdownTickMsg fires every second to update the countdown display.
+type wfCountdownTickMsg struct{}
+
+const wfEventsRefreshInterval = 5 * time.Second
+
+// isWorkflowInProgress returns true if any step is still in-progress or pending.
+func isWorkflowInProgress(steps *ResourceWorkflowSteps) bool {
+	if steps == nil || len(steps.Steps) == 0 {
+		return false
+	}
+	for _, s := range steps.Steps {
+		if s.Status == "in-progress" || s.Status == "pending" {
+			return true
+		}
+	}
+	return false
+}
+
+// renderLiveIndicator renders a "● LIVE  Refreshing..." or "● LIVE  Next refresh in Xs" line.
+func renderLiveIndicator(spinnerView string, refreshing bool, lastRefresh time.Time, interval ...time.Duration) string {
+	liveStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("82"))
+	dimStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("245"))
+
+	refreshInterval := wfEventsRefreshInterval
+	if len(interval) > 0 {
+		refreshInterval = interval[0]
+	}
+
+	live := liveStyle.Render("● LIVE")
+	if refreshing {
+		return fmt.Sprintf("  %s  %s %s", live, spinnerView, dimStyle.Render("Refreshing…"))
+	}
+	if lastRefresh.IsZero() {
+		return fmt.Sprintf("  %s", live)
+	}
+	elapsed := time.Since(lastRefresh)
+	remaining := refreshInterval - elapsed
+	if remaining < 0 {
+		remaining = 0
+	}
+	secs := int(remaining.Seconds())
+	if secs <= 0 {
+		return fmt.Sprintf("  %s  %s %s", live, spinnerView, dimStyle.Render("Refreshing…"))
+	}
+	return fmt.Sprintf("  %s  %s", live, dimStyle.Render(fmt.Sprintf("Next refresh in %ds", secs)))
+}
+
+func scheduleWfEventsRefresh() tea.Cmd {
+	return tea.Tick(wfEventsRefreshInterval, func(time.Time) tea.Msg {
+		return wfEventsRefreshTickMsg{}
+	})
+}
+
+func scheduleWfCountdownTick() tea.Cmd {
+	return tea.Tick(1*time.Second, func(time.Time) tea.Msg {
+		return wfCountdownTickMsg{}
+	})
+}
+
+// wfEventsRefreshTickMsg triggers a workflow events data refresh.
+type wfEventsRefreshTickMsg struct{}
+
+// fetchWfEventsForResource fetches fresh workflow events for a specific resource key.
+func fetchWfEventsForResource(data DebugData, resourceKey string) tea.Cmd {
+	return func() tea.Msg {
+		ctx := context.Background()
+		resourcesData, _, err := dataaccess.GetDebugEventsForAllResources(
+			ctx, data.Token, data.ServiceID, data.EnvironmentID, data.InstanceID, true,
+		)
+		if err != nil {
+			return wfEventsRefreshMsg{err: err}
+		}
+		for _, resource := range resourcesData {
+			if resource.ResourceKey == resourceKey {
+				steps := buildStepsFromRawSteps(resource.RawSteps)
+				return wfEventsRefreshMsg{steps: steps}
+			}
+		}
+		return wfEventsRefreshMsg{}
+	}
 }
 
 // WorkflowStepInfo holds step-level summary with timing and events.
 type WorkflowStepInfo struct {
-	Name      string
-	Status    string // "success", "in-progress", "failed", "pending"
-	StartTime string
-	EndTime   string
-	Events    []dataaccess.DebugEvent
+	Name         string
+	DisplayName  string // overridden display name (e.g. "Waiting for dependencies" for Bootstrap)
+	Status       string // "success", "in-progress", "failed", "pending"
+	StartTime    string
+	EndTime      string
+	Events       []dataaccess.DebugEvent
+	DepTimelines []depTimeline // populated for bootstrap steps only
+}
+
+// depTimeline holds the completion status of a dependency resource for Bootstrap step rendering.
+type depTimeline struct {
+	Name       string // dependency resource name or key
+	Status     string // overall status: "completed", "running", "pending", "failed"
+	FinishedAt string // RFC3339 time when the dependency finished (empty if not done)
+}
+
+// stepDisplayName returns the display name for the step (using override if set).
+func (s WorkflowStepInfo) stepDisplayName() string {
+	if s.DisplayName != "" {
+		return s.DisplayName
+	}
+	return s.Name
 }
 
 // ResourceWorkflowSteps holds the ordered list of workflow steps for a resource.
 type ResourceWorkflowSteps struct {
 	Steps []WorkflowStepInfo
+}
+
+// wfEventItem represents a selectable row in the workflow events tab.
+type wfEventItem struct {
+	isStepHeader bool                  // true if this is a step header row
+	stepIdx      int                   // index into steps
+	event        *dataaccess.DebugEvent // non-nil for event rows
+}
+
+// flattenWfEventItems builds a flat list of selectable items from steps.
+// It mirrors the rendering order in renderTimelineView.
+func flattenWfEventItems(steps *ResourceWorkflowSteps) []wfEventItem {
+	if steps == nil || len(steps.Steps) == 0 {
+		return nil
+	}
+	var items []wfEventItem
+	for i, step := range steps.Steps {
+		// Filter same as renderTimelineView
+		var actionEvents []dataaccess.DebugEvent
+		for _, evt := range step.Events {
+			et := model.WorkflowStepEventType(evt.EventType)
+			if et == model.WorkflowStepStarted || et == model.WorkflowStepCompleted {
+				if !eventHasAction(evt.Message) {
+					continue
+				}
+			}
+			actionEvents = append(actionEvents, evt)
+		}
+		if len(actionEvents) == 0 && (!isBootstrapStep(step.Name) || len(step.DepTimelines) == 0) {
+			continue
+		}
+		items = append(items, wfEventItem{isStepHeader: true, stepIdx: i})
+		for j := range actionEvents {
+			items = append(items, wfEventItem{stepIdx: i, event: &actionEvents[j]})
+		}
+	}
+	return items
 }
 
 // buildStepsFromRawSteps builds step summaries from the raw API step data.
@@ -55,6 +205,119 @@ func buildStepsFromRawSteps(rawSteps []dataaccess.RawWorkflowStep) *ResourceWork
 	}
 
 	return &ResourceWorkflowSteps{Steps: result}
+}
+
+// isBootstrapStep returns true if the step name corresponds to a bootstrap/dependency-wait step.
+func isBootstrapStep(name string) bool {
+	return strings.Contains(strings.ToLower(name), "bootstrap")
+}
+
+// enrichBootstrapSteps renames Bootstrap steps to "Waiting for dependencies" and populates
+// their DepTimelines from the PlanDAG dependency graph and workflow events of peer resources.
+func enrichBootstrapSteps(steps *ResourceWorkflowSteps, resourceKey string, dag *PlanDAG) {
+	if steps == nil || dag == nil {
+		return
+	}
+
+	// Find the resource ID for this key
+	var resourceID string
+	for id, node := range dag.Nodes {
+		if node.Key == resourceKey {
+			resourceID = id
+			break
+		}
+	}
+	if resourceID == "" {
+		// Still rename even if we can't find deps
+		for i := range steps.Steps {
+			if isBootstrapStep(steps.Steps[i].Name) {
+				steps.Steps[i].DisplayName = "Waiting for dependencies"
+			}
+		}
+		return
+	}
+
+	// Find parent dependencies (edges where To == resourceID)
+	var depIDs []string
+	for _, edge := range dag.Edges {
+		if edge.To == resourceID {
+			depIDs = append(depIDs, edge.From)
+		}
+	}
+
+	for i := range steps.Steps {
+		if !isBootstrapStep(steps.Steps[i].Name) {
+			continue
+		}
+		steps.Steps[i].DisplayName = "Waiting for dependencies"
+
+		if len(depIDs) == 0 {
+			continue
+		}
+
+		var timelines []depTimeline
+		for _, depID := range depIDs {
+			depNode, ok := dag.Nodes[depID]
+			if !ok {
+				continue
+			}
+			name := depNode.Name
+			if name == "" {
+				name = depNode.Key
+			}
+			if name == "" {
+				name = depID
+			}
+
+			dt := depTimeline{Name: name, Status: "pending"}
+
+			// Look up the dependency's workflow events to determine status and finish time
+			if dag.WorkflowStepsByKey != nil {
+				depSteps := dag.WorkflowStepsByKey[depNode.Key]
+				if depSteps != nil && len(depSteps.Steps) > 0 {
+					allDone := true
+					hasFailed := false
+					hasRunning := false
+					latestEnd := ""
+					for _, ds := range depSteps.Steps {
+						switch ds.Status {
+						case "failed":
+							hasFailed = true
+						case "in-progress", "pending":
+							allDone = false
+							if ds.Status == "in-progress" {
+								hasRunning = true
+							}
+						}
+						if ds.EndTime != "" && ds.EndTime > latestEnd {
+							latestEnd = ds.EndTime
+						}
+					}
+					if hasFailed {
+						dt.Status = "failed"
+						dt.FinishedAt = latestEnd
+					} else if allDone {
+						dt.Status = "completed"
+						dt.FinishedAt = latestEnd
+					} else if hasRunning {
+						dt.Status = "running"
+					}
+				}
+			}
+
+			// Also check ProgressByKey for status
+			if dag.ProgressByKey != nil {
+				if prog, ok := dag.ProgressByKey[depNode.Key]; ok {
+					if dt.Status == "pending" {
+						dt.Status = prog.Status
+					}
+				}
+			}
+
+			timelines = append(timelines, dt)
+		}
+		steps.Steps[i].DepTimelines = timelines
+	}
 }
 
 func determineStepStatusFromEvents(events []dataaccess.DebugEvent) string {
@@ -86,7 +349,7 @@ func determineStepStatusFromEvents(events []dataaccess.DebugEvent) string {
 }
 
 // renderWorkflowEventsTab renders the workflow events tab content.
-func renderWorkflowEventsTab(steps *ResourceWorkflowSteps, scroll, bodyHeight, contentWidth int, loading bool, spinnerView string) string {
+func renderWorkflowEventsTab(steps *ResourceWorkflowSteps, state workflowErrorsState, bodyHeight, contentWidth int, loading bool, spinnerView string, isLive bool) string {
 	if loading && (steps == nil || len(steps.Steps) == 0) {
 		return fmt.Sprintf("\n  %s Fetching workflow events...", spinnerView)
 	}
@@ -95,7 +358,15 @@ func renderWorkflowEventsTab(steps *ResourceWorkflowSteps, scroll, bodyHeight, c
 		return fmt.Sprintf("\n  %s\n", subtleStyle.Render("No workflow events available for this resource."))
 	}
 
-	rendered := renderTimelineView(steps, contentWidth)
+	items := flattenWfEventItems(steps)
+	rendered := renderTimelineView(steps, contentWidth, items, state.cursor)
+
+	// Prepend live indicator when workflow is in progress
+	if isLive {
+		indicator := renderLiveIndicator(spinnerView, state.refreshing, state.lastRefresh)
+		rendered = append([]string{indicator, ""}, rendered...)
+	}
+
 	totalLines := len(rendered)
 
 	var b strings.Builder
@@ -105,6 +376,7 @@ func renderWorkflowEventsTab(steps *ResourceWorkflowSteps, scroll, bodyHeight, c
 		viewH = 1
 	}
 
+	scroll := state.scroll
 	maxScroll := totalLines - viewH
 	if maxScroll < 0 {
 		maxScroll = 0
@@ -157,7 +429,7 @@ type parsedStep struct {
 }
 
 // renderTimelineView renders a Gantt-chart timeline followed by event details.
-func renderTimelineView(steps *ResourceWorkflowSteps, contentWidth int) []string {
+func renderTimelineView(steps *ResourceWorkflowSteps, contentWidth int, items []wfEventItem, cursor int) []string {
 	// Try to parse timestamps for gantt chart
 	var ps []parsedStep
 	var globalStart, globalEnd time.Time
@@ -189,7 +461,7 @@ func renderTimelineView(steps *ResourceWorkflowSteps, contentWidth int) []string
 
 	totalDuration := globalEnd.Sub(globalStart)
 	if !allParsed || totalDuration <= 0 {
-		return renderFlatStepRows(steps, contentWidth)
+		return renderFlatStepRows(steps, contentWidth, items, cursor)
 	}
 
 	// Styles
@@ -208,8 +480,8 @@ func renderTimelineView(steps *ResourceWorkflowSteps, contentWidth int) []string
 	// Compute layout widths
 	maxNameLen := 0
 	for _, step := range steps.Steps {
-		if len(step.Name) > maxNameLen {
-			maxNameLen = len(step.Name)
+		if len(step.stepDisplayName()) > maxNameLen {
+			maxNameLen = len(step.stepDisplayName())
 		}
 	}
 	if maxNameLen < 10 {
@@ -263,7 +535,7 @@ func renderTimelineView(steps *ResourceWorkflowSteps, contentWidth int) []string
 		icon, sStyle := stepStatusIconAndStyle(step.Status, completedStyle, runningStyle, failedStyle, pendingStyle)
 		bar := renderGanttBar(ps[i].startTime, ps[i].endTime, globalStart, totalDuration, barWidth, sStyle, dimStyle)
 		durStr := formatStepDuration(ps[i].duration)
-		namePadded := fmt.Sprintf("%-*s", maxNameLen, step.Name)
+		namePadded := fmt.Sprintf("%-*s", maxNameLen, step.stepDisplayName())
 
 		lines = append(lines, fmt.Sprintf("  %s %s  %s  %s",
 			sStyle.Render(icon),
@@ -288,6 +560,11 @@ func renderTimelineView(steps *ResourceWorkflowSteps, contentWidth int) []string
 		maxMsgWidth = 20
 	}
 
+	// Build line-to-item mapping for cursor highlighting
+	selectedLine := -1
+	cursorItem := cursor
+	itemIdx := 0
+
 	hasAnyEvents := false
 	for i, step := range steps.Steps {
 		// Filter out generic step Started/Completed events (e.g. "workflow step Bootstrap started.")
@@ -303,7 +580,7 @@ func renderTimelineView(steps *ResourceWorkflowSteps, contentWidth int) []string
 			}
 			actionEvents = append(actionEvents, evt)
 		}
-		if len(actionEvents) == 0 {
+		if len(actionEvents) == 0 && (!isBootstrapStep(step.Name) || len(step.DepTimelines) == 0) {
 			continue
 		}
 		hasAnyEvents = true
@@ -317,11 +594,34 @@ func renderTimelineView(steps *ResourceWorkflowSteps, contentWidth int) []string
 				formatStepDuration(ps[i].duration))
 		}
 
+		lineIdx := len(lines)
+		if itemIdx == cursorItem {
+			selectedLine = lineIdx
+		}
+		itemIdx++
+
 		lines = append(lines, fmt.Sprintf("  %s %s%s",
 			sStyle.Render(icon),
-			nameStyle.Render(step.Name),
+			nameStyle.Render(step.stepDisplayName()),
 			dimStyle.Render(timing),
 		))
+
+		// For bootstrap steps, show dependency timelines
+		if isBootstrapStep(step.Name) && len(step.DepTimelines) > 0 {
+			for _, dep := range step.DepTimelines {
+				depIcon, depStyle := depStatusIconAndStyle(dep.Status, completedStyle, runningStyle, failedStyle, pendingStyle)
+				depLine := fmt.Sprintf("    %s %s", depStyle.Render(depIcon), msgStyle.Render(dep.Name))
+				if dep.FinishedAt != "" {
+					depLine += fmt.Sprintf("  %s", dimStyle.Render("finished "+formatShortTime(dep.FinishedAt)))
+				} else if dep.Status == "running" {
+					depLine += fmt.Sprintf("  %s", runningStyle.Render("in progress…"))
+				} else if dep.Status == "pending" {
+					depLine += fmt.Sprintf("  %s", pendingStyle.Render("waiting"))
+				}
+				lines = append(lines, depLine)
+			}
+			lines = append(lines, "")
+		}
 
 		for _, evt := range actionEvents {
 			evtIcon, evtStyle := actionIconAndStyle(evt.Message, completedStyle, runningStyle, failedStyle, dimStyle)
@@ -333,6 +633,12 @@ func renderTimelineView(steps *ResourceWorkflowSteps, contentWidth int) []string
 			if len(runes) > maxMsgWidth {
 				firstLine = string(runes[:maxMsgWidth-1]) + "…"
 			}
+
+			evtLineIdx := len(lines)
+			if itemIdx == cursorItem {
+				selectedLine = evtLineIdx
+			}
+			itemIdx++
 
 			lines = append(lines, fmt.Sprintf("    %s %s %s",
 				evtStyle.Render(evtIcon),
@@ -348,6 +654,12 @@ func renderTimelineView(steps *ResourceWorkflowSteps, contentWidth int) []string
 
 	if !hasAnyEvents {
 		lines = append(lines, fmt.Sprintf("  %s", dimStyle.Render("No detailed events recorded.")))
+	}
+
+	// Apply cursor highlight to the selected line
+	if selectedLine >= 0 && selectedLine < len(lines) {
+		selectStyle := lipgloss.NewStyle().Background(lipgloss.Color("237"))
+		lines[selectedLine] = selectStyle.Render(lines[selectedLine])
 	}
 
 	return lines
@@ -407,7 +719,7 @@ func formatStepDuration(d time.Duration) string {
 }
 
 // renderFlatStepRows is a fallback when timestamps can't be parsed for the gantt chart.
-func renderFlatStepRows(steps *ResourceWorkflowSteps, contentWidth int) []string {
+func renderFlatStepRows(steps *ResourceWorkflowSteps, contentWidth int, _ []wfEventItem, cursor int) []string {
 	nameStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("117"))
 	dimStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("245"))
 	failedStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("203"))
@@ -421,6 +733,9 @@ func renderFlatStepRows(steps *ResourceWorkflowSteps, contentWidth int) []string
 	}
 
 	var lines []string
+	selectedLine := -1
+	itemIdx := 0
+
 	for i, step := range steps.Steps {
 		icon, sStyle := stepStatusIconAndStyle(step.Status, completedStyle, runningStyle, failedStyle, dimStyle)
 
@@ -435,11 +750,35 @@ func renderFlatStepRows(steps *ResourceWorkflowSteps, contentWidth int) []string
 			}
 		}
 
+		lineIdx := len(lines)
+		if itemIdx == cursor {
+			selectedLine = lineIdx
+		}
+		itemIdx++
+
 		lines = append(lines, fmt.Sprintf("  %s %s  %s",
 			sStyle.Render(icon),
-			nameStyle.Render(step.Name),
+			nameStyle.Render(step.stepDisplayName()),
 			dimStyle.Render(timing),
 		))
+
+		// For bootstrap steps, show dependency timelines
+		if isBootstrapStep(step.Name) && len(step.DepTimelines) > 0 {
+			pendingStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("245"))
+			for _, dep := range step.DepTimelines {
+				depIcon, depStyle := depStatusIconAndStyle(dep.Status, completedStyle, runningStyle, failedStyle, pendingStyle)
+				depLine := fmt.Sprintf("    %s %s", depStyle.Render(depIcon), msgStyle.Render(dep.Name))
+				if dep.FinishedAt != "" {
+					depLine += fmt.Sprintf("  %s", dimStyle.Render("finished "+formatShortTime(dep.FinishedAt)))
+				} else if dep.Status == "running" {
+					depLine += fmt.Sprintf("  %s", runningStyle.Render("in progress…"))
+				} else if dep.Status == "pending" {
+					depLine += fmt.Sprintf("  %s", pendingStyle.Render("waiting"))
+				}
+				lines = append(lines, depLine)
+			}
+			lines = append(lines, "")
+		}
 
 		for _, evt := range step.Events {
 			evtIcon, evtStyle := eventIconAndStyle(evt.EventType, completedStyle, runningStyle, failedStyle, dimStyle)
@@ -452,6 +791,12 @@ func renderFlatStepRows(steps *ResourceWorkflowSteps, contentWidth int) []string
 				firstLine = string(runes[:maxMsgWidth-1]) + "…"
 			}
 
+			evtLineIdx := len(lines)
+			if itemIdx == cursor {
+				selectedLine = evtLineIdx
+			}
+			itemIdx++
+
 			lines = append(lines, fmt.Sprintf("    %s %s %s",
 				evtStyle.Render(evtIcon),
 				dimStyle.Render(ts),
@@ -463,6 +808,13 @@ func renderFlatStepRows(steps *ResourceWorkflowSteps, contentWidth int) []string
 			lines = append(lines, "")
 		}
 	}
+
+	// Apply cursor highlight
+	if selectedLine >= 0 && selectedLine < len(lines) {
+		selectStyle := lipgloss.NewStyle().Background(lipgloss.Color("237"))
+		lines[selectedLine] = selectStyle.Render(lines[selectedLine])
+	}
+
 	return lines
 }
 
@@ -471,6 +823,19 @@ func stepStatusIconAndStyle(status string, completed, running, failed, dim lipgl
 	case "success":
 		return "✓", completed
 	case "in-progress":
+		return "●", running
+	case "failed":
+		return "✗", failed
+	default:
+		return "○", dim
+	}
+}
+
+func depStatusIconAndStyle(status string, completed, running, failed, dim lipgloss.Style) (string, lipgloss.Style) {
+	switch status {
+	case "completed":
+		return "✓", completed
+	case "running":
 		return "●", running
 	case "failed":
 		return "✗", failed
@@ -557,12 +922,91 @@ func workflowEventsMaxScroll(steps *ResourceWorkflowSteps, contentWidth, bodyHei
 	if steps == nil {
 		return 0
 	}
-	rendered := renderTimelineView(steps, contentWidth)
+	items := flattenWfEventItems(steps)
+	rendered := renderTimelineView(steps, contentWidth, items, -1)
 	viewH := bodyHeight - 2
 	if viewH < 1 {
 		viewH = 1
 	}
 	maxScroll := len(rendered) - viewH
+	if maxScroll < 0 {
+		maxScroll = 0
+	}
+	return maxScroll
+}
+
+// renderWfEventModal renders a full-screen modal showing event detail.
+func renderWfEventModal(state workflowErrorsState, width, height int) string {
+	titleStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("230")).Background(lipgloss.Color("63")).Padding(0, 1)
+	header := lipgloss.Place(width, 1, lipgloss.Left, lipgloss.Top, titleStyle.Render(fmt.Sprintf("Event Detail · %s", state.modalTitle)))
+
+	bodyH := height - 4
+	if bodyH < 1 {
+		bodyH = 1
+	}
+	maxCodeWidth := width - 10
+	if maxCodeWidth < 20 {
+		maxCodeWidth = 20
+	}
+
+	lines := strings.Split(state.modalText, "\n")
+	totalLines := len(lines)
+
+	scroll := state.modalScroll
+	maxScroll := totalLines - bodyH
+	if maxScroll < 0 {
+		maxScroll = 0
+	}
+	if scroll > maxScroll {
+		scroll = maxScroll
+	}
+
+	end := scroll + bodyH
+	if end > totalLines {
+		end = totalLines
+	}
+
+	lineNumStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("241"))
+	textStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("252"))
+	var b strings.Builder
+	for i := scroll; i < end; i++ {
+		line := lines[i]
+		runes := []rune(line)
+		if len(runes) > maxCodeWidth {
+			line = string(runes[:maxCodeWidth-1]) + "…"
+		}
+		lineNum := lineNumStyle.Render(fmt.Sprintf("%4d", i+1))
+		b.WriteString(fmt.Sprintf("  %s │ %s\n", lineNum, textStyle.Render(line)))
+	}
+	for i := end - scroll; i < bodyH; i++ {
+		b.WriteString("\n")
+	}
+
+	footerStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("241")).Padding(0, 1)
+	pos := ""
+	if totalLines <= bodyH {
+		pos = "all"
+	} else if scroll == 0 {
+		pos = "top"
+	} else if end >= totalLines {
+		pos = "end"
+	} else if maxScroll > 0 {
+		pos = fmt.Sprintf("%d%%", (scroll*100)/maxScroll)
+	}
+	footerText := fmt.Sprintf("↑↓/pgup/pgdn: scroll  esc: close  [%d/%d %s]", scroll+bodyH, totalLines, pos)
+	footer := lipgloss.Place(width, 1, lipgloss.Left, lipgloss.Top, footerStyle.Render(footerText))
+
+	return lipgloss.JoinVertical(lipgloss.Left, header, b.String(), footer)
+}
+
+// wfEventModalMaxScroll returns the max scroll for the event detail modal.
+func wfEventModalMaxScroll(state workflowErrorsState, height int) int {
+	bodyH := height - 4
+	if bodyH < 1 {
+		bodyH = 1
+	}
+	lines := strings.Split(state.modalText, "\n")
+	maxScroll := len(lines) - bodyH
 	if maxScroll < 0 {
 		maxScroll = 0
 	}
@@ -576,10 +1020,37 @@ func workflowEventsCopyText(steps *ResourceWorkflowSteps) string {
 	}
 	var b strings.Builder
 	for _, step := range steps.Steps {
-		b.WriteString(fmt.Sprintf("\n=== %s [%s] %s → %s ===\n", step.Name, step.Status, step.StartTime, step.EndTime))
+		b.WriteString(fmt.Sprintf("\n=== %s [%s] %s → %s ===\n", step.stepDisplayName(), step.Status, step.StartTime, step.EndTime))
 		for _, evt := range step.Events {
 			b.WriteString(fmt.Sprintf("[%s] %s: %s\n", evt.EventTime, evt.EventType, evt.Message))
 		}
 	}
 	return b.String()
+}
+
+// formatEventDetail formats a DebugEvent's full message for display in the modal.
+func formatEventDetail(evt *dataaccess.DebugEvent) string {
+	if evt == nil {
+		return ""
+	}
+	// Try to pretty-print as JSON
+	var parsed interface{}
+	if err := json.Unmarshal([]byte(evt.Message), &parsed); err == nil {
+		pretty, err := json.MarshalIndent(parsed, "", "  ")
+		if err == nil {
+			return fmt.Sprintf("Time:  %s\nType:  %s\n\n%s", evt.EventTime, evt.EventType, string(pretty))
+		}
+	}
+	return fmt.Sprintf("Time:  %s\nType:  %s\n\n%s", evt.EventTime, evt.EventType, evt.Message)
+}
+
+// extractEventAction returns the action name from a JSON event message, or a fallback.
+func extractEventAction(raw string) string {
+	var parsed map[string]interface{}
+	if err := json.Unmarshal([]byte(raw), &parsed); err == nil {
+		if action, ok := parsed["action"].(string); ok {
+			return action
+		}
+	}
+	return "Event"
 }

@@ -62,9 +62,10 @@ type terraformDetailModel struct {
 	scrollY   int
 
 	// Loading state
-	loading    bool
-	refreshing bool // true during auto-refresh (non-blocking)
-	spinner    spinner.Model
+	loading            bool
+	refreshing         bool // true during auto-refresh (non-blocking)
+	lastProgressRefresh time.Time
+	spinner            spinner.Model
 
 	// Progress tab data
 	tfProgress  *TerraformProgressData
@@ -262,6 +263,12 @@ func (m terraformDetailModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			return m, tea.Quit
 		case "esc":
+			if m.wfErrors.modalText != "" {
+				m.wfErrors.modalText = ""
+				m.wfErrors.modalTitle = ""
+				m.wfErrors.modalScroll = 0
+				return m, nil
+			}
 			if m.errorModalText != "" {
 				m.errorModalText = ""
 				m.errorModalScroll = 0
@@ -282,7 +289,7 @@ func (m terraformDetailModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// Signal back to DAG view
 			return m, func() tea.Msg { return backToDagMsg{} }
 		case "tab", "right":
-			if m.errorModalText != "" {
+			if m.wfErrors.modalText != "" || m.errorModalText != "" {
 				return m, nil // block tab switching while modal is open
 			}
 			if !m.viewingFile {
@@ -290,7 +297,7 @@ func (m terraformDetailModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.scrollY = 0
 			}
 		case "shift+tab", "left":
-			if m.errorModalText != "" {
+			if m.wfErrors.modalText != "" || m.errorModalText != "" {
 				return m, nil
 			}
 			if !m.viewingFile {
@@ -298,6 +305,12 @@ func (m terraformDetailModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.scrollY = 0
 			}
 		case "up", "k":
+			if m.wfErrors.modalText != "" {
+				if m.wfErrors.modalScroll > 0 {
+					m.wfErrors.modalScroll--
+				}
+				return m, nil
+			}
 			if m.errorModalText != "" {
 				if m.errorModalScroll > 0 {
 					m.errorModalScroll--
@@ -326,9 +339,11 @@ func (m terraformDetailModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.logScroll--
 				}
 			} else if m.activeTab == tabWfErrors {
-				if m.wfErrors.scroll > 0 {
-					m.wfErrors.scroll--
+				items := flattenWfEventItems(m.getTfWfEvents())
+				if m.wfErrors.cursor > 0 {
+					m.wfErrors.cursor--
 				}
+				_ = items
 			} else if m.viewingFile {
 				if m.fileScroll > 0 {
 					m.fileScroll--
@@ -339,6 +354,14 @@ func (m terraformDetailModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 			}
 		case "down", "j":
+			if m.wfErrors.modalText != "" {
+				m.wfErrors.modalScroll++
+				maxScroll := wfEventModalMaxScroll(m.wfErrors, m.height)
+				if m.wfErrors.modalScroll > maxScroll {
+					m.wfErrors.modalScroll = maxScroll
+				}
+				return m, nil
+			}
 			if m.errorModalText != "" {
 				m.errorModalScroll++
 				maxScroll := m.errorModalMaxScroll()
@@ -368,10 +391,9 @@ func (m terraformDetailModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.logScroll = m.logMaxScroll()
 				}
 			} else if m.activeTab == tabWfErrors {
-				maxScroll := m.tfWfErrorsMaxScroll()
-				m.wfErrors.scroll++
-				if m.wfErrors.scroll > maxScroll {
-					m.wfErrors.scroll = maxScroll
+				items := flattenWfEventItems(m.getTfWfEvents())
+				if m.wfErrors.cursor < len(items)-1 {
+					m.wfErrors.cursor++
 				}
 			} else if m.viewingFile {
 				m.fileScroll++
@@ -424,6 +446,8 @@ func (m terraformDetailModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 						row.date.expanded = !row.date.expanded
 					} else if row.isGroupHeader {
 						row.group.expanded = !row.group.expanded
+					} else if row.isAttemptHeader {
+						row.attempt.expanded = !row.attempt.expanded
 					} else if row.entry != nil && row.entry.Error != "" {
 						// Open error modal
 						m.errorModalText = strings.ReplaceAll(row.entry.Error, "\\n", "\n")
@@ -435,8 +459,25 @@ func (m terraformDetailModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 						m.historyCursor = len(newRows) - 1
 					}
 				}
+			} else if m.activeTab == tabWfErrors {
+				items := flattenWfEventItems(m.getTfWfEvents())
+				if m.wfErrors.cursor >= 0 && m.wfErrors.cursor < len(items) {
+					item := items[m.wfErrors.cursor]
+					if item.event != nil {
+						m.wfErrors.modalText = formatEventDetail(item.event)
+						m.wfErrors.modalTitle = extractEventAction(item.event.Message)
+						m.wfErrors.modalScroll = 0
+					}
+				}
 			}
 		case "pgup":
+			if m.wfErrors.modalText != "" {
+				m.wfErrors.modalScroll -= m.bodyHeight()
+				if m.wfErrors.modalScroll < 0 {
+					m.wfErrors.modalScroll = 0
+				}
+				return m, nil
+			}
 			if m.errorModalText != "" {
 				m.errorModalScroll -= m.bodyHeight()
 				if m.errorModalScroll < 0 {
@@ -467,6 +508,14 @@ func (m terraformDetailModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 			}
 		case "pgdown":
+			if m.wfErrors.modalText != "" {
+				m.wfErrors.modalScroll += m.bodyHeight()
+				maxScroll := wfEventModalMaxScroll(m.wfErrors, m.height)
+				if m.wfErrors.modalScroll > maxScroll {
+					m.wfErrors.modalScroll = maxScroll
+				}
+				return m, nil
+			}
 			if m.errorModalText != "" {
 				m.errorModalScroll += m.bodyHeight()
 				maxScroll := m.errorModalMaxScroll()
@@ -556,6 +605,12 @@ func (m terraformDetailModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.isProgressInFlight() {
 			cmds = append(cmds, scheduleProgressRefresh())
 		}
+		if isWorkflowInProgress(m.getTfWfEvents()) {
+			cmds = append(cmds, scheduleWfEventsRefresh())
+		}
+		if m.isProgressInFlight() || isWorkflowInProgress(m.getTfWfEvents()) {
+			cmds = append(cmds, scheduleWfCountdownTick())
+		}
 		if len(cmds) > 0 {
 			return m, tea.Batch(cmds...)
 		}
@@ -607,6 +662,7 @@ func (m terraformDetailModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 	case progressRefreshMsg:
 		m.refreshing = false
+		m.lastProgressRefresh = time.Now()
 		if msg.err == nil {
 			m.tfProgress = msg.progress
 			m.history = msg.history
@@ -618,12 +674,36 @@ func (m terraformDetailModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.isProgressInFlight() {
 			return m, scheduleProgressRefresh()
 		}
+	case wfEventsRefreshTickMsg:
+		steps := m.getTfWfEvents()
+		if isWorkflowInProgress(steps) && !m.wfErrors.refreshing {
+			m.wfErrors.refreshing = true
+			return m, fetchWfEventsForResource(m.debugData, m.node.Key)
+		}
+	case wfEventsRefreshMsg:
+		m.wfErrors.refreshing = false
+		m.wfErrors.lastRefresh = time.Now()
+		if msg.err == nil && msg.steps != nil {
+			if m.debugData.PlanDAG != nil {
+				if m.debugData.PlanDAG.WorkflowStepsByKey == nil {
+					m.debugData.PlanDAG.WorkflowStepsByKey = make(map[string]*ResourceWorkflowSteps)
+				}
+				m.debugData.PlanDAG.WorkflowStepsByKey[m.node.Key] = msg.steps
+			}
+		}
+		if isWorkflowInProgress(m.getTfWfEvents()) {
+			return m, tea.Batch(scheduleWfEventsRefresh(), scheduleWfCountdownTick())
+		}
+	case wfCountdownTickMsg:
+		if isWorkflowInProgress(m.getTfWfEvents()) || m.isProgressInFlight() {
+			return m, scheduleWfCountdownTick()
+		}
 	case fileContentMsg:
 		m.fileLoading = false
 		m.fileContent = msg.content
 		m.fileContentErr = msg.err
 	case spinner.TickMsg:
-		if m.loading || m.fileLoading || m.refreshing || m.isProgressInFlight() || m.logStreaming {
+		if m.loading || m.fileLoading || m.refreshing || m.isProgressInFlight() || m.logStreaming || m.wfErrors.refreshing || isWorkflowInProgress(m.getTfWfEvents()) {
 			var cmd tea.Cmd
 			m.spinner, cmd = m.spinner.Update(msg)
 			return m, cmd
@@ -813,6 +893,10 @@ func (m terraformDetailModel) copyableContent() string {
 func (m terraformDetailModel) View() string {
 	if m.width == 0 || m.height == 0 {
 		return "Loading..."
+	}
+
+	if m.wfErrors.modalText != "" {
+		return renderWfEventModal(m.wfErrors, m.width, m.height)
 	}
 
 	if m.errorModalText != "" {
@@ -1006,11 +1090,11 @@ func (m terraformDetailModel) renderProgressTab() string {
 
 	// Overall status header
 	b.WriteString("\n")
+	if m.isProgressInFlight() {
+		b.WriteString(renderLiveIndicator(m.spinner.View(), m.refreshing, m.lastProgressRefresh, progressRefreshInterval) + "\n")
+	}
 	statusStyle := styleForStatus(p.Status)
 	statusLine := fmt.Sprintf("  Status: %s", statusStyle.Render(p.Status))
-	if m.isProgressInFlight() {
-		statusLine += fmt.Sprintf("  %s", m.spinner.View())
-	}
 	b.WriteString(statusLine + "\n")
 
 	if p.OperationID != "" {
@@ -1086,7 +1170,17 @@ type dateSection struct {
 }
 
 type operationGroup struct {
+	generationID string
+	attempts     []operationAttempt
+	status       string // overall status from latest attempt
+	startedAt    string
+	completedAt  string
+	expanded     bool
+}
+
+type operationAttempt struct {
 	operationID string
+	nonce       string
 	entries     []TerraformHistoryEntry
 	summary     string // "diff → apply → output"
 	status      string // overall status from last entry
@@ -1097,12 +1191,14 @@ type operationGroup struct {
 
 // timelineRow is a single renderable row in the flattened timeline
 type timelineRow struct {
-	isDateHeader  bool
-	isGroupHeader bool
-	date          *dateSection
-	group         *operationGroup
-	entry         *TerraformHistoryEntry
-	isLastChild   bool
+	isDateHeader    bool
+	isGroupHeader   bool
+	isAttemptHeader bool
+	date            *dateSection
+	group           *operationGroup
+	attempt         *operationAttempt
+	entry           *TerraformHistoryEntry
+	isLastChild     bool
 }
 
 func dateFromTimestamp(ts string) string {
@@ -1112,59 +1208,111 @@ func dateFromTimestamp(ts string) string {
 	return "(unknown date)"
 }
 
+func parseOperationAttemptParts(operationID string) (generationID, nonce, canonicalID string) {
+	canonicalID = strings.TrimSpace(operationID)
+	if canonicalID == "" {
+		return "(unknown)", "(unknown)", "(unknown)"
+	}
+
+	generationID, nonce, found := strings.Cut(canonicalID, ".")
+	generationID = strings.TrimSpace(generationID)
+	if generationID == "" {
+		generationID = "(unknown)"
+	}
+	if !found {
+		return generationID, "(legacy)", canonicalID
+	}
+
+	nonce = strings.TrimSpace(nonce)
+	if nonce == "" {
+		nonce = "(unknown)"
+	}
+	return generationID, nonce, canonicalID
+}
+
 func buildTimelineSections(history []TerraformHistoryEntry) []dateSection {
 	if len(history) == 0 {
 		return nil
 	}
 
-	// First build operation groups (newest first)
-	groupMap := make(map[string]*operationGroup)
-	var order []string
+	// First build generation groups and operation attempts (newest first).
+	type mutableGeneration struct {
+		group        *operationGroup
+		attempts     map[string]*operationAttempt
+		attemptOrder []string
+	}
+	generationMap := make(map[string]*mutableGeneration)
+	var generationOrder []string
 
 	for i := len(history) - 1; i >= 0; i-- {
 		entry := history[i]
-		opID := entry.OperationID
-		if opID == "" {
-			opID = "(unknown)"
-		}
-		g, exists := groupMap[opID]
+		generationID, nonce, opID := parseOperationAttemptParts(entry.OperationID)
+
+		mg, exists := generationMap[generationID]
 		if !exists {
-			g = &operationGroup{operationID: opID}
-			groupMap[opID] = g
-			order = append(order, opID)
-		}
-		g.entries = append(g.entries, entry)
-	}
-
-	// Finalize each group
-	for _, opID := range order {
-		g := groupMap[opID]
-
-		// Reverse entries to chronological order
-		for i, j := 0, len(g.entries)-1; i < j; i, j = i+1, j-1 {
-			g.entries[i], g.entries[j] = g.entries[j], g.entries[i]
-		}
-
-		var ops []string
-		for _, e := range g.entries {
-			ops = append(ops, e.Operation)
-		}
-		g.summary = strings.Join(ops, " → ")
-		g.status = g.entries[len(g.entries)-1].Status
-		g.startedAt = g.entries[0].StartedAt
-		for _, e := range g.entries {
-			if e.CompletedAt != "" {
-				g.completedAt = e.CompletedAt
+			mg = &mutableGeneration{
+				group:    &operationGroup{generationID: generationID},
+				attempts: make(map[string]*operationAttempt),
 			}
+			generationMap[generationID] = mg
+			generationOrder = append(generationOrder, generationID)
+		}
+
+		attempt, exists := mg.attempts[opID]
+		if !exists {
+			attempt = &operationAttempt{
+				operationID: opID,
+				nonce:       nonce,
+			}
+			mg.attempts[opID] = attempt
+			mg.attemptOrder = append(mg.attemptOrder, opID)
+		}
+		attempt.entries = append(attempt.entries, entry)
+	}
+
+	// Finalize each generation and attempt.
+	for _, generationID := range generationOrder {
+		mg := generationMap[generationID]
+		g := mg.group
+
+		for _, opID := range mg.attemptOrder {
+			attempt := mg.attempts[opID]
+
+			// Reverse entries to chronological order within each attempt.
+			for i, j := 0, len(attempt.entries)-1; i < j; i, j = i+1, j-1 {
+				attempt.entries[i], attempt.entries[j] = attempt.entries[j], attempt.entries[i]
+			}
+
+			var ops []string
+			for _, e := range attempt.entries {
+				ops = append(ops, e.Operation)
+			}
+			attempt.summary = strings.Join(ops, " → ")
+			attempt.status = attempt.entries[len(attempt.entries)-1].Status
+			attempt.startedAt = attempt.entries[0].StartedAt
+			for _, e := range attempt.entries {
+				if e.CompletedAt != "" {
+					attempt.completedAt = e.CompletedAt
+				}
+			}
+
+			g.attempts = append(g.attempts, *attempt)
+		}
+
+		if len(g.attempts) > 0 {
+			latestAttempt := g.attempts[0]
+			g.status = latestAttempt.status
+			g.startedAt = latestAttempt.startedAt
+			g.completedAt = latestAttempt.completedAt
 		}
 	}
 
-	// Group operation groups by date (newest first)
+	// Group generation groups by date (newest first).
 	dateMap := make(map[string]*dateSection)
 	var dateOrder []string
 
-	for _, opID := range order {
-		g := groupMap[opID]
+	for _, generationID := range generationOrder {
+		g := generationMap[generationID].group
 		d := dateFromTimestamp(g.startedAt)
 		ds, exists := dateMap[d]
 		if !exists {
@@ -1178,9 +1326,12 @@ func buildTimelineSections(history []TerraformHistoryEntry) []dateSection {
 	var sections []dateSection
 	for _, d := range dateOrder {
 		ds := dateMap[d]
-		// Auto-expand first group of the newest date
+		// Auto-expand first generation and first attempt of the newest date.
 		if len(sections) == 0 && len(ds.groups) > 0 {
 			ds.groups[0].expanded = true
+			if len(ds.groups[0].attempts) > 0 {
+				ds.groups[0].attempts[0].expanded = true
+			}
 		}
 		sections = append(sections, *ds)
 	}
@@ -1205,13 +1356,25 @@ func flattenTimeline(dates []dateSection) []timelineRow {
 					date:          d,
 				})
 				if g.expanded {
-					for k := range g.entries {
+					for a := range g.attempts {
+						attempt := &g.attempts[a]
 						rows = append(rows, timelineRow{
-							group:       g,
-							entry:       &g.entries[k],
-							isLastChild: k == len(g.entries)-1,
-							date:        d,
+							isAttemptHeader: true,
+							group:           g,
+							attempt:         attempt,
+							date:            d,
 						})
+						if attempt.expanded {
+							for k := range attempt.entries {
+								rows = append(rows, timelineRow{
+									group:       g,
+									attempt:     attempt,
+									entry:       &attempt.entries[k],
+									isLastChild: k == len(attempt.entries)-1,
+									date:        d,
+								})
+							}
+						}
 					}
 				}
 			}
@@ -1237,12 +1400,17 @@ func (m terraformDetailModel) renderOperationHistoryTab() string {
 	var b strings.Builder
 
 	headerStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("255"))
-	totalOps := 0
+	totalGenerations := 0
+	totalAttempts := 0
 	for _, d := range m.historyDates {
-		totalOps += len(d.groups)
+		totalGenerations += len(d.groups)
+		for _, g := range d.groups {
+			totalAttempts += len(g.attempts)
+		}
 	}
 	b.WriteString(fmt.Sprintf("  %s\n\n", headerStyle.Render(
-		fmt.Sprintf("Operation History (%d days, %d operations, %d entries)", len(m.historyDates), totalOps, len(m.history)))))
+		fmt.Sprintf("Operation History (%d days, %d generations, %d attempts, %d entries)",
+			len(m.historyDates), totalGenerations, totalAttempts, len(m.history)))))
 
 	rows := flattenTimeline(m.historyDates)
 
@@ -1271,7 +1439,8 @@ func (m terraformDetailModel) renderOperationHistoryTab() string {
 
 	// Styles
 	dateStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("230"))
-	opIDStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("117"))
+	genIDStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("117"))
+	attemptIDStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("81"))
 	summaryStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("252"))
 	timeStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("245"))
 	selectedBg := lipgloss.NewStyle().Background(lipgloss.Color("236"))
@@ -1293,7 +1462,7 @@ func (m terraformDetailModel) renderOperationHistoryTab() string {
 			if d.expanded {
 				arrow = "▾"
 			}
-			countStr := dimStyle.Render(fmt.Sprintf("(%d operations)", len(d.groups)))
+			countStr := dimStyle.Render(fmt.Sprintf("(%d generations)", len(d.groups)))
 			line := fmt.Sprintf("%s %s  %s", arrow, dateStyle.Render(d.date), countStr)
 			if selected {
 				line = selectedBg.Render(line)
@@ -1304,9 +1473,9 @@ func (m terraformDetailModel) renderOperationHistoryTab() string {
 
 			statusIcon := timelineStatusIcon(g.status)
 
-			displayID := g.operationID
-			if len(displayID) > 8 {
-				displayID = displayID[:8] + "…"
+			displayGeneration := g.generationID
+			if len(displayGeneration) > 10 {
+				displayGeneration = displayGeneration[:10] + "…"
 			}
 
 			// Show only time portion since date is in the section header
@@ -1322,9 +1491,44 @@ func (m terraformDetailModel) renderOperationHistoryTab() string {
 
 			line := fmt.Sprintf("  %s %s %s  %s  %s  %s",
 				statusIcon, arrow,
-				opIDStyle.Render(displayID),
-				summaryStyle.Render(g.summary),
+				genIDStyle.Render("gen:"+displayGeneration),
+				dimStyle.Render(fmt.Sprintf("%d attempts", len(g.attempts))),
 				styleForStatus(g.status).Render(g.status),
+				timeStyle.Render(timeRange),
+			)
+
+			if selected {
+				line = selectedBg.Render(line)
+			}
+
+			b.WriteString(fmt.Sprintf("  %s%s\n", cursor, line))
+		} else if row.isAttemptHeader {
+			attempt := row.attempt
+
+			statusIcon := timelineStatusIcon(attempt.status)
+
+			displayNonce := attempt.nonce
+			if len(displayNonce) > 10 {
+				displayNonce = displayNonce[:10] + "…"
+			}
+
+			timeRange := formatHistoryTimeOnly(attempt.startedAt)
+			if attempt.completedAt != "" && attempt.completedAt != attempt.startedAt {
+				timeRange += " → " + formatHistoryTimeOnly(attempt.completedAt)
+			}
+
+			arrow := "▸"
+			if attempt.expanded {
+				arrow = "▾"
+			}
+
+			line := fmt.Sprintf("  %s %s %s %s  %s  %s  %s",
+				dimStyle.Render("│"),
+				statusIcon,
+				arrow,
+				attemptIDStyle.Render("try:"+displayNonce),
+				summaryStyle.Render(attempt.summary),
+				styleForStatus(attempt.status).Render(attempt.status),
 				timeStyle.Render(timeRange),
 			)
 
@@ -1336,9 +1540,9 @@ func (m terraformDetailModel) renderOperationHistoryTab() string {
 		} else {
 			// Child entry row
 			e := row.entry
-			connector := "│   ├─"
+			connector := "│   │   ├─"
 			if row.isLastChild {
-				connector = "│   └─"
+				connector = "│   │   └─"
 			}
 
 			sIcon := timelineStatusIcon(e.Status)
@@ -1707,7 +1911,10 @@ func (m terraformDetailModel) getTfWfEvents() *ResourceWorkflowSteps {
 
 func (m terraformDetailModel) renderTfWfErrorsTab() string {
 	loading := m.debugData.PlanDAG != nil && m.debugData.PlanDAG.ProgressLoading
-	return renderWorkflowEventsTab(m.getTfWfEvents(), m.wfErrors.scroll, m.bodyHeight(), m.contentWidth(), loading, m.spinner.View())
+	steps := m.getTfWfEvents()
+	enrichBootstrapSteps(steps, m.node.Key, m.debugData.PlanDAG)
+	isLive := isWorkflowInProgress(steps)
+	return renderWorkflowEventsTab(steps, m.wfErrors, m.bodyHeight(), m.contentWidth(), loading, m.spinner.View(), isLive)
 }
 
 func (m terraformDetailModel) tfWfErrorsMaxScroll() int {
