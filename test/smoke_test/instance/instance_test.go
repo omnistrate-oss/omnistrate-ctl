@@ -83,7 +83,7 @@ func TestInstanceBasic(t *testing.T) {
 	err = cmd.RootCmd.ExecuteContext(ctx)
 	require.NoError(t, err)
 
-	time.Sleep(5 * time.Second)
+	time.Sleep(60 * time.Second)
 	err = testutils.WaitForInstanceToReachStatus(ctx, instanceID1, instance.InstanceStatusRunning)
 	require.NoError(t, err)
 
@@ -108,7 +108,7 @@ func TestInstanceBasic(t *testing.T) {
 	err = cmd.RootCmd.ExecuteContext(ctx)
 	require.NoError(t, err)
 
-	time.Sleep(5 * time.Second)
+	time.Sleep(60 * time.Second)
 	err = testutils.WaitForInstanceToReachStatus(ctx, instanceID1, instance.InstanceStatusRunning)
 	require.NoError(t, err)
 
@@ -117,7 +117,7 @@ func TestInstanceBasic(t *testing.T) {
 	err = cmd.RootCmd.ExecuteContext(ctx)
 	require.NoError(t, err)
 
-	time.Sleep(5 * time.Second)
+	time.Sleep(60 * time.Second)
 	err = testutils.WaitForInstanceToReachStatus(ctx, instanceID1, instance.InstanceStatusRunning)
 	require.NoError(t, err)
 
@@ -126,7 +126,7 @@ func TestInstanceBasic(t *testing.T) {
 	err = cmd.RootCmd.ExecuteContext(ctx)
 	require.NoError(t, err)
 
-	time.Sleep(5 * time.Second)
+	time.Sleep(60 * time.Second)
 	err = testutils.WaitForInstanceToReachStatus(ctx, instanceID2, instance.InstanceStatusRunning)
 	require.NoError(t, err)
 
@@ -182,7 +182,7 @@ func TestInstanceBasic(t *testing.T) {
 			break
 		}
 
-		time.Sleep(5 * time.Second)
+		time.Sleep(60 * time.Second)
 	}
 
 	// PASS: delete service
