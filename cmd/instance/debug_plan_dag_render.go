@@ -28,14 +28,17 @@ const (
 	boxHLine       = '─'
 	boxVLine       = '│'
 	boxCross       = '┼'
-	arrowHead      = '▸'
+	arrowHead      = '▶'
 	dotRune        = '·'
 
-	// Connector-specific corners (right-angle turns)
-	turnDownRight = '╭' // coming from above, going right (or from left, going down)
-	turnDownLeft  = '╮' // coming from above, going left (or from right, going down)
-	turnUpRight   = '╰' // coming from below, going right (or from left, going up)
-	turnUpLeft    = '╯' // coming from below, going left (or from right, going up)
+	// Connector-specific corners — heavy weight for visibility
+	connHLine     = '━'
+	connVLine     = '┃'
+	connDownRight = '┏'
+	connDownLeft  = '┓'
+	connUpRight   = '┗'
+	connUpLeft    = '┛'
+	connCross     = '╋'
 )
 
 func orderPlanLevels(plan *PlanDAG) planDAGLayout {
@@ -782,19 +785,19 @@ func drawConnectorDynamic(canvas *dagCanvas, from, to planDAGPlacement, cardWidt
 	}
 
 	if fromY == toY {
-		drawHorizontalStyled(canvas, fromY, startX, endX-1, style)
+		drawConnHorizontal(canvas, fromY, startX, endX-1, style)
 		canvas.set(endX, toY, arrowHead, style)
 		return
 	}
 
 	if midX > startX {
-		drawHorizontalStyled(canvas, fromY, startX, midX-1, style)
+		drawConnHorizontal(canvas, fromY, startX, midX-1, style)
 	}
 
 	if fromY < toY {
-		canvas.set(midX, fromY, turnDownLeft, style)
+		canvas.set(midX, fromY, connDownLeft, style)
 	} else {
-		canvas.set(midX, fromY, turnUpLeft, style)
+		canvas.set(midX, fromY, connUpLeft, style)
 	}
 
 	minY, maxY := fromY, toY
@@ -802,77 +805,22 @@ func drawConnectorDynamic(canvas *dagCanvas, from, to planDAGPlacement, cardWidt
 		minY, maxY = maxY, minY
 	}
 	if maxY-minY > 1 {
-		drawVerticalStyled(canvas, midX, minY+1, maxY-1, style)
+		drawConnVertical(canvas, midX, minY+1, maxY-1, style)
 	}
 
 	if fromY < toY {
-		canvas.set(midX, toY, turnUpRight, style)
+		canvas.set(midX, toY, connUpRight, style)
 	} else {
-		canvas.set(midX, toY, turnDownRight, style)
+		canvas.set(midX, toY, connDownRight, style)
 	}
 
 	if endX-1 > midX {
-		drawHorizontalStyled(canvas, toY, midX+1, endX-1, style)
+		drawConnHorizontal(canvas, toY, midX+1, endX-1, style)
 	}
 	canvas.set(endX, toY, arrowHead, style)
 }
 
-func drawConnector(canvas *dagCanvas, from, to planDAGPlacement, cardWidth, cardHeight int, style lipgloss.Style) {
-	fromY := from.y + cardHeight/2
-	toY := to.y + cardHeight/2
-	startX := from.x + cardWidth
-	endX := to.x - 1
-	if endX < startX {
-		endX = startX
-	}
-	midX := startX
-	if endX > startX {
-		midX = startX + (endX-startX)/2
-	}
-
-	if fromY == toY {
-		// Straight horizontal line
-		drawHorizontalStyled(canvas, fromY, startX, endX-1, style)
-		canvas.set(endX, toY, arrowHead, style)
-		return
-	}
-
-	// Horizontal from source to midpoint (exclusive of midX for corner)
-	if midX > startX {
-		drawHorizontalStyled(canvas, fromY, startX, midX-1, style)
-	}
-
-	// Corner at (midX, fromY): going from horizontal to vertical
-	if fromY < toY {
-		canvas.set(midX, fromY, turnDownLeft, style)
-	} else {
-		canvas.set(midX, fromY, turnUpLeft, style)
-	}
-
-	// Vertical segment (exclusive of endpoints for corners)
-	minY, maxY := fromY, toY
-	if maxY < minY {
-		minY, maxY = maxY, minY
-	}
-	if maxY-minY > 1 {
-		drawVerticalStyled(canvas, midX, minY+1, maxY-1, style)
-	}
-
-	// Corner at (midX, toY): going from vertical to horizontal
-	if fromY < toY {
-		canvas.set(midX, toY, turnUpRight, style)
-	} else {
-		canvas.set(midX, toY, turnDownRight, style)
-	}
-
-	// Horizontal from midpoint to target (exclusive of midX for corner)
-	if endX-1 > midX {
-		drawHorizontalStyled(canvas, toY, midX+1, endX-1, style)
-	}
-	canvas.set(endX, toY, arrowHead, style)
-}
-
-func drawHorizontalStyled(canvas *dagCanvas, y, x1, x2 int, style lipgloss.Style) {
+func drawConnHorizontal(canvas *dagCanvas, y, x1, x2 int, style lipgloss.Style) {
 	if y < 0 || y >= canvas.height {
 		return
 	}
@@ -880,11 +828,11 @@ func drawHorizontalStyled(canvas *dagCanvas, y, x1, x2 int, style lipgloss.Style
 		x1, x2 = x2, x1
 	}
 	for x := x1; x <= x2; x++ {
-		drawLineRuneStyled(canvas, x, y, boxHLine, style)
+		drawConnRuneStyled(canvas, x, y, connHLine, style)
 	}
 }
 
-func drawVerticalStyled(canvas *dagCanvas, x, y1, y2 int, style lipgloss.Style) {
+func drawConnVertical(canvas *dagCanvas, x, y1, y2 int, style lipgloss.Style) {
 	if x < 0 || x >= canvas.width {
 		return
 	}
@@ -892,11 +840,11 @@ func drawVerticalStyled(canvas *dagCanvas, x, y1, y2 int, style lipgloss.Style) 
 		y1, y2 = y2, y1
 	}
 	for y := y1; y <= y2; y++ {
-		drawLineRuneStyled(canvas, x, y, boxVLine, style)
+		drawConnRuneStyled(canvas, x, y, connVLine, style)
 	}
 }
 
-func drawLineRuneStyled(canvas *dagCanvas, x, y int, r rune, style lipgloss.Style) {
+func drawConnRuneStyled(canvas *dagCanvas, x, y int, r rune, style lipgloss.Style) {
 	if x < 0 || x >= canvas.width || y < 0 || y >= canvas.height {
 		return
 	}
@@ -908,11 +856,11 @@ func drawLineRuneStyled(canvas *dagCanvas, x, y int, r rune, style lipgloss.Styl
 		canvas.set(x, y, r, style)
 		return
 	}
-	if current == boxCross {
+	if current == connCross {
 		return
 	}
-	if current == boxHLine && r == boxVLine || current == boxVLine && r == boxHLine {
-		canvas.set(x, y, boxCross, style)
+	if (current == connHLine && r == connVLine) || (current == connVLine && r == connHLine) {
+		canvas.set(x, y, connCross, style)
 		return
 	}
 	if current == r {
