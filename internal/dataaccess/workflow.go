@@ -276,11 +276,14 @@ func GetDebugEventsForAllResources(ctx context.Context, token string, serviceID,
 					Unknown:    []DebugEvent{},
 				}
 
+				var rawSteps []RawWorkflowStep
+
 				// Categorize events by workflow step for this resource
 				if resource.WorkflowSteps != nil {
 					for _, step := range resource.WorkflowSteps {
 						workflowStep := workflowStepName(step.StepName)
 
+						var stepEvents []DebugEvent
 						if step.Events != nil {
 							for _, event := range step.Events {
 								// Create a DebugEvent with proper data
@@ -289,6 +292,7 @@ func GetDebugEventsForAllResources(ctx context.Context, token string, serviceID,
 									EventType: event.EventType,
 									Message:   event.Message,
 								}
+								stepEvents = append(stepEvents, workflowEvent)
 
 								// Add to appropriate workflowStep
 								switch workflowStep {
@@ -309,6 +313,11 @@ func GetDebugEventsForAllResources(ctx context.Context, token string, serviceID,
 								}
 							}
 						}
+
+						rawSteps = append(rawSteps, RawWorkflowStep{
+							StepName: step.StepName,
+							Events:   stepEvents,
+						})
 					}
 				}
 
@@ -318,6 +327,7 @@ func GetDebugEventsForAllResources(ctx context.Context, token string, serviceID,
 					ResourceKey:          resource.ResourceKey,
 					ResourceName:         resource.ResourceName,
 					EventsByWorkflowStep: eventsByWorkflowStep,
+					RawSteps:             rawSteps,
 				})
 			}
 		}
@@ -351,6 +361,14 @@ type ResourceWorkflowDebugEvents struct {
 	ResourceName         string                      `json:"resourceName"`
 	EventsByWorkflowStep *DebugEventsByWorkflowSteps `json:"eventsByWorkflowStep"`
 	WorkflowStatus       *string                     `json:"workflowStatus,omitempty"` // From DescribeWorkflow API
+	// RawSteps preserves the original step names and events from the SDK response
+	RawSteps []RawWorkflowStep `json:"rawSteps,omitempty"`
+}
+
+// RawWorkflowStep holds a workflow step name and its events as returned by the API.
+type RawWorkflowStep struct {
+	StepName string       `json:"stepName"`
+	Events   []DebugEvent `json:"events"`
 }
 
 // workflowStepName determines the workflow step for a given step name

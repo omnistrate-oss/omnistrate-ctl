@@ -15,12 +15,13 @@ import (
 )
 
 const (
-	helmTabLogs   = 0
-	helmTabValues = 1
-	helmNumTabs   = 2
+	helmTabLogs       = 0
+	helmTabValues     = 1
+	helmTabWfErrors   = 2
+	helmNumTabs       = 3
 )
 
-var helmTabNames = []string{"Helm Logs", "Chart Values"}
+var helmTabNames = []string{"Helm Logs", "Chart Values", "Workflow Events"}
 
 // helmDataMsg is sent when helm debug data has been fetched
 type helmDataMsg struct {
@@ -43,13 +44,22 @@ type helmDetailModel struct {
 	// Helm data
 	helmData *HelmData
 
-	// Logs tab
-	logLines  []string
-	logScroll int
+	// Logs tab (streaming)
+	logLines     []string
+	logChan      chan logLineMsg
+	logCancel    context.CancelFunc
+	logScroll    int
+	logFollow    bool
+	logStreaming bool
+	logDone      bool
+	logErr       error
 
 	// Values tab (tree explorer)
 	valuesTree   []outputNode
 	valuesCursor int
+
+	// Workflow Errors tab
+	wfErrors workflowErrorsState
 
 	// Clipboard flash message
 	clipboardMsg string
@@ -66,6 +76,8 @@ func newHelmDetailModel(node PlanDAGNode, data DebugData) helmDetailModel {
 		activeTab: helmTabLogs,
 		loading:   true,
 		spinner:   s,
+		logChan:   make(chan logLineMsg, 50),
+		logFollow: true,
 	}
 }
 
@@ -113,6 +125,90 @@ func (m helmDetailModel) fetchHelmData() tea.Cmd {
 	}
 }
 
+// watchHelmLogs polls the DebugResourceInstance API every logPollInterval,
+// extracts InstallLog for the given resource key, diffs against previous
+// content, and sends new lines via the channel — mirroring watchApplyDestroyLogs.
+func watchHelmLogs(ctx context.Context, dd DebugData, nodeKey string, ch chan logLineMsg) tea.Cmd {
+	return func() tea.Msg {
+		var prevLines []string
+
+		for {
+			debugResult, err := dataaccess.DebugResourceInstance(
+				ctx, dd.Token, dd.ServiceID, dd.EnvironmentID, dd.InstanceID,
+			)
+			if err != nil {
+				if ctx.Err() != nil {
+					close(ch)
+					return logStreamDoneMsg{}
+				}
+				close(ch)
+				return logStreamDoneMsg{err: err}
+			}
+
+			if debugResult.ResourcesDebug != nil {
+				for resourceKey, resourceDebugInfo := range *debugResult.ResourcesDebug {
+					if resourceKey != nodeKey {
+						continue
+					}
+					debugDataInterface, ok := resourceDebugInfo.GetDebugDataOk()
+					if !ok || debugDataInterface == nil {
+						continue
+					}
+					actualDebugData, ok := (*debugDataInterface).(map[string]interface{})
+					if !ok {
+						continue
+					}
+					helmData := parseHelmData(actualDebugData)
+					if helmData.InstallLog == "" {
+						continue
+					}
+					lines := strings.Split(helmData.InstallLog, "\n")
+					// Trim trailing empty lines
+					for len(lines) > 0 && strings.TrimSpace(lines[len(lines)-1]) == "" {
+						lines = lines[:len(lines)-1]
+					}
+
+					if len(prevLines) == 0 {
+						// First fetch with content — send full
+						select {
+						case ch <- logLineMsg{lines: lines, replace: true}:
+						case <-ctx.Done():
+							close(ch)
+							return logStreamDoneMsg{}
+						}
+						prevLines = lines
+					} else if len(lines) > len(prevLines) {
+						// More content — send only new lines
+						select {
+						case ch <- logLineMsg{lines: lines[len(prevLines):]}:
+						case <-ctx.Done():
+							close(ch)
+							return logStreamDoneMsg{}
+						}
+						prevLines = lines
+					} else if !slicesEqual(lines, prevLines) {
+						// Content changed — replace all
+						select {
+						case ch <- logLineMsg{lines: lines, replace: true}:
+						case <-ctx.Done():
+							close(ch)
+							return logStreamDoneMsg{}
+						}
+						prevLines = lines
+					}
+				}
+			}
+
+			select {
+			case <-ctx.Done():
+				close(ch)
+				return logStreamDoneMsg{}
+			case <-time.After(logPollInterval):
+			}
+		}
+	}
+}
+
 func (m helmDetailModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
@@ -135,11 +231,11 @@ func (m helmDetailModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		m.helmData = msg.helmData
+		var cmds []tea.Cmd
 		if m.helmData != nil {
-			// Parse log lines
+			// Parse initial log lines
 			if m.helmData.InstallLog != "" {
 				m.logLines = strings.Split(m.helmData.InstallLog, "\n")
-				// Trim trailing empty lines
 				for len(m.logLines) > 0 && strings.TrimSpace(m.logLines[len(m.logLines)-1]) == "" {
 					m.logLines = m.logLines[:len(m.logLines)-1]
 				}
@@ -151,15 +247,69 @@ func (m helmDetailModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.valuesTree = buildHelmValuesTree(m.helmData.ChartValues, string(raw))
 				}
 			}
+			// Start log polling
+			ctx, cancel := context.WithCancel(context.Background())
+			m.logCancel = cancel
+			m.logStreaming = true
+			cmds = append(cmds,
+				watchHelmLogs(ctx, m.debugData, m.node.Key, m.logChan),
+				waitForLogLines(m.logChan),
+			)
+		}
+		if len(cmds) > 0 {
+			return m, tea.Batch(cmds...)
 		}
 		return m, nil
+
+	case logLineMsg:
+		if msg.replace {
+			m.logLines = msg.lines
+		} else {
+			m.logLines = append(m.logLines, msg.lines...)
+		}
+		if m.logFollow {
+			bodyH := m.helmBodyHeight() - 4
+			if bodyH < 1 {
+				bodyH = 1
+			}
+			maxSc := len(m.logLines) - bodyH
+			if maxSc < 0 {
+				maxSc = 0
+			}
+			m.logScroll = maxSc
+		}
+		return m, waitForLogLines(m.logChan)
+
+	case logStreamDoneMsg:
+		m.logStreaming = false
+		if msg.err != nil {
+			if m.logCancel != nil {
+				m.logCancel()
+			}
+			ctx, cancel := context.WithCancel(context.Background())
+			m.logCancel = cancel
+			m.logChan = make(chan logLineMsg, 50)
+			m.logStreaming = true
+			m.logErr = nil
+			return m, tea.Batch(
+				tea.Tick(logPollInterval, func(time.Time) tea.Msg { return nil }),
+				watchHelmLogs(ctx, m.debugData, m.node.Key, m.logChan),
+				waitForLogLines(m.logChan),
+			)
+		}
+		m.logDone = true
 
 	case tea.KeyMsg:
 		switch msg.String() {
 		case "ctrl+c", "q":
+			if m.logCancel != nil {
+				m.logCancel()
+			}
 			return m, tea.Quit
 		case "esc":
-			// Signal to parent to close detail view
+			if m.logCancel != nil {
+				m.logCancel()
+			}
 			return m, func() tea.Msg { return backToDagMsg{} }
 		case "tab":
 			m.activeTab = (m.activeTab + 1) % helmNumTabs
@@ -169,6 +319,7 @@ func (m helmDetailModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		case "up", "k":
 			if m.activeTab == helmTabLogs {
+				m.logFollow = false
 				if m.logScroll > 0 {
 					m.logScroll--
 				}
@@ -178,9 +329,14 @@ func (m helmDetailModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.valuesCursor--
 				}
 				_ = visibleNodes
+			} else if m.activeTab == helmTabWfErrors {
+				if m.wfErrors.scroll > 0 {
+					m.wfErrors.scroll--
+				}
 			}
 		case "down", "j":
 			if m.activeTab == helmTabLogs {
+				m.logFollow = false
 				m.logScroll++
 				if m.logScroll > m.helmLogMaxScroll() {
 					m.logScroll = m.helmLogMaxScroll()
@@ -190,19 +346,55 @@ func (m helmDetailModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				if m.valuesCursor < len(visibleNodes)-1 {
 					m.valuesCursor++
 				}
+			} else if m.activeTab == helmTabWfErrors {
+				maxScroll := m.helmWfErrorsMaxScroll()
+				m.wfErrors.scroll++
+				if m.wfErrors.scroll > maxScroll {
+					m.wfErrors.scroll = maxScroll
+				}
 			}
 		case "pgup":
-			if m.activeTab == helmTabLogs {
+			switch m.activeTab {
+			case helmTabLogs:
+				m.logFollow = false
 				m.logScroll -= m.helmBodyHeight()
 				if m.logScroll < 0 {
 					m.logScroll = 0
 				}
+			case helmTabWfErrors:
+				m.wfErrors.scroll -= m.helmBodyHeight()
+				if m.wfErrors.scroll < 0 {
+					m.wfErrors.scroll = 0
+				}
 			}
 		case "pgdown":
-			if m.activeTab == helmTabLogs {
+			switch m.activeTab {
+			case helmTabLogs:
+				m.logFollow = false
 				m.logScroll += m.helmBodyHeight()
 				if m.logScroll > m.helmLogMaxScroll() {
 					m.logScroll = m.helmLogMaxScroll()
+				}
+			case helmTabWfErrors:
+				maxScroll := m.helmWfErrorsMaxScroll()
+				m.wfErrors.scroll += m.helmBodyHeight()
+				if m.wfErrors.scroll > maxScroll {
+					m.wfErrors.scroll = maxScroll
+				}
+			}
+		case "f":
+			if m.activeTab == helmTabLogs {
+				m.logFollow = !m.logFollow
+				if m.logFollow {
+					bodyH := m.helmBodyHeight() - 4
+					if bodyH < 1 {
+						bodyH = 1
+					}
+					maxSc := len(m.logLines) - bodyH
+					if maxSc < 0 {
+						maxSc = 0
+					}
+					m.logScroll = maxSc
 				}
 			}
 		case "enter", "right", "l":
@@ -367,6 +559,8 @@ func (m helmDetailModel) getHelmTabContent() string {
 		return m.renderHelmLogsTab()
 	case helmTabValues:
 		return m.renderHelmValuesTab()
+	case helmTabWfErrors:
+		return m.renderHelmWfErrorsTab()
 	}
 	return ""
 }
@@ -387,8 +581,18 @@ func (m helmDetailModel) renderHelmLogsTab() string {
 	var b strings.Builder
 
 	headerStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("255"))
+	statusText := ""
+	if m.logStreaming {
+		statusText = " ● LIVE"
+	} else if m.logDone {
+		statusText = " ○ ended"
+	}
+	followText := ""
+	if m.logFollow {
+		followText = " [following]"
+	}
 	b.WriteString(fmt.Sprintf("  %s\n\n",
-		headerStyle.Render(fmt.Sprintf("Helm Install Log (%d lines)", len(m.logLines))),
+		headerStyle.Render(fmt.Sprintf("Helm Install Log (%d lines%s%s)", len(m.logLines), statusText, followText)),
 	))
 
 	bodyH := m.helmBodyHeight() - 4
@@ -593,9 +797,15 @@ func (m helmDetailModel) renderHelmFooter() string {
 	style := lipgloss.NewStyle().Foreground(lipgloss.Color("241")).Padding(0, 1)
 	var text string
 	if m.activeTab == helmTabLogs {
-		text = "↑↓/pgup/pgdn: scroll  y: copy  tab/shift+tab: switch tabs  esc: back  q: quit"
+		followHint := "f: follow"
+		if m.logFollow {
+			followHint = "f: unfollow"
+		}
+		text = fmt.Sprintf("↑↓/pgup/pgdn: scroll  %s  y: copy  tab/shift+tab: switch tabs  esc: back  q: quit", followHint)
 	} else if m.activeTab == helmTabValues && len(m.valuesTree) > 0 {
 		text = "↑↓: navigate  ←→/enter: expand/collapse  y: copy  tab/shift+tab: switch tabs  esc: back  q: quit"
+	} else if m.activeTab == helmTabWfErrors {
+		text = "↑↓/pgup/pgdn: scroll  y: copy  tab/shift+tab: switch tabs  esc: back  q: quit"
 	} else {
 		text = "tab/shift+tab: switch tabs  esc: back  q: quit"
 	}
@@ -620,6 +830,8 @@ func (m helmDetailModel) helmCopyableContent() string {
 				return string(raw)
 			}
 		}
+	case helmTabWfErrors:
+		return workflowEventsCopyText(m.getWfEvents())
 	}
 	return ""
 }
@@ -651,6 +863,22 @@ func (m helmDetailModel) helmLogMaxScroll() int {
 		maxScroll = 0
 	}
 	return maxScroll
+}
+
+func (m helmDetailModel) getWfEvents() *ResourceWorkflowSteps {
+	if m.debugData.PlanDAG != nil && m.debugData.PlanDAG.WorkflowStepsByKey != nil {
+		return m.debugData.PlanDAG.WorkflowStepsByKey[m.node.Key]
+	}
+	return nil
+}
+
+func (m helmDetailModel) renderHelmWfErrorsTab() string {
+	loading := m.debugData.PlanDAG != nil && m.debugData.PlanDAG.ProgressLoading
+	return renderWorkflowEventsTab(m.getWfEvents(), m.wfErrors.scroll, m.helmBodyHeight(), m.helmContentWidth(), loading, m.spinner.View())
+}
+
+func (m helmDetailModel) helmWfErrorsMaxScroll() int {
+	return workflowEventsMaxScroll(m.getWfEvents(), m.helmContentWidth(), m.helmBodyHeight())
 }
 
 // buildHelmValuesTree builds a tree of outputNodes from helm chart values (a plain map).
