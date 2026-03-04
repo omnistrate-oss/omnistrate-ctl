@@ -211,12 +211,12 @@ func Test_upgrade_create(t *testing.T) {
 	err = testutils.WaitForInstanceToReachStatus(ctx, instanceID, instance.InstanceStatusRunning)
 	require.NoError(err)
 
-	// PASS: release service plan
-	cmd.RootCmd.SetArgs([]string{"service-plan", "release", "--service-id", serviceID, "--plan-id", productTierID, "--release-as-preferred", "--release-description", "v1.0.0-alpha"})
+	// PASS: release service plan (creates version 2.0)
+	cmd.RootCmd.SetArgs([]string{"service-plan", "release", "--service-id", serviceID, "--plan-id", productTierID, "--release-as-preferred", "--release-description", "v2.0.0"})
 	err = cmd.RootCmd.ExecuteContext(ctx)
 	require.NoError(err)
 
-	// PASS: upgrade create with latest version
+	// PASS: upgrade create with latest version (1.0 -> 2.0)
 	cmd.RootCmd.SetArgs([]string{"upgrade", "create", instanceID, "--version", "latest"})
 	err = cmd.RootCmd.ExecuteContext(ctx)
 	require.NoError(err)
@@ -226,8 +226,13 @@ func Test_upgrade_create(t *testing.T) {
 	err = testutils.WaitForInstanceToReachStatus(ctx, instanceID, instance.InstanceStatusRunning)
 	require.NoError(err)
 
-	// PASS: upgrade create with specific version
-	cmd.RootCmd.SetArgs([]string{"upgrade", "create", instanceID, "--version", "1.0"})
+	// PASS: release again (creates version 3.0)
+	cmd.RootCmd.SetArgs([]string{"service-plan", "release", "--service-id", serviceID, "--plan-id", productTierID, "--release-description", "v3.0.0"})
+	err = cmd.RootCmd.ExecuteContext(ctx)
+	require.NoError(err)
+
+	// PASS: upgrade create with specific version (2.0 -> 3.0)
+	cmd.RootCmd.SetArgs([]string{"upgrade", "create", instanceID, "--version", "3.0"})
 	err = cmd.RootCmd.ExecuteContext(ctx)
 	require.NoError(err)
 
@@ -236,7 +241,12 @@ func Test_upgrade_create(t *testing.T) {
 	err = testutils.WaitForInstanceToReachStatus(ctx, instanceID, instance.InstanceStatusRunning)
 	require.NoError(err)
 
-	// PASS: upgrade create with preferred version
+	// PASS: release again as preferred (creates version 4.0)
+	cmd.RootCmd.SetArgs([]string{"service-plan", "release", "--service-id", serviceID, "--plan-id", productTierID, "--release-as-preferred", "--release-description", "v4.0.0"})
+	err = cmd.RootCmd.ExecuteContext(ctx)
+	require.NoError(err)
+
+	// PASS: upgrade create with preferred version (3.0 -> 4.0)
 	cmd.RootCmd.SetArgs([]string{"upgrade", "create", instanceID, "--version", "preferred"})
 	err = cmd.RootCmd.ExecuteContext(ctx)
 	require.NoError(err)
@@ -246,18 +256,13 @@ func Test_upgrade_create(t *testing.T) {
 	err = testutils.WaitForInstanceToReachStatus(ctx, instanceID, instance.InstanceStatusRunning)
 	require.NoError(err)
 
-	// Downgrade to 1.0 before testing version-name (v1.0.0-alpha maps to 2.0)
-	cmd.RootCmd.SetArgs([]string{"upgrade", "create", instanceID, "--version", "1.0"})
+	// PASS: release again with a name (creates version 5.0)
+	cmd.RootCmd.SetArgs([]string{"service-plan", "release", "--service-id", serviceID, "--plan-id", productTierID, "--release-description", "v5.0.0"})
 	err = cmd.RootCmd.ExecuteContext(ctx)
 	require.NoError(err)
 
-	// PASS: wait for instance to reach running status
-	time.Sleep(5 * time.Second)
-	err = testutils.WaitForInstanceToReachStatus(ctx, instanceID, instance.InstanceStatusRunning)
-	require.NoError(err)
-
-	// PASS: upgrade create with version name
-	cmd.RootCmd.SetArgs([]string{"upgrade", "create", instanceID, "--version-name", "v1.0.0-alpha"})
+	// PASS: upgrade create with version name (4.0 -> 5.0)
+	cmd.RootCmd.SetArgs([]string{"upgrade", "create", instanceID, "--version-name", "v5.0.0"})
 	err = cmd.RootCmd.ExecuteContext(ctx)
 	require.NoError(err)
 
