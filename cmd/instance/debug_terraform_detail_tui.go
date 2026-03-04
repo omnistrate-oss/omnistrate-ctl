@@ -62,9 +62,10 @@ type terraformDetailModel struct {
 	scrollY   int
 
 	// Loading state
-	loading    bool
-	refreshing bool // true during auto-refresh (non-blocking)
-	spinner    spinner.Model
+	loading            bool
+	refreshing         bool // true during auto-refresh (non-blocking)
+	lastProgressRefresh time.Time
+	spinner            spinner.Model
 
 	// Progress tab data
 	tfProgress  *TerraformProgressData
@@ -262,6 +263,12 @@ func (m terraformDetailModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			return m, tea.Quit
 		case "esc":
+			if m.wfErrors.modalText != "" {
+				m.wfErrors.modalText = ""
+				m.wfErrors.modalTitle = ""
+				m.wfErrors.modalScroll = 0
+				return m, nil
+			}
 			if m.errorModalText != "" {
 				m.errorModalText = ""
 				m.errorModalScroll = 0
@@ -282,7 +289,7 @@ func (m terraformDetailModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// Signal back to DAG view
 			return m, func() tea.Msg { return backToDagMsg{} }
 		case "tab", "right":
-			if m.errorModalText != "" {
+			if m.wfErrors.modalText != "" || m.errorModalText != "" {
 				return m, nil // block tab switching while modal is open
 			}
 			if !m.viewingFile {
@@ -290,7 +297,7 @@ func (m terraformDetailModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.scrollY = 0
 			}
 		case "shift+tab", "left":
-			if m.errorModalText != "" {
+			if m.wfErrors.modalText != "" || m.errorModalText != "" {
 				return m, nil
 			}
 			if !m.viewingFile {
@@ -298,6 +305,12 @@ func (m terraformDetailModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.scrollY = 0
 			}
 		case "up", "k":
+			if m.wfErrors.modalText != "" {
+				if m.wfErrors.modalScroll > 0 {
+					m.wfErrors.modalScroll--
+				}
+				return m, nil
+			}
 			if m.errorModalText != "" {
 				if m.errorModalScroll > 0 {
 					m.errorModalScroll--
@@ -326,9 +339,11 @@ func (m terraformDetailModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.logScroll--
 				}
 			} else if m.activeTab == tabWfErrors {
-				if m.wfErrors.scroll > 0 {
-					m.wfErrors.scroll--
+				items := flattenWfEventItems(m.getTfWfEvents())
+				if m.wfErrors.cursor > 0 {
+					m.wfErrors.cursor--
 				}
+				_ = items
 			} else if m.viewingFile {
 				if m.fileScroll > 0 {
 					m.fileScroll--
@@ -339,6 +354,14 @@ func (m terraformDetailModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 			}
 		case "down", "j":
+			if m.wfErrors.modalText != "" {
+				m.wfErrors.modalScroll++
+				maxScroll := wfEventModalMaxScroll(m.wfErrors, m.height)
+				if m.wfErrors.modalScroll > maxScroll {
+					m.wfErrors.modalScroll = maxScroll
+				}
+				return m, nil
+			}
 			if m.errorModalText != "" {
 				m.errorModalScroll++
 				maxScroll := m.errorModalMaxScroll()
@@ -368,10 +391,9 @@ func (m terraformDetailModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.logScroll = m.logMaxScroll()
 				}
 			} else if m.activeTab == tabWfErrors {
-				maxScroll := m.tfWfErrorsMaxScroll()
-				m.wfErrors.scroll++
-				if m.wfErrors.scroll > maxScroll {
-					m.wfErrors.scroll = maxScroll
+				items := flattenWfEventItems(m.getTfWfEvents())
+				if m.wfErrors.cursor < len(items)-1 {
+					m.wfErrors.cursor++
 				}
 			} else if m.viewingFile {
 				m.fileScroll++
@@ -437,8 +459,25 @@ func (m terraformDetailModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 						m.historyCursor = len(newRows) - 1
 					}
 				}
+			} else if m.activeTab == tabWfErrors {
+				items := flattenWfEventItems(m.getTfWfEvents())
+				if m.wfErrors.cursor >= 0 && m.wfErrors.cursor < len(items) {
+					item := items[m.wfErrors.cursor]
+					if item.event != nil {
+						m.wfErrors.modalText = formatEventDetail(item.event)
+						m.wfErrors.modalTitle = extractEventAction(item.event.Message)
+						m.wfErrors.modalScroll = 0
+					}
+				}
 			}
 		case "pgup":
+			if m.wfErrors.modalText != "" {
+				m.wfErrors.modalScroll -= m.bodyHeight()
+				if m.wfErrors.modalScroll < 0 {
+					m.wfErrors.modalScroll = 0
+				}
+				return m, nil
+			}
 			if m.errorModalText != "" {
 				m.errorModalScroll -= m.bodyHeight()
 				if m.errorModalScroll < 0 {
@@ -469,6 +508,14 @@ func (m terraformDetailModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 			}
 		case "pgdown":
+			if m.wfErrors.modalText != "" {
+				m.wfErrors.modalScroll += m.bodyHeight()
+				maxScroll := wfEventModalMaxScroll(m.wfErrors, m.height)
+				if m.wfErrors.modalScroll > maxScroll {
+					m.wfErrors.modalScroll = maxScroll
+				}
+				return m, nil
+			}
 			if m.errorModalText != "" {
 				m.errorModalScroll += m.bodyHeight()
 				maxScroll := m.errorModalMaxScroll()
@@ -558,6 +605,12 @@ func (m terraformDetailModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.isProgressInFlight() {
 			cmds = append(cmds, scheduleProgressRefresh())
 		}
+		if isWorkflowInProgress(m.getTfWfEvents()) {
+			cmds = append(cmds, scheduleWfEventsRefresh())
+		}
+		if m.isProgressInFlight() || isWorkflowInProgress(m.getTfWfEvents()) {
+			cmds = append(cmds, scheduleWfCountdownTick())
+		}
 		if len(cmds) > 0 {
 			return m, tea.Batch(cmds...)
 		}
@@ -609,6 +662,7 @@ func (m terraformDetailModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 	case progressRefreshMsg:
 		m.refreshing = false
+		m.lastProgressRefresh = time.Now()
 		if msg.err == nil {
 			m.tfProgress = msg.progress
 			m.history = msg.history
@@ -620,12 +674,36 @@ func (m terraformDetailModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.isProgressInFlight() {
 			return m, scheduleProgressRefresh()
 		}
+	case wfEventsRefreshTickMsg:
+		steps := m.getTfWfEvents()
+		if isWorkflowInProgress(steps) && !m.wfErrors.refreshing {
+			m.wfErrors.refreshing = true
+			return m, fetchWfEventsForResource(m.debugData, m.node.Key)
+		}
+	case wfEventsRefreshMsg:
+		m.wfErrors.refreshing = false
+		m.wfErrors.lastRefresh = time.Now()
+		if msg.err == nil && msg.steps != nil {
+			if m.debugData.PlanDAG != nil {
+				if m.debugData.PlanDAG.WorkflowStepsByKey == nil {
+					m.debugData.PlanDAG.WorkflowStepsByKey = make(map[string]*ResourceWorkflowSteps)
+				}
+				m.debugData.PlanDAG.WorkflowStepsByKey[m.node.Key] = msg.steps
+			}
+		}
+		if isWorkflowInProgress(m.getTfWfEvents()) {
+			return m, tea.Batch(scheduleWfEventsRefresh(), scheduleWfCountdownTick())
+		}
+	case wfCountdownTickMsg:
+		if isWorkflowInProgress(m.getTfWfEvents()) || m.isProgressInFlight() {
+			return m, scheduleWfCountdownTick()
+		}
 	case fileContentMsg:
 		m.fileLoading = false
 		m.fileContent = msg.content
 		m.fileContentErr = msg.err
 	case spinner.TickMsg:
-		if m.loading || m.fileLoading || m.refreshing || m.isProgressInFlight() || m.logStreaming {
+		if m.loading || m.fileLoading || m.refreshing || m.isProgressInFlight() || m.logStreaming || m.wfErrors.refreshing || isWorkflowInProgress(m.getTfWfEvents()) {
 			var cmd tea.Cmd
 			m.spinner, cmd = m.spinner.Update(msg)
 			return m, cmd
@@ -815,6 +893,10 @@ func (m terraformDetailModel) copyableContent() string {
 func (m terraformDetailModel) View() string {
 	if m.width == 0 || m.height == 0 {
 		return "Loading..."
+	}
+
+	if m.wfErrors.modalText != "" {
+		return renderWfEventModal(m.wfErrors, m.width, m.height)
 	}
 
 	if m.errorModalText != "" {
@@ -1008,11 +1090,11 @@ func (m terraformDetailModel) renderProgressTab() string {
 
 	// Overall status header
 	b.WriteString("\n")
+	if m.isProgressInFlight() {
+		b.WriteString(renderLiveIndicator(m.spinner.View(), m.refreshing, m.lastProgressRefresh, progressRefreshInterval) + "\n")
+	}
 	statusStyle := styleForStatus(p.Status)
 	statusLine := fmt.Sprintf("  Status: %s", statusStyle.Render(p.Status))
-	if m.isProgressInFlight() {
-		statusLine += fmt.Sprintf("  %s", m.spinner.View())
-	}
 	b.WriteString(statusLine + "\n")
 
 	if p.OperationID != "" {
@@ -1829,7 +1911,10 @@ func (m terraformDetailModel) getTfWfEvents() *ResourceWorkflowSteps {
 
 func (m terraformDetailModel) renderTfWfErrorsTab() string {
 	loading := m.debugData.PlanDAG != nil && m.debugData.PlanDAG.ProgressLoading
-	return renderWorkflowEventsTab(m.getTfWfEvents(), m.wfErrors.scroll, m.bodyHeight(), m.contentWidth(), loading, m.spinner.View())
+	steps := m.getTfWfEvents()
+	enrichBootstrapSteps(steps, m.node.Key, m.debugData.PlanDAG)
+	isLive := isWorkflowInProgress(steps)
+	return renderWorkflowEventsTab(steps, m.wfErrors, m.bodyHeight(), m.contentWidth(), loading, m.spinner.View(), isLive)
 }
 
 func (m terraformDetailModel) tfWfErrorsMaxScroll() int {
