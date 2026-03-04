@@ -111,7 +111,7 @@ type terraformDetailModel struct {
 	errorModalOp     string // operation name for the modal title
 
 	// Workflow Errors tab
-	wfErrors workflowErrorsState
+	wfErrors *workflowErrorsState
 
 	// Clipboard flash message
 	clipboardMsg string
@@ -136,6 +136,7 @@ func newTerraformDetailModel(node PlanDAGNode, data DebugData) terraformDetailMo
 		progressBar: p,
 		logChan:     make(chan logLineMsg, 50),
 		logFollow:   true,
+		wfErrors:    &workflowErrorsState{},
 	}
 }
 
@@ -492,10 +493,16 @@ func (m terraformDetailModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.logScroll = 0
 				}
 			} else if m.activeTab == tabWfErrors {
-				m.wfErrors.scroll -= m.bodyHeight()
-				if m.wfErrors.scroll < 0 {
-					m.wfErrors.scroll = 0
+				items := flattenWfEventItems(m.getTfWfEvents())
+				pageItems := m.bodyHeight() / 2
+				if pageItems < 1 {
+					pageItems = 1
 				}
+				m.wfErrors.cursor -= pageItems
+				if m.wfErrors.cursor < 0 {
+					m.wfErrors.cursor = 0
+				}
+				_ = items
 			} else if m.viewingFile {
 				m.fileScroll -= m.bodyHeight()
 				if m.fileScroll < 0 {
@@ -531,10 +538,17 @@ func (m terraformDetailModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.logScroll = m.logMaxScroll()
 				}
 			} else if m.activeTab == tabWfErrors {
-				maxScroll := m.tfWfErrorsMaxScroll()
-				m.wfErrors.scroll += m.bodyHeight()
-				if m.wfErrors.scroll > maxScroll {
-					m.wfErrors.scroll = maxScroll
+				items := flattenWfEventItems(m.getTfWfEvents())
+				pageItems := m.bodyHeight() / 2
+				if pageItems < 1 {
+					pageItems = 1
+				}
+				m.wfErrors.cursor += pageItems
+				if m.wfErrors.cursor >= len(items) {
+					m.wfErrors.cursor = len(items) - 1
+				}
+				if m.wfErrors.cursor < 0 {
+					m.wfErrors.cursor = 0
 				}
 			} else if m.viewingFile {
 				m.fileScroll += m.bodyHeight()
@@ -1917,6 +1931,4 @@ func (m terraformDetailModel) renderTfWfErrorsTab() string {
 	return renderWorkflowEventsTab(steps, m.wfErrors, m.bodyHeight(), m.contentWidth(), loading, m.spinner.View(), isLive)
 }
 
-func (m terraformDetailModel) tfWfErrorsMaxScroll() int {
-	return workflowEventsMaxScroll(m.getTfWfEvents(), m.contentWidth(), m.bodyHeight())
-}
+
