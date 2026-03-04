@@ -246,6 +246,16 @@ func Test_upgrade_create(t *testing.T) {
 	err = testutils.WaitForInstanceToReachStatus(ctx, instanceID, instance.InstanceStatusRunning)
 	require.NoError(err)
 
+	// Downgrade to 1.0 before testing version-name (v1.0.0-alpha maps to 2.0)
+	cmd.RootCmd.SetArgs([]string{"upgrade", "create", instanceID, "--version", "1.0"})
+	err = cmd.RootCmd.ExecuteContext(ctx)
+	require.NoError(err)
+
+	// PASS: wait for instance to reach running status
+	time.Sleep(5 * time.Second)
+	err = testutils.WaitForInstanceToReachStatus(ctx, instanceID, instance.InstanceStatusRunning)
+	require.NoError(err)
+
 	// PASS: upgrade create with version name
 	cmd.RootCmd.SetArgs([]string{"upgrade", "create", instanceID, "--version-name", "v1.0.0-alpha"})
 	err = cmd.RootCmd.ExecuteContext(ctx)
