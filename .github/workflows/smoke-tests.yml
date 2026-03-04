@@ -14,6 +14,9 @@ on:
         required: true
         type: string
         default: "Dev-us-west-2"
+concurrency:
+  group: ${{ github.workflow }}-${{ inputs.environment }}-${{ github.event.pull_request.number }}
+  cancel-in-progress: false
 
 jobs:
   smoke-tests:
@@ -23,7 +26,7 @@ jobs:
     permissions:
       contents: read
     concurrency:
-      group: ${{ github.workflow }}-${{ inputs.environment }}-${{ matrix.test-group }}
+      group: ${{ github.workflow }}-${{ inputs.environment }}-${{ matrix.test-group }}-${{ github.event.pull_request.number }}
       cancel-in-progress: false
 
     strategy:
@@ -76,7 +79,7 @@ jobs:
           OMNISTRATE_ROOT_DOMAIN: ${{ vars.OMNISTRATE_ROOT_DOMAIN}}
           OMNISTRATE_LOG_LEVEL: debug
           OMNISTRATE_DRY_RUN: true
-        run: gotestsum --format github-actions -- ./test/smoke_test/${{ matrix.test-group }} -timeout 1800s -p 1 -p 1 -v
+        run: gotestsum --format standard-verbose -- ./test/smoke_test/${{ matrix.test-group }} -timeout 1800s -p 1 -p 1 -v
 
   smoke-tests-with-provisioning:
     environment: ${{ inputs.environment }}
@@ -85,7 +88,7 @@ jobs:
     permissions:
       contents: read
     concurrency:
-      group: ${{ github.workflow }}-${{ inputs.environment }}-${{ matrix.test-group }}
+      group: ${{ github.workflow }}-${{ inputs.environment }}-${{ matrix.test-group }}-${{ github.event.pull_request.number }}
       cancel-in-progress: false
 
     strategy:
@@ -126,5 +129,5 @@ jobs:
           OMNISTRATE_ROOT_DOMAIN: ${{ vars.OMNISTRATE_ROOT_DOMAIN}}
           OMNISTRATE_LOG_LEVEL: debug
           OMNISTRATE_DRY_RUN: true
-        run: gotestsum --format github-actions -- ./test/smoke_test/${{ matrix.test-group }} -timeout 1800s -p 1 -p 1 -v
+        run: gotestsum --format standard-verbose -- ./test/smoke_test/${{ matrix.test-group }} -timeout 1800s -p 1 -p 1 -v
 
