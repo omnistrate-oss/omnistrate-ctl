@@ -23,7 +23,7 @@ jobs:
     permissions:
       contents: read
     concurrency:
-      group: ${{ github.workflow }}-${{ inputs.environment }}-${{ matrix.test-group }}-${{ github.ref }}
+      group: ${{ github.workflow }}-${{ inputs.environment }}-${{ matrix.test-group }}-${{ github.event.pull_request.number }}
       cancel-in-progress: false
 
     strategy:
@@ -85,7 +85,7 @@ jobs:
     permissions:
       contents: read
     concurrency:
-      group: ${{ github.workflow }}-${{ inputs.environment }}-${{ matrix.test-group }}-${{ github.ref }}
+      group: ${{ github.workflow }}-${{ inputs.environment }}-${{ matrix.test-group }}-${{ github.event.pull_request.number }}
       cancel-in-progress: false
 
     strategy:
