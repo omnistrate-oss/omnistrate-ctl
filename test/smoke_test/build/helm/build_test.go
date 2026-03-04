@@ -113,6 +113,7 @@ func Test_build_dry_run(t *testing.T) {
 		"--output", "json",
 	})
 	err = cmd.RootCmd.ExecuteContext(ctx)
+	require.NoError(err)
 	initialJsonOutput := utils.LastPrintedString
 
 	// Step 3a: Test dry-run mode - Should not modify service
