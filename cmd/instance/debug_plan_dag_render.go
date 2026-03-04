@@ -164,15 +164,6 @@ func progressForNode(plan *PlanDAG, node PlanDAGNode) (ResourceProgress, bool) {
 	return ResourceProgress{}, false
 }
 
-func maxLevelSize(levels [][]string) int {
-	maxSize := 0
-	for _, level := range levels {
-		if len(level) > maxSize {
-			maxSize = len(level)
-		}
-	}
-	return maxSize
-}
 
 func wrapText(text string, width int) []string {
 	if width <= 0 {

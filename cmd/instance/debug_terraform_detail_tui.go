@@ -368,10 +368,10 @@ func (m terraformDetailModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.logScroll = m.logMaxScroll()
 				}
 			} else if m.activeTab == tabWfErrors {
-				max := m.tfWfErrorsMaxScroll()
+				maxScroll := m.tfWfErrorsMaxScroll()
 				m.wfErrors.scroll++
-				if m.wfErrors.scroll > max {
-					m.wfErrors.scroll = max
+				if m.wfErrors.scroll > maxScroll {
+					m.wfErrors.scroll = maxScroll
 				}
 			} else if m.viewingFile {
 				m.fileScroll++
@@ -482,10 +482,10 @@ func (m terraformDetailModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.logScroll = m.logMaxScroll()
 				}
 			} else if m.activeTab == tabWfErrors {
-				max := m.tfWfErrorsMaxScroll()
+				maxScroll := m.tfWfErrorsMaxScroll()
 				m.wfErrors.scroll += m.bodyHeight()
-				if m.wfErrors.scroll > max {
-					m.wfErrors.scroll = max
+				if m.wfErrors.scroll > maxScroll {
+					m.wfErrors.scroll = maxScroll
 				}
 			} else if m.viewingFile {
 				m.fileScroll += m.bodyHeight()

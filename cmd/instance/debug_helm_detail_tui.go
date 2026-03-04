@@ -347,37 +347,39 @@ func (m helmDetailModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.valuesCursor++
 				}
 			} else if m.activeTab == helmTabWfErrors {
-				max := m.helmWfErrorsMaxScroll()
+				maxScroll := m.helmWfErrorsMaxScroll()
 				m.wfErrors.scroll++
-				if m.wfErrors.scroll > max {
-					m.wfErrors.scroll = max
+				if m.wfErrors.scroll > maxScroll {
+					m.wfErrors.scroll = maxScroll
 				}
 			}
 		case "pgup":
-			if m.activeTab == helmTabLogs {
+			switch m.activeTab {
+			case helmTabLogs:
 				m.logFollow = false
 				m.logScroll -= m.helmBodyHeight()
 				if m.logScroll < 0 {
 					m.logScroll = 0
 				}
-			} else if m.activeTab == helmTabWfErrors {
+			case helmTabWfErrors:
 				m.wfErrors.scroll -= m.helmBodyHeight()
 				if m.wfErrors.scroll < 0 {
 					m.wfErrors.scroll = 0
 				}
 			}
 		case "pgdown":
-			if m.activeTab == helmTabLogs {
+			switch m.activeTab {
+			case helmTabLogs:
 				m.logFollow = false
 				m.logScroll += m.helmBodyHeight()
 				if m.logScroll > m.helmLogMaxScroll() {
 					m.logScroll = m.helmLogMaxScroll()
 				}
-			} else if m.activeTab == helmTabWfErrors {
-				max := m.helmWfErrorsMaxScroll()
+			case helmTabWfErrors:
+				maxScroll := m.helmWfErrorsMaxScroll()
 				m.wfErrors.scroll += m.helmBodyHeight()
-				if m.wfErrors.scroll > max {
-					m.wfErrors.scroll = max
+				if m.wfErrors.scroll > maxScroll {
+					m.wfErrors.scroll = maxScroll
 				}
 			}
 		case "f":
