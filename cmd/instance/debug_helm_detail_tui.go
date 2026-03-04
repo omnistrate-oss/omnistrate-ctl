@@ -217,7 +217,7 @@ func (m helmDetailModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case spinner.TickMsg:
-		if m.loading {
+		if m.loading || m.logStreaming || m.wfErrors.refreshing || isWorkflowInProgress(m.getWfEvents()) {
 			var cmd tea.Cmd
 			m.spinner, cmd = m.spinner.Update(msg)
 			return m, cmd
@@ -255,6 +255,9 @@ func (m helmDetailModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				watchHelmLogs(ctx, m.debugData, m.node.Key, m.logChan),
 				waitForLogLines(m.logChan),
 			)
+		}
+		if isWorkflowInProgress(m.getWfEvents()) {
+			cmds = append(cmds, scheduleWfEventsRefresh(), scheduleWfCountdownTick())
 		}
 		if len(cmds) > 0 {
 			return m, tea.Batch(cmds...)
@@ -299,6 +302,31 @@ func (m helmDetailModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.logDone = true
 
+	case wfEventsRefreshTickMsg:
+		steps := m.getWfEvents()
+		if isWorkflowInProgress(steps) && !m.wfErrors.refreshing {
+			m.wfErrors.refreshing = true
+			return m, fetchWfEventsForResource(m.debugData, m.node.Key)
+		}
+	case wfEventsRefreshMsg:
+		m.wfErrors.refreshing = false
+		m.wfErrors.lastRefresh = time.Now()
+		if msg.err == nil && msg.steps != nil {
+			if m.debugData.PlanDAG != nil {
+				if m.debugData.PlanDAG.WorkflowStepsByKey == nil {
+					m.debugData.PlanDAG.WorkflowStepsByKey = make(map[string]*ResourceWorkflowSteps)
+				}
+				m.debugData.PlanDAG.WorkflowStepsByKey[m.node.Key] = msg.steps
+			}
+		}
+		if isWorkflowInProgress(m.getWfEvents()) {
+			return m, tea.Batch(scheduleWfEventsRefresh(), scheduleWfCountdownTick())
+		}
+	case wfCountdownTickMsg:
+		if isWorkflowInProgress(m.getWfEvents()) {
+			return m, scheduleWfCountdownTick()
+		}
+
 	case tea.KeyMsg:
 		switch msg.String() {
 		case "ctrl+c", "q":
@@ -307,17 +335,35 @@ func (m helmDetailModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			return m, tea.Quit
 		case "esc":
+			if m.wfErrors.modalText != "" {
+				m.wfErrors.modalText = ""
+				m.wfErrors.modalTitle = ""
+				m.wfErrors.modalScroll = 0
+				return m, nil
+			}
 			if m.logCancel != nil {
 				m.logCancel()
 			}
 			return m, func() tea.Msg { return backToDagMsg{} }
 		case "tab":
+			if m.wfErrors.modalText != "" {
+				return m, nil
+			}
 			m.activeTab = (m.activeTab + 1) % helmNumTabs
 			return m, nil
 		case "shift+tab":
+			if m.wfErrors.modalText != "" {
+				return m, nil
+			}
 			m.activeTab = (m.activeTab - 1 + helmNumTabs) % helmNumTabs
 			return m, nil
 		case "up", "k":
+			if m.wfErrors.modalText != "" {
+				if m.wfErrors.modalScroll > 0 {
+					m.wfErrors.modalScroll--
+				}
+				return m, nil
+			}
 			if m.activeTab == helmTabLogs {
 				m.logFollow = false
 				if m.logScroll > 0 {
@@ -330,11 +376,21 @@ func (m helmDetailModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 				_ = visibleNodes
 			} else if m.activeTab == helmTabWfErrors {
-				if m.wfErrors.scroll > 0 {
-					m.wfErrors.scroll--
+				items := flattenWfEventItems(m.getWfEvents())
+				if m.wfErrors.cursor > 0 {
+					m.wfErrors.cursor--
 				}
+				_ = items
 			}
 		case "down", "j":
+			if m.wfErrors.modalText != "" {
+				m.wfErrors.modalScroll++
+				maxScroll := wfEventModalMaxScroll(m.wfErrors, m.height)
+				if m.wfErrors.modalScroll > maxScroll {
+					m.wfErrors.modalScroll = maxScroll
+				}
+				return m, nil
+			}
 			if m.activeTab == helmTabLogs {
 				m.logFollow = false
 				m.logScroll++
@@ -347,13 +403,19 @@ func (m helmDetailModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.valuesCursor++
 				}
 			} else if m.activeTab == helmTabWfErrors {
-				maxScroll := m.helmWfErrorsMaxScroll()
-				m.wfErrors.scroll++
-				if m.wfErrors.scroll > maxScroll {
-					m.wfErrors.scroll = maxScroll
+				items := flattenWfEventItems(m.getWfEvents())
+				if m.wfErrors.cursor < len(items)-1 {
+					m.wfErrors.cursor++
 				}
 			}
 		case "pgup":
+			if m.wfErrors.modalText != "" {
+				m.wfErrors.modalScroll -= m.helmBodyHeight()
+				if m.wfErrors.modalScroll < 0 {
+					m.wfErrors.modalScroll = 0
+				}
+				return m, nil
+			}
 			switch m.activeTab {
 			case helmTabLogs:
 				m.logFollow = false
@@ -368,6 +430,14 @@ func (m helmDetailModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 			}
 		case "pgdown":
+			if m.wfErrors.modalText != "" {
+				m.wfErrors.modalScroll += m.helmBodyHeight()
+				maxScroll := wfEventModalMaxScroll(m.wfErrors, m.height)
+				if m.wfErrors.modalScroll > maxScroll {
+					m.wfErrors.modalScroll = maxScroll
+				}
+				return m, nil
+			}
 			switch m.activeTab {
 			case helmTabLogs:
 				m.logFollow = false
@@ -398,7 +468,17 @@ func (m helmDetailModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 			}
 		case "enter", "right", "l":
-			if m.activeTab == helmTabValues && len(m.valuesTree) > 0 {
+			if m.activeTab == helmTabWfErrors {
+				items := flattenWfEventItems(m.getWfEvents())
+				if m.wfErrors.cursor >= 0 && m.wfErrors.cursor < len(items) {
+					item := items[m.wfErrors.cursor]
+					if item.event != nil {
+						m.wfErrors.modalText = formatEventDetail(item.event)
+						m.wfErrors.modalTitle = extractEventAction(item.event.Message)
+						m.wfErrors.modalScroll = 0
+					}
+				}
+			} else if m.activeTab == helmTabValues && len(m.valuesTree) > 0 {
 				visibleNodes := flattenOutputTree(m.valuesTree)
 				if m.valuesCursor >= 0 && m.valuesCursor < len(visibleNodes) {
 					node := visibleNodes[m.valuesCursor]
@@ -440,6 +520,10 @@ func (m helmDetailModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 func (m helmDetailModel) View() string {
 	if m.width == 0 || m.height == 0 {
 		return "Loading..."
+	}
+
+	if m.wfErrors.modalText != "" {
+		return renderWfEventModal(m.wfErrors, m.width, m.height)
 	}
 
 	header := m.renderHelmHeader()
@@ -874,7 +958,10 @@ func (m helmDetailModel) getWfEvents() *ResourceWorkflowSteps {
 
 func (m helmDetailModel) renderHelmWfErrorsTab() string {
 	loading := m.debugData.PlanDAG != nil && m.debugData.PlanDAG.ProgressLoading
-	return renderWorkflowEventsTab(m.getWfEvents(), m.wfErrors.scroll, m.helmBodyHeight(), m.helmContentWidth(), loading, m.spinner.View())
+	steps := m.getWfEvents()
+	enrichBootstrapSteps(steps, m.node.Key, m.debugData.PlanDAG)
+	isLive := isWorkflowInProgress(steps)
+	return renderWorkflowEventsTab(steps, m.wfErrors, m.helmBodyHeight(), m.helmContentWidth(), loading, m.spinner.View(), isLive)
 }
 
 func (m helmDetailModel) helmWfErrorsMaxScroll() int {
