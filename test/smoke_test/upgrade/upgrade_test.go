@@ -8,6 +8,7 @@ import (
 
 	"github.com/omnistrate-oss/omnistrate-ctl/cmd/upgrade/status"
 	"github.com/omnistrate-oss/omnistrate-ctl/internal/model"
+	"github.com/rs/zerolog/log"
 
 	"github.com/google/uuid"
 	"github.com/omnistrate-oss/omnistrate-ctl/cmd/build"
@@ -193,7 +194,7 @@ func Test_upgrade_create(t *testing.T) {
 	productTierID := build.ProductTierID
 
 	// PASS: create instance
-	t.Log("Creating instance...")
+	log.Debug().Msg("Creating instance...")
 	cmd.RootCmd.SetArgs([]string{"instance", "create",
 		fmt.Sprintf("--service=%s", serviceName),
 		"--environment=dev",
@@ -209,84 +210,84 @@ func Test_upgrade_create(t *testing.T) {
 	require.NotEmpty(t, instanceID)
 
 	// PASS: wait for instance to reach running status
-	t.Log("Waiting for instance to reach running status...")
+	log.Debug().Msg("Waiting for instance to reach running status...")
 	err = testutils.WaitForInstanceToReachStatus(ctx, instanceID, instance.InstanceStatusRunning)
 	require.NoError(err)
 
 	// PASS: release service plan (creates version 2.0)
-	t.Log("Releasing new version of service plan...")
+	log.Debug().Msg("Releasing new version of service plan...")
 	cmd.RootCmd.SetArgs([]string{"service-plan", "release", "--service-id", serviceID, "--plan-id", productTierID, "--release-as-preferred", "--release-description", "v2.0.0"})
 	err = cmd.RootCmd.ExecuteContext(ctx)
 	require.NoError(err)
 
 	// PASS: upgrade create with latest version (1.0 -> 2.0)
-	t.Log("Upgrading instance to latest version...")
+	log.Debug().Msg("Upgrading instance to latest version...")
 	cmd.RootCmd.SetArgs([]string{"upgrade", "create", instanceID, "--version", "latest"})
 	err = cmd.RootCmd.ExecuteContext(ctx)
 	require.NoError(err)
 
 	// PASS: wait for instance to reach running status
-	t.Log("Waiting for instance to reach running status...")
+	log.Debug().Msg("Waiting for instance to reach running status...")
 	time.Sleep(60 * time.Second)
 	err = testutils.WaitForInstanceToReachStatus(ctx, instanceID, instance.InstanceStatusRunning)
 	require.NoError(err)
 
 	// PASS: release again (creates version 3.0)
-	t.Log("Releasing another version of service plan...")
+	log.Debug().Msg("Releasing another version of service plan...")
 	cmd.RootCmd.SetArgs([]string{"service-plan", "release", "--service-id", serviceID, "--plan-id", productTierID, "--release-description", "v3.0.0"})
 	err = cmd.RootCmd.ExecuteContext(ctx)
 	require.NoError(err)
 
 	// PASS: upgrade create with specific version (2.0 -> 3.0)
-	t.Log("Upgrading instance to version 3.0...")
+	log.Debug().Msg("Upgrading instance to version 3.0...")
 	cmd.RootCmd.SetArgs([]string{"upgrade", "create", instanceID, "--version", "3.0"})
 	err = cmd.RootCmd.ExecuteContext(ctx)
 	require.NoError(err)
 
 	// PASS: wait for instance to reach running status
-	t.Log("Waiting for instance to reach running status...")
+	log.Debug().Msg("Waiting for instance to reach running status...")
 	time.Sleep(60 * time.Second)
 	err = testutils.WaitForInstanceToReachStatus(ctx, instanceID, instance.InstanceStatusRunning)
 	require.NoError(err)
 
 	// PASS: release again as preferred (creates version 4.0)
-	t.Log("Releasing new version of service plan as preferred...")
+	log.Debug().Msg("Releasing new version of service plan as preferred...")
 	cmd.RootCmd.SetArgs([]string{"service-plan", "release", "--service-id", serviceID, "--plan-id", productTierID, "--release-as-preferred", "--release-description", "v4.0.0"})
 	err = cmd.RootCmd.ExecuteContext(ctx)
 	require.NoError(err)
 
 	// PASS: upgrade create with preferred version (3.0 -> 4.0)
-	t.Log("Upgrading instance to preferred version...")
+	log.Debug().Msg("Upgrading instance to preferred version...")
 	cmd.RootCmd.SetArgs([]string{"upgrade", "create", instanceID, "--version", "preferred"})
 	err = cmd.RootCmd.ExecuteContext(ctx)
 	require.NoError(err)
 
 	// PASS: wait for instance to reach running status
-	t.Log("Waiting for instance to reach running status...")
+	log.Debug().Msg("Waiting for instance to reach running status...")
 	time.Sleep(60 * time.Second)
 	err = testutils.WaitForInstanceToReachStatus(ctx, instanceID, instance.InstanceStatusRunning)
 	require.NoError(err)
 
 	// PASS: release again with a name (creates version 5.0)
-	t.Log("Releasing new version of service plan...")
+	log.Debug().Msg("Releasing new version of service plan...")
 	cmd.RootCmd.SetArgs([]string{"service-plan", "release", "--service-id", serviceID, "--plan-id", productTierID, "--release-description", "v5.0.0"})
 	err = cmd.RootCmd.ExecuteContext(ctx)
 	require.NoError(err)
 
 	// PASS: upgrade create with version name (4.0 -> 5.0)
-	t.Log("Upgrading instance to version v5.0.0...")
+	log.Debug().Msg("Upgrading instance to version v5.0.0...")
 	cmd.RootCmd.SetArgs([]string{"upgrade", "create", instanceID, "--version-name", "v5.0.0"})
 	err = cmd.RootCmd.ExecuteContext(ctx)
 	require.NoError(err)
 
 	// PASS: delete instance
-	t.Log("Deleting instance...")
+	log.Debug().Msg("Deleting instance...")
 	cmd.RootCmd.SetArgs([]string{"instance", "delete", instanceID, "--yes"})
 	err = cmd.RootCmd.ExecuteContext(ctx)
 	require.NoError(err)
 
 	// Wait for the instance to be deleted
-	t.Log("Waiting for instance to be deleted...")
+	log.Debug().Msg("Waiting for instance to be deleted...")
 	time.Sleep(60 * time.Second)
 	for {
 		cmd.RootCmd.SetArgs([]string{"instance", "describe", instanceID})
@@ -298,7 +299,7 @@ func Test_upgrade_create(t *testing.T) {
 	}
 
 	// PASS: delete service
-	t.Log("Deleting service...")
+	log.Debug().Msg("Deleting service...")
 	cmd.RootCmd.SetArgs([]string{"service", "delete", serviceName})
 	err = cmd.RootCmd.ExecuteContext(ctx)
 	require.NoError(err)
@@ -312,10 +313,16 @@ func Test_upgrade_invalid_instance(t *testing.T) {
 	require := require.New(t)
 	defer testutils.Cleanup()
 
+	testEmail, testPassword, err := testutils.GetTestAccount()
+	require.NoError(err)
+	cmd.RootCmd.SetArgs([]string{"login", fmt.Sprintf("--email=%s", testEmail), fmt.Sprintf("--password=%s", testPassword)})
+	err = cmd.RootCmd.ExecuteContext(ctx)
+	require.NoError(err)
+
 	// FAIL: upgrade create with invalid instance ID
-	t.Log("Upgrading instance with invalid instance ID...")
+	log.Debug().Msg("Upgrading instance with invalid instance ID...")
 	cmd.RootCmd.SetArgs([]string{"upgrade", "create", "instance-invalid", "--version", "latest"})
-	err := cmd.RootCmd.ExecuteContext(ctx)
+	err = cmd.RootCmd.ExecuteContext(ctx)
 	require.Error(err)
 	require.Contains(err.Error(), "instance-invalid not found. Please check the instance ID and try again")
 }
@@ -487,7 +494,7 @@ func Test_upgrade_concurrent(t *testing.T) {
 			status.LastUpgradeStatus.Status == model.Cancelled.String() {
 			break
 		}
-		t.Log("Waiting for instances to be upgraded...")
+		log.Debug().Msg("Waiting for instances to be upgraded...")
 		time.Sleep(60 * time.Second)
 	}
 
@@ -509,7 +516,7 @@ func Test_upgrade_concurrent(t *testing.T) {
 		if err1 != nil && err2 != nil {
 			break
 		}
-		t.Log("Waiting for instances to be deleted...")
+		log.Debug().Msg("Waiting for instances to be deleted...")
 		time.Sleep(60 * time.Second)
 	}
 
