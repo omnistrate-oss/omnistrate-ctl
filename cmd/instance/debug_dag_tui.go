@@ -23,11 +23,12 @@ type tfProgressUpdateMsg struct {
 
 // wfProgressMsg carries workflow progress results
 type wfProgressMsg struct {
-	progressByID   map[string]ResourceProgress
-	progressByKey  map[string]ResourceProgress
-	progressByName map[string]ResourceProgress
-	workflowID     string
-	errors         []string
+	progressByID       map[string]ResourceProgress
+	progressByKey      map[string]ResourceProgress
+	progressByName     map[string]ResourceProgress
+	workflowID         string
+	errors             []string
+	workflowStepsByKey map[string]*ResourceWorkflowSteps
 }
 
 // dagRefreshTickMsg triggers a periodic DAG progress refresh
@@ -57,6 +58,8 @@ type dagModel struct {
 	nodeLevels      [][]string // nodes grouped by level (sorted within each level)
 	cursorIndex     int
 	showCursor      bool
+	expandedNodes   map[string]bool // nodes with expanded dependency checklist
+	highlightDeps   bool            // whether to highlight ancestor dependency chain
 
 	// Sub-view
 	detailModel tea.Model
@@ -99,6 +102,8 @@ func newDagModel(data DebugData) dagModel {
 		selectableNodes: nodes,
 		nodeLevels:      levels,
 		showCursor:      len(nodes) > 0,
+		expandedNodes:   make(map[string]bool),
+		highlightDeps:   false,
 		progressLoading: hasNodes,
 		spinner:         s,
 	}
@@ -132,11 +137,12 @@ func (m dagModel) fetchWorkflowProgressForDAG() tea.Cmd {
 		tmpPlan := &PlanDAG{Nodes: m.plan.Nodes, Levels: m.plan.Levels}
 		attachWorkflowProgress(ctx, data.Token, data.ServiceID, data.EnvironmentID, data.InstanceID, tmpPlan)
 		return wfProgressMsg{
-			progressByID:   tmpPlan.ProgressByID,
-			progressByKey:  tmpPlan.ProgressByKey,
-			progressByName: tmpPlan.ProgressByName,
-			workflowID:     tmpPlan.WorkflowID,
-			errors:         tmpPlan.Errors,
+			progressByID:       tmpPlan.ProgressByID,
+			progressByKey:      tmpPlan.ProgressByKey,
+			progressByName:     tmpPlan.ProgressByName,
+			workflowID:         tmpPlan.WorkflowID,
+			errors:             tmpPlan.Errors,
+			workflowStepsByKey: tmpPlan.WorkflowStepsByKey,
 		}
 	}
 }
@@ -348,6 +354,15 @@ func (m dagModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if m.showCursor && len(m.selectableNodes) > 0 {
 				return m.openNodeDetail()
 			}
+		case " ":
+			if m.showCursor && len(m.selectableNodes) > 0 {
+				nodeID := m.selectableNodes[m.cursorIndex]
+				m.expandedNodes[nodeID] = !m.expandedNodes[nodeID]
+				m.rebuildLayout()
+			}
+		case "d":
+			m.highlightDeps = !m.highlightDeps
+			m.rebuildLayout()
 		}
 		m.clampScroll()
 	case wfProgressMsg:
@@ -423,6 +438,15 @@ func (m *dagModel) applyProgressIfReady() tea.Cmd {
 			for name, prog := range m.wfResult.progressByName {
 				m.plan.ProgressByName[name] = prog
 			}
+			// Merge workflow steps
+			if m.wfResult.workflowStepsByKey != nil {
+				if m.plan.WorkflowStepsByKey == nil {
+					m.plan.WorkflowStepsByKey = make(map[string]*ResourceWorkflowSteps)
+				}
+				for key, steps := range m.wfResult.workflowStepsByKey {
+					m.plan.WorkflowStepsByKey[key] = steps
+				}
+			}
 		}
 
 		// Overwrite with terraform progress (terraform wins for tf nodes)
@@ -486,10 +510,11 @@ func (m dagModel) fetchDagRefresh() tea.Cmd {
 			tmpPlan := &PlanDAG{Nodes: m.plan.Nodes, Levels: m.plan.Levels}
 			attachWorkflowProgress(ctx, data.Token, data.ServiceID, data.EnvironmentID, data.InstanceID, tmpPlan)
 			wf = wfProgressMsg{
-				progressByID:   tmpPlan.ProgressByID,
-				progressByKey:  tmpPlan.ProgressByKey,
-				progressByName: tmpPlan.ProgressByName,
-				workflowID:     tmpPlan.WorkflowID,
+				progressByID:       tmpPlan.ProgressByID,
+				progressByKey:      tmpPlan.ProgressByKey,
+				progressByName:     tmpPlan.ProgressByName,
+				workflowID:         tmpPlan.WorkflowID,
+				workflowStepsByKey: tmpPlan.WorkflowStepsByKey,
 			}
 		}
 
@@ -704,7 +729,11 @@ func (m dagModel) renderHelp() string {
 		nodeID := m.selectableNodes[m.cursorIndex]
 		node := m.plan.Nodes[nodeID]
 		selectedStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("230")).Bold(true)
-		text = fmt.Sprintf("tab/shift+tab: select resource  enter: open  arrows: scroll  q: quit  │  %s", selectedStyle.Render(nodeLabel(node)))
+		depGraphLabel := "show dep graph"
+		if m.highlightDeps {
+			depGraphLabel = "hide dep graph"
+		}
+		text = fmt.Sprintf("tab/shift+tab: select  space: deps  d: %s  enter: open  arrows: scroll  q: quit  │  %s", depGraphLabel, selectedStyle.Render(nodeLabel(node)))
 	} else {
 		text = "arrows: scroll  pgup/pgdn: page  home/end: jump  q: quit"
 	}
@@ -788,7 +817,7 @@ func (m *dagModel) rebuildLayout() {
 		m.plan.SpinnerTick++
 	}
 
-	m.lines = renderPlanDAGStyledWithSelection(m.plan, bodyWidth, selectedNodeID)
+	m.lines = renderPlanDAGStyledWithSelection(m.plan, bodyWidth, selectedNodeID, m.expandedNodes, m.highlightDeps)
 	m.contentWidth = maxLineWidthANSI(m.lines)
 	m.clampScroll()
 }

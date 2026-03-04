@@ -22,6 +22,8 @@ type PlanDAG struct {
 	ProgressByName  map[string]ResourceProgress `json:"progressByName,omitempty"`
 	ProgressLoading bool                        `json:"-"`
 	SpinnerTick     int                         `json:"-"`
+	// Per-resource workflow step summaries keyed by resource key
+	WorkflowStepsByKey map[string]*ResourceWorkflowSteps `json:"-"`
 }
 
 type PlanDAGNode struct {
