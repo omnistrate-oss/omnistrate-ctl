@@ -103,7 +103,7 @@ func newDagModel(data DebugData) dagModel {
 		nodeLevels:      levels,
 		showCursor:      len(nodes) > 0,
 		expandedNodes:   make(map[string]bool),
-		highlightDeps:   true,
+		highlightDeps:   false,
 		progressLoading: hasNodes,
 		spinner:         s,
 	}
@@ -729,7 +729,11 @@ func (m dagModel) renderHelp() string {
 		nodeID := m.selectableNodes[m.cursorIndex]
 		node := m.plan.Nodes[nodeID]
 		selectedStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("230")).Bold(true)
-		text = fmt.Sprintf("tab/shift+tab: select  space: deps  d: highlight  enter: open  arrows: scroll  q: quit  │  %s", selectedStyle.Render(nodeLabel(node)))
+		depGraphLabel := "show dep graph"
+		if m.highlightDeps {
+			depGraphLabel = "hide dep graph"
+		}
+		text = fmt.Sprintf("tab/shift+tab: select  space: deps  d: %s  enter: open  arrows: scroll  q: quit  │  %s", depGraphLabel, selectedStyle.Render(nodeLabel(node)))
 	} else {
 		text = "arrows: scroll  pgup/pgdn: page  home/end: jump  q: quit"
 	}

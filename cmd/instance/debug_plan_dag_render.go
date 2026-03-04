@@ -457,7 +457,7 @@ func drawPlanDAGStyled(plan *PlanDAG, _ int, selectedNodeID string, expandedNode
 			}
 			fromH := nodeHeight[edge.From]
 			toH := nodeHeight[edge.To]
-			isHighlighted := selectedNodeID == "" || (highlightSet[edge.From] && highlightSet[edge.To])
+			isHighlighted := len(highlightSet) == 0 || (highlightSet[edge.From] && highlightSet[edge.To])
 			// pass 0: dimmed only, pass 1: highlighted only
 			if pass == 0 && isHighlighted {
 				continue
@@ -479,7 +479,7 @@ func drawPlanDAGStyled(plan *PlanDAG, _ int, selectedNodeID string, expandedNode
 			card := cards[nodeID]
 			h := nodeHeight[nodeID]
 			isSelected := nodeID == selectedNodeID
-			isDimmed := selectedNodeID != "" && !highlightSet[nodeID]
+			isDimmed := len(highlightSet) > 0 && !highlightSet[nodeID]
 			drawCard(canvas, pos.x, pos.y, cardWidth, h, card, isSelected, isDimmed)
 		}
 	}
