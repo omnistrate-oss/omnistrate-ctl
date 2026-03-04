@@ -59,7 +59,7 @@ type helmDetailModel struct {
 	valuesCursor int
 
 	// Workflow Errors tab
-	wfErrors workflowErrorsState
+	wfErrors *workflowErrorsState
 
 	// Clipboard flash message
 	clipboardMsg string
@@ -78,6 +78,7 @@ func newHelmDetailModel(node PlanDAGNode, data DebugData) helmDetailModel {
 		spinner:   s,
 		logChan:   make(chan logLineMsg, 50),
 		logFollow: true,
+		wfErrors:  &workflowErrorsState{},
 	}
 }
 
@@ -424,10 +425,16 @@ func (m helmDetailModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.logScroll = 0
 				}
 			case helmTabWfErrors:
-				m.wfErrors.scroll -= m.helmBodyHeight()
-				if m.wfErrors.scroll < 0 {
-					m.wfErrors.scroll = 0
+				items := flattenWfEventItems(m.getWfEvents())
+				pageItems := m.helmBodyHeight() / 2
+				if pageItems < 1 {
+					pageItems = 1
 				}
+				m.wfErrors.cursor -= pageItems
+				if m.wfErrors.cursor < 0 {
+					m.wfErrors.cursor = 0
+				}
+				_ = items
 			}
 		case "pgdown":
 			if m.wfErrors.modalText != "" {
@@ -446,10 +453,17 @@ func (m helmDetailModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.logScroll = m.helmLogMaxScroll()
 				}
 			case helmTabWfErrors:
-				maxScroll := m.helmWfErrorsMaxScroll()
-				m.wfErrors.scroll += m.helmBodyHeight()
-				if m.wfErrors.scroll > maxScroll {
-					m.wfErrors.scroll = maxScroll
+				items := flattenWfEventItems(m.getWfEvents())
+				pageItems := m.helmBodyHeight() / 2
+				if pageItems < 1 {
+					pageItems = 1
+				}
+				m.wfErrors.cursor += pageItems
+				if m.wfErrors.cursor >= len(items) {
+					m.wfErrors.cursor = len(items) - 1
+				}
+				if m.wfErrors.cursor < 0 {
+					m.wfErrors.cursor = 0
 				}
 			}
 		case "f":
@@ -962,10 +976,6 @@ func (m helmDetailModel) renderHelmWfErrorsTab() string {
 	enrichBootstrapSteps(steps, m.node.Key, m.debugData.PlanDAG)
 	isLive := isWorkflowInProgress(steps)
 	return renderWorkflowEventsTab(steps, m.wfErrors, m.helmBodyHeight(), m.helmContentWidth(), loading, m.spinner.View(), isLive)
-}
-
-func (m helmDetailModel) helmWfErrorsMaxScroll() int {
-	return workflowEventsMaxScroll(m.getWfEvents(), m.helmContentWidth(), m.helmBodyHeight())
 }
 
 // buildHelmValuesTree builds a tree of outputNodes from helm chart values (a plain map).

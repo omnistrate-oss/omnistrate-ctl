@@ -349,7 +349,7 @@ func determineStepStatusFromEvents(events []dataaccess.DebugEvent) string {
 }
 
 // renderWorkflowEventsTab renders the workflow events tab content.
-func renderWorkflowEventsTab(steps *ResourceWorkflowSteps, state workflowErrorsState, bodyHeight, contentWidth int, loading bool, spinnerView string, isLive bool) string {
+func renderWorkflowEventsTab(steps *ResourceWorkflowSteps, state *workflowErrorsState, bodyHeight, contentWidth int, loading bool, spinnerView string, isLive bool) string {
 	if loading && (steps == nil || len(steps.Steps) == 0) {
 		return fmt.Sprintf("\n  %s Fetching workflow events...", spinnerView)
 	}
@@ -359,12 +359,17 @@ func renderWorkflowEventsTab(steps *ResourceWorkflowSteps, state workflowErrorsS
 	}
 
 	items := flattenWfEventItems(steps)
-	rendered := renderTimelineView(steps, contentWidth, items, state.cursor)
+	rendered, cursorLine := renderTimelineView(steps, contentWidth, items, state.cursor)
 
 	// Prepend live indicator when workflow is in progress
+	liveOffset := 0
 	if isLive {
 		indicator := renderLiveIndicator(spinnerView, state.refreshing, state.lastRefresh)
 		rendered = append([]string{indicator, ""}, rendered...)
+		liveOffset = 2
+		if cursorLine >= 0 {
+			cursorLine += liveOffset
+		}
 	}
 
 	totalLines := len(rendered)
@@ -376,17 +381,27 @@ func renderWorkflowEventsTab(steps *ResourceWorkflowSteps, state workflowErrorsS
 		viewH = 1
 	}
 
-	scroll := state.scroll
 	maxScroll := totalLines - viewH
 	if maxScroll < 0 {
 		maxScroll = 0
 	}
-	if scroll > maxScroll {
-		scroll = maxScroll
+
+	// Auto-scroll to keep cursor visible
+	if cursorLine >= 0 {
+		if cursorLine < state.scroll {
+			state.scroll = cursorLine
+		} else if cursorLine >= state.scroll+viewH {
+			state.scroll = cursorLine - viewH + 1
+		}
 	}
-	if scroll < 0 {
-		scroll = 0
+	if state.scroll > maxScroll {
+		state.scroll = maxScroll
 	}
+	if state.scroll < 0 {
+		state.scroll = 0
+	}
+
+	scroll := state.scroll
 
 	end := scroll + viewH
 	if end > totalLines {
@@ -429,7 +444,7 @@ type parsedStep struct {
 }
 
 // renderTimelineView renders a Gantt-chart timeline followed by event details.
-func renderTimelineView(steps *ResourceWorkflowSteps, contentWidth int, items []wfEventItem, cursor int) []string {
+func renderTimelineView(steps *ResourceWorkflowSteps, contentWidth int, items []wfEventItem, cursor int) ([]string, int) {
 	// Try to parse timestamps for gantt chart
 	var ps []parsedStep
 	var globalStart, globalEnd time.Time
@@ -662,7 +677,7 @@ func renderTimelineView(steps *ResourceWorkflowSteps, contentWidth int, items []
 		lines[selectedLine] = selectStyle.Render(lines[selectedLine])
 	}
 
-	return lines
+	return lines, selectedLine
 }
 
 // renderGanttBar renders a single horizontal bar within the timeline.
@@ -719,7 +734,7 @@ func formatStepDuration(d time.Duration) string {
 }
 
 // renderFlatStepRows is a fallback when timestamps can't be parsed for the gantt chart.
-func renderFlatStepRows(steps *ResourceWorkflowSteps, contentWidth int, _ []wfEventItem, cursor int) []string {
+func renderFlatStepRows(steps *ResourceWorkflowSteps, contentWidth int, _ []wfEventItem, cursor int) ([]string, int) {
 	nameStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("117"))
 	dimStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("245"))
 	failedStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("203"))
@@ -815,7 +830,7 @@ func renderFlatStepRows(steps *ResourceWorkflowSteps, contentWidth int, _ []wfEv
 		lines[selectedLine] = selectStyle.Render(lines[selectedLine])
 	}
 
-	return lines
+	return lines, selectedLine
 }
 
 func stepStatusIconAndStyle(status string, completed, running, failed, dim lipgloss.Style) (string, lipgloss.Style) {
@@ -918,25 +933,8 @@ func formatShortTime(ts string) string {
 }
 
 // workflowEventsMaxScroll returns the max scroll position for workflow events.
-func workflowEventsMaxScroll(steps *ResourceWorkflowSteps, contentWidth, bodyHeight int) int {
-	if steps == nil {
-		return 0
-	}
-	items := flattenWfEventItems(steps)
-	rendered := renderTimelineView(steps, contentWidth, items, -1)
-	viewH := bodyHeight - 2
-	if viewH < 1 {
-		viewH = 1
-	}
-	maxScroll := len(rendered) - viewH
-	if maxScroll < 0 {
-		maxScroll = 0
-	}
-	return maxScroll
-}
-
 // renderWfEventModal renders a full-screen modal showing event detail.
-func renderWfEventModal(state workflowErrorsState, width, height int) string {
+func renderWfEventModal(state *workflowErrorsState, width, height int) string {
 	titleStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("230")).Background(lipgloss.Color("63")).Padding(0, 1)
 	header := lipgloss.Place(width, 1, lipgloss.Left, lipgloss.Top, titleStyle.Render(fmt.Sprintf("Event Detail · %s", state.modalTitle)))
 
@@ -1000,7 +998,7 @@ func renderWfEventModal(state workflowErrorsState, width, height int) string {
 }
 
 // wfEventModalMaxScroll returns the max scroll for the event detail modal.
-func wfEventModalMaxScroll(state workflowErrorsState, height int) int {
+func wfEventModalMaxScroll(state *workflowErrorsState, height int) int {
 	bodyH := height - 4
 	if bodyH < 1 {
 		bodyH = 1
