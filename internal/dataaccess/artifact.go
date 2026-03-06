@@ -2,7 +2,6 @@ package dataaccess
 
 import (
 	"context"
-	"fmt"
 	"net/http"
 	"strings"
 
@@ -70,49 +69,6 @@ func UploadArtifact(
 	}, nil
 }
 
-// UploadArtifactParams holds parameters for uploading an artifact
-type UploadArtifactParams struct {
-	Base64Content   string
-	ArtifactPath    string
-	ServiceName     string
-	ProductTierName string
-	AccountConfigID string
-	EnvironmentType string
-}
-
-// UploadArtifacts uploads multiple artifacts and returns a map of path to artifact ID
-// artifacts is a map of path to UploadArtifactParams
-func UploadArtifacts(
-	ctx context.Context,
-	token string,
-	artifacts map[string]UploadArtifactParams,
-) (map[string]string, error) {
-	if len(artifacts) == 0 {
-		return nil, nil
-	}
-
-	result := make(map[string]string)
-
-	for path, params := range artifacts {
-		uploadResult, err := UploadArtifact(
-			ctx,
-			token,
-			params.Base64Content,
-			params.ArtifactPath,
-			params.ServiceName,
-			params.ProductTierName,
-			params.AccountConfigID,
-			params.EnvironmentType,
-		)
-		if err != nil {
-			return nil, err
-		}
-		result[path] = uploadResult.ArtifactID
-	}
-
-	return result, nil
-}
-
 // DescribeArtifact retrieves information about an uploaded artifact
 func DescribeArtifact(
 	ctx context.Context,
@@ -138,28 +94,4 @@ func DescribeArtifact(
 		ArtifactID: resp.GetId(),
 		Status:     resp.GetStatus(),
 	}, nil
-}
-
-// ListArtifactsResult represents the result of listing artifacts
-type ListArtifactsResult struct {
-	Artifacts []ArtifactUploadResult
-}
-
-// ListArtifacts retrieves a list of all artifacts for the current user/organization
-func ListArtifacts(
-	ctx context.Context,
-	token string,
-) (*ListArtifactsResult, error) {
-	// TODO: Implement when ListDeploymentArtifacts API is available in SDK
-	return nil, fmt.Errorf("list artifacts API not yet implemented")
-}
-
-// DeleteArtifact deletes an uploaded artifact
-func DeleteArtifact(
-	ctx context.Context,
-	token string,
-	artifactID string,
-) error {
-	// TODO: Implement when DeleteDeploymentArtifact API is available in SDK
-	return fmt.Errorf("delete artifact API not yet implemented")
 }
