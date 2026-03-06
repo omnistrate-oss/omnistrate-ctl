@@ -62,10 +62,10 @@ type terraformDetailModel struct {
 	scrollY   int
 
 	// Loading state
-	loading            bool
-	refreshing         bool // true during auto-refresh (non-blocking)
+	loading             bool
+	refreshing          bool // true during auto-refresh (non-blocking)
 	lastProgressRefresh time.Time
-	spinner            spinner.Model
+	spinner             spinner.Model
 
 	// Progress tab data
 	tfProgress  *TerraformProgressData
@@ -1930,5 +1930,3 @@ func (m terraformDetailModel) renderTfWfErrorsTab() string {
 	isLive := isWorkflowInProgress(steps)
 	return renderWorkflowEventsTab(steps, m.wfErrors, m.bodyHeight(), m.contentWidth(), loading, m.spinner.View(), isLive)
 }
-
-

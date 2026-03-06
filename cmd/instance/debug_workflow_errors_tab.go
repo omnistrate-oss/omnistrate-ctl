@@ -15,13 +15,13 @@ import (
 
 // workflowErrorsState holds the scroll and selection state for the workflow events tab.
 type workflowErrorsState struct {
-	scroll         int
-	cursor         int
-	modalText      string // non-empty means event detail modal is open
-	modalTitle     string
-	modalScroll    int
-	refreshing     bool      // true while fetching fresh workflow events
-	lastRefresh    time.Time // when the last successful refresh completed
+	scroll      int
+	cursor      int
+	modalText   string // non-empty means event detail modal is open
+	modalTitle  string
+	modalScroll int
+	refreshing  bool      // true while fetching fresh workflow events
+	lastRefresh time.Time // when the last successful refresh completed
 }
 
 // wfEventsRefreshMsg carries refreshed workflow steps for a resource.
@@ -145,8 +145,8 @@ type ResourceWorkflowSteps struct {
 
 // wfEventItem represents a selectable row in the workflow events tab.
 type wfEventItem struct {
-	isStepHeader bool                  // true if this is a step header row
-	stepIdx      int                   // index into steps
+	isStepHeader bool                   // true if this is a step header row
+	stepIdx      int                    // index into steps
 	event        *dataaccess.DebugEvent // non-nil for event rows
 }
 

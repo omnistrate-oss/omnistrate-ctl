@@ -15,10 +15,10 @@ import (
 )
 
 const (
-	helmTabLogs       = 0
-	helmTabValues     = 1
-	helmTabWfErrors   = 2
-	helmNumTabs       = 3
+	helmTabLogs     = 0
+	helmTabValues   = 1
+	helmTabWfErrors = 2
+	helmNumTabs     = 3
 )
 
 var helmTabNames = []string{"Helm Logs", "Chart Values", "Workflow Events"}

@@ -64,6 +64,25 @@ func DeleteService(ctx context.Context, token, serviceID string) error {
 	return nil
 }
 
+func PrepareServiceFromServicePlanSpec(ctx context.Context, token string, request openapiclient.PrepareServiceFromServicePlanSpecRequest2) (*openapiclient.PrepareServiceFromServicePlanSpecResult, error) {
+	ctxWithToken := context.WithValue(ctx, openapiclient.ContextAccessToken, token)
+	apiClient := getV1Client()
+
+	resp, r, err := apiClient.ServiceApiAPI.ServiceApiPrepareServiceFromServicePlanSpec(ctxWithToken).
+		PrepareServiceFromServicePlanSpecRequest2(request).
+		Execute()
+	defer func() {
+		if r != nil {
+			_ = r.Body.Close()
+		}
+	}()
+	if err != nil {
+		return nil, handleV1Error(err)
+	}
+
+	return resp, nil
+}
+
 func BuildServiceFromServicePlanSpec(ctx context.Context, token string, request openapiclient.BuildServiceFromServicePlanSpecRequest2) (*openapiclient.BuildServiceFromServicePlanSpecResult, error) {
 	ctxWithToken := context.WithValue(ctx, openapiclient.ContextAccessToken, token)
 	apiClient := getV1Client()

@@ -545,80 +545,26 @@ func runBuild(cmd *cobra.Command, args []string) error {
 	}
 
 	if specType == ServicePlanSpecType {
-		// Parse the spec and validate account configs for ServicePlanSpec only
-		var specInfo *ServicePlanSpecInfo
-		var parseErr error
-		specInfo, parseErr = ParseServicePlanSpec(fileData)
-		if parseErr != nil {
-			utils.HandleSpinnerError(spinner1, sm1, parseErr)
-			return parseErr
-		}
-
-		// Log the parsed product tier name if available (only for ServicePlanSpec)
-		if specInfo != nil && specInfo.ProductTierName != "" && output != "json" {
-			spinner1.UpdateMessage(fmt.Sprintf("Building service '%s' with plan '%s'...", name, specInfo.ProductTierName))
-		}
-
-		// Collect account config IDs for product tier creation
-		var accountConfigIDs []string
-		var accountResult *AccountMatchResult
-
-		// Check for cloud account configs in the spec and validate they exist (only for ServicePlanSpec)
-		if specInfo != nil && (specInfo.AwsAccountID != "" || specInfo.GcpProjectID != "" || specInfo.AzureSubscriptionID != "" || specInfo.OCITenancyID != "") {
-			spinner1.UpdateMessage("Validating cloud provider accounts...")
-
-			var matchErr error
-			accountResult, matchErr = FindMatchingAccountConfigs(cmd.Context(), token, specInfo)
-			if matchErr != nil {
-				utils.HandleSpinnerError(spinner1, sm1, matchErr)
-				return matchErr
-			}
-
-			// Report missing accounts
-			if len(accountResult.Missing) > 0 {
-				errMsg := "Cloud account mismatch:\n"
-				for _, msg := range accountResult.Missing {
-					errMsg += "  - " + msg + "\n"
-				}
-				err = errors.New(errMsg)
-				utils.HandleSpinnerError(spinner1, sm1, err)
-				return err
-			}
-
-			// Warn about unverified accounts but continue
-			if len(accountResult.Unverified) > 0 && output != "json" {
-				for _, msg := range accountResult.Unverified {
-					utils.PrintWarning("⚠️  " + msg)
+		// Extract plan name from YAML for display purposes
+		if output != "json" {
+			var yamlContent map[string]interface{}
+			if parseErr := yaml.Unmarshal(fileData, &yamlContent); parseErr == nil {
+				if planName, ok := yamlContent["name"].(string); ok && planName != "" {
+					spinner1.UpdateMessage(fmt.Sprintf("Building service '%s' with plan '%s'...", name, planName))
 				}
 			}
-
-			// Update spinner to show matched accounts
-			if accountResult.Matched.HasAnyAccountConfigID() {
-				matchedCount := len(accountResult.Matched.ToSlice())
-				spinner1.UpdateMessage(fmt.Sprintf("Found %d matching account config(s), building service...", matchedCount))
-				accountConfigIDs = accountResult.Matched.ToSlice()
-			}
 		}
 
-		// Step 1: Find or create service hierarchy (service -> environment -> product tier)
-		spinner1.UpdateMessage("Finding or creating service hierarchy...")
-
-		productTierName := specInfo.ProductTierName
-		if productTierName == "" {
-			productTierName = name // Use service name as product tier name if not specified
-		}
+		// Step 1: Prepare service build - find or create service hierarchy and get upload tasks
+		spinner1.UpdateMessage("Preparing service build...")
 
 		hierarchyResult, hierarchyErr := FindOrCreateServiceHierarchy(
 			cmd.Context(),
 			token,
 			name,
-			productTierName,
-			description,
+			fileData,
 			environmentPtr,
 			environmentTypePtr,
-			specInfo.TenancyType,
-			specInfo.DeploymentModelType,
-			accountConfigIDs,
 		)
 		if hierarchyErr != nil {
 			utils.HandleSpinnerError(spinner1, sm1, hierarchyErr)
@@ -630,91 +576,159 @@ func runBuild(cmd *cobra.Command, args []string) error {
 		EnvironmentID = hierarchyResult.EnvironmentID
 		ProductTierID = hierarchyResult.ProductTierID
 
-		// If a new product tier was created, automatically release as preferred
-		// to keep consistent behavior (unless user explicitly opted out with --no-release-as-preferred)
-		if hierarchyResult.IsNewTier && !noReleaseAsPreferred {
-			release = true
-			releaseAsPreferred = true
-		}
+		spinner1.UpdateMessage("Service build prepared successfully")
 
-		// Step 2: Upload artifacts if any are specified in the spec
-		if len(specInfo.ArtifactUploads) > 0 && !dryRun {
-			uniquePaths := UniqueArtifactPaths(specInfo.ArtifactUploads)
-			spinner1.UpdateMessage(fmt.Sprintf("Archiving %d artifact director(ies)...", len(uniquePaths)))
+		// Step 2: Upload artifacts using tasks from prepare response
+		if len(hierarchyResult.ArtifactUploadingTasks) > 0 && !dryRun {
+			uniquePaths := UniqueArtifactPathsFromTasks(hierarchyResult.ArtifactUploadingTasks)
+
+			// Complete the prepare spinner before warnings and per-task spinners
+			if spinner1 != nil {
+				spinner1.UpdateMessage("Service build prepared successfully")
+				spinner1.Complete()
+			}
+
+			// Warn if any artifact path refers to the current working directory
+			if output != "json" {
+				for _, p := range uniquePaths {
+					if isCurrentDirPath(p) {
+						utils.PrintWarning(fmt.Sprintf("Warning: artifact path '%s' will upload the entire current directory (%s)", p, cwd))
+					}
+				}
+			}
 
 			// Archive all unique artifact paths (gzip + tar + base64 encode)
 			artifactArchives, archiveErr := ArchiveArtifactPaths(cwd, uniquePaths)
 			if archiveErr != nil {
-				utils.HandleSpinnerError(spinner1, sm1, archiveErr)
+				if sm1 != nil {
+					sm1.Stop()
+				}
+				utils.EnsureCursorRestoration()
+				utils.PrintError(archiveErr)
 				return archiveErr
 			}
 
-			// Deduplicate uploads based on (path, accountConfigID) pairs
-			// For BYOA/on-prem, all cloud providers use the same account config, so we only upload once
-			dedupedUploads := DeduplicateArtifactUploads(specInfo.ArtifactUploads, specInfo.DeploymentModelType, accountResult)
+			// Create per-task spinners for each upload task
+			type artifactSpinnerInfo struct {
+				spinner    *ysmrr.Spinner
+				artifactID string
+			}
+			taskSpinners := make([]artifactSpinnerInfo, 0, len(hierarchyResult.ArtifactUploadingTasks))
 
-			// Warn if any artifact upload uses current directory as fallback
-			for _, upload := range dedupedUploads {
-				if upload.Path == "./" {
-					fmt.Fprintf(os.Stderr, "WARNING: artifactsLocalPath not specified in terraform configuration, uploading all from current directory\n")
-					break
+			for i, task := range hierarchyResult.ArtifactUploadingTasks {
+				taskLabel := fmt.Sprintf("[%d/%d] %s -> %s: Uploading...",
+					i+1, len(hierarchyResult.ArtifactUploadingTasks),
+					task.ArtifactPath, task.AccountConfigID)
+				var taskSpinner *ysmrr.Spinner
+				if sm1 != nil {
+					taskSpinner = sm1.AddSpinner(taskLabel)
 				}
+				taskSpinners = append(taskSpinners, artifactSpinnerInfo{spinner: taskSpinner})
 			}
 
-			spinner1.UpdateMessage(fmt.Sprintf("Uploading %d artifact(s)...", len(dedupedUploads)))
-
-			// Upload each artifact to its corresponding account config
-			var uploadedArtifactIDs []string
-			for _, upload := range dedupedUploads {
-				base64Content, exists := artifactArchives[upload.Path]
+			// Upload each artifact and track per-task progress
+			for i, task := range hierarchyResult.ArtifactUploadingTasks {
+				base64Content, exists := artifactArchives[task.ArtifactPath]
 				if !exists {
-					uploadErr := fmt.Errorf("artifact archive not found for path '%s'", upload.Path)
-					utils.HandleSpinnerError(spinner1, sm1, uploadErr)
+					uploadErr := fmt.Errorf("artifact archive not found for path '%s'", task.ArtifactPath)
+					if taskSpinners[i].spinner != nil {
+						taskSpinners[i].spinner.ErrorWithMessage(fmt.Sprintf("[%d/%d] %s -> %s: %v",
+							i+1, len(hierarchyResult.ArtifactUploadingTasks), task.ArtifactPath, task.AccountConfigID, uploadErr))
+					}
+					if sm1 != nil {
+						sm1.Stop()
+					}
+					utils.EnsureCursorRestoration()
+					utils.PrintError(uploadErr)
 					return uploadErr
 				}
 
-				// Get the account config ID for this upload based on cloud provider
-				accountConfigID := getAccountConfigIDForArtifact(upload, specInfo.DeploymentModelType, accountResult)
+				if taskSpinners[i].spinner != nil {
+					taskSpinners[i].spinner.UpdateMessage(fmt.Sprintf("[%d/%d] %s -> %s: Uploading...",
+						i+1, len(hierarchyResult.ArtifactUploadingTasks),
+						task.ArtifactPath, task.AccountConfigID))
+				}
 
 				uploadResult, uploadErr := dataaccess.UploadArtifact(
 					cmd.Context(),
 					token,
 					base64Content,
-					upload.Path,
-					name,            // serviceName
-					productTierName, // productTierName
-					accountConfigID,
-					strings.ToUpper(environmentType), // environmentType (must be uppercase)
+					task.ArtifactPath,
+					task.ServiceName,
+					task.ProductTierName,
+					task.AccountConfigID,
+					task.EnvironmentType,
 				)
 				if uploadErr != nil {
-					cpInfo := ""
-					if upload.CloudProvider != "" {
-						cpInfo = fmt.Sprintf(" for %s", upload.CloudProvider)
+					if taskSpinners[i].spinner != nil {
+						taskSpinners[i].spinner.ErrorWithMessage(fmt.Sprintf("[%d/%d] %s -> %s: Failed to upload",
+							i+1, len(hierarchyResult.ArtifactUploadingTasks),
+							task.ArtifactPath, task.AccountConfigID))
 					}
-					utils.HandleSpinnerError(spinner1, sm1, fmt.Errorf("failed to upload artifact '%s'%s: %w", upload.Path, cpInfo, uploadErr))
+					if sm1 != nil {
+						sm1.Stop()
+					}
+					utils.EnsureCursorRestoration()
+					utils.PrintError(fmt.Errorf("failed to upload artifact '%s': %w", task.ArtifactPath, uploadErr))
 					return uploadErr
 				}
-				uploadedArtifactIDs = append(uploadedArtifactIDs, uploadResult.ArtifactID)
-				if output != "json" {
-					cpInfo := ""
-					if upload.CloudProvider != "" {
-						cpInfo = fmt.Sprintf(" (%s)", upload.CloudProvider)
-					}
-					spinner1.UpdateMessage(fmt.Sprintf("Uploaded artifact '%s'%s -> %s", upload.Path, cpInfo, uploadResult.ArtifactID))
+
+				taskSpinners[i].artifactID = uploadResult.ArtifactID
+				if taskSpinners[i].spinner != nil {
+					taskSpinners[i].spinner.UpdateMessage(fmt.Sprintf("[%d/%d] %s -> %s: Uploaded, processing...",
+						i+1, len(hierarchyResult.ArtifactUploadingTasks),
+						task.ArtifactPath, task.AccountConfigID))
 				}
 			}
 
-			// Wait for all artifacts to be in READY status (5 minute timeout)
-			if len(uploadedArtifactIDs) > 0 {
-				spinner1.UpdateMessage(fmt.Sprintf("Waiting for %d artifact(s) to be ready...", len(uploadedArtifactIDs)))
+			// Build artifact ID to spinner index map for the polling callback
+			artifactIDToIdx := make(map[string]int)
+			var uploadedArtifactIDs []string
+			for i, info := range taskSpinners {
+				if info.artifactID != "" {
+					artifactIDToIdx[info.artifactID] = i
+					uploadedArtifactIDs = append(uploadedArtifactIDs, info.artifactID)
+				}
+			}
 
-				waitErr := waitForArtifactsReady(cmd.Context(), token, uploadedArtifactIDs)
+			// Wait for all artifacts to be in READY status with per-spinner updates
+			if len(uploadedArtifactIDs) > 0 {
+				waitErr := waitForArtifactsReady(cmd.Context(), token, uploadedArtifactIDs,
+					func(artifactID string, status string) {
+						idx, ok := artifactIDToIdx[artifactID]
+						if !ok || taskSpinners[idx].spinner == nil {
+							return
+						}
+						task := hierarchyResult.ArtifactUploadingTasks[idx]
+						switch status {
+						case "READY":
+							taskSpinners[idx].spinner.CompleteWithMessage(fmt.Sprintf("[%d/%d] %s -> %s: Ready",
+								idx+1, len(hierarchyResult.ArtifactUploadingTasks),
+								task.ArtifactPath, task.AccountConfigID))
+						case "FAILED":
+							taskSpinners[idx].spinner.ErrorWithMessage(fmt.Sprintf("[%d/%d] %s -> %s: Failed",
+								idx+1, len(hierarchyResult.ArtifactUploadingTasks),
+								task.ArtifactPath, task.AccountConfigID))
+						default:
+							taskSpinners[idx].spinner.UpdateMessage(fmt.Sprintf("[%d/%d] %s -> %s: %s",
+								idx+1, len(hierarchyResult.ArtifactUploadingTasks),
+								task.ArtifactPath, task.AccountConfigID, status))
+						}
+					})
 				if waitErr != nil {
-					utils.HandleSpinnerError(spinner1, sm1, waitErr)
+					// Mark any remaining spinners as errored
+					for _, info := range taskSpinners {
+						if info.spinner != nil && !info.spinner.IsComplete() && !info.spinner.IsError() {
+							info.spinner.Error()
+						}
+					}
+					if sm1 != nil {
+						sm1.Stop()
+					}
+					utils.EnsureCursorRestoration()
+					utils.PrintError(waitErr)
 					return waitErr
 				}
-
-				spinner1.UpdateMessage(fmt.Sprintf("All %d artifact(s) are ready", len(uploadedArtifactIDs)))
 			}
 		}
 	}
