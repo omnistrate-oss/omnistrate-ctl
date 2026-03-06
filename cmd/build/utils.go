@@ -93,9 +93,9 @@ func ContainsAnyKey(m map[string]interface{}, keys []string) bool {
 	return false
 }
 
-// ServiceHierarchyResult holds the result of finding or creating the service hierarchy
-// baseDir is the directory from which relative paths are resolved
-// Returns a map of relative path to base64 encoded tar.gz content
+// ArchiveArtifactPaths creates tar.gz archives for each artifact path and returns base64 encoded content.
+// baseDir is the directory from which relative paths are resolved.
+// Returns a map of relative path to base64 encoded tar.gz content.
 func ArchiveArtifactPaths(baseDir string, artifactPaths []string) (map[string]string, error) {
 	if len(artifactPaths) == 0 {
 		return nil, nil
