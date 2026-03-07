@@ -3,24 +3,24 @@ package utils
 import (
 	"encoding/json"
 	"fmt"
-	prettytable "github.com/jedib0t/go-pretty/v6/table"
 	"io"
 	"os"
 	"slices"
+
+	btable "github.com/charmbracelet/bubbles/table"
+	"github.com/charmbracelet/lipgloss"
 )
 
+// Table wraps a bubbles table for rendering structured data.
 type Table struct {
-	tableWriter prettytable.Writer
-	columns     []string
+	columns []string
+	rows    [][]string
 }
 
 func NewTable(columns []any) (t *Table) {
-	t = &Table{
-		tableWriter: prettytable.NewWriter(),
-	}
+	t = &Table{}
 
 	columnsAsStrings := make([]string, 0, len(columns))
-
 	for _, column := range columns {
 		columnsAsStrings = append(columnsAsStrings, fmt.Sprintf("%v", column))
 	}
@@ -35,7 +35,6 @@ func NewTable(columns []any) (t *Table) {
 		if b == "name" {
 			return 1
 		}
-		// Then sort alphabetically
 		if a < b {
 			return -1
 		} else if a > b {
@@ -43,15 +42,6 @@ func NewTable(columns []any) (t *Table) {
 		}
 		return 0
 	})
-
-	// Convert back to any
-	var columnsAsAny []any
-
-	for _, column := range t.columns {
-		columnsAsAny = append(columnsAsAny, column)
-	}
-
-	t.tableWriter.AppendHeader(columnsAsAny)
 
 	return
 }
@@ -63,7 +53,6 @@ func NewTableFromJSONTemplate(data json.RawMessage) (t *Table, err error) {
 	}
 
 	columns := make([]any, 0, len(mappedData))
-
 	for k := range mappedData {
 		columns = append(columns, k)
 	}
@@ -73,7 +62,15 @@ func NewTableFromJSONTemplate(data json.RawMessage) (t *Table, err error) {
 }
 
 func (t *Table) AddRow(row []any) {
-	t.tableWriter.AppendRow(row)
+	strRow := make([]string, len(row))
+	for i, v := range row {
+		if v == nil {
+			strRow[i] = ""
+		} else {
+			strRow[i] = fmt.Sprintf("%v", v)
+		}
+	}
+	t.rows = append(t.rows, strRow)
 }
 
 func (t *Table) AddRowFromJSON(data json.RawMessage) error {
@@ -96,9 +93,58 @@ func (t Table) Print() {
 	t.PrintToWriter(os.Stdout)
 }
 
-func (t Table) PrintToWriter(finalW io.Writer) {
-	t.tableWriter.SetOutputMirror(finalW)
-	t.tableWriter.Render()
+func (t Table) PrintToWriter(w io.Writer) {
+	if len(t.columns) == 0 {
+		return
+	}
+
+	// Calculate optimal column widths from content
+	widths := make([]int, len(t.columns))
+	for i, col := range t.columns {
+		widths[i] = lipgloss.Width(col)
+	}
+	for _, row := range t.rows {
+		for i, cell := range row {
+			if i < len(widths) {
+				if cw := lipgloss.Width(cell); cw > widths[i] {
+					widths[i] = cw
+				}
+			}
+		}
+	}
+
+	// Build bubbles/table columns and rows
+	cols := make([]btable.Column, len(t.columns))
+	for i, name := range t.columns {
+		cols[i] = btable.Column{Title: name, Width: widths[i]}
+	}
+
+	rows := make([]btable.Row, len(t.rows))
+	for i, row := range t.rows {
+		rows[i] = btable.Row(row)
+	}
+
+	bt := btable.New(
+		btable.WithColumns(cols),
+		btable.WithRows(rows),
+		btable.WithHeight(max(len(rows)+1, 2)),
+	)
+
+	s := btable.DefaultStyles()
+	s.Header = s.Header.
+		BorderStyle(lipgloss.NormalBorder()).
+		BorderForeground(lipgloss.Color("240")).
+		BorderBottom(true).
+		Bold(true).
+		Foreground(lipgloss.Color("99"))
+	s.Selected = lipgloss.NewStyle()
+	bt.SetStyles(s)
+
+	baseStyle := lipgloss.NewStyle().
+		BorderStyle(lipgloss.RoundedBorder()).
+		BorderForeground(lipgloss.Color("240"))
+
+	fmt.Fprintln(w, baseStyle.Render(bt.View()))
 }
 
 func PrintTable(jsonData []string) (err error) {

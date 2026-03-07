@@ -5,8 +5,6 @@ import (
 	"fmt"
 	openapiclientfleet "github.com/omnistrate-oss/omnistrate-sdk-go/fleet"
 
-	"github.com/cqroot/prompt"
-	"github.com/cqroot/prompt/choose"
 	"github.com/omnistrate-oss/omnistrate-ctl/cmd/common"
 	"github.com/omnistrate-oss/omnistrate-ctl/internal/config"
 	"github.com/omnistrate-oss/omnistrate-ctl/internal/dataaccess"
@@ -141,13 +139,11 @@ func runApplyPendingChanges(cmd *cobra.Command, args []string) error {
 		utils.PrintWarning(fmt.Sprintf("You are about to apply the above pending changes to deployment cell %s", deploymentCellID))
 		fmt.Println("This will modify the live configuration of the deployment cell.")
 
-		confirmedChoice, err := prompt.New().Ask("Do you want to proceed with applying these changes?").Choose([]string{"Yes", "No"}, choose.WithTheme(choose.ThemeArrow))
+		confirmed, err := utils.ConfirmAction("Do you want to proceed with applying these changes?")
 		if err != nil {
 			utils.PrintError(err)
 			return err
 		}
-
-		confirmed := confirmedChoice == "Yes"
 
 		if !confirmed {
 			utils.PrintInfo("Apply operation cancelled")

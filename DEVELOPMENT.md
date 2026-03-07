@@ -773,7 +773,7 @@ To discover which SDK operations are available for a new entity:
 ### Output Formatting
 
 The global `--output` flag (`-o`) supports three formats:
-- `table` (default) — formatted table via `go-pretty`
+- `table` (default) — formatted table via `lipgloss/table`
 - `text` — indented JSON-like text
 - `json` — raw JSON
 

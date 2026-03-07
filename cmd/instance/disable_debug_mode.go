@@ -5,10 +5,6 @@ import (
 	"errors"
 	"strings"
 
-	"github.com/cqroot/prompt"
-	"github.com/cqroot/prompt/choose"
-
-	"github.com/chelnak/ysmrr"
 	"github.com/omnistrate-oss/omnistrate-ctl/cmd/common"
 	"github.com/omnistrate-oss/omnistrate-ctl/internal/config"
 	"github.com/omnistrate-oss/omnistrate-ctl/internal/dataaccess"
@@ -77,22 +73,12 @@ func runDisableDebug(cmd *cobra.Command, args []string) error {
 	}
 
 	if !isForce {
-		// Prompt user to confirm
-		var choice string
-		choice, err = prompt.New().Ask("Please verify that your instance has been upgraded to the plan version with the appropriate fix. Continue to proceed?").
-			Choose([]string{
-				"Yes",
-				"No",
-			}, choose.WithTheme(choose.ThemeArrow))
+		confirmed, err := utils.ConfirmAction("Please verify that your instance has been upgraded to the plan version with the appropriate fix. Continue to proceed?")
 		if err != nil {
 			utils.PrintError(err)
 			return err
 		}
-
-		switch choice {
-		case "Yes":
-			break
-		case "No":
+		if !confirmed {
 			utils.PrintInfo("Operation cancelled")
 			return nil
 		}
@@ -119,10 +105,10 @@ func runDisableDebug(cmd *cobra.Command, args []string) error {
 	}
 
 	// Initialize spinner if output is not JSON
-	var sm ysmrr.SpinnerManager
-	var spinner *ysmrr.Spinner
+	var sm utils.SpinnerManager
+	var spinner *utils.Spinner
 	if output != "json" {
-		sm = ysmrr.NewSpinnerManager()
+		sm = utils.NewSpinnerManager()
 		msg := "Disabling debug mode for instance deployment..."
 		spinner = sm.AddSpinner(msg)
 		sm.Start()

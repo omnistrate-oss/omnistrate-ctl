@@ -7,7 +7,6 @@ import (
 	"github.com/omnistrate-oss/omnistrate-ctl/cmd/common"
 	"github.com/omnistrate-oss/omnistrate-ctl/cmd/upgrade/manageupgradelifecycle"
 
-	"github.com/chelnak/ysmrr"
 	"github.com/omnistrate-oss/omnistrate-ctl/cmd/upgrade/status"
 	"github.com/omnistrate-oss/omnistrate-ctl/internal/config"
 	"github.com/omnistrate-oss/omnistrate-ctl/internal/dataaccess"
@@ -152,10 +151,10 @@ func run(cmd *cobra.Command, args []string) error {
 	}
 
 	// Initialize spinner if output is not json
-	var sm ysmrr.SpinnerManager
-	var spinner *ysmrr.Spinner
+	var sm utils.SpinnerManager
+	var spinner *utils.Spinner
 	if output != "json" {
-		sm = ysmrr.NewSpinnerManager()
+		sm = utils.NewSpinnerManager()
 		msg := "Scheduling upgrade for all instances"
 		if len(args) == 1 {
 			msg = fmt.Sprintf("Scheduling upgrade for %s", args[0])

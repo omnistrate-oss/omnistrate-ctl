@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/chelnak/ysmrr"
 	"github.com/omnistrate-oss/omnistrate-ctl/cmd/common"
 	"github.com/omnistrate-oss/omnistrate-ctl/internal/config"
 	"github.com/omnistrate-oss/omnistrate-ctl/internal/dataaccess"
@@ -73,10 +72,10 @@ func runCreate(cmd *cobra.Command, args []string) (err error) {
 	}
 
 	// Initialize spinner if output is not JSON
-	var sm ysmrr.SpinnerManager
-	var spinner *ysmrr.Spinner
+	var sm utils.SpinnerManager
+	var spinner *utils.Spinner
 	if output != common.OutputTypeJson {
-		sm = ysmrr.NewSpinnerManager()
+		sm = utils.NewSpinnerManager()
 		spinner = sm.AddSpinner("Creating custom network...")
 		sm.Start()
 	}

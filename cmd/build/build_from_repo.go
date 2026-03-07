@@ -18,7 +18,6 @@ import (
 	"github.com/fatih/color"
 	"github.com/omnistrate-oss/omnistrate-ctl/cmd/common"
 
-	"github.com/chelnak/ysmrr"
 	"github.com/omnistrate-oss/omnistrate-ctl/internal/config"
 	"github.com/omnistrate-oss/omnistrate-ctl/internal/dataaccess"
 	"github.com/omnistrate-oss/omnistrate-ctl/internal/model"
@@ -319,9 +318,9 @@ func runBuildFromRepo(cmd *cobra.Command, args []string) error {
 	}
 
 	// Initialize the spinner manager
-	var sm ysmrr.SpinnerManager
-	var spinner *ysmrr.Spinner
-	sm = ysmrr.NewSpinnerManager()
+	var sm utils.SpinnerManager
+	var spinner *utils.Spinner
+	sm = utils.NewSpinnerManager()
 	sm.Start()
 
 	// Initialize required variables for BuildServiceFromRepository
@@ -586,14 +585,14 @@ func runBuildFromRepo(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
-func BuildServiceFromRepository(cmd *cobra.Command, ctx context.Context, token, serviceName, releaseDescription string, resetPAT, dryRun, skipDockerBuild, skipServiceBuild bool, deploymentType, awsAccountID, gcpProjectID, gcpProjectNumber, azureSubscriptionID, azureTenantID string, sm ysmrr.SpinnerManager, file string, envVars, platforms []string, forceCreateServicePlanVersion bool) (serviceID, devEnvironmentID, devPlanID string, undefinedResources map[string]string, err error) {
+func BuildServiceFromRepository(cmd *cobra.Command, ctx context.Context, token, serviceName, releaseDescription string, resetPAT, dryRun, skipDockerBuild, skipServiceBuild bool, deploymentType, awsAccountID, gcpProjectID, gcpProjectNumber, azureSubscriptionID, azureTenantID string, sm utils.SpinnerManager, file string, envVars, platforms []string, forceCreateServicePlanVersion bool) (serviceID, devEnvironmentID, devPlanID string, undefinedResources map[string]string, err error) {
 
 	// Step 0: Validate user is currently logged in
 	spinner := sm.AddSpinner("Checking if user is logged in")
 	spinner.Complete()
 	sm.Stop()
 
-	sm = ysmrr.NewSpinnerManager()
+	sm = utils.NewSpinnerManager()
 	sm.Start()
 
 	// Skip gh installation check - we'll handle username differently
@@ -958,7 +957,7 @@ func BuildServiceFromRepository(cmd *cobra.Command, ctx context.Context, token, 
 				return "", "", "", nil, err
 			}
 
-			sm = ysmrr.NewSpinnerManager()
+			sm = utils.NewSpinnerManager()
 			sm.Start()
 
 			for service, dockerfilePath := range dockerfilePaths {
@@ -998,7 +997,7 @@ func BuildServiceFromRepository(cmd *cobra.Command, ctx context.Context, token, 
 					return "", "", "", nil, err
 				}
 
-				sm = ysmrr.NewSpinnerManager()
+				sm = utils.NewSpinnerManager()
 				sm.Start()
 
 				// In dry-run mode, skip pushing to registry and use local image tag
@@ -1026,7 +1025,7 @@ func BuildServiceFromRepository(cmd *cobra.Command, ctx context.Context, token, 
 					return "", "", "", nil, err
 				}
 
-				sm = ysmrr.NewSpinnerManager()
+				sm = utils.NewSpinnerManager()
 				sm.Start()
 
 				// Retrieve the digest
@@ -1060,7 +1059,7 @@ func BuildServiceFromRepository(cmd *cobra.Command, ctx context.Context, token, 
 
 				fmt.Printf("Retrieved digest: %s\n", digest)
 
-				sm = ysmrr.NewSpinnerManager()
+				sm = utils.NewSpinnerManager()
 				sm.Start()
 
 				imageUrlWithDigestTag := fmt.Sprintf("%s:%s", imageUrl, digest)
@@ -1082,7 +1081,7 @@ func BuildServiceFromRepository(cmd *cobra.Command, ctx context.Context, token, 
 					return "", "", "", nil, err
 				}
 
-				sm = ysmrr.NewSpinnerManager()
+				sm = utils.NewSpinnerManager()
 				sm.Start()
 
 				// Push the image with the digest tag
@@ -1103,7 +1102,7 @@ func BuildServiceFromRepository(cmd *cobra.Command, ctx context.Context, token, 
 					return "", "", "", nil, err
 				}
 
-				sm = ysmrr.NewSpinnerManager()
+				sm = utils.NewSpinnerManager()
 				sm.Start()
 			}
 
@@ -1426,7 +1425,7 @@ func createProdEnv(ctx context.Context, token string, serviceID string, devEnvir
 	return prodEnvironmentID, nil
 }
 
-func getOrCreatePAT(sm ysmrr.SpinnerManager, resetPAT bool) (newSm ysmrr.SpinnerManager, pat string, err error) {
+func getOrCreatePAT(sm utils.SpinnerManager, resetPAT bool) (newSm utils.SpinnerManager, pat string, err error) {
 	newSm = sm
 	spinner := sm.AddSpinner("Checking for existing GitHub Personal Access Token")
 	time.Sleep(1 * time.Second) // Add a delay to show the spinner
@@ -1493,14 +1492,14 @@ func getOrCreatePAT(sm ysmrr.SpinnerManager, resetPAT bool) (newSm ysmrr.Spinner
 			return
 		}
 
-		newSm = ysmrr.NewSpinnerManager()
+		newSm = utils.NewSpinnerManager()
 		newSm.Start()
 	}
 
 	return
 }
 
-func RenderFile(fileData []byte, rootDir string, file string, sm ysmrr.SpinnerManager, spinner *ysmrr.Spinner) (
+func RenderFile(fileData []byte, rootDir string, file string, sm utils.SpinnerManager, spinner *utils.Spinner) (
 	newFileData []byte, err error) {
 	newFileData = fileData
 
@@ -1519,7 +1518,7 @@ func RenderFile(fileData []byte, rootDir string, file string, sm ysmrr.SpinnerMa
 }
 
 func renderEnvFileAndInterpolateVariables(
-	fileData []byte, rootDir string, file string, sm ysmrr.SpinnerManager, spinner *ysmrr.Spinner) (
+	fileData []byte, rootDir string, file string, sm utils.SpinnerManager, spinner *utils.Spinner) (
 	newFileData []byte, err error) {
 	// Replace `$` with `$$` to avoid interpolation. Do not replace for `${...}` since it's used to specify variable interpolations
 	fileData = []byte(strings.ReplaceAll(string(fileData), "$", "$$"))   // Escape $ to $$
@@ -1573,7 +1572,7 @@ func renderEnvFileAndInterpolateVariables(
 }
 
 func renderFileReferences(
-	fileData []byte, file string, sm ysmrr.SpinnerManager, spinner *ysmrr.Spinner) (
+	fileData []byte, file string, sm utils.SpinnerManager, spinner *utils.Spinner) (
 	newFileData []byte, err error) {
 	re := regexp.MustCompile(`(?m)^(?P<indent>[ \t]+)?(?P<key>[\S\t ]+)?{{[ \t]*\$file:(?P<filepath>[^\s}]+)[ \t]*}}`)
 	var filePathIndex, indentIndex, keyIndex int

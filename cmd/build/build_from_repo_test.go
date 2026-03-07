@@ -7,9 +7,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/omnistrate-oss/omnistrate-ctl/internal/utils"
 	"github.com/stretchr/testify/require"
-
-	"github.com/chelnak/ysmrr"
 )
 
 func TestRenderEnvFileAndInterpolateVariables(t *testing.T) {
@@ -19,7 +18,7 @@ func TestRenderEnvFileAndInterpolateVariables(t *testing.T) {
 	}
 
 	cwd := "testfiles"
-	sm := ysmrr.NewSpinnerManager()
+	sm := utils.NewSpinnerManager()
 	filePath := path.Join(cwd, "experio.yaml")
 	fileData, err := os.ReadFile(filePath)
 	require.NoError(t, err)

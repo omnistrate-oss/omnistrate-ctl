@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/chelnak/ysmrr"
 	"github.com/omnistrate-oss/omnistrate-ctl/cmd/common"
 	"github.com/omnistrate-oss/omnistrate-ctl/internal/config"
 	"github.com/omnistrate-oss/omnistrate-ctl/internal/dataaccess"
@@ -82,10 +81,10 @@ func runList(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	var sm ysmrr.SpinnerManager
-	var spinner *ysmrr.Spinner
+	var sm utils.SpinnerManager
+	var spinner *utils.Spinner
 	if output != "json" {
-		sm = ysmrr.NewSpinnerManager()
+		sm = utils.NewSpinnerManager()
 		spinner = sm.AddSpinner("Listing snapshots...")
 		sm.Start()
 	}

@@ -164,7 +164,6 @@ func progressForNode(plan *PlanDAG, node PlanDAGNode) (ResourceProgress, bool) {
 	return ResourceProgress{}, false
 }
 
-
 func wrapText(text string, width int) []string {
 	if width <= 0 {
 		return []string{text}

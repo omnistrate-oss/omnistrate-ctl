@@ -1,9 +1,10 @@
 package instance
 
 import (
+	"encoding/json"
+	"fmt"
 	"strings"
 
-	"github.com/chelnak/ysmrr"
 	"github.com/omnistrate-oss/omnistrate-ctl/cmd/common"
 	"github.com/omnistrate-oss/omnistrate-ctl/internal/config"
 	"github.com/omnistrate-oss/omnistrate-ctl/internal/dataaccess"
@@ -38,6 +39,7 @@ func init() {
 	listCmd.Flags().StringArrayP("filter", "f", []string{}, "Filter to apply to the list of instances. E.g.: key1:value1,key2:value2, which filters instances where key1 equals value1 and key2 equals value2. Allow use of multiple filters to form the logical OR operation. Supported keys: "+strings.Join(utils.GetSupportedFilterKeys(model.Instance{}), ",")+". Check the examples for more details.")
 	listCmd.Flags().StringArray("tag", []string{}, "Filter instances by tags. Specify tags as key=value pairs. Multiple --tag flags can be used to filter by multiple tags (all tags must match).")
 	listCmd.Flags().Bool("truncate", false, "Truncate long names in the output")
+	listCmd.Flags().BoolP("interactive", "i", false, "Launch interactive list with fuzzy search and selection")
 }
 
 func runList(cmd *cobra.Command, args []string) error {
@@ -64,6 +66,11 @@ func runList(cmd *cobra.Command, args []string) error {
 		utils.PrintError(err)
 		return err
 	}
+	interactive, err := cmd.Flags().GetBool("interactive")
+	if err != nil {
+		utils.PrintError(err)
+		return err
+	}
 
 	// Parse filters into a map
 	filterMaps, err := utils.ParseFilters(filters, utils.GetSupportedFilterKeys(model.Instance{}))
@@ -86,11 +93,11 @@ func runList(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	// Initialize spinner if output is not JSON
-	var sm ysmrr.SpinnerManager
-	var spinner *ysmrr.Spinner
-	if output != common.OutputTypeJson {
-		sm = ysmrr.NewSpinnerManager()
+	// Initialize spinner if output is not JSON and not interactive
+	var sm utils.SpinnerManager
+	var spinner *utils.Spinner
+	if output != common.OutputTypeJson && !interactive {
+		sm = utils.NewSpinnerManager()
 		spinner = sm.AddSpinner("Listing instance deployments...")
 		sm.Start()
 	}
@@ -98,7 +105,7 @@ func runList(cmd *cobra.Command, args []string) error {
 	// Get all instances
 	searchRes, err := dataaccess.SearchInventory(cmd.Context(), token, "resourceinstance:i")
 	if err != nil {
-		utils.PrintError(err)
+		utils.HandleSpinnerError(spinner, sm, err)
 		return err
 	}
 
@@ -115,7 +122,7 @@ func runList(cmd *cobra.Command, args []string) error {
 		// Check if the instance matches the filters
 		ok, err := utils.MatchesFilters(formattedInstance, filterMaps)
 		if err != nil {
-			utils.PrintError(err)
+			utils.HandleSpinnerError(spinner, sm, err)
 			return err
 		}
 		if !ok {
@@ -132,12 +139,55 @@ func runList(cmd *cobra.Command, args []string) error {
 
 	if len(formattedInstances) == 0 {
 		utils.HandleSpinnerSuccess(spinner, sm, "No instances found.")
+	} else {
+		utils.HandleSpinnerSuccess(spinner, sm, fmt.Sprintf("Found %d instance(s).", len(formattedInstances)))
+	}
+
+	// Interactive mode: launch TUI list
+	if interactive {
+		return runInteractiveInstanceList(formattedInstances)
 	}
 
 	// Print output
 	err = utils.PrintTextTableJsonArrayOutput(output, formattedInstances)
 	if err != nil {
 		return err
+	}
+
+	return nil
+}
+
+func runInteractiveInstanceList(instances []model.Instance) error {
+	items := make([]utils.InteractiveListItem, len(instances))
+	for i, inst := range instances {
+		rawJSON, _ := json.Marshal(inst)
+		desc := fmt.Sprintf("%s · %s · %s/%s · %s",
+			inst.Service, inst.Plan, inst.CloudProvider, inst.Region, inst.InstanceID)
+		items[i] = utils.NewInteractiveListItem(
+			inst.InstanceID,
+			desc,
+			inst.InstanceID,
+			inst.Status,
+			rawJSON,
+		)
+	}
+
+	selected, err := utils.RunInteractiveList(utils.InteractiveListConfig{
+		Title:    "Instance Deployments",
+		Items:    items,
+		ShowJSON: true,
+	})
+	if err != nil {
+		return err
+	}
+
+	if selected != nil {
+		// Print the selected instance's JSON detail
+		var prettyJSON json.RawMessage
+		if err := json.Unmarshal([]byte(selected.JSONData()), &prettyJSON); err == nil {
+			data, _ := json.MarshalIndent(prettyJSON, "", "    ")
+			fmt.Println(string(data))
+		}
 	}
 
 	return nil
