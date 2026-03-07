@@ -92,21 +92,6 @@ func ListAllAccountConfigs(ctx context.Context, token string) (*openapiclientfle
 	return allConfigs, nil
 }
 
-func ListServiceModels(ctx context.Context, token, serviceID, serviceAPIID string) (*openapiclient.ListServiceModelsResult, error) {
-	ctxWithToken := context.WithValue(ctx, openapiclient.ContextAccessToken, token)
-	apiClient := getV1Client()
-
-	resp, r, err := apiClient.ServiceModelApiAPI.ServiceModelApiListServiceModel(ctxWithToken, serviceID, serviceAPIID).Execute()
-
-	err = handleV1Error(err)
-	if err != nil {
-		return nil, err
-	}
-
-	r.Body.Close()
-	return resp, nil
-}
-
 func ListServicePlans(ctx context.Context, token, serviceID, serviceEnvironmentID string) (*openapiclient.ListServicePlansResult, error) {
 	ctxWithToken := context.WithValue(ctx, openapiclient.ContextAccessToken, token)
 	apiClient := getV1Client()

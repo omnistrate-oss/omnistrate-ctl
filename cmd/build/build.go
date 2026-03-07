@@ -544,6 +544,195 @@ func runBuild(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
+	if specType == ServicePlanSpecType {
+		// Extract plan name from YAML for display purposes
+		if output != "json" {
+			var yamlContent map[string]interface{}
+			if parseErr := yaml.Unmarshal(fileData, &yamlContent); parseErr == nil {
+				if planName, ok := yamlContent["name"].(string); ok && planName != "" {
+					spinner1.UpdateMessage(fmt.Sprintf("Building service '%s' with plan '%s'...", name, planName))
+				}
+			}
+		}
+
+		// Step 1: Prepare service build - find or create service hierarchy and get upload tasks
+		spinner1.UpdateMessage("Preparing service build...")
+
+		hierarchyResult, hierarchyErr := FindOrCreateServiceHierarchy(
+			cmd.Context(),
+			token,
+			name,
+			fileData,
+			environmentPtr,
+			environmentTypePtr,
+		)
+		if hierarchyErr != nil {
+			utils.HandleSpinnerError(spinner1, sm1, hierarchyErr)
+			return hierarchyErr
+		}
+
+		// Store the hierarchy IDs
+		ServiceID = hierarchyResult.ServiceID
+		EnvironmentID = hierarchyResult.EnvironmentID
+		ProductTierID = hierarchyResult.ProductTierID
+
+		spinner1.UpdateMessage("Service build prepared successfully")
+
+		// Step 2: Upload artifacts using tasks from prepare response
+		if len(hierarchyResult.ArtifactUploadingTasks) > 0 && !dryRun {
+			uniquePaths := UniqueArtifactPathsFromTasks(hierarchyResult.ArtifactUploadingTasks)
+
+			// Complete the prepare spinner before warnings and per-task spinners
+			if spinner1 != nil {
+				spinner1.UpdateMessage("Service build prepared successfully")
+				spinner1.Complete()
+			}
+
+			// Warn if any artifact path refers to the current working directory
+			if output != "json" {
+				for _, p := range uniquePaths {
+					if isCurrentDirPath(p) {
+						utils.PrintWarning(fmt.Sprintf("Warning: artifact path '%s' will upload the entire current directory (%s)", p, cwd))
+					}
+				}
+			}
+
+			// Archive all unique artifact paths (gzip + tar + base64 encode)
+			artifactArchives, archiveErr := ArchiveArtifactPaths(cwd, uniquePaths)
+			if archiveErr != nil {
+				if sm1 != nil {
+					sm1.Stop()
+				}
+				utils.EnsureCursorRestoration()
+				utils.PrintError(archiveErr)
+				return archiveErr
+			}
+
+			// Create per-task spinners for each upload task
+			type artifactSpinnerInfo struct {
+				spinner    *ysmrr.Spinner
+				artifactID string
+			}
+			taskSpinners := make([]artifactSpinnerInfo, 0, len(hierarchyResult.ArtifactUploadingTasks))
+
+			for i, task := range hierarchyResult.ArtifactUploadingTasks {
+				taskLabel := fmt.Sprintf("[%d/%d] %s -> %s: Uploading...",
+					i+1, len(hierarchyResult.ArtifactUploadingTasks),
+					task.ArtifactPath, task.AccountConfigID)
+				var taskSpinner *ysmrr.Spinner
+				if sm1 != nil {
+					taskSpinner = sm1.AddSpinner(taskLabel)
+				}
+				taskSpinners = append(taskSpinners, artifactSpinnerInfo{spinner: taskSpinner})
+			}
+
+			// Upload each artifact and track per-task progress
+			for i, task := range hierarchyResult.ArtifactUploadingTasks {
+				base64Content, exists := artifactArchives[task.ArtifactPath]
+				if !exists {
+					uploadErr := fmt.Errorf("artifact archive not found for path '%s'", task.ArtifactPath)
+					if taskSpinners[i].spinner != nil {
+						taskSpinners[i].spinner.ErrorWithMessage(fmt.Sprintf("[%d/%d] %s -> %s: %v",
+							i+1, len(hierarchyResult.ArtifactUploadingTasks), task.ArtifactPath, task.AccountConfigID, uploadErr))
+					}
+					if sm1 != nil {
+						sm1.Stop()
+					}
+					utils.EnsureCursorRestoration()
+					utils.PrintError(uploadErr)
+					return uploadErr
+				}
+
+				if taskSpinners[i].spinner != nil {
+					taskSpinners[i].spinner.UpdateMessage(fmt.Sprintf("[%d/%d] %s -> %s: Uploading...",
+						i+1, len(hierarchyResult.ArtifactUploadingTasks),
+						task.ArtifactPath, task.AccountConfigID))
+				}
+
+				uploadResult, uploadErr := dataaccess.UploadArtifact(
+					cmd.Context(),
+					token,
+					base64Content,
+					task.ArtifactPath,
+					task.ServiceName,
+					task.ProductTierName,
+					task.AccountConfigID,
+					task.EnvironmentType,
+				)
+				if uploadErr != nil {
+					if taskSpinners[i].spinner != nil {
+						taskSpinners[i].spinner.ErrorWithMessage(fmt.Sprintf("[%d/%d] %s -> %s: Failed to upload",
+							i+1, len(hierarchyResult.ArtifactUploadingTasks),
+							task.ArtifactPath, task.AccountConfigID))
+					}
+					if sm1 != nil {
+						sm1.Stop()
+					}
+					utils.EnsureCursorRestoration()
+					utils.PrintError(fmt.Errorf("failed to upload artifact '%s': %w", task.ArtifactPath, uploadErr))
+					return uploadErr
+				}
+
+				taskSpinners[i].artifactID = uploadResult.ArtifactID
+				if taskSpinners[i].spinner != nil {
+					taskSpinners[i].spinner.UpdateMessage(fmt.Sprintf("[%d/%d] %s -> %s: Uploaded, processing...",
+						i+1, len(hierarchyResult.ArtifactUploadingTasks),
+						task.ArtifactPath, task.AccountConfigID))
+				}
+			}
+
+			// Build artifact ID to spinner index map for the polling callback
+			artifactIDToIdx := make(map[string]int)
+			var uploadedArtifactIDs []string
+			for i, info := range taskSpinners {
+				if info.artifactID != "" {
+					artifactIDToIdx[info.artifactID] = i
+					uploadedArtifactIDs = append(uploadedArtifactIDs, info.artifactID)
+				}
+			}
+
+			// Wait for all artifacts to be in READY status with per-spinner updates
+			if len(uploadedArtifactIDs) > 0 {
+				waitErr := waitForArtifactsReady(cmd.Context(), token, uploadedArtifactIDs,
+					func(artifactID string, status string) {
+						idx, ok := artifactIDToIdx[artifactID]
+						if !ok || taskSpinners[idx].spinner == nil {
+							return
+						}
+						task := hierarchyResult.ArtifactUploadingTasks[idx]
+						switch status {
+						case "READY":
+							taskSpinners[idx].spinner.CompleteWithMessage(fmt.Sprintf("[%d/%d] %s -> %s: Ready",
+								idx+1, len(hierarchyResult.ArtifactUploadingTasks),
+								task.ArtifactPath, task.AccountConfigID))
+						case "FAILED":
+							taskSpinners[idx].spinner.ErrorWithMessage(fmt.Sprintf("[%d/%d] %s -> %s: Failed",
+								idx+1, len(hierarchyResult.ArtifactUploadingTasks),
+								task.ArtifactPath, task.AccountConfigID))
+						default:
+							taskSpinners[idx].spinner.UpdateMessage(fmt.Sprintf("[%d/%d] %s -> %s: %s",
+								idx+1, len(hierarchyResult.ArtifactUploadingTasks),
+								task.ArtifactPath, task.AccountConfigID, status))
+						}
+					})
+				if waitErr != nil {
+					// Mark any remaining spinners as errored
+					for _, info := range taskSpinners {
+						if info.spinner != nil && !info.spinner.IsComplete() && !info.spinner.IsError() {
+							info.spinner.Error()
+						}
+					}
+					if sm1 != nil {
+						sm1.Stop()
+					}
+					utils.EnsureCursorRestoration()
+					utils.PrintError(waitErr)
+					return waitErr
+				}
+			}
+		}
+	}
+
 	var undefinedResources map[string]string
 	var isNewVersionCreated bool
 	ServiceID, EnvironmentID, ProductTierID, undefinedResources, isNewVersionCreated, err = BuildService(

@@ -407,6 +407,8 @@ func Test_build_dry_run(t *testing.T) {
 		"--service-id", initialServiceID,
 		"--output", "json",
 	})
+	err = cmd.RootCmd.ExecuteContext(ctx)
+	require.NoError(err)
 	initialJsonOutput := utils.LastPrintedString
 
 	// Step 3a: Test dry-run mode - Should not modify service
@@ -430,6 +432,8 @@ func Test_build_dry_run(t *testing.T) {
 		"--service-id", initialServiceID,
 		"--output", "json",
 	})
+	err = cmd.RootCmd.ExecuteContext(ctx)
+	require.NoError(err)
 	require.Equal(initialJsonOutput, utils.LastPrintedString, "Service configuration should not change after dry-run")
 
 	// Step 3b: Apply the actual changes - Should modify service
@@ -454,7 +458,9 @@ func Test_build_dry_run(t *testing.T) {
 	})
 	err = cmd.RootCmd.ExecuteContext(ctx)
 	require.NoError(err)
-	require.NotEqual(initialJsonOutput, utils.LastPrintedString, "Service configuration should change after actual release")
+	require.NotEmpty(build.ServiceID)
+	updatedOutput := utils.LastPrintedString
+	require.NotEqual(initialJsonOutput, updatedOutput, "Service configuration should change after actual release")
 
 	// Step 4: Cleanup - Delete the test service and associated resources
 	cmd.RootCmd.SetArgs([]string{"service", "delete", "--id", build.ServiceID})
