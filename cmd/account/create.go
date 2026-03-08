@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/chelnak/ysmrr"
 	"github.com/omnistrate-oss/omnistrate-ctl/cmd/common"
 	"github.com/omnistrate-oss/omnistrate-ctl/internal/config"
 	"github.com/omnistrate-oss/omnistrate-ctl/internal/dataaccess"
@@ -88,10 +87,10 @@ func runCreate(cmd *cobra.Command, args []string) error {
 	}
 
 	// Initialize spinner if output is not JSON
-	var sm ysmrr.SpinnerManager
-	var spinner *ysmrr.Spinner
+	var sm utils.SpinnerManager
+	var spinner *utils.Spinner
 	if output != "json" {
-		sm = ysmrr.NewSpinnerManager()
+		sm = utils.NewSpinnerManager()
 		msg := "Creating account..."
 		spinner = sm.AddSpinner(msg)
 		sm.Start()
@@ -127,10 +126,10 @@ func runCreate(cmd *cobra.Command, args []string) error {
 
 	// Wait for account to become READY (poll up to 10 min)
 	if !skipWait {
-		var waitSpinner *ysmrr.Spinner
+		var waitSpinner *utils.Spinner
 		if output != "json" {
 			fmt.Printf("\n")
-			sm = ysmrr.NewSpinnerManager()
+			sm = utils.NewSpinnerManager()
 			waitSpinner = sm.AddSpinner("Waiting for account to become READY (may take up to 10 minutes)...")
 			sm.Start()
 		}
@@ -159,7 +158,7 @@ type CloudAccountParams struct {
 
 // CreateCloudAccount creates a cloud provider account and returns the account config ID and account details
 // This function is reusable across different commands that need to create accounts
-func CreateCloudAccount(ctx context.Context, token string, params CloudAccountParams, spinner *ysmrr.Spinner, sm ysmrr.SpinnerManager) (account *openapiclient.DescribeAccountConfigResult, err error) {
+func CreateCloudAccount(ctx context.Context, token string, params CloudAccountParams, spinner *utils.Spinner, sm utils.SpinnerManager) (account *openapiclient.DescribeAccountConfigResult, err error) {
 	// Prepare request
 	request := openapiclient.CreateAccountConfigRequest2{
 		Name: params.Name,

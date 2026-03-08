@@ -22,7 +22,6 @@ import (
 	"github.com/omnistrate-oss/omnistrate-ctl/cmd/domain"
 	"github.com/omnistrate-oss/omnistrate-ctl/cmd/environment"
 	"github.com/omnistrate-oss/omnistrate-ctl/cmd/helm"
-	"github.com/omnistrate-oss/omnistrate-ctl/cmd/inspect"
 	"github.com/omnistrate-oss/omnistrate-ctl/cmd/instance"
 	"github.com/omnistrate-oss/omnistrate-ctl/cmd/mcp"
 	"github.com/omnistrate-oss/omnistrate-ctl/cmd/operations"
@@ -139,7 +138,6 @@ func init() {
 	RootCmd.AddCommand(customnetwork.Cmd)
 	RootCmd.AddCommand(deploymentcell.Cmd)
 	RootCmd.AddCommand(servicesorchestration.Cmd)
-	RootCmd.AddCommand(inspect.Cmd)
 	RootCmd.AddCommand(secret.Cmd)
 	RootCmd.AddCommand(workflow.Cmd)
 	RootCmd.AddCommand(cost.Cmd)

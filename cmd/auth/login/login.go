@@ -1,11 +1,6 @@
 package login
 
 import (
-	"regexp"
-
-	"github.com/cqroot/prompt"
-	"github.com/cqroot/prompt/choose"
-	"github.com/cqroot/prompt/input"
 	"github.com/omnistrate-oss/omnistrate-ctl/internal/utils"
 	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
@@ -84,12 +79,11 @@ func RunLogin(cmd *cobra.Command, args []string) error {
 	}
 
 	// Login interactively
-	choice, err := prompt.New().Ask("How would you like to log in?").
-		Choose([]string{
-			string(loginWithEmailAndPassword),
-			string(loginWithGoogle),
-			string(loginWithGitHub),
-		}, choose.WithTheme(choose.ThemeArrow))
+	choice, err := utils.PromptSelect("How would you like to log in?", []string{
+		string(loginWithEmailAndPassword),
+		string(loginWithGoogle),
+		string(loginWithGitHub),
+	})
 	if err != nil {
 		utils.PrintError(err)
 		return err
@@ -97,23 +91,13 @@ func RunLogin(cmd *cobra.Command, args []string) error {
 
 	switch choice {
 	case string(loginWithEmailAndPassword):
-		email, err = prompt.New().Ask("Please enter your email:").
-			Input("Email", input.WithValidateFunc(
-				func(input string) error {
-					emailRegex := regexp.MustCompile(`^[a-z0-9._%+\-]+@[a-z0-9.\-]+\.[a-z]{2,4}$`)
-					if emailRegex.MatchString(input) {
-						return nil
-					} else {
-						return errors.New("invalid email address")
-					}
-				}))
+		email, err = utils.PromptInput("Please enter your email:", "Email", utils.ValidateEmail)
 		if err != nil {
 			utils.PrintError(err)
 			return err
 		}
 
-		password, err = prompt.New().Ask("Please enter your password:").
-			Input("Password", input.WithEchoMode(input.EchoPassword))
+		password, err = utils.PromptPassword("Please enter your password:", "Password")
 		if err != nil {
 			utils.PrintError(err)
 			return err

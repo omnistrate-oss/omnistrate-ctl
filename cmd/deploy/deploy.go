@@ -17,7 +17,6 @@ import (
 	"golang.org/x/text/language"
 	"gopkg.in/yaml.v3"
 
-	"github.com/chelnak/ysmrr"
 	"github.com/omnistrate-oss/omnistrate-ctl/cmd/account"
 	"github.com/omnistrate-oss/omnistrate-ctl/cmd/build"
 	"github.com/omnistrate-oss/omnistrate-ctl/cmd/common"
@@ -269,7 +268,7 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 	}
 
 	// Initialize spinner manager (only after we know we're logged in)
-	sm := ysmrr.NewSpinnerManager()
+	sm := utils.NewSpinnerManager()
 	sm.Start()
 	defer sm.Stop()
 
@@ -708,7 +707,7 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 			wrapAndPrintServiceBuildError(err)
 			return err
 		}
-		sm = ysmrr.NewSpinnerManager()
+		sm = utils.NewSpinnerManager()
 		sm.Start()
 
 	} else {
@@ -819,7 +818,7 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 			utils.PrintWarning(fmt.Sprintf("  %s: %s", resourceName, resourceID))
 		}
 		utils.PrintWarning("These resources were not processed during the build.")
-		sm = ysmrr.NewSpinnerManager()
+		sm = utils.NewSpinnerManager()
 		sm.Start()
 	}
 
@@ -834,7 +833,7 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 
 // executeDeploymentWorkflow handles the complete post-service-build deployment workflow
 // This function is reusable for both deploy and build_simple commands
-func executeDeploymentWorkflow(cmd *cobra.Command, sm ysmrr.SpinnerManager, token, serviceID, environmentID, planID, serviceName, environment, environmentTypeUpper, instanceID, cloudProvider, region, param, paramFile, resourceID, deploymentType string) error {
+func executeDeploymentWorkflow(cmd *cobra.Command, sm utils.SpinnerManager, token, serviceID, environmentID, planID, serviceName, environment, environmentTypeUpper, instanceID, cloudProvider, region, param, paramFile, resourceID, deploymentType string) error {
 
 	// Step 7: Set service plan as preferred in environment
 	spinner := sm.AddSpinner(fmt.Sprintf("Step 1/2: Setting service plan as preferred in %s...", environment))
@@ -967,7 +966,7 @@ func executeDeploymentWorkflow(cmd *cobra.Command, sm ysmrr.SpinnerManager, toke
 		// instanceActionType is already "create" from initialization
 		if err != nil {
 			// Restart spinner manager to handle error properly
-			sm = ysmrr.NewSpinnerManager()
+			sm = utils.NewSpinnerManager()
 			sm.Start()
 			spinner = sm.AddSpinner("Step 2/2: Deploying a new instance")
 			utils.HandleSpinnerError(spinner, sm, err)
@@ -1019,7 +1018,7 @@ func executeDeploymentWorkflow(cmd *cobra.Command, sm ysmrr.SpinnerManager, toke
 
 // createInstanceUnified creates an instance with or without subscription, removing duplicate code
 func createInstanceUnified(ctx context.Context, token, serviceID, environmentID, productTierID, cloudProvider, region, resourceID, instanceType string, formattedParams map[string]interface{}) (string, error) {
-	sm := ysmrr.NewSpinnerManager()
+	sm := utils.NewSpinnerManager()
 	sm.Start()
 	spinner := sm.AddSpinner("Step 2/2: Deploying a new instance")
 
@@ -1140,7 +1139,7 @@ func createInstanceUnified(ctx context.Context, token, serviceID, environmentID,
 				resourceID = selected.Id
 
 				// Create new spinner manager after warning
-				sm = ysmrr.NewSpinnerManager()
+				sm = utils.NewSpinnerManager()
 				sm.Start()
 
 			}
@@ -1872,7 +1871,7 @@ type CloudInstanceStatus struct {
 	Provider string
 }
 
-func createCloudAccountInstances(ctx context.Context, token, serviceID, environmentID, planID, cloudProvider string, sm ysmrr.SpinnerManager) (string, string, error) {
+func createCloudAccountInstances(ctx context.Context, token, serviceID, environmentID, planID, cloudProvider string, sm utils.SpinnerManager) (string, string, error) {
 
 	spinnerMsg := "Step 2/2: Checking for existing cloud account instances"
 	spinner := sm.AddSpinner(spinnerMsg)
@@ -1931,7 +1930,7 @@ func createCloudAccountInstances(ctx context.Context, token, serviceID, environm
 
 		if choice == 0 {
 			// User chose to create a new instance - continue with creation logic below
-			sm = ysmrr.NewSpinnerManager()
+			sm = utils.NewSpinnerManager()
 			sm.Start()
 		} else {
 			// User selected an existing instance
@@ -1968,7 +1967,7 @@ func createCloudAccountInstances(ctx context.Context, token, serviceID, environm
 
 	createdInstanceID, err := createInstanceUnified(ctx, token, serviceID, environmentID, planID, targetCloudProvider, "", "", "cloudAccount", formattedParams)
 	if err != nil {
-		sm = ysmrr.NewSpinnerManager()
+		sm = utils.NewSpinnerManager()
 		sm.Start()
 		spinner.UpdateMessage("Step 2/2: Creating cloud account instance: Failed (" + err.Error() + ")")
 		spinner.Error()

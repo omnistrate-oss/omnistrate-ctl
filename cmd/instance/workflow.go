@@ -7,9 +7,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/chelnak/ysmrr"
 	"github.com/omnistrate-oss/omnistrate-ctl/internal/dataaccess"
 	"github.com/omnistrate-oss/omnistrate-ctl/internal/model"
+	"github.com/omnistrate-oss/omnistrate-ctl/internal/utils"
 )
 
 // ResourceSpinner holds spinner information for a resource
@@ -17,7 +17,7 @@ type ResourceSpinner struct {
 	ResourceId   string
 	ResourceKey  string
 	ResourceName string
-	Spinner      *ysmrr.Spinner
+	Spinner      *utils.Spinner
 }
 
 // displayWorkflowResourceDataWithSpinners creates individual spinners for each resource and updates them dynamically
@@ -35,7 +35,7 @@ func DisplayWorkflowResourceDataWithSpinners(ctx context.Context, token, instanc
 	instance := searchRes.ResourceInstanceResults[0]
 
 	// Initialize spinner manager
-	sm := ysmrr.NewSpinnerManager()
+	sm := utils.NewSpinnerManager()
 
 	// Track resource spinners
 	resourceSpinners := make(map[string]ResourceSpinner)
