@@ -738,6 +738,52 @@ func TestContainsString(t *testing.T) {
 	}
 }
 
+func TestIsMissingParamValue(t *testing.T) {
+	tests := []struct {
+		name     string
+		value    interface{}
+		expected bool
+	}{
+		{
+			name:     "nil value is missing",
+			value:    nil,
+			expected: true,
+		},
+		{
+			name:     "empty string is missing",
+			value:    "",
+			expected: true,
+		},
+		{
+			name:     "whitespace-only string is missing",
+			value:    "   \t\n  ",
+			expected: true,
+		},
+		{
+			name:     "non-string non-nil number is not missing",
+			value:    123,
+			expected: false,
+		},
+		{
+			name:     "non-string non-nil boolean is not missing",
+			value:    false,
+			expected: false,
+		},
+		{
+			name:     "non-empty string is not missing",
+			value:    "value",
+			expected: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := isMissingParamValue(tt.value)
+			assert.Equal(t, tt.expected, result)
+		})
+	}
+}
+
 func TestExtractCloudAccountsFromProcessedData(t *testing.T) {
 	tests := []struct {
 		name                        string
@@ -867,6 +913,7 @@ func TestParsePromptInputValue(t *testing.T) {
 		{name: "json integer", input: "42", expected: float64(42)},
 		{name: "json boolean", input: "true", expected: true},
 		{name: "json array", input: `["a","b"]`, expected: []interface{}{"a", "b"}},
+		{name: "json null falls back to literal", input: "null", expected: "null"},
 		{name: "plain string", input: "db-user", expected: "db-user"},
 	}
 
@@ -905,5 +952,15 @@ func TestApplyPromptedParamValues(t *testing.T) {
 		})
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "read failed")
+	})
+
+	t.Run("keeps prompted null as literal string", func(t *testing.T) {
+		params := map[string]interface{}{"username": nil}
+		err := applyPromptedParamValues(params, []string{"username"}, func(string) (string, error) {
+			return "null", nil
+		})
+		require.NoError(t, err)
+		require.Equal(t, "null", params["username"])
+		require.False(t, isMissingParamValue(params["username"]))
 	})
 }

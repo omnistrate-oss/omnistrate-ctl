@@ -2360,6 +2360,9 @@ func applyPromptedParamValues(defaultParams map[string]interface{}, requiredPara
 func parsePromptInputValue(value string) interface{} {
 	var parsed interface{}
 	if err := json.Unmarshal([]byte(value), &parsed); err == nil {
+		if parsed == nil {
+			return value
+		}
 		return parsed
 	}
 	return value
