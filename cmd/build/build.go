@@ -613,7 +613,7 @@ func runBuild(cmd *cobra.Command, args []string) error {
 
 			// Create per-task spinners for each upload task
 			type artifactSpinnerInfo struct {
-				spinner    *ysmrr.Spinner
+				spinner    *utils.Spinner
 				artifactID string
 			}
 			taskSpinners := make([]artifactSpinnerInfo, 0, len(hierarchyResult.ArtifactUploadingTasks))
@@ -622,7 +622,7 @@ func runBuild(cmd *cobra.Command, args []string) error {
 				taskLabel := fmt.Sprintf("[%d/%d] %s -> %s: Uploading...",
 					i+1, len(hierarchyResult.ArtifactUploadingTasks),
 					task.ArtifactPath, task.AccountConfigID)
-				var taskSpinner *ysmrr.Spinner
+				var taskSpinner *utils.Spinner
 				if sm1 != nil {
 					taskSpinner = sm1.AddSpinner(taskLabel)
 				}
@@ -635,7 +635,8 @@ func runBuild(cmd *cobra.Command, args []string) error {
 				if !exists {
 					uploadErr := fmt.Errorf("artifact archive not found for path '%s'", task.ArtifactPath)
 					if taskSpinners[i].spinner != nil {
-						taskSpinners[i].spinner.ErrorWithMessage(fmt.Sprintf("[%d/%d] %s -> %s: %v",
+						taskSpinners[i].spinner.Error()
+						utils.PrintError(errors.Errorf("[%d/%d] %s -> %s: %v",
 							i+1, len(hierarchyResult.ArtifactUploadingTasks), task.ArtifactPath, task.AccountConfigID, uploadErr))
 					}
 					if sm1 != nil {
@@ -664,7 +665,8 @@ func runBuild(cmd *cobra.Command, args []string) error {
 				)
 				if uploadErr != nil {
 					if taskSpinners[i].spinner != nil {
-						taskSpinners[i].spinner.ErrorWithMessage(fmt.Sprintf("[%d/%d] %s -> %s: Failed to upload",
+						taskSpinners[i].spinner.Error()
+						utils.PrintError(errors.Errorf("[%d/%d] %s -> %s: Failed to upload",
 							i+1, len(hierarchyResult.ArtifactUploadingTasks),
 							task.ArtifactPath, task.AccountConfigID))
 					}
@@ -705,11 +707,13 @@ func runBuild(cmd *cobra.Command, args []string) error {
 						task := hierarchyResult.ArtifactUploadingTasks[idx]
 						switch status {
 						case "READY":
-							taskSpinners[idx].spinner.CompleteWithMessage(fmt.Sprintf("[%d/%d] %s -> %s: Ready",
+							taskSpinners[idx].spinner.Complete()
+							utils.PrintInfo(fmt.Sprintf("[%d/%d] %s -> %s: Ready",
 								idx+1, len(hierarchyResult.ArtifactUploadingTasks),
 								task.ArtifactPath, task.AccountConfigID))
 						case "FAILED":
-							taskSpinners[idx].spinner.ErrorWithMessage(fmt.Sprintf("[%d/%d] %s -> %s: Failed",
+							taskSpinners[idx].spinner.Error()
+							utils.PrintError(errors.Errorf("[%d/%d] %s -> %s: Failed",
 								idx+1, len(hierarchyResult.ArtifactUploadingTasks),
 								task.ArtifactPath, task.AccountConfigID))
 						default:
@@ -721,7 +725,7 @@ func runBuild(cmd *cobra.Command, args []string) error {
 				if waitErr != nil {
 					// Mark any remaining spinners as errored
 					for _, info := range taskSpinners {
-						if info.spinner != nil && !info.spinner.IsComplete() && !info.spinner.IsError() {
+						if info.spinner != nil {
 							info.spinner.Error()
 						}
 					}
