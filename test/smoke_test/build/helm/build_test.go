@@ -112,6 +112,8 @@ func Test_build_dry_run(t *testing.T) {
 		"--service-id", initialServiceID,
 		"--output", "json",
 	})
+	err = cmd.RootCmd.ExecuteContext(ctx)
+	require.NoError(err)
 	initialJsonOutput := utils.LastPrintedString
 
 	// Step 3a: Test dry-run mode - Should not modify service
@@ -137,7 +139,10 @@ func Test_build_dry_run(t *testing.T) {
 		"--service-id", initialServiceID,
 		"--output", "json",
 	})
-	require.Equal(initialJsonOutput, utils.LastPrintedString, "Service configuration should not change after dry-run")
+	err = cmd.RootCmd.ExecuteContext(ctx)
+	require.NoError(err)
+	dryRunOutput := utils.LastPrintedString
+	require.Equal(initialJsonOutput, dryRunOutput, "Service configuration should not change after dry-run")
 
 	// Step 3b: Apply the actual changes - Should modify service
 	cmd.RootCmd.SetArgs([]string{
