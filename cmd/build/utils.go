@@ -255,9 +255,10 @@ func isGzipTarFile(filePath string) bool {
 
 // ServiceHierarchyResult holds the result of finding or creating the service hierarchy
 type ServiceHierarchyResult struct {
-	ServiceID     string
-	EnvironmentID string
-	ProductTierID string
+	ServiceID        string
+	EnvironmentID    string
+	ProductTierID    string
+	IsNewProductTier bool
 	// ArtifactUploadingTasks contains artifact upload tasks returned by the prepare API.
 	// Each task describes one artifact that needs to be uploaded, with all server-resolved parameters.
 	ArtifactUploadingTasks []ArtifactUploadingTask
@@ -322,9 +323,10 @@ func FindOrCreateServiceHierarchy(
 	}
 
 	result := &ServiceHierarchyResult{
-		ServiceID:     resp.GetServiceID(),
-		EnvironmentID: resp.GetServiceEnvironmentID(),
-		ProductTierID: resp.GetProductTierID(),
+		ServiceID:        resp.GetServiceID(),
+		EnvironmentID:    resp.GetServiceEnvironmentID(),
+		ProductTierID:    resp.GetProductTierID(),
+		IsNewProductTier: resp.GetIsNewProductTierCreated(),
 	}
 
 	// Extract artifact uploading tasks from the prepare response

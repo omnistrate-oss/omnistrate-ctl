@@ -98,7 +98,6 @@ func Test_build_dry_run(t *testing.T) {
 		"--description", "Test redis helm service for dry run",
 		"--environment", "dev",
 		"--environment-type", "dev",
-		"--release",
 	})
 	err = cmd.RootCmd.ExecuteContext(ctx)
 	require.NoError(err)

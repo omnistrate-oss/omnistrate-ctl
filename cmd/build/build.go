@@ -575,6 +575,10 @@ func runBuild(cmd *cobra.Command, args []string) error {
 		EnvironmentID = hierarchyResult.EnvironmentID
 		ProductTierID = hierarchyResult.ProductTierID
 
+		if hierarchyResult.IsNewProductTier {
+			release = true
+		}
+
 		spinner1.UpdateMessage("Service build prepared successfully")
 
 		// Step 2: Upload artifacts using tasks from prepare response
