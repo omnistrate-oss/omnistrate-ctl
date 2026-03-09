@@ -10,9 +10,19 @@ import (
 )
 
 type planDAGPlacement struct {
-	col int
-	x   int
-	y   int
+	col    int
+	x      int
+	y      int
+	width  int
+	height int
+}
+
+// dagRenderResult bundles the rendered lines with node placement metadata
+// so the caller can auto-scroll to keep the selected node visible.
+type dagRenderResult struct {
+	lines      []string
+	placements map[string]planDAGPlacement
+	prefixRows int // number of prefix lines (errors, warnings) before the diagram
 }
 
 type planDAGLayout struct {
@@ -228,10 +238,10 @@ type cardTheme struct {
 	icon   string
 }
 
-func renderPlanDAGStyledWithSelection(plan *PlanDAG, width int, selectedNodeID string, expandedNodes map[string]bool, highlightDeps bool) []string {
+func renderPlanDAGStyledWithSelection(plan *PlanDAG, width int, selectedNodeID string, expandedNodes map[string]bool, highlightDeps bool) dagRenderResult {
 	if plan == nil {
 		style := lipgloss.NewStyle().Foreground(lipgloss.Color("1")).Bold(true)
-		return []string{style.Render("Deployment plan unavailable")}
+		return dagRenderResult{lines: []string{style.Render("Deployment plan unavailable")}}
 	}
 
 	if width <= 0 {
@@ -241,34 +251,35 @@ func renderPlanDAGStyledWithSelection(plan *PlanDAG, width int, selectedNodeID s
 	subtleStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("245"))
 	warnStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("1")).Bold(true)
 
-	var lines []string
+	var prefixLines []string
 
 	if len(plan.Errors) > 0 {
-		lines = append(lines, warnStyle.Render("Warnings:"))
+		prefixLines = append(prefixLines, warnStyle.Render("Warnings:"))
 		for _, err := range plan.Errors {
 			for _, line := range wrapText(err, width-4) {
-				lines = append(lines, "  "+subtleStyle.Render(line))
+				prefixLines = append(prefixLines, "  "+subtleStyle.Render(line))
 			}
 		}
-		lines = append(lines, "")
+		prefixLines = append(prefixLines, "")
 	}
 
 	if plan.HasCycle {
-		lines = append(lines, warnStyle.Render("Cycle detected in dependencies; layout may be incomplete."))
-		lines = append(lines, "")
+		prefixLines = append(prefixLines, warnStyle.Render("Cycle detected in dependencies; layout may be incomplete."))
+		prefixLines = append(prefixLines, "")
 	}
 
-	diagram := drawPlanDAGStyled(plan, width, selectedNodeID, expandedNodes, highlightDeps)
-	lines = append(lines, diagram...)
+	result := drawPlanDAGStyled(plan, width, selectedNodeID, expandedNodes, highlightDeps)
+	result.prefixRows = len(prefixLines)
+	result.lines = append(prefixLines, result.lines...)
 
-	return lines
+	return result
 }
 
-func drawPlanDAGStyled(plan *PlanDAG, _ int, selectedNodeID string, expandedNodes map[string]bool, highlightDeps bool) []string {
+func drawPlanDAGStyled(plan *PlanDAG, _ int, selectedNodeID string, expandedNodes map[string]bool, highlightDeps bool) dagRenderResult {
 	layout := orderPlanLevels(plan)
 	levels := layout.levels
 	if len(levels) == 0 {
-		return []string{"No resources found for this plan version."}
+		return dagRenderResult{lines: []string{"No resources found for this plan version."}}
 	}
 
 	if expandedNodes == nil {
@@ -407,7 +418,7 @@ func drawPlanDAGStyled(plan *PlanDAG, _ int, selectedNodeID string, expandedNode
 	for col, level := range levels {
 		curY := offsetY
 		for _, nodeID := range level {
-			placements[nodeID] = planDAGPlacement{col: col, x: levelX[col], y: curY}
+			placements[nodeID] = planDAGPlacement{col: col, x: levelX[col], y: curY, width: cardWidth, height: nodeHeight[nodeID]}
 			curY += nodeHeight[nodeID] + vGap
 		}
 	}
@@ -474,7 +485,7 @@ func drawPlanDAGStyled(plan *PlanDAG, _ int, selectedNodeID string, expandedNode
 		}
 	}
 
-	return canvas.render()
+	return dagRenderResult{lines: canvas.render(), placements: placements}
 }
 
 func buildNodeCard(node PlanDAGNode, progress ResourceProgress, hasProgress bool) nodeCard {
