@@ -66,7 +66,6 @@ nav:
       - domain: "omnistrate-ctl_domain.md"
       - environment: "omnistrate-ctl_environment.md"
       - helm: "omnistrate-ctl_helm.md"
-      - inspect: "omnistrate-ctl_inspect.md"
       - instance: "omnistrate-ctl_instance.md"
       - operations: "omnistrate-ctl_operations.md"
       - secret: "omnistrate-ctl_secret.md"

@@ -5,7 +5,6 @@ import (
 
 	"github.com/omnistrate-oss/omnistrate-ctl/cmd/common"
 
-	"github.com/chelnak/ysmrr"
 	"github.com/omnistrate-oss/omnistrate-ctl/cmd/upgrade/status/detail"
 	"github.com/omnistrate-oss/omnistrate-ctl/internal/config"
 	"github.com/omnistrate-oss/omnistrate-ctl/internal/dataaccess"
@@ -53,10 +52,10 @@ func run(cmd *cobra.Command, args []string) error {
 	}
 
 	// Initialize spinner if output is not json
-	var sm ysmrr.SpinnerManager
-	var spinner *ysmrr.Spinner
+	var sm utils.SpinnerManager
+	var spinner *utils.Spinner
 	if output != "json" {
-		sm = ysmrr.NewSpinnerManager()
+		sm = utils.NewSpinnerManager()
 		msg := "Retrieving upgrade status..."
 		spinner = sm.AddSpinner(msg)
 		sm.Start()

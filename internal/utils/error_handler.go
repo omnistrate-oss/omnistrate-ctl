@@ -3,8 +3,6 @@ package utils
 import (
 	"fmt"
 	"os"
-
-	"github.com/chelnak/ysmrr"
 )
 
 // EnsureCursorRestoration forces cursor restoration - should be called in cleanup
@@ -13,7 +11,7 @@ func EnsureCursorRestoration() {
 	os.Stdout.Sync()
 }
 
-func HandleSpinnerError(spinner *ysmrr.Spinner, sm ysmrr.SpinnerManager, err error) {
+func HandleSpinnerError(spinner *Spinner, sm SpinnerManager, err error) {
 	if spinner != nil {
 		spinner.Error()
 	}
@@ -28,7 +26,7 @@ func HandleSpinnerError(spinner *ysmrr.Spinner, sm ysmrr.SpinnerManager, err err
 	PrintError(err)
 }
 
-func HandleSpinnerSuccess(spinner *ysmrr.Spinner, sm ysmrr.SpinnerManager, message string) {
+func HandleSpinnerSuccess(spinner *Spinner, sm SpinnerManager, message string) {
 	if spinner != nil {
 		spinner.UpdateMessage(message)
 		spinner.Complete()

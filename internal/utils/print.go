@@ -3,11 +3,12 @@ package utils
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/cqroot/prompt"
-	"github.com/cqroot/prompt/choose"
+	"os"
+	"regexp"
+
+	"github.com/charmbracelet/huh"
 	"github.com/fatih/color"
 	"gopkg.in/yaml.v3"
-	"os"
 
 	"github.com/omnistrate-oss/omnistrate-ctl/internal/config"
 )
@@ -165,11 +166,76 @@ func WriteYAMLToFile[T any](filePath string, object T) error {
 	return nil
 }
 
+// ConfirmAction displays a Yes/No confirmation prompt and returns true if the user selects Yes.
 func ConfirmAction(message string) (bool, error) {
-	confirmedChoice, err := prompt.New().Ask(message).Choose([]string{"Yes", "No"}, choose.WithTheme(choose.ThemeArrow))
+	var confirmed bool
+	err := huh.NewConfirm().
+		Title(message).
+		Affirmative("Yes").
+		Negative("No").
+		Value(&confirmed).
+		Run()
 	if err != nil {
 		return false, err
 	}
+	return confirmed, nil
+}
 
-	return confirmedChoice == "Yes", nil
+// PromptSelect displays a selection prompt and returns the chosen option.
+func PromptSelect(title string, options []string) (string, error) {
+	opts := make([]huh.Option[string], len(options))
+	for i, o := range options {
+		opts[i] = huh.NewOption(o, o)
+	}
+	var choice string
+	err := huh.NewSelect[string]().
+		Title(title).
+		Options(opts...).
+		Value(&choice).
+		Run()
+	if err != nil {
+		return "", err
+	}
+	return choice, nil
+}
+
+// PromptInput displays a text input prompt with optional validation.
+func PromptInput(title, placeholder string, validate func(string) error) (string, error) {
+	var value string
+	field := huh.NewInput().
+		Title(title).
+		Placeholder(placeholder).
+		Value(&value)
+	if validate != nil {
+		field = field.Validate(validate)
+	}
+	err := field.Run()
+	if err != nil {
+		return "", err
+	}
+	return value, nil
+}
+
+// PromptPassword displays a masked password input prompt.
+func PromptPassword(title, placeholder string) (string, error) {
+	var value string
+	err := huh.NewInput().
+		Title(title).
+		Placeholder(placeholder).
+		EchoMode(huh.EchoModePassword).
+		Value(&value).
+		Run()
+	if err != nil {
+		return "", err
+	}
+	return value, nil
+}
+
+// ValidateEmail returns a validation function that checks for a valid email address.
+func ValidateEmail(input string) error {
+	emailRegex := regexp.MustCompile(`^[a-z0-9._%+\-]+@[a-z0-9.\-]+\.[a-z]{2,4}$`)
+	if emailRegex.MatchString(input) {
+		return nil
+	}
+	return fmt.Errorf("invalid email address")
 }

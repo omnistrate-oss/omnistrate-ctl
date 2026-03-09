@@ -13,7 +13,6 @@ import (
 	"github.com/omnistrate-oss/omnistrate-ctl/cmd/common"
 	"github.com/omnistrate-oss/omnistrate-ctl/internal/model"
 
-	"github.com/chelnak/ysmrr"
 	"github.com/compose-spec/compose-go/loader"
 	"github.com/compose-spec/compose-go/types"
 	"github.com/omnistrate-oss/omnistrate-ctl/internal/config"
@@ -522,10 +521,10 @@ func runBuild(cmd *cobra.Command, args []string) error {
 		releaseNamePtr = &releaseDescription
 	}
 
-	var sm1 ysmrr.SpinnerManager
-	var spinner1 *ysmrr.Spinner
+	var sm1 utils.SpinnerManager
+	var spinner1 *utils.Spinner
 	if output != "json" {
-		sm1 = ysmrr.NewSpinnerManager()
+		sm1 = utils.NewSpinnerManager()
 		spinner1 = sm1.AddSpinner("Building service...")
 		sm1.Start()
 	}
@@ -836,7 +835,7 @@ func runBuild(cmd *cobra.Command, args []string) error {
 		userInput = strings.TrimSpace(strings.ToUpper(userInput))
 
 		if strings.ToLower(userInput) == "y" {
-			sm2 := ysmrr.NewSpinnerManager()
+			sm2 := utils.NewSpinnerManager()
 			loading := sm2.AddSpinner("Loading SaaS portal...")
 			sm2.Start()
 
@@ -871,7 +870,7 @@ func runBuild(cmd *cobra.Command, args []string) error {
 			userInput = strings.TrimSpace(strings.ToUpper(userInput))
 
 			if strings.ToLower(userInput) == "y" {
-				sm2 := ysmrr.NewSpinnerManager()
+				sm2 := utils.NewSpinnerManager()
 				launching := sm2.AddSpinner("Launching service to production...")
 				sm2.Start()
 
@@ -939,7 +938,7 @@ func runBuild(cmd *cobra.Command, args []string) error {
 					userInput = strings.TrimSpace(strings.ToUpper(userInput))
 
 					if strings.ToLower(userInput) == "y" {
-						sm3 := ysmrr.NewSpinnerManager()
+						sm3 := utils.NewSpinnerManager()
 						loading := sm3.AddSpinner("Preparing SaaS offer...")
 						sm3.Start()
 

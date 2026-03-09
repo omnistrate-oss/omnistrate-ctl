@@ -1,18 +1,11 @@
 package instance
 
 import (
-	"slices"
-	"strings"
-
 	"github.com/omnistrate-oss/omnistrate-ctl/cmd/common"
 
-	"github.com/chelnak/ysmrr"
-	"github.com/cqroot/prompt"
-	"github.com/cqroot/prompt/input"
 	"github.com/omnistrate-oss/omnistrate-ctl/internal/config"
 	"github.com/omnistrate-oss/omnistrate-ctl/internal/dataaccess"
 	"github.com/omnistrate-oss/omnistrate-ctl/internal/utils"
-	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
 )
 
@@ -54,30 +47,21 @@ func runDelete(cmd *cobra.Command, args []string) error {
 
 	// Confirm deletion
 	if !yes {
-		ok, err := prompt.New().Ask("Are you sure you want to delete this instance? (y/n)").
-			Input("", input.WithValidateFunc(
-				func(input string) error {
-					if slices.Contains([]string{"y", "yes", "n", "no"}, strings.ToLower(input)) {
-						return nil
-					} else {
-						return errors.New("invalid input")
-					}
-				}))
+		confirmed, err := utils.ConfirmAction("Are you sure you want to delete this instance?")
 		if err != nil {
 			utils.PrintError(err)
 			return err
 		}
-
-		if !slices.Contains([]string{"y", "yes"}, strings.ToLower(ok)) {
+		if !confirmed {
 			return nil
 		}
 	}
 
 	// Initialize spinner if output is not JSON
-	var sm ysmrr.SpinnerManager
-	var spinner *ysmrr.Spinner
+	var sm utils.SpinnerManager
+	var spinner *utils.Spinner
 	if output != "json" {
-		sm = ysmrr.NewSpinnerManager()
+		sm = utils.NewSpinnerManager()
 		msg := "Deleting instance..."
 		spinner = sm.AddSpinner(msg)
 		sm.Start()

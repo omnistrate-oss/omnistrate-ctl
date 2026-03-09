@@ -56,7 +56,6 @@ omnistrate-ctl [flags]
 * [omnistrate-ctl domain](omnistrate-ctl_domain.md)	 - Manage Customer Domains for your service
 * [omnistrate-ctl environment](omnistrate-ctl_environment.md)	 - Manage Service Environments for your service
 * [omnistrate-ctl helm](omnistrate-ctl_helm.md)	 - Manage Helm Charts for your service
-* [omnistrate-ctl inspect](omnistrate-ctl_inspect.md)	 - Interactive TUI to inspect Kubernetes resources
 * [omnistrate-ctl instance](omnistrate-ctl_instance.md)	 - Manage Instance Deployments for your service
 * [omnistrate-ctl login](omnistrate-ctl_login.md)	 - Log in to the Omnistrate platform
 * [omnistrate-ctl logout](omnistrate-ctl_logout.md)	 - Logout
