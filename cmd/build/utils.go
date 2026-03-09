@@ -17,6 +17,13 @@ import (
 	openapiclient "github.com/omnistrate-oss/omnistrate-sdk-go/v1"
 )
 
+const (
+	timeout      = 5 * time.Minute
+	pollInterval = 5 * time.Second
+	StatusReady  = "READY"
+	StatusFailed = "FAILED"
+)
+
 // DetectSpecType analyzes YAML content to determine if it contains service plan specifications
 // Returns ServicePlanSpecType if plan-specific keys are found, otherwise DockerComposeSpecType
 func DetectSpecType(yamlContent map[string]interface{}) string {
@@ -353,13 +360,6 @@ type ArtifactStatusCallback func(artifactID string, status string)
 // Timeout is 5 minutes. Status can be "READY", "UPLOADING", or "FAILED".
 // An optional onStatusChange callback is invoked each time an artifact's status is observed.
 func waitForArtifactsReady(ctx context.Context, token string, artifactIDs []string, onStatusChange ArtifactStatusCallback) error {
-	const (
-		timeout      = 5 * time.Minute
-		pollInterval = 5 * time.Second
-		statusReady  = "READY"
-		statusFailed = "FAILED"
-	)
-
 	deadline := time.Now().Add(timeout)
 
 	pendingArtifacts := make(map[string]bool)
@@ -379,9 +379,9 @@ func waitForArtifactsReady(ctx context.Context, token string, artifactIDs []stri
 			}
 
 			switch result.Status {
-			case statusReady:
+			case StatusReady:
 				delete(pendingArtifacts, artifactID)
-			case statusFailed:
+			case StatusFailed:
 				return fmt.Errorf("artifact %s failed to process", artifactID)
 			}
 			// If status is UPLOADING, continue waiting
