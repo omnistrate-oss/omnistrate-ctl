@@ -61,6 +61,10 @@ type dagModel struct {
 	expandedNodes   map[string]bool // nodes with expanded dependency checklist
 	highlightDeps   bool            // whether to highlight ancestor dependency chain
 
+	// Node placement metadata for auto-scrolling
+	nodePlacements map[string]planDAGPlacement
+	prefixRows     int // lines before the diagram (errors/warnings)
+
 	// Sub-view
 	detailModel tea.Model
 	inDetail    bool
@@ -817,9 +821,50 @@ func (m *dagModel) rebuildLayout() {
 		m.plan.SpinnerTick++
 	}
 
-	m.lines = renderPlanDAGStyledWithSelection(m.plan, bodyWidth, selectedNodeID, m.expandedNodes, m.highlightDeps)
+	result := renderPlanDAGStyledWithSelection(m.plan, bodyWidth, selectedNodeID, m.expandedNodes, m.highlightDeps)
+	m.lines = result.lines
+	m.nodePlacements = result.placements
+	m.prefixRows = result.prefixRows
 	m.contentWidth = maxLineWidthANSI(m.lines)
+	m.ensureSelectedVisible()
 	m.clampScroll()
+}
+
+// ensureSelectedVisible adjusts scrollX/scrollY so the currently selected
+// node's card is within the visible viewport, with a small margin.
+func (m *dagModel) ensureSelectedVisible() {
+	if !m.showCursor || len(m.selectableNodes) == 0 {
+		return
+	}
+	nodeID := m.selectableNodes[m.cursorIndex]
+	p, ok := m.nodePlacements[nodeID]
+	if !ok {
+		return
+	}
+
+	bodyWidth, bodyHeight := m.bodySize()
+	margin := 2
+
+	// The placement y is relative to the diagram canvas; add prefixRows
+	// to get the absolute line index in m.lines.
+	nodeTop := p.y + m.prefixRows
+	nodeBottom := nodeTop + p.height
+	nodeLeft := p.x
+	nodeRight := nodeLeft + p.width
+
+	// Vertical auto-scroll
+	if nodeTop-margin < m.scrollY {
+		m.scrollY = maxInt(nodeTop-margin, 0)
+	} else if nodeBottom+margin > m.scrollY+bodyHeight {
+		m.scrollY = nodeBottom + margin - bodyHeight
+	}
+
+	// Horizontal auto-scroll
+	if nodeLeft-margin < m.scrollX {
+		m.scrollX = maxInt(nodeLeft-margin, 0)
+	} else if nodeRight+margin > m.scrollX+bodyWidth {
+		m.scrollX = nodeRight + margin - bodyWidth
+	}
 }
 
 func maxLineWidthANSI(lines []string) int {
