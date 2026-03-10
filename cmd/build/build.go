@@ -706,12 +706,12 @@ func runBuild(cmd *cobra.Command, args []string) error {
 						}
 						task := hierarchyResult.ArtifactUploadingTasks[idx]
 						switch status {
-						case "READY":
+						case StatusReady:
 							taskSpinners[idx].spinner.Complete()
 							utils.PrintInfo(fmt.Sprintf("[%d/%d] %s -> %s: Ready",
 								idx+1, len(hierarchyResult.ArtifactUploadingTasks),
 								task.ArtifactPath, task.AccountConfigID))
-						case "FAILED":
+						case StatusFailed:
 							taskSpinners[idx].spinner.Error()
 							utils.PrintError(errors.Errorf("[%d/%d] %s -> %s: Failed",
 								idx+1, len(hierarchyResult.ArtifactUploadingTasks),
