@@ -5,7 +5,7 @@ Manage service workflows
 ### Synopsis
 
 This command helps you manage workflows for your services.
-You can list, describe, get events, and terminate workflows.
+You can list, describe, get events, resume, retry, and terminate workflows.
 
 ```
 omnistrate-ctl workflow [operation] [flags]
@@ -31,6 +31,7 @@ omnistrate-ctl workflow [operation] [flags]
 * [omnistrate-ctl workflow events](omnistrate-ctl_workflow_events.md)	 - Get workflow execution status and events
 * [omnistrate-ctl workflow list](omnistrate-ctl_workflow_list.md)	 - List workflows for a service environment
 * [omnistrate-ctl workflow resume](omnistrate-ctl_workflow_resume.md)	 - Resume a paused workflow
+* [omnistrate-ctl workflow retry](omnistrate-ctl_workflow_retry.md)	 - Retry a failed workflow
 * [omnistrate-ctl workflow summary](omnistrate-ctl_workflow_summary.md)	 - Get workflow summary for a service environment
 * [omnistrate-ctl workflow terminate](omnistrate-ctl_workflow_terminate.md)	 - Terminate a running workflow
 
