@@ -11,7 +11,7 @@ func TestWorkflowCommands(t *testing.T) {
 	require := require.New(t)
 
 	// Test that the workflow command has all expected subcommands
-	expectedCommands := []string{"list", "describe", "summary", "events", "terminate"}
+	expectedCommands := []string{"list", "describe", "summary", "events", "resume", "retry", "terminate"}
 
 	require.Equal("workflow [operation] [flags]", Cmd.Use)
 	require.Contains(Cmd.Short, "Manage service workflows")
@@ -86,6 +86,22 @@ func TestTerminateCommandFlags(t *testing.T) {
 	require.NotNil(terminateCmd.Flag("service-id"))
 	require.NotNil(terminateCmd.Flag("environment-id"))
 	require.NotNil(terminateCmd.Flag("confirm"))
+}
+
+func TestResumeCommandFlags(t *testing.T) {
+	require := require.New(t)
+
+	// Test that resume command has expected flags
+	require.NotNil(resumeCmd.Flag("service-id"))
+	require.NotNil(resumeCmd.Flag("environment-id"))
+}
+
+func TestRetryCommandFlags(t *testing.T) {
+	require := require.New(t)
+
+	// Test that retry command has expected flags
+	require.NotNil(retryCmd.Flag("service-id"))
+	require.NotNil(retryCmd.Flag("environment-id"))
 }
 
 func TestSummaryCommandFlags(t *testing.T) {

@@ -5,6 +5,7 @@ import (
 
 	openapiclientfleet "github.com/omnistrate-oss/omnistrate-sdk-go/fleet"
 	"github.com/spf13/cobra"
+	"github.com/stretchr/testify/require"
 )
 
 func TestParseCustomTags(t *testing.T) {
@@ -265,6 +266,59 @@ func TestEnsureUniqueTagKeys(t *testing.T) {
 				}
 			} else if err != nil {
 				t.Errorf("unexpected error: %v", err)
+			}
+		})
+	}
+}
+
+func TestParseWorkflowBreakpoints(t *testing.T) {
+	tests := []struct {
+		name        string
+		input       string
+		expectedIDs []string
+		expectErr   bool
+		errContains string
+	}{
+		{
+			name:        "no breakpoints",
+			input:       "",
+			expectedIDs: nil,
+		},
+		{
+			name:        "single breakpoint",
+			input:       "reader",
+			expectedIDs: []string{"reader"},
+		},
+		{
+			name:        "comma separated breakpoints",
+			input:       "writer,reader",
+			expectedIDs: []string{"writer", "reader"},
+		},
+		{
+			name:        "duplicates are de-duplicated",
+			input:       "writer,reader, reader, leaf",
+			expectedIDs: []string{"writer", "reader", "leaf"},
+		},
+		{
+			name:        "trims spaces",
+			input:       " writer , reader ",
+			expectedIDs: []string{"writer", "reader"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			breakpoints, err := parseWorkflowBreakpoints(tt.input)
+			if tt.expectErr {
+				require.Error(t, err)
+				require.Contains(t, err.Error(), tt.errContains)
+				return
+			}
+
+			require.NoError(t, err)
+			require.Len(t, breakpoints, len(tt.expectedIDs))
+			for i, id := range tt.expectedIDs {
+				require.Equal(t, id, breakpoints[i].Id)
 			}
 		})
 	}

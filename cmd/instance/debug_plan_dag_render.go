@@ -208,20 +208,21 @@ type dagCanvas struct {
 }
 
 type nodeCard struct {
-	title           string
-	meta1           string
-	meta2           string
-	icon            rune
-	iconStyle       lipgloss.Style
-	keyLabel        string
-	keyValue        string
-	theme           cardTheme
-	progress        ResourceProgress
-	hasProgress     bool
-	progressLoading bool
-	spinnerRune     rune
-	deps            []depEntry // parent dependencies with status
-	expanded        bool       // whether to show deps checklist
+	title            string
+	meta1            string
+	meta2            string
+	icon             rune
+	iconStyle        lipgloss.Style
+	keyLabel         string
+	keyValue         string
+	breakpointStatus string
+	theme            cardTheme
+	progress         ResourceProgress
+	hasProgress      bool
+	progressLoading  bool
+	spinnerRune      rune
+	deps             []depEntry // parent dependencies with status
+	expanded         bool       // whether to show deps checklist
 }
 
 type depEntry struct {
@@ -296,7 +297,8 @@ func drawPlanDAGStyled(plan *PlanDAG, _ int, selectedNodeID string, expandedNode
 	maxInner := 0
 	for id, node := range plan.Nodes {
 		progress, ok := progressForNode(plan, node)
-		card := buildNodeCard(node, progress, ok)
+		breakpointStatus, _ := breakpointStatusForNode(plan, node)
+		card := buildNodeCard(node, progress, ok, breakpointStatus)
 
 		// Build dependency entries from parents
 		for _, parentID := range parentIDs[id] {
@@ -358,6 +360,9 @@ func drawPlanDAGStyled(plan *PlanDAG, _ int, selectedNodeID string, expandedNode
 	nodeHeight := make(map[string]int)
 	for id, card := range cards {
 		h := baseCardHeight
+		if hasHitBreakpoint(card.breakpointStatus) {
+			h++
+		}
 		if len(card.deps) > 0 && !card.expanded {
 			h++ // collapsed: one line showing "▸ N dependencies"
 		} else if card.expanded && len(card.deps) > 0 {
@@ -488,7 +493,7 @@ func drawPlanDAGStyled(plan *PlanDAG, _ int, selectedNodeID string, expandedNode
 	return dagRenderResult{lines: canvas.render(), placements: placements}
 }
 
-func buildNodeCard(node PlanDAGNode, progress ResourceProgress, hasProgress bool) nodeCard {
+func buildNodeCard(node PlanDAGNode, progress ResourceProgress, hasProgress bool, breakpointStatus string) nodeCard {
 	label := nodeLabel(node)
 	typeTag := formatTypeTag(node.Type)
 	theme := themeForType(typeTag)
@@ -504,16 +509,17 @@ func buildNodeCard(node PlanDAGNode, progress ResourceProgress, hasProgress bool
 	meta2 := fmt.Sprintf("%s: %s", keyLabel, keyValue)
 
 	return nodeCard{
-		title:       label,
-		meta1:       meta1,
-		meta2:       meta2,
-		icon:        iconRune,
-		iconStyle:   iconStyle,
-		keyLabel:    keyLabel,
-		keyValue:    keyValue,
-		theme:       theme,
-		progress:    progress,
-		hasProgress: hasProgress,
+		title:            label,
+		meta1:            meta1,
+		meta2:            meta2,
+		icon:             iconRune,
+		iconStyle:        iconStyle,
+		keyLabel:         keyLabel,
+		keyValue:         keyValue,
+		breakpointStatus: breakpointStatus,
+		theme:            theme,
+		progress:         progress,
+		hasProgress:      hasProgress,
 	}
 }
 
@@ -660,7 +666,24 @@ func drawCard(canvas *dagCanvas, x, y, width, height int, card nodeCard, selecte
 	}
 
 	if remaining > 0 {
-		writeText(canvas, contentX, titleY, card.title, titleStyle, remaining)
+		titleWidth := remaining
+		if badgeText, badgeStyle, showBadge := breakpointBadge(card.breakpointStatus, dimmed); showBadge {
+			badgeWidth := len([]rune(badgeText))
+			if badgeWidth < inner {
+				badgeX := x + 1 + inner - badgeWidth
+				writeText(canvas, badgeX, titleY, badgeText, badgeStyle, badgeWidth)
+
+				if badgeWidth+1 < titleWidth {
+					titleWidth -= badgeWidth + 1
+				} else {
+					titleWidth = 0
+				}
+			}
+		}
+
+		if titleWidth > 0 {
+			writeText(canvas, contentX, titleY, card.title, titleStyle, titleWidth)
+		}
 	}
 
 	writeLabelValue(canvas, x+1, typeY, "Type:", strings.TrimPrefix(card.meta1, "Type: "), inner, labelStyle, valueStyle)
@@ -669,6 +692,15 @@ func drawCard(canvas *dagCanvas, x, y, width, height int, card nodeCard, selecte
 	// Dependency checklist
 	dimColor := lipgloss.Color("239")
 	depsStartY := keyY + 1
+	if hasHitBreakpoint(card.breakpointStatus) {
+		breakpointStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("203")).Bold(true)
+		if dimmed {
+			breakpointStyle = lipgloss.NewStyle().Foreground(dimColor)
+		}
+		writeText(canvas, x+1, depsStartY, breakpointPopDownLine(inner), breakpointStyle, inner)
+		depsStartY++
+	}
+
 	if len(card.deps) > 0 {
 		if card.expanded {
 			// Header line
@@ -730,6 +762,38 @@ func depStatusIcon(status string) (rune, lipgloss.Style) {
 	default:
 		return '○', lipgloss.NewStyle().Foreground(lipgloss.Color("245"))
 	}
+}
+
+func breakpointBadge(status string, dimmed bool) (string, lipgloss.Style, bool) {
+	if !hasHitBreakpoint(status) {
+		return "", lipgloss.NewStyle(), false
+	}
+
+	style := lipgloss.NewStyle().Foreground(lipgloss.Color("220")).Bold(true)
+	if dimmed {
+		style = lipgloss.NewStyle().Foreground(lipgloss.Color("239"))
+	}
+	return "BREAKPOINT", style, true
+}
+
+func breakpointPopDownLine(width int) string {
+	const label = "breakpoint hit"
+	if width <= len(label) {
+		return label
+	}
+
+	// Format: "└─ breakpoint hit ───┘"
+	core := "─ " + label + " "
+	if width <= len(core)+1 {
+		return label
+	}
+
+	remaining := width - 1 - len(core) - 1
+	if remaining < 1 {
+		remaining = 1
+	}
+
+	return "└" + core + strings.Repeat("─", remaining) + "┘"
 }
 
 func drawProgressBar(canvas *dagCanvas, x, y, width int, card nodeCard, bgStyle lipgloss.Style, dimmed bool) {

@@ -8,7 +8,7 @@ var Cmd = &cobra.Command{
 	Use:   "workflow [operation] [flags]",
 	Short: "Manage service workflows",
 	Long: `This command helps you manage workflows for your services.
-You can list, describe, get events, and terminate workflows.`,
+You can list, describe, get events, resume, retry, and terminate workflows.`,
 	Run:          run,
 	SilenceUsage: true,
 }
@@ -18,6 +18,8 @@ func init() {
 	Cmd.AddCommand(describeCmd)
 	Cmd.AddCommand(summaryCmd)
 	Cmd.AddCommand(eventsCmd)
+	Cmd.AddCommand(resumeCmd)
+	Cmd.AddCommand(retryCmd)
 	Cmd.AddCommand(terminateCmd)
 }
 

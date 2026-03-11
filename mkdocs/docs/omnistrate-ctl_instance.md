@@ -27,6 +27,7 @@ omnistrate-ctl instance [operation] [flags]
 
 * [omnistrate-ctl](omnistrate-ctl.md)	 - Manage your Omnistrate SaaS from the command line
 * [omnistrate-ctl instance adopt](omnistrate-ctl_instance_adopt.md)	 - Adopt a resource instance
+* [omnistrate-ctl instance breakpoint](omnistrate-ctl_instance_breakpoint.md)	 - Manage instance workflow breakpoints
 * [omnistrate-ctl instance continue-deployment](omnistrate-ctl_instance_continue-deployment.md)	 - Continue instance deployment
 * [omnistrate-ctl instance copy-snapshot](omnistrate-ctl_instance_copy-snapshot.md)	 - Copy an instance snapshot to another region
 * [omnistrate-ctl instance create](omnistrate-ctl_instance_create.md)	 - Create an instance deployment
