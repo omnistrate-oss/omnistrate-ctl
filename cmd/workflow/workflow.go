@@ -18,6 +18,7 @@ func init() {
 	Cmd.AddCommand(describeCmd)
 	Cmd.AddCommand(summaryCmd)
 	Cmd.AddCommand(eventsCmd)
+	Cmd.AddCommand(resumeCmd)
 	Cmd.AddCommand(terminateCmd)
 }
 

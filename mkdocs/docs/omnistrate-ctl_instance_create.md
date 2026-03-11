@@ -7,7 +7,7 @@ Create an instance deployment
 This command helps you create an instance deployment for your service.
 
 ```
-omnistrate-ctl instance create --service=[service] --environment=[environment] --plan=[plan] --version=[version] --resource=[resource] --cloud-provider=[aws|gcp] --region=[region] [--param=param] [--param-file=file-path] [--tags key=value,key2=value2] [flags]
+omnistrate-ctl instance create --service=[service] --environment=[environment] --plan=[plan] --version=[version] --resource=[resource] --cloud-provider=[aws|gcp] --region=[region] [--param=param] [--param-file=file-path] [--tags key=value,key2=value2] [--breakpoints id-or-key,id-or-key] [flags]
 ```
 
 ### Examples
@@ -24,11 +24,15 @@ omnistrate-ctl instance create --service=mysql --environment=dev --plan=mysql --
 
 # Create an instance deployment and wait for completion with progress tracking
 omnistrate-ctl instance create --service=mysql --environment=dev --plan=mysql --version=latest --resource=mySQL --cloud-provider=aws --region=ca-central-1 --param-file /path/to/params.json --wait
+
+# Create an instance deployment with workflow breakpoints
+omnistrate-ctl instance create --service=mysql --environment=dev --plan=mysql --version=latest --resource=mySQL --cloud-provider=aws --region=ca-central-1 --param-file /path/to/params.json --breakpoints writer,reader
 ```
 
 ### Options
 
 ```
+      --breakpoints strings      Workflow breakpoint resource IDs or resource keys (comma-separated or repeated)
       --cloud-provider string    Cloud provider (aws|gcp)
       --environment string       Environment name
   -h, --help                     help for create

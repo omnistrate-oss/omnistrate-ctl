@@ -36,6 +36,7 @@ func init() {
 	Cmd.AddCommand(adoptCmd)
 	Cmd.AddCommand(versionUpgradeCmd)
 	Cmd.AddCommand(debugCmd)
+	Cmd.AddCommand(breakpointCmd)
 	Cmd.AddCommand(evaluateCmd)
 	Cmd.AddCommand(getInstallerCmd)
 	Cmd.AddCommand(deploymentParametersCmd)

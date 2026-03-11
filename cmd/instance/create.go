@@ -26,13 +26,16 @@ omnistrate-ctl instance create --service=mysql --environment=dev --plan=mysql --
 omnistrate-ctl instance create --service=mysql --environment=dev --plan=mysql --version=latest --resource=mySQL --cloud-provider=aws --region=ca-central-1 --param-file /path/to/params.json --tags environment=dev,owner=team
 
 # Create an instance deployment and wait for completion with progress tracking
-omnistrate-ctl instance create --service=mysql --environment=dev --plan=mysql --version=latest --resource=mySQL --cloud-provider=aws --region=ca-central-1 --param-file /path/to/params.json --wait`
+omnistrate-ctl instance create --service=mysql --environment=dev --plan=mysql --version=latest --resource=mySQL --cloud-provider=aws --region=ca-central-1 --param-file /path/to/params.json --wait
+
+# Create an instance deployment with workflow breakpoints
+omnistrate-ctl instance create --service=mysql --environment=dev --plan=mysql --version=latest --resource=mySQL --cloud-provider=aws --region=ca-central-1 --param-file /path/to/params.json --breakpoints writer,reader`
 )
 
 var InstanceID string
 
 var createCmd = &cobra.Command{
-	Use:          "create --service=[service] --environment=[environment] --plan=[plan] --version=[version] --resource=[resource] --cloud-provider=[aws|gcp] --region=[region] [--param=param] [--param-file=file-path] [--tags key=value,key2=value2]",
+	Use:          "create --service=[service] --environment=[environment] --plan=[plan] --version=[version] --resource=[resource] --cloud-provider=[aws|gcp] --region=[region] [--param=param] [--param-file=file-path] [--tags key=value,key2=value2] [--breakpoints id-or-key,id-or-key]",
 	Short:        "Create an instance deployment",
 	Long:         `This command helps you create an instance deployment for your service.`,
 	Example:      createExample,
@@ -51,6 +54,7 @@ func init() {
 	createCmd.Flags().String("param", "", "Parameters for the instance deployment")
 	createCmd.Flags().String("param-file", "", "Json file containing parameters for the instance deployment")
 	createCmd.Flags().String("tags", "", "Custom tags to add to the instance deployment (format: key=value,key2=value2)")
+	createCmd.Flags().StringSlice("breakpoints", []string{}, "Workflow breakpoint resource IDs or resource keys (comma-separated or repeated)")
 	createCmd.Flags().StringP("subscription-id", "", "", "Subscription ID to use for the instance deployment. If not provided, instance deployment will be created in your own subscription.")
 	createCmd.Flags().Bool("wait", false, "Wait for deployment to complete and show progress")
 
@@ -149,6 +153,16 @@ func runCreate(cmd *cobra.Command, args []string) error {
 		utils.PrintError(err)
 		return err
 	}
+	breakpointsRaw, err := cmd.Flags().GetStringSlice("breakpoints")
+	if err != nil {
+		utils.PrintError(err)
+		return err
+	}
+	workflowBreakpoints, err := parseWorkflowBreakpoints(breakpointsRaw)
+	if err != nil {
+		utils.PrintError(err)
+		return err
+	}
 
 	// Validate user login
 	token, err := common.GetTokenWithLogin()
@@ -239,6 +253,9 @@ func runCreate(cmd *cobra.Command, args []string) error {
 	}
 	if tagsProvided {
 		request.CustomTags = customTags
+	}
+	if len(workflowBreakpoints) > 0 {
+		request.WorkflowBreakpoints = workflowBreakpoints
 	}
 	if subscriptionID != "" {
 		request.SubscriptionId = utils.ToPtr(subscriptionID)
@@ -373,4 +390,32 @@ func formatInstance(instance *openapiclientfleet.ResourceInstanceSearchRecord, t
 	}
 
 	return formattedInstance
+}
+
+func parseWorkflowBreakpoints(values []string) ([]openapiclientfleet.WorkflowBreakpoint, error) {
+	if len(values) == 0 {
+		return nil, nil
+	}
+
+	breakpoints := make([]openapiclientfleet.WorkflowBreakpoint, 0, len(values))
+	seen := make(map[string]struct{}, len(values))
+	for _, v := range values {
+		for _, part := range strings.Split(v, ",") {
+			idOrKey := strings.TrimSpace(part)
+			if idOrKey == "" {
+				continue
+			}
+			if _, exists := seen[idOrKey]; exists {
+				continue
+			}
+			seen[idOrKey] = struct{}{}
+			breakpoints = append(breakpoints, openapiclientfleet.WorkflowBreakpoint{Id: idOrKey})
+		}
+	}
+
+	if len(breakpoints) == 0 {
+		return nil, fmt.Errorf("breakpoints flag provided but no valid resource IDs/keys found")
+	}
+
+	return breakpoints, nil
 }

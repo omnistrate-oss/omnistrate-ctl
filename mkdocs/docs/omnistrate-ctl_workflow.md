@@ -30,6 +30,7 @@ omnistrate-ctl workflow [operation] [flags]
 * [omnistrate-ctl workflow describe](omnistrate-ctl_workflow_describe.md)	 - Describe a specific workflow
 * [omnistrate-ctl workflow events](omnistrate-ctl_workflow_events.md)	 - Get workflow execution status and events
 * [omnistrate-ctl workflow list](omnistrate-ctl_workflow_list.md)	 - List workflows for a service environment
+* [omnistrate-ctl workflow resume](omnistrate-ctl_workflow_resume.md)	 - Resume a paused workflow
 * [omnistrate-ctl workflow summary](omnistrate-ctl_workflow_summary.md)	 - Get workflow summary for a service environment
 * [omnistrate-ctl workflow terminate](omnistrate-ctl_workflow_terminate.md)	 - Terminate a running workflow
 
