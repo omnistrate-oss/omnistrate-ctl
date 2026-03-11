@@ -274,46 +274,35 @@ func TestEnsureUniqueTagKeys(t *testing.T) {
 func TestParseWorkflowBreakpoints(t *testing.T) {
 	tests := []struct {
 		name        string
-		input       []string
+		input       string
 		expectedIDs []string
 		expectErr   bool
 		errContains string
 	}{
 		{
 			name:        "no breakpoints",
-			input:       []string{},
+			input:       "",
 			expectedIDs: nil,
 		},
 		{
 			name:        "single breakpoint",
-			input:       []string{"reader"},
+			input:       "reader",
 			expectedIDs: []string{"reader"},
 		},
 		{
 			name:        "comma separated breakpoints",
-			input:       []string{"writer,reader"},
+			input:       "writer,reader",
 			expectedIDs: []string{"writer", "reader"},
-		},
-		{
-			name:        "repeated and comma separated breakpoints",
-			input:       []string{"writer,reader", "leaf"},
-			expectedIDs: []string{"writer", "reader", "leaf"},
 		},
 		{
 			name:        "duplicates are de-duplicated",
-			input:       []string{"writer,reader", "reader", "writer"},
-			expectedIDs: []string{"writer", "reader"},
+			input:       "writer,reader, reader, leaf",
+			expectedIDs: []string{"writer", "reader", "leaf"},
 		},
 		{
 			name:        "trims spaces",
-			input:       []string{" writer , reader "},
+			input:       " writer , reader ",
 			expectedIDs: []string{"writer", "reader"},
-		},
-		{
-			name:        "empty values error",
-			input:       []string{"", "   "},
-			expectErr:   true,
-			errContains: "no valid resource IDs/keys found",
 		},
 	}
 

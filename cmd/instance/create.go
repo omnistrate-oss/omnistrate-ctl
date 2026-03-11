@@ -54,7 +54,7 @@ func init() {
 	createCmd.Flags().String("param", "", "Parameters for the instance deployment")
 	createCmd.Flags().String("param-file", "", "Json file containing parameters for the instance deployment")
 	createCmd.Flags().String("tags", "", "Custom tags to add to the instance deployment (format: key=value,key2=value2)")
-	createCmd.Flags().StringSlice("breakpoints", []string{}, "Workflow breakpoint resource IDs or resource keys (comma-separated or repeated)")
+	createCmd.Flags().String("breakpoints", "", "Workflow breakpoint resource IDs or resource keys (comma-separated)")
 	createCmd.Flags().StringP("subscription-id", "", "", "Subscription ID to use for the instance deployment. If not provided, instance deployment will be created in your own subscription.")
 	createCmd.Flags().Bool("wait", false, "Wait for deployment to complete and show progress")
 
@@ -153,7 +153,7 @@ func runCreate(cmd *cobra.Command, args []string) error {
 		utils.PrintError(err)
 		return err
 	}
-	breakpointsRaw, err := cmd.Flags().GetStringSlice("breakpoints")
+	breakpointsRaw, err := cmd.Flags().GetString("breakpoints")
 	if err != nil {
 		utils.PrintError(err)
 		return err
@@ -392,25 +392,27 @@ func formatInstance(instance *openapiclientfleet.ResourceInstanceSearchRecord, t
 	return formattedInstance
 }
 
-func parseWorkflowBreakpoints(values []string) ([]openapiclientfleet.WorkflowBreakpoint, error) {
-	if len(values) == 0 {
+func parseWorkflowBreakpoints(valuesCSV string) ([]openapiclientfleet.WorkflowBreakpoint, error) {
+	if len(valuesCSV) == 0 {
 		return nil, nil
 	}
 
-	breakpoints := make([]openapiclientfleet.WorkflowBreakpoint, 0, len(values))
-	seen := make(map[string]struct{}, len(values))
+	var breakpoints []openapiclientfleet.WorkflowBreakpoint
+	seen := make(map[string]struct{})
+
+	// Split the input by comma and trim spaces to get individual IDs or keys
+	values := strings.Split(valuesCSV, ",")
+
 	for _, v := range values {
-		for _, part := range strings.Split(v, ",") {
-			idOrKey := strings.TrimSpace(part)
-			if idOrKey == "" {
-				continue
-			}
-			if _, exists := seen[idOrKey]; exists {
-				continue
-			}
-			seen[idOrKey] = struct{}{}
-			breakpoints = append(breakpoints, openapiclientfleet.WorkflowBreakpoint{Id: idOrKey})
+		idOrKey := strings.TrimSpace(v)
+		if idOrKey == "" {
+			continue
 		}
+		if _, exists := seen[idOrKey]; exists {
+			continue
+		}
+		seen[idOrKey] = struct{}{}
+		breakpoints = append(breakpoints, openapiclientfleet.WorkflowBreakpoint{Id: idOrKey})
 	}
 
 	if len(breakpoints) == 0 {

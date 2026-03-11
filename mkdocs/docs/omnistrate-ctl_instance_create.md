@@ -32,7 +32,7 @@ omnistrate-ctl instance create --service=mysql --environment=dev --plan=mysql --
 ### Options
 
 ```
-      --breakpoints strings      Workflow breakpoint resource IDs or resource keys (comma-separated or repeated)
+      --breakpoints string       Workflow breakpoint resource IDs or resource keys (comma-separated)
       --cloud-provider string    Cloud provider (aws|gcp)
       --environment string       Environment name
   -h, --help                     help for create
