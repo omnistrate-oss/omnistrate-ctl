@@ -1,6 +1,7 @@
 package deploy
 
 import (
+	"bufio"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -32,7 +33,8 @@ import (
 const (
 	deployExample = `
 # Build and deploy using the default spec in the current directory
-# Looks for omnistrate-compose.yaml, if no spec file is found, deploy falls back to build-from-repo.
+# Looks for omnistrate-compose.yaml first, then spec.yaml.
+# If no supported spec file is found, deploy falls back to build-from-repo.
 omnistrate-ctl deploy
 
 # Deploy using a specific Omnistrate spec
@@ -87,7 +89,7 @@ It automatically handles:
 Main modes of operation:
 
   - Build from repository and deploy
-      Triggered when no spec file is provided and no supported spec is found in
+        Triggered when no spec file is provided and no supported spec is found in
       the current directory. The command detects a Dockerfile, builds an image,
       creates the service, generates the Omnistrate spec, and deploys an instance.
 
@@ -275,7 +277,7 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 	// Inform user of deployment start
 	spinner := sm.AddSpinner("Step 1/2: Starting service creation...")
 
-	// Improved spec file detection: prefer service plan, then docker compose, else repo
+	// Improved spec file detection: prefer omnistrate-compose.yaml, then spec.yaml, else repo
 	var specFile string
 	var specType = build.DockerComposeSpecType
 	var buildFromRepo = false
@@ -289,6 +291,9 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 		// Check for omnistrate-compose.yaml first (preferred)
 		if _, err := os.Stat(build.OmnistrateComposeFileName); err == nil {
 			specFile = build.OmnistrateComposeFileName
+		} else if _, err := os.Stat(build.PlanSpecFileName); err == nil {
+			// Fallback to service plan spec if present
+			specFile = build.PlanSpecFileName
 		} else {
 			// If omnistrate-compose.yaml not found, check for docker-compose.yaml and error out
 			if _, err := os.Stat(build.DockerComposeFileName); err == nil {
@@ -343,9 +348,11 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 		// Check for omnistrate-specific configurations
 		var planCheck map[string]interface{}
 		if err := yaml.Unmarshal(processedData, &planCheck); err == nil {
+			// Use the common function to detect spec type
+			specType = build.DetectSpecType(planCheck)
 			// Check if this is an omnistrate spec file
 			isOmnistrate := build.ContainsOmnistrateKey(planCheck)
-			if !isOmnistrate {
+			if !isOmnistrate && specType == build.DockerComposeSpecType {
 				err := fmt.Errorf(
 					"spec file '%s' is missing Omnistrate configuration (x-omnistrate-* keys).\n"+
 						"This looks like a plain docker-compose or non-Omnistrate YAML file.\n\n"+
@@ -358,8 +365,7 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 				spinner.Error()
 				return err
 			}
-			// Use the common function to detect spec type
-			specType = build.DetectSpecType(planCheck)
+
 		} else {
 			// Fallback to file extension based detection
 			fileToRead := filepath.Base(absSpecFile)
@@ -1302,18 +1308,28 @@ func createInstanceUnified(ctx context.Context, token, serviceID, environmentID,
 		// Check for missing required parameters
 		var defaultRequiredParams []string
 		for k, v := range defaultParams {
-			if v == nil {
-				defaultRequiredParams = append(defaultRequiredParams, k)
-				continue
-			}
-			if reflect.TypeOf(v).Kind() == reflect.String && v == "" {
+			if isMissingParamValue(v) {
 				defaultRequiredParams = append(defaultRequiredParams, k)
 			}
 		}
 
-		// Validate that all required parameters have values
+		var promptErr error
 		if len(defaultRequiredParams) > 0 {
-			return "", fmt.Errorf("missing required parameters for instance creation: %v", defaultRequiredParams)
+			promptErr = promptForMissingRequiredParams(defaultParams, defaultRequiredParams)
+		}
+
+		// Validate that all required parameters have values
+		var stillMissingParams []string
+		for k, v := range defaultParams {
+			if isMissingParamValue(v) {
+				stillMissingParams = append(stillMissingParams, k)
+			}
+		}
+		if len(stillMissingParams) > 0 {
+			if promptErr != nil {
+				return "", fmt.Errorf("missing required parameters for instance creation: %v (%w)", stillMissingParams, promptErr)
+			}
+			return "", fmt.Errorf("missing required parameters for instance creation: %v", stillMissingParams)
 		}
 
 		// Check for unused parameters from formattedParams
@@ -2264,4 +2280,79 @@ func printMissingParamsGuidance(err error) {
 			"  - Or provide a JSON file with --param-file",
 		err.Error(),
 	))
+}
+
+func isMissingParamValue(value interface{}) bool {
+	if value == nil {
+		return true
+	}
+	if s, ok := value.(string); ok {
+		return strings.TrimSpace(s) == ""
+	}
+	return false
+}
+
+func isInteractivePromptEnabled() bool {
+	if strings.EqualFold(os.Getenv("OMNISTRATE_NON_INTERACTIVE"), "true") {
+		return false
+	}
+	stdinInfo, err := os.Stdin.Stat()
+	if err != nil {
+		return false
+	}
+	return (stdinInfo.Mode() & os.ModeCharDevice) != 0
+}
+
+func promptForMissingRequiredParams(defaultParams map[string]interface{}, requiredParams []string) error {
+	if len(requiredParams) == 0 {
+		return nil
+	}
+	if !isInteractivePromptEnabled() {
+		return fmt.Errorf("cannot prompt for required parameters in non-interactive mode")
+	}
+
+	fmt.Println()
+	fmt.Println("ℹ️  Missing required instance launch parameters. Please enter values to continue deployment.")
+
+	reader := bufio.NewReader(os.Stdin)
+	return applyPromptedParamValues(defaultParams, requiredParams, func(paramKey string) (string, error) {
+		for {
+			fmt.Printf("Enter value for '%s': ", paramKey)
+			value, err := reader.ReadString('\n')
+			if err != nil {
+				return "", fmt.Errorf("failed to read value for '%s': %w", paramKey, err)
+			}
+			value = strings.TrimSpace(value)
+			if value == "" {
+				fmt.Println("Value cannot be empty. Please try again.")
+				continue
+			}
+			return value, nil
+		}
+	})
+}
+
+func applyPromptedParamValues(defaultParams map[string]interface{}, requiredParams []string, readValue func(string) (string, error)) error {
+	for _, paramKey := range requiredParams {
+		if !isMissingParamValue(defaultParams[paramKey]) {
+			continue
+		}
+		value, err := readValue(paramKey)
+		if err != nil {
+			return err
+		}
+		defaultParams[paramKey] = parsePromptInputValue(value)
+	}
+	return nil
+}
+
+func parsePromptInputValue(value string) interface{} {
+	var parsed interface{}
+	if err := json.Unmarshal([]byte(value), &parsed); err == nil {
+		if parsed == nil {
+			return value
+		}
+		return parsed
+	}
+	return value
 }
