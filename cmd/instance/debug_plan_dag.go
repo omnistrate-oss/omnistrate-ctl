@@ -11,17 +11,20 @@ import (
 )
 
 type PlanDAG struct {
-	Nodes           map[string]PlanDAGNode      `json:"nodes"`
-	Edges           []PlanDAGEdge               `json:"edges"`
-	Levels          [][]string                  `json:"levels"`
-	Errors          []string                    `json:"errors,omitempty"`
-	HasCycle        bool                        `json:"hasCycle"`
-	WorkflowID      string                      `json:"workflowId,omitempty"`
-	ProgressByID    map[string]ResourceProgress `json:"progressById,omitempty"`
-	ProgressByKey   map[string]ResourceProgress `json:"progressByKey,omitempty"`
-	ProgressByName  map[string]ResourceProgress `json:"progressByName,omitempty"`
-	ProgressLoading bool                        `json:"-"`
-	SpinnerTick     int                         `json:"-"`
+	Nodes            map[string]PlanDAGNode      `json:"nodes"`
+	Edges            []PlanDAGEdge               `json:"edges"`
+	Levels           [][]string                  `json:"levels"`
+	Errors           []string                    `json:"errors,omitempty"`
+	HasCycle         bool                        `json:"hasCycle"`
+	WorkflowID       string                      `json:"workflowId,omitempty"`
+	ProgressByID     map[string]ResourceProgress `json:"progressById,omitempty"`
+	ProgressByKey    map[string]ResourceProgress `json:"progressByKey,omitempty"`
+	ProgressByName   map[string]ResourceProgress `json:"progressByName,omitempty"`
+	BreakpointByID   map[string]string           `json:"breakpointById,omitempty"`
+	BreakpointByKey  map[string]string           `json:"breakpointByKey,omitempty"`
+	BreakpointByName map[string]string           `json:"breakpointByName,omitempty"`
+	ProgressLoading  bool                        `json:"-"`
+	SpinnerTick      int                         `json:"-"`
 	// Per-resource workflow step summaries keyed by resource key
 	WorkflowStepsByKey map[string]*ResourceWorkflowSteps `json:"-"`
 }
@@ -106,6 +109,7 @@ func buildPlanDAG(ctx context.Context, token, serviceID string, instanceData *op
 
 	filterPlanDAG(plan)
 	plan.Levels, plan.HasCycle = computePlanLevels(plan.Nodes, plan.Edges)
+	attachBreakpointStatuses(plan, instanceData)
 	return plan, nil
 }
 
@@ -232,4 +236,114 @@ func nodeLabel(node PlanDAGNode) string {
 	default:
 		return node.ID
 	}
+}
+
+func attachBreakpointStatuses(plan *PlanDAG, instanceData *openapiclientfleet.ResourceInstance) {
+	if plan == nil || instanceData == nil {
+		return
+	}
+
+	byID := make(map[string]string)
+	byKey := make(map[string]string)
+	byName := make(map[string]string)
+
+	activeBreakpoints := instanceData.GetActiveBreakpoints()
+	if len(activeBreakpoints) == 0 {
+		plan.BreakpointByID = byID
+		plan.BreakpointByKey = byKey
+		plan.BreakpointByName = byName
+		return
+	}
+
+	for _, breakpoint := range activeBreakpoints {
+		idOrKey := strings.TrimSpace(breakpoint.GetId())
+		if idOrKey == "" {
+			continue
+		}
+
+		status := normalizeBreakpointStatus(breakpoint.GetStatus())
+		for _, node := range plan.Nodes {
+			if !strings.EqualFold(node.ID, idOrKey) &&
+				!strings.EqualFold(node.Key, idOrKey) &&
+				!strings.EqualFold(node.Name, idOrKey) {
+				continue
+			}
+
+			byID[node.ID] = status
+			if node.Key != "" {
+				byKey[node.Key] = status
+			}
+			if node.Name != "" {
+				byName[node.Name] = status
+			}
+		}
+	}
+
+	plan.BreakpointByID = byID
+	plan.BreakpointByKey = byKey
+	plan.BreakpointByName = byName
+}
+
+func breakpointStatusForNode(plan *PlanDAG, node PlanDAGNode) (string, bool) {
+	if plan == nil {
+		return "", false
+	}
+
+	if plan.BreakpointByID != nil {
+		if status, ok := plan.BreakpointByID[node.ID]; ok {
+			return status, true
+		}
+	}
+
+	if node.Key != "" && plan.BreakpointByKey != nil {
+		if status, ok := plan.BreakpointByKey[node.Key]; ok {
+			return status, true
+		}
+	}
+
+	if node.Name != "" && plan.BreakpointByName != nil {
+		if status, ok := plan.BreakpointByName[node.Name]; ok {
+			return status, true
+		}
+	}
+
+	return "", false
+}
+
+func normalizeBreakpointStatus(status string) string {
+	trimmed := strings.TrimSpace(status)
+	if trimmed == "" {
+		return "pending"
+	}
+	return strings.ToLower(trimmed)
+}
+
+func hasHitBreakpoint(status string) bool {
+	return normalizeBreakpointStatus(status) == "hit"
+}
+
+func planHasHitBreakpoint(plan *PlanDAG) bool {
+	if plan == nil {
+		return false
+	}
+
+	for _, status := range plan.BreakpointByID {
+		if hasHitBreakpoint(status) {
+			return true
+		}
+	}
+
+	for _, status := range plan.BreakpointByKey {
+		if hasHitBreakpoint(status) {
+			return true
+		}
+	}
+
+	for _, status := range plan.BreakpointByName {
+		if hasHitBreakpoint(status) {
+			return true
+		}
+	}
+
+	return false
 }

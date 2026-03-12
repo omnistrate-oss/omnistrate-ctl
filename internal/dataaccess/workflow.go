@@ -158,6 +158,64 @@ func TerminateWorkflow(ctx context.Context, token string, serviceID, environment
 	return
 }
 
+func ResumeWorkflow(ctx context.Context, token string, serviceID, environmentID, workflowID string) (res *openapiclientfleet.ServiceWorkflow, err error) {
+	ctxWithToken := context.WithValue(ctx, openapiclientfleet.ContextAccessToken, token)
+	apiClient := getFleetClient()
+
+	reqBody := openapiclientfleet.UpdateServiceWorkflowRequest2{
+		Status: "resume",
+	}
+
+	req := apiClient.FleetWorkflowsApiAPI.FleetWorkflowsApiUpdateServiceWorkflow(
+		ctxWithToken,
+		serviceID,
+		environmentID,
+		workflowID,
+	).UpdateServiceWorkflowRequest2(reqBody)
+
+	var r *http.Response
+	defer func() {
+		if r != nil {
+			_ = r.Body.Close()
+		}
+	}()
+
+	res, r, err = req.Execute()
+	if err != nil {
+		return nil, handleFleetError(err)
+	}
+	return
+}
+
+func RetryWorkflow(ctx context.Context, token string, serviceID, environmentID, workflowID string) (res *openapiclientfleet.ServiceWorkflow, err error) {
+	ctxWithToken := context.WithValue(ctx, openapiclientfleet.ContextAccessToken, token)
+	apiClient := getFleetClient()
+
+	reqBody := openapiclientfleet.UpdateServiceWorkflowRequest2{
+		Status: "retry",
+	}
+
+	req := apiClient.FleetWorkflowsApiAPI.FleetWorkflowsApiUpdateServiceWorkflow(
+		ctxWithToken,
+		serviceID,
+		environmentID,
+		workflowID,
+	).UpdateServiceWorkflowRequest2(reqBody)
+
+	var r *http.Response
+	defer func() {
+		if r != nil {
+			_ = r.Body.Close()
+		}
+	}()
+
+	res, r, err = req.Execute()
+	if err != nil {
+		return nil, handleFleetError(err)
+	}
+	return
+}
+
 // DebugEvent represents a workflow debug event with known field names
 type DebugEvent struct {
 	EventTime string `json:"eventTime"`
