@@ -343,12 +343,15 @@ func runVersionUpgrade(cmd *cobra.Command, args []string) error {
 	// Display workflow resource-wise data if output is not JSON and wait flag is enabled
 	if output != "json" && waitFlag {
 		fmt.Println("🔄 Deployment progress...")
-		err = DisplayWorkflowResourceDataWithSpinners(cmd.Context(), token, formattedInstance.InstanceID, "upgrade")
+		workflowResult, workflowErr := DisplayWorkflowResourceDataWithSpinners(cmd.Context(), token, formattedInstance.InstanceID, "upgrade")
+		err = workflowErr
 		if err != nil {
 			// Handle spinner error if deployment monitoring fails
 			fmt.Println("❌ Deployment failed")
+			PrintWorkflowDebugGuidance(formattedInstance.InstanceID, workflowResult, err)
 		} else {
 			fmt.Println("✅ Deployment successful")
+			PrintWorkflowDebugGuidance(formattedInstance.InstanceID, workflowResult, nil)
 		}
 	}
 

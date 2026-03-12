@@ -1010,12 +1010,15 @@ func executeDeploymentWorkflow(cmd *cobra.Command, sm utils.SpinnerManager, toke
 
 	// Optionally display workflow progress if desired
 	if finalInstanceID != "" {
-		err = instance.DisplayWorkflowResourceDataWithSpinners(cmd.Context(), token, finalInstanceID, instanceActionType)
+		workflowResult, workflowErr := instance.DisplayWorkflowResourceDataWithSpinners(cmd.Context(), token, finalInstanceID, instanceActionType)
+		err = workflowErr
 		if err != nil {
 			fmt.Printf("❌ Deployment workflow failed: %s\n", err)
+			instance.PrintWorkflowDebugGuidance(finalInstanceID, workflowResult, err)
 			return err
 		} else {
 			fmt.Println("✅ Deployment successful")
+			instance.PrintWorkflowDebugGuidance(finalInstanceID, workflowResult, nil)
 		}
 	}
 

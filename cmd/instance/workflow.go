@@ -20,19 +20,41 @@ type ResourceSpinner struct {
 	Spinner      *utils.Spinner
 }
 
+// WorkflowMonitorResult captures summarized details for post-workflow UX.
+type WorkflowMonitorResult struct {
+	InstanceID         string
+	ServiceID          string
+	EnvironmentID      string
+	ActionType         string
+	WorkflowID         string
+	WorkflowStatus     string
+	FailedResourceID   string
+	FailedResourceKey  string
+	FailedResourceName string
+	FailedStep         string
+	FailedReason       string
+}
+
 // displayWorkflowResourceDataWithSpinners creates individual spinners for each resource and updates them dynamically
-func DisplayWorkflowResourceDataWithSpinners(ctx context.Context, token, instanceID, actionType string) error {
+func DisplayWorkflowResourceDataWithSpinners(ctx context.Context, token, instanceID, actionType string) (WorkflowMonitorResult, error) {
+	result := WorkflowMonitorResult{
+		InstanceID: instanceID,
+		ActionType: actionType,
+	}
+
 	// Search for the instance to get service details
 	searchRes, err := dataaccess.SearchInventory(ctx, token, fmt.Sprintf("resourceinstance:%s", instanceID))
 	if err != nil {
-		return err
+		return result, err
 	}
 
 	if len(searchRes.ResourceInstanceResults) == 0 {
-		return fmt.Errorf("instance not found")
+		return result, fmt.Errorf("instance not found")
 	}
 
 	instance := searchRes.ResourceInstanceResults[0]
+	result.ServiceID = instance.ServiceId
+	result.EnvironmentID = instance.ServiceEnvironmentId
 
 	// Initialize spinner manager
 	sm := utils.NewSpinnerManager()
@@ -142,6 +164,8 @@ func DisplayWorkflowResourceDataWithSpinners(ctx context.Context, token, instanc
 		if workflowInfo == nil {
 			return true, nil // Stop polling if no workflow data
 		}
+		result.WorkflowID = workflowInfo.WorkflowID
+		result.WorkflowStatus = workflowInfo.WorkflowStatus
 
 		// Check if workflow is complete
 		isWorkflowComplete := strings.ToLower(workflowInfo.WorkflowStatus) == "success" ||
@@ -167,8 +191,15 @@ func DisplayWorkflowResourceDataWithSpinners(ctx context.Context, token, instanc
 			// Use getResourceStatusFromEvents for failure detection (legacy string fallback)
 			resourceStatusFromEvents := getResourceStatusFromEvents(resourceData.EventsByWorkflowStep)
 			if resourceStatus == model.WorkflowStatusFailed || resourceStatusFromEvents == model.ResourceStatusFailed {
+				result.FailedResourceID = resourceData.ResourceID
+				result.FailedResourceKey = resourceData.ResourceKey
+				result.FailedResourceName = resourceData.ResourceName
+				result.FailedStep, result.FailedReason = getFailedStepAndMessage(resourceData.EventsByWorkflowStep)
 				sm.Stop()
-				return false, fmt.Errorf("for resource %s", resourceData.ResourceName)
+				if result.FailedStep != "" && result.FailedReason != "" {
+					return false, fmt.Errorf("resource %s failed at %s: %s", resourceData.ResourceName, result.FailedStep, result.FailedReason)
+				}
+				return false, fmt.Errorf("resource %s failed", resourceData.ResourceName)
 			}
 		}
 
@@ -176,6 +207,16 @@ func DisplayWorkflowResourceDataWithSpinners(ctx context.Context, token, instanc
 		if isWorkflowComplete {
 			hasFailures := completeSpinners(resourcesData, workflowInfo)
 			if hasFailures || strings.ToLower(workflowInfo.WorkflowStatus) == "failed" {
+				for _, resourceData := range resourcesData {
+					resourceStatusFromEvents := getResourceStatusFromEvents(resourceData.EventsByWorkflowStep)
+					if resourceStatusFromEvents == model.ResourceStatusFailed {
+						result.FailedResourceID = resourceData.ResourceID
+						result.FailedResourceKey = resourceData.ResourceKey
+						result.FailedResourceName = resourceData.ResourceName
+						result.FailedStep, result.FailedReason = getFailedStepAndMessage(resourceData.EventsByWorkflowStep)
+						break
+					}
+				}
 				return false, fmt.Errorf("with status: %s", workflowInfo.WorkflowStatus)
 			}
 			return true, nil
@@ -192,14 +233,14 @@ func DisplayWorkflowResourceDataWithSpinners(ctx context.Context, token, instanc
 		isComplete, err := displayCurrentStatus()
 		if err != nil {
 			// If there's an error from displayCurrentStatus, return it
-			return err
+			return result, err
 		} else if isComplete {
 			break
 		}
 		// Wait for the next tick
 		<-ticker.C
 	}
-	return nil
+	return result, nil
 }
 
 // getHighestPriorityEventType checks all events in a workflowStep and returns the highest priority event type
@@ -388,4 +429,34 @@ func getResourceStatusFromEvents(eventsByWorkflowStep *dataaccess.DebugEventsByW
 // mapResourceStatus maps API workflow status values to WorkflowStatus enum
 func mapResourceStatus(apiStatus string) model.WorkflowStatus {
 	return model.ParseWorkflowStatus(apiStatus)
+}
+
+func getFailedStepAndMessage(eventsByWorkflowStep *dataaccess.DebugEventsByWorkflowSteps) (string, string) {
+	if eventsByWorkflowStep == nil {
+		return "", ""
+	}
+
+	orderedSteps := []struct {
+		name   string
+		events []dataaccess.DebugEvent
+	}{
+		{name: string(model.WorkflowStepBootstrap), events: eventsByWorkflowStep.Bootstrap},
+		{name: string(model.WorkflowStepStorage), events: eventsByWorkflowStep.Storage},
+		{name: string(model.WorkflowStepNetwork), events: eventsByWorkflowStep.Network},
+		{name: string(model.WorkflowStepCompute), events: eventsByWorkflowStep.Compute},
+		{name: string(model.WorkflowStepDeployment), events: eventsByWorkflowStep.Deployment},
+		{name: string(model.WorkflowStepMonitoring), events: eventsByWorkflowStep.Monitoring},
+		{name: string(model.WorkflowStepUnknown), events: eventsByWorkflowStep.Unknown},
+	}
+
+	for _, step := range orderedSteps {
+		for i := len(step.events) - 1; i >= 0; i-- {
+			event := step.events[i]
+			if event.EventType == string(model.WorkflowStepFailed) {
+				return step.name, strings.TrimSpace(event.Message)
+			}
+		}
+	}
+
+	return "", ""
 }
