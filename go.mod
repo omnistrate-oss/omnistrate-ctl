@@ -2,6 +2,8 @@ module github.com/omnistrate-oss/omnistrate-ctl
 
 go 1.26
 
+toolchain go1.26.0
+
 require (
 	github.com/atotto/clipboard v0.1.4
 	github.com/blevesearch/bleve/v2 v2.5.7
