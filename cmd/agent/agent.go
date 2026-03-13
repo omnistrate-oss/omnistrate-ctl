@@ -14,6 +14,7 @@ var Cmd = &cobra.Command{
 
 func init() {
 	Cmd.AddCommand(initCmd)
+	Cmd.AddCommand(chatCmd)
 }
 
 func run(cmd *cobra.Command, args []string) {

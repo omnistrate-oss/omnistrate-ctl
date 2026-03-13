@@ -259,6 +259,88 @@ func runInit(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
+// runInitSilent performs the same initialization as runInit but without user
+// prompts. It is used by the chat command to auto-install skills when none are
+// found. It clones the agent-instructions repo, copies skills, and merges
+// markdown files into the given working directory.
+func runInitSilent(cwd string) error {
+	sourceDir := filepath.Join(os.TempDir(), "omnistrate-agent-instructions")
+
+	// Clean up old temp directory if it exists
+	if _, err := os.Stat(sourceDir); err == nil {
+		if err := os.RemoveAll(sourceDir); err != nil {
+			return fmt.Errorf("failed to clean up old temp directory: %w", err)
+		}
+	}
+
+	cloneCmd := exec.Command("git", "clone", "--quiet", agentInstructionsRepo, sourceDir)
+	if err := cloneCmd.Run(); err != nil {
+		return fmt.Errorf("failed to clone repository: %w", err)
+	}
+	defer os.RemoveAll(sourceDir)
+
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		return fmt.Errorf("failed to get home directory: %w", err)
+	}
+
+	// Copy skills
+	srcSkillsDir := filepath.Join(sourceDir, "skills")
+	srcSkills, err := os.ReadDir(srcSkillsDir)
+	if err != nil {
+		return fmt.Errorf("failed to read source skills directory: %w", err)
+	}
+
+	installSkills := func(destSkillsDir string) error {
+		if err := os.MkdirAll(destSkillsDir, 0755); err != nil {
+			return fmt.Errorf("failed to create skills directory: %w", err)
+		}
+		for _, skill := range srcSkills {
+			if skill.IsDir() {
+				destSkillPath := filepath.Join(destSkillsDir, skill.Name())
+				if _, err := os.Stat(destSkillPath); err == nil {
+					if err := os.RemoveAll(destSkillPath); err != nil {
+						return fmt.Errorf("failed to remove existing skill %s: %w", skill.Name(), err)
+					}
+				}
+			}
+		}
+		return copyDir(srcSkillsDir, destSkillsDir)
+	}
+
+	if err := installSkills(filepath.Join(cwd, ".claude", "skills")); err != nil {
+		return err
+	}
+	if err := installSkills(filepath.Join(homeDir, ".claude", "skills")); err != nil {
+		return err
+	}
+
+	// Merge AGENTS.md
+	agentsContent, err := os.ReadFile(filepath.Join(sourceDir, "AGENTS.md"))
+	if err != nil {
+		return fmt.Errorf("failed to read AGENTS.md: %w", err)
+	}
+	agentsContent = []byte(updateSkillPaths(string(agentsContent)))
+	if err := mergeMarkdownFileWithContent(string(agentsContent), filepath.Join(cwd, "AGENTS.md")); err != nil {
+		return fmt.Errorf("failed to merge AGENTS.md: %w", err)
+	}
+	if err := mergeMarkdownFileWithContent(string(agentsContent), filepath.Join(cwd, "GEMINI.md")); err != nil {
+		return fmt.Errorf("failed to merge GEMINI.md: %w", err)
+	}
+
+	// Merge CLAUDE.md
+	claudeContent, err := os.ReadFile(filepath.Join(sourceDir, "CLAUDE.md"))
+	if err != nil {
+		return fmt.Errorf("failed to read CLAUDE.md: %w", err)
+	}
+	claudeContent = []byte(updateSkillPaths(string(claudeContent)))
+	if err := mergeMarkdownFileWithContent(string(claudeContent), filepath.Join(cwd, "CLAUDE.md")); err != nil {
+		return fmt.Errorf("failed to merge CLAUDE.md: %w", err)
+	}
+
+	return nil
+}
+
 func printSkillsFromReadme(readme string) {
 	// Look for the skills section and extract skill names and descriptions
 	lines := strings.Split(readme, "\n")
