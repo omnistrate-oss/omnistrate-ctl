@@ -164,7 +164,7 @@ func buildSystemPrompt(cwd, specFile, specContent string, selectedSkill *skill) 
 
 	// Include skill instructions if selected
 	if selectedSkill != nil {
-		sb.WriteString(fmt.Sprintf("## Active Skill: %s\n", selectedSkill.Name))
+		fmt.Fprintf(&sb, "## Active Skill: %s\n", selectedSkill.Name)
 		if selectedSkill.Description != "" {
 			sb.WriteString(selectedSkill.Description + "\n")
 		}
@@ -177,7 +177,7 @@ func buildSystemPrompt(cwd, specFile, specContent string, selectedSkill *skill) 
 	}
 
 	sb.WriteString("## Context\n")
-	sb.WriteString(fmt.Sprintf("- Working directory: %s\n", cwd))
+	fmt.Fprintf(&sb, "- Working directory: %s\n", cwd)
 
 	// List files in cwd
 	entries, err := os.ReadDir(cwd)
@@ -189,14 +189,14 @@ func buildSystemPrompt(cwd, specFile, specContent string, selectedSkill *skill) 
 				if e.IsDir() {
 					kind = "dir"
 				}
-				sb.WriteString(fmt.Sprintf("  - %s (%s)\n", e.Name(), kind))
+				fmt.Fprintf(&sb, "  - %s (%s)\n", e.Name(), kind)
 			}
 		}
 	}
 
 	// Include spec file content
 	if specFile != "" && specContent != "" {
-		sb.WriteString(fmt.Sprintf("\n## Current Spec File: %s\n", specFile))
+		fmt.Fprintf(&sb, "\n## Current Spec File: %s\n", specFile)
 		sb.WriteString("```yaml\n")
 		// Cap spec content to avoid blowing up token limits
 		if len(specContent) > 1500 {

@@ -121,12 +121,12 @@ func loadSkillContent(s skill, maxBytes int) string {
 
 		if len(content) > remaining {
 			content = content[:remaining] + "\n... (truncated)"
-			sb.WriteString(fmt.Sprintf("\n### %s\n", filename))
+			fmt.Fprintf(&sb, "\n### %s\n", filename)
 			sb.WriteString(content)
 			break
 		}
 
-		sb.WriteString(fmt.Sprintf("\n### %s\n", filename))
+		fmt.Fprintf(&sb, "\n### %s\n", filename)
 		sb.WriteString(content)
 		sb.WriteByte('\n')
 		remaining -= len(content)

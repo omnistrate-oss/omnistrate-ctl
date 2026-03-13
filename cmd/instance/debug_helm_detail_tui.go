@@ -780,7 +780,7 @@ func (m helmDetailModel) renderHelmValuesTab() string {
 		chartInfo = lipgloss.NewStyle().Foreground(lipgloss.Color("245")).Render(
 			fmt.Sprintf("  (%s)", m.helmData.ChartRepoName))
 	}
-	b.WriteString(fmt.Sprintf("  %s%s\n\n", headerStyle.Render("Chart Values"), chartInfo))
+	fmt.Fprintf(&b, "  %s%s\n\n", headerStyle.Render("Chart Values"), chartInfo)
 
 	visibleNodes := flattenOutputTree(m.valuesTree)
 
@@ -868,7 +868,7 @@ func (m helmDetailModel) renderHelmValuesTab() string {
 			line = selectedBg.Render(line)
 		}
 
-		b.WriteString(fmt.Sprintf("  %s%s\n", cursor, line))
+		fmt.Fprintf(&b, "  %s%s\n", cursor, line)
 	}
 
 	// Scroll indicator
@@ -883,9 +883,9 @@ func (m helmDetailModel) renderHelmValuesTab() string {
 			pct := (scrollOffset * 100) / (totalEntries - visibleRows)
 			pos = fmt.Sprintf("%d%%", pct)
 		}
-		b.WriteString(fmt.Sprintf("\n  %s\n", dimStyle.Render(fmt.Sprintf("↑↓: navigate  enter: expand/collapse  [%d/%d %s]", m.valuesCursor+1, totalEntries, pos))))
+		fmt.Fprintf(&b, "\n  %s\n", dimStyle.Render(fmt.Sprintf("↑↓: navigate  enter: expand/collapse  [%d/%d %s]", m.valuesCursor+1, totalEntries, pos)))
 	} else {
-		b.WriteString(fmt.Sprintf("\n  %s\n", lipgloss.NewStyle().Foreground(lipgloss.Color("241")).Render("↑↓: navigate  enter: expand/collapse")))
+		fmt.Fprintf(&b, "\n  %s\n", lipgloss.NewStyle().Foreground(lipgloss.Color("241")).Render("↑↓: navigate  enter: expand/collapse"))
 	}
 
 	return b.String()

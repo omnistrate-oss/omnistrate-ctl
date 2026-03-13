@@ -1199,7 +1199,7 @@ func BuildServiceFromRepository(cmd *cobra.Command, ctx context.Context, token, 
 			}
 
 			// Write the compose spec to a file
-			err = os.WriteFile(file, fileData, 0600)
+			err = os.WriteFile(filepath.Clean(file), fileData, 0600) //nolint:gosec // path is constructed internally
 			if err != nil {
 				utils.HandleSpinnerError(spinner, sm, err)
 				return "", "", "", nil, err
@@ -1254,7 +1254,7 @@ x-omnistrate-image-registry-attributes:
 			}
 
 			// Write the compose spec to a file
-			err = os.WriteFile(file, fileData, 0600)
+			err = os.WriteFile(filepath.Clean(file), fileData, 0600) //nolint:gosec // path is constructed internally
 			if err != nil {
 				utils.HandleSpinnerError(spinner, sm, err)
 				return "", "", "", nil, err
@@ -1312,7 +1312,7 @@ x-omnistrate-image-registry-attributes:
 		dryRunFile := fmt.Sprintf("%s-dry-run%s", baseName, fileExt)
 
 		// Write the compose spec to the dry-run file
-		err = os.WriteFile(dryRunFile, fileData, 0600)
+		err = os.WriteFile(filepath.Clean(dryRunFile), fileData, 0600) //nolint:gosec // path is constructed internally
 		if err != nil {
 			utils.HandleSpinnerError(spinner, sm, err)
 			return "", "", "", nil, err
@@ -1527,7 +1527,7 @@ func renderEnvFileAndInterpolateVariables(
 
 	// Write the compose spec to a temporary file
 	tempFile := filepath.Join(rootDir, filepath.Base(file)+".tmp")
-	err = os.WriteFile(tempFile, fileData, 0600)
+	err = os.WriteFile(filepath.Clean(tempFile), fileData, 0600) //nolint:gosec // path is constructed internally
 	if err != nil {
 		utils.HandleSpinnerError(spinner, sm, err)
 		return

@@ -629,7 +629,7 @@ func (m Model) View() string {
 }
 
 // renderSideBySide renders two panels side by side with a vertical separator.
-func renderSideBySide(left, right string, leftWidth, rightWidth, height int) string {
+func renderSideBySide(left, right string, leftWidth, _ /* rightWidth */, height int) string {
 	leftLines := strings.Split(left, "\n")
 	rightLines := strings.Split(right, "\n")
 

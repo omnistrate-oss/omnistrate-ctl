@@ -229,7 +229,7 @@ func (m terraformDetailModel) renderTerraformOutputTab() string {
 	var b strings.Builder
 
 	headerStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("255"))
-	b.WriteString(fmt.Sprintf("  %s\n\n", headerStyle.Render("Terraform Output")))
+	fmt.Fprintf(&b, "  %s\n\n", headerStyle.Render("Terraform Output"))
 
 	visibleNodes := flattenOutputTree(m.outputTree)
 
@@ -319,7 +319,7 @@ func (m terraformDetailModel) renderTerraformOutputTab() string {
 			line = selectedBg.Render(line)
 		}
 
-		b.WriteString(fmt.Sprintf("  %s%s\n", cursor, line))
+		fmt.Fprintf(&b, "  %s%s\n", cursor, line)
 	}
 
 	// Scroll indicator
@@ -334,9 +334,9 @@ func (m terraformDetailModel) renderTerraformOutputTab() string {
 			pct := (scrollOffset * 100) / (totalEntries - visibleRows)
 			pos = fmt.Sprintf("%d%%", pct)
 		}
-		b.WriteString(fmt.Sprintf("\n  %s\n", dimStyle.Render(fmt.Sprintf("↑↓: navigate  enter: expand/collapse  [%d/%d %s]", m.outputCursor+1, totalEntries, pos))))
+		fmt.Fprintf(&b, "\n  %s\n", dimStyle.Render(fmt.Sprintf("↑↓: navigate  enter: expand/collapse  [%d/%d %s]", m.outputCursor+1, totalEntries, pos)))
 	} else {
-		b.WriteString(fmt.Sprintf("\n  %s\n", lipgloss.NewStyle().Foreground(lipgloss.Color("241")).Render("↑↓: navigate  enter: expand/collapse")))
+		fmt.Fprintf(&b, "\n  %s\n", lipgloss.NewStyle().Foreground(lipgloss.Color("241")).Render("↑↓: navigate  enter: expand/collapse"))
 	}
 
 	return b.String()
