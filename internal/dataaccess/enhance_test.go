@@ -42,18 +42,18 @@ func TestEnhanceServicePlansStructure(t *testing.T) {
 
 	// Initialize AdditionalProperties
 	if customerHostedPlan.AdditionalProperties == nil {
-		customerHostedPlan.AdditionalProperties = make(map[string]interface{})
+		customerHostedPlan.AdditionalProperties = make(map[string]any)
 	}
 
 	// Add the enhanced fields that the function should add
 	customerHostedPlan.AdditionalProperties["serviceModelId"] = "sm-model123"
 	customerHostedPlan.AdditionalProperties["accountConfigIds"] = []string{"acc-1", "acc-2"}
-	customerHostedPlan.AdditionalProperties["activeAccountConfigIds"] = map[string]interface{}{
+	customerHostedPlan.AdditionalProperties["activeAccountConfigIds"] = map[string]any{
 		"aws": []string{"acc-1"},
 	}
-	customerHostedPlan.AdditionalProperties["accountsByProvider"] = map[string]interface{}{
-		"AWS": []interface{}{
-			map[string]interface{}{
+	customerHostedPlan.AdditionalProperties["accountsByProvider"] = map[string]any{
+		"AWS": []any{
+			map[string]any{
 				"id":              "acc-1",
 				"name":            "Test AWS Account",
 				"cloudProviderId": "aws",

@@ -31,7 +31,7 @@ func GetInstanceDeploymentEntity(ctx context.Context, token string, instanceID s
 		}
 	}()
 
-	response, err = httpClient.Do(request)
+	response, err = httpClient.Do(request) //nolint:gosec // G704: URL is constructed internally targeting localhost
 	if err != nil {
 		err = errors.Wrap(err, "Could not retrieve instance deployment information. Please try executing the command within the dataplane agent pod.")
 		return "", err
@@ -67,7 +67,7 @@ func PauseInstanceDeploymentEntity(ctx context.Context, token string, instanceID
 		}
 	}()
 
-	response, err = httpClient.Do(request)
+	response, err = httpClient.Do(request) //nolint:gosec // G704: URL is constructed internally targeting localhost
 	if err != nil {
 		err = errors.Wrap(err, "failed to pause instance deployment entity, you need to run it on dataplane agent")
 		return err
@@ -85,7 +85,7 @@ func ResumeInstanceDeploymentEntity(ctx context.Context, token string, instanceI
 
 	urlPath := fmt.Sprintf("http://localhost:80/2022-09-01-00/%s/resume/%s/%s", deploymentType, instanceID, deploymentName)
 	// Set payload
-	var payload map[string]interface{}
+	var payload map[string]any
 	switch deploymentType {
 	case "terraform":
 		if deploymentAction == "" {
@@ -93,7 +93,7 @@ func ResumeInstanceDeploymentEntity(ctx context.Context, token string, instanceI
 			return
 		}
 
-		payload = map[string]interface{}{
+		payload = map[string]any{
 			"token":           token,
 			"name":            deploymentName,
 			"instanceID":      instanceID,
@@ -126,7 +126,7 @@ func ResumeInstanceDeploymentEntity(ctx context.Context, token string, instanceI
 		}
 	}()
 
-	response, err = httpClient.Do(request)
+	response, err = httpClient.Do(request) //nolint:gosec // G704: URL is constructed internally targeting localhost
 	if err != nil {
 		err = errors.Wrap(err, "failed to resume instance deployment entity, you need to run it on dataplane agent")
 		return err
@@ -144,7 +144,7 @@ func PatchInstanceDeploymentEntity(ctx context.Context, token string, instanceID
 
 	urlPath := fmt.Sprintf("http://localhost:80/2022-09-01-00/%s/%s/%s", deploymentType, instanceID, deploymentName)
 	// Set payload
-	var payload map[string]interface{}
+	var payload map[string]any
 	switch deploymentType {
 	case "terraform":
 		if deploymentAction == "" {
@@ -160,7 +160,7 @@ func PatchInstanceDeploymentEntity(ctx context.Context, token string, instanceID
 			return
 		}
 
-		payload = map[string]interface{}{
+		payload = map[string]any{
 			"token":           token,
 			"name":            deploymentName,
 			"instanceID":      instanceID,
@@ -194,7 +194,7 @@ func PatchInstanceDeploymentEntity(ctx context.Context, token string, instanceID
 		}
 	}()
 
-	response, err = httpClient.Do(request)
+	response, err = httpClient.Do(request) //nolint:gosec // G704: URL is constructed internally targeting localhost
 	if err != nil {
 		err = errors.Wrap(err, "failed to patch instance deployment entity, you need to run it on dataplane agent")
 		return err
@@ -221,7 +221,7 @@ func getDirectoryContents(dirPath string) (map[string][]byte, error) {
 		}
 
 		// Read file contents
-		fileContent, err := os.ReadFile(path)
+		fileContent, err := os.ReadFile(filepath.Clean(path)) //nolint:gosec // path comes from filepath.Walk within known directory
 		if err != nil {
 			return fmt.Errorf("failed to read file %s: %v", path, err)
 		}

@@ -74,7 +74,7 @@ func runList(cmd *cobra.Command, args []string) (err error) {
 	formattedCustomNetworks := make([]model.CustomNetwork, 0)
 	for _, customNetwork := range listResult.CustomNetworks {
 		var match bool
-		formattedCustomNetwork := formatCustomNetwork(utils.ToPtr(customNetwork))
+		formattedCustomNetwork := formatCustomNetwork(new(customNetwork))
 		match, err = utils.MatchesFilters(formattedCustomNetwork, filterMaps)
 		if err != nil {
 			utils.HandleSpinnerError(spinner, sm, err)

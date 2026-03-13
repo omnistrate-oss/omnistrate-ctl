@@ -258,7 +258,7 @@ func runCreate(cmd *cobra.Command, args []string) error {
 		request.WorkflowBreakpoints = workflowBreakpoints
 	}
 	if subscriptionID != "" {
-		request.SubscriptionId = utils.ToPtr(subscriptionID)
+		request.SubscriptionId = new(subscriptionID)
 	}
 	instance, err := dataaccess.CreateResourceInstance(cmd.Context(), token,
 		res.ConsumptionDescribeServiceOfferingResult.ServiceProviderId,
@@ -401,9 +401,9 @@ func parseWorkflowBreakpoints(valuesCSV string) ([]openapiclientfleet.WorkflowBr
 	seen := make(map[string]struct{})
 
 	// Split the input by comma and trim spaces to get individual IDs or keys
-	values := strings.Split(valuesCSV, ",")
+	values := strings.SplitSeq(valuesCSV, ",")
 
-	for _, v := range values {
+	for v := range values {
 		idOrKey := strings.TrimSpace(v)
 		if idOrKey == "" {
 			continue

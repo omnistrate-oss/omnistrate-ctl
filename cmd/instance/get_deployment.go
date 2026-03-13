@@ -20,7 +20,7 @@ import (
 // Define structs to match the JSON structure
 type TerraformResponse struct {
 	SyncState string   `json:"syncState,omitempty"`
-	Files     FileInfo `json:"files,omitempty"`
+	Files     FileInfo `json:"files"`
 	SyncError string   `json:"syncError,omitempty"`
 }
 

@@ -107,7 +107,7 @@ func runByInstanceList(cmd *cobra.Command, args []string) error {
 	}
 
 	// Convert to interface slice for output
-	instanceSlice := make([]interface{}, len(instances))
+	instanceSlice := make([]any, len(instances))
 	for i, instance := range instances {
 		instanceSlice[i] = instance
 	}
@@ -151,10 +151,10 @@ func runByInstanceShow(cmd *cobra.Command, args []string) error {
 	}
 
 	// Find the specific instance
-	var targetInstance *interface{}
+	var targetInstance *any
 	for _, instance := range instances {
 		if instance.InstanceID == instanceID {
-			var iface interface{} = instance
+			var iface any = instance
 			targetInstance = &iface
 			break
 		}
@@ -166,7 +166,7 @@ func runByInstanceShow(cmd *cobra.Command, args []string) error {
 	}
 
 	outputFormat, _ := cmd.Flags().GetString("output")
-	return utils.PrintTextTableJsonArrayOutput(outputFormat, []interface{}{*targetInstance})
+	return utils.PrintTextTableJsonArrayOutput(outputFormat, []any{*targetInstance})
 }
 
 func runByInstanceTop(cmd *cobra.Command, args []string) error {
@@ -209,7 +209,7 @@ func runByInstanceTop(cmd *cobra.Command, args []string) error {
 	}
 
 	// Convert to interface slice for output
-	instanceSlice := make([]interface{}, len(instances))
+	instanceSlice := make([]any, len(instances))
 	for i, instance := range instances {
 		instanceSlice[i] = instance
 	}
@@ -255,7 +255,7 @@ func runByInstanceInCell(cmd *cobra.Command, args []string) error {
 	}
 
 	// Convert to interface slice for output
-	instanceSlice := make([]interface{}, len(instances))
+	instanceSlice := make([]any, len(instances))
 	for i, instance := range instances {
 		instanceSlice[i] = instance
 	}
@@ -308,7 +308,7 @@ func runByInstanceCompare(cmd *cobra.Command, args []string) error {
 	}
 
 	// Convert to interface slice for output
-	instanceSlice := make([]interface{}, len(instances))
+	instanceSlice := make([]any, len(instances))
 	for i, instance := range instances {
 		instanceSlice[i] = instance
 	}

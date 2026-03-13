@@ -32,10 +32,6 @@ func captureOutput(f func()) string {
 	return buf.String()
 }
 
-func ptr[T any](v T) *T {
-	return &v
-}
-
 func TestPrintNextStepVerifyAccountMsg(t *testing.T) {
 	tests := []struct {
 		name     string
@@ -46,8 +42,8 @@ func TestPrintNextStepVerifyAccountMsg(t *testing.T) {
 			name: "AWS account",
 			account: &openapiclient.DescribeAccountConfigResult{
 				Name:                         "test-aws",
-				AwsAccountID:                 ptr("123456789012"),
-				AwsCloudFormationTemplateURL: ptr("https://example.com/template.yml"),
+				AwsAccountID:                 new("123456789012"),
+				AwsCloudFormationTemplateURL: new("https://example.com/template.yml"),
 			},
 			expected: []string{
 				"Next step:",
@@ -61,9 +57,9 @@ func TestPrintNextStepVerifyAccountMsg(t *testing.T) {
 			name: "GCP account",
 			account: &openapiclient.DescribeAccountConfigResult{
 				Name:                     "test-gcp",
-				GcpProjectID:             ptr("my-gcp-project"),
-				GcpProjectNumber:         ptr("123456789"),
-				GcpBootstrapShellCommand: ptr("bash -c (curl -fsSL https://api.omnistrate.dev/2022-09-01-00/account-setup/gcp-bootstrap.sh?account_config_id=ac-TT9j74qKTT)"),
+				GcpProjectID:             new("my-gcp-project"),
+				GcpProjectNumber:         new("123456789"),
+				GcpBootstrapShellCommand: new("bash -c (curl -fsSL https://api.omnistrate.dev/2022-09-01-00/account-setup/gcp-bootstrap.sh?account_config_id=ac-TT9j74qKTT)"),
 			},
 			expected: []string{
 				"Next step:",
@@ -77,9 +73,9 @@ func TestPrintNextStepVerifyAccountMsg(t *testing.T) {
 			name: "Azure account",
 			account: &openapiclient.DescribeAccountConfigResult{
 				Name:                       "test-azure",
-				AzureSubscriptionID:        ptr("azure-sub-123"),
-				AzureTenantID:              ptr("azure-tenant-456"),
-				AzureBootstrapShellCommand: ptr("bash -c (curl -fsSL https://api.omnistrate.dev/2022-09-01-00/account-setup/azure-bootstrap.sh?account_config_id=ac-TT9j74qKDT)"),
+				AzureSubscriptionID:        new("azure-sub-123"),
+				AzureTenantID:              new("azure-tenant-456"),
+				AzureBootstrapShellCommand: new("bash -c (curl -fsSL https://api.omnistrate.dev/2022-09-01-00/account-setup/azure-bootstrap.sh?account_config_id=ac-TT9j74qKDT)"),
 			},
 			expected: []string{
 				"Next step:",
@@ -92,7 +88,7 @@ func TestPrintNextStepVerifyAccountMsg(t *testing.T) {
 		{
 			name: "Unnamed AWS account",
 			account: &openapiclient.DescribeAccountConfigResult{
-				AwsAccountID: ptr("123456789012"),
+				AwsAccountID: new("123456789012"),
 			},
 			expected: []string{
 				"Next step:",
@@ -140,8 +136,8 @@ func TestPrintAccountNotVerifiedWarning(t *testing.T) {
 			name: "AWS account",
 			account: &openapiclient.DescribeAccountConfigResult{
 				Name:                         "test-aws",
-				AwsAccountID:                 ptr("123456789012"),
-				AwsCloudFormationTemplateURL: ptr("https://example.com/template.yml"),
+				AwsAccountID:                 new("123456789012"),
+				AwsCloudFormationTemplateURL: new("https://example.com/template.yml"),
 			},
 			expected: []string{
 				"WARNING! Account test-aws (ID: 123456789012)",
@@ -155,9 +151,9 @@ func TestPrintAccountNotVerifiedWarning(t *testing.T) {
 			name: "GCP account",
 			account: &openapiclient.DescribeAccountConfigResult{
 				Name:                     "test-gcp",
-				GcpProjectID:             ptr("my-gcp-project"),
-				GcpProjectNumber:         ptr("123456789"),
-				GcpBootstrapShellCommand: ptr("bash -c (curl -fsSL https://api.omnistrate.dev/2022-09-01-00/account-setup/gcp-bootstrap.sh?account_config_id=ac-TT9j74qKTT)"),
+				GcpProjectID:             new("my-gcp-project"),
+				GcpProjectNumber:         new("123456789"),
+				GcpBootstrapShellCommand: new("bash -c (curl -fsSL https://api.omnistrate.dev/2022-09-01-00/account-setup/gcp-bootstrap.sh?account_config_id=ac-TT9j74qKTT)"),
 			},
 			expected: []string{
 				"WARNING! Account test-gcp (Project ID: my-gcp-project,Project Number: 123456789)",
@@ -170,9 +166,9 @@ func TestPrintAccountNotVerifiedWarning(t *testing.T) {
 			name: "Azure account",
 			account: &openapiclient.DescribeAccountConfigResult{
 				Name:                       "test-azure",
-				AzureSubscriptionID:        ptr("azure-sub-123"),
-				AzureTenantID:              ptr("azure-tenant-456"),
-				AzureBootstrapShellCommand: ptr("bash -c (curl -fsSL https://api.omnistrate.dev/2022-09-01-00/account-setup/azure-bootstrap.sh?account_config_id=ac-TT9j74qKDT)"),
+				AzureSubscriptionID:        new("azure-sub-123"),
+				AzureTenantID:              new("azure-tenant-456"),
+				AzureBootstrapShellCommand: new("bash -c (curl -fsSL https://api.omnistrate.dev/2022-09-01-00/account-setup/azure-bootstrap.sh?account_config_id=ac-TT9j74qKDT)"),
 			},
 			expected: []string{
 				"WARNING! Account test-azure (Subscription ID: azure-sub-123, Tenant ID: azure-tenant-456)",
@@ -184,7 +180,7 @@ func TestPrintAccountNotVerifiedWarning(t *testing.T) {
 		{
 			name: "Unnamed AWS account",
 			account: &openapiclient.DescribeAccountConfigResult{
-				AwsAccountID: ptr("123456789012"),
+				AwsAccountID: new("123456789012"),
 			},
 			expected: []string{
 				"WARNING! Account Unnamed Account (ID: 123456789012)",

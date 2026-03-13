@@ -45,8 +45,8 @@ func TestInstanceDeploymentStatusStructure(t *testing.T) {
 		CreationTime:             "2024-01-15T10:00:00Z",
 		LastModifiedTime:         "2024-01-15T11:00:00Z",
 		ResourceDeploymentStatus: []ResourceDeploymentStatus{},
-		AppliedFilters:           map[string]interface{}{"resourceId": "r-123"},
-		FilteringStats:           map[string]interface{}{"totalResourceVersionSummaries": 5},
+		AppliedFilters:           map[string]any{"resourceId": "r-123"},
+		FilteringStats:           map[string]any{"totalResourceVersionSummaries": 5},
 	}
 
 	assert.Equal(t, "instance-123", status.InstanceID)
@@ -68,7 +68,7 @@ func TestResourceDeploymentStatusStructure(t *testing.T) {
 		"pod-1": "Running",
 		"pod-2": "Pending",
 	}
-	additionalInfo := map[string]interface{}{
+	additionalInfo := map[string]any{
 		"image":            "nginx:latest",
 		"podToHostMapping": map[string]string{"pod-1": "node-1"},
 	}
@@ -251,7 +251,7 @@ func TestFilterResourceVersionSummariesForStatusLocal(t *testing.T) {
 }
 
 // Helper function for testing filtering logic without external dependencies
-func filterResourceVersionSummariesLocal(summaries []openapiclientfleet.ResourceVersionSummary, resourceID, resourceKey string) ([]openapiclientfleet.ResourceVersionSummary, map[string]interface{}, map[string]interface{}) {
+func filterResourceVersionSummariesLocal(summaries []openapiclientfleet.ResourceVersionSummary, resourceID, resourceKey string) ([]openapiclientfleet.ResourceVersionSummary, map[string]any, map[string]any) {
 	var filteredSummaries []openapiclientfleet.ResourceVersionSummary
 
 	// If no filters, return all summaries
@@ -281,7 +281,7 @@ func filterResourceVersionSummariesLocal(summaries []openapiclientfleet.Resource
 	}
 
 	// Create filter info
-	filterInfo := map[string]interface{}{}
+	filterInfo := map[string]any{}
 	if resourceID != "" {
 		filterInfo["resourceId"] = resourceID
 	}
@@ -290,7 +290,7 @@ func filterResourceVersionSummariesLocal(summaries []openapiclientfleet.Resource
 	}
 
 	// Create count info
-	countInfo := map[string]interface{}{
+	countInfo := map[string]any{
 		"totalResourceVersionSummaries":    len(summaries),
 		"filteredResourceVersionSummaries": len(filteredSummaries),
 	}

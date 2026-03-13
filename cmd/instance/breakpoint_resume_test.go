@@ -10,12 +10,12 @@ import (
 func TestSummarizeBreakpointForResumeFormatsResourceKeyAndID(t *testing.T) {
 	resourceSummaries := []openapiclientfleet.ResourceVersionSummary{
 		{
-			ResourceName: ptr("writer"),
-			ResourceId:   ptr("res-writer"),
+			ResourceName: new("writer"),
+			ResourceId:   new("res-writer"),
 		},
 		{
-			ResourceName: ptr("reader"),
-			ResourceId:   ptr("res-reader"),
+			ResourceName: new("reader"),
+			ResourceId:   new("res-reader"),
 		},
 	}
 
@@ -58,8 +58,4 @@ func TestSummarizeBreakpointForResumeFormatsResourceKeyAndID(t *testing.T) {
 		summary := summarizeBreakpointForResume(activeBreakpoints, resourceSummaries)
 		require.Equal(t, "writer [res-writer], reader [res-reader] (multiple hit breakpoints)", summary)
 	})
-}
-
-func ptr(value string) *string {
-	return &value
 }

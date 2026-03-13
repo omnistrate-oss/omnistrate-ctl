@@ -98,7 +98,7 @@ func runBreakpointResume(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
-	return utils.PrintTextTableJsonArrayOutput(outputFormat, []interface{}{result})
+	return utils.PrintTextTableJsonArrayOutput(outputFormat, []any{result})
 }
 
 func selectLatestPausedWorkflow(workflows *openapiclientfleet.ListServiceWorkflowsResult) (*openapiclientfleet.ServiceWorkflow, error) {

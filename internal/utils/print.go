@@ -50,7 +50,7 @@ func PrintURL(label, url string) {
 	fmt.Println(formatted)
 }
 
-func PrintJSON(res interface{}) {
+func PrintJSON(res any) {
 	data, err := json.MarshalIndent(res, "", "    ")
 	if err != nil {
 		PrintError(err)

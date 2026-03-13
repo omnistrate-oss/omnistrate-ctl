@@ -118,7 +118,7 @@ func runByInstanceTypeList(cmd *cobra.Command, args []string) error {
 	}
 
 	// Convert to slice for output
-	aggregateSlice := make([]interface{}, 0, len(aggregates))
+	aggregateSlice := make([]any, 0, len(aggregates))
 	for _, agg := range aggregates {
 		aggregateSlice = append(aggregateSlice, agg)
 	}
@@ -165,7 +165,7 @@ func runByInstanceTypeShow(cmd *cobra.Command, args []string) error {
 	}
 
 	outputFormat, _ := cmd.Flags().GetString("output")
-	return utils.PrintTextTableJsonArrayOutput(outputFormat, []interface{}{agg})
+	return utils.PrintTextTableJsonArrayOutput(outputFormat, []any{agg})
 }
 
 func runByInstanceTypeTop(cmd *cobra.Command, args []string) error {
@@ -225,7 +225,7 @@ func runByInstanceTypeTop(cmd *cobra.Command, args []string) error {
 	topAggregates := sortedAggregates[:topN]
 
 	// Convert to interface slice for output
-	aggregateSlice := make([]interface{}, len(topAggregates))
+	aggregateSlice := make([]any, len(topAggregates))
 	for i, agg := range topAggregates {
 		aggregateSlice[i] = agg
 	}
@@ -271,7 +271,7 @@ func runByInstanceTypeInCell(cmd *cobra.Command, args []string) error {
 	}
 
 	// Convert to slice for output
-	aggregateSlice := make([]interface{}, 0, len(aggregates))
+	aggregateSlice := make([]any, 0, len(aggregates))
 	for _, agg := range aggregates {
 		aggregateSlice = append(aggregateSlice, agg)
 	}
@@ -317,7 +317,7 @@ func runByInstanceTypeInProvider(cmd *cobra.Command, args []string) error {
 	}
 
 	// Convert to slice for output
-	aggregateSlice := make([]interface{}, 0, len(aggregates))
+	aggregateSlice := make([]any, 0, len(aggregates))
 	for _, agg := range aggregates {
 		aggregateSlice = append(aggregateSlice, agg)
 	}
@@ -366,7 +366,7 @@ func runByInstanceTypeInRegion(cmd *cobra.Command, args []string) error {
 	}
 
 	// Convert to slice for output
-	aggregateSlice := make([]interface{}, 0, len(aggregates))
+	aggregateSlice := make([]any, 0, len(aggregates))
 	for _, agg := range aggregates {
 		aggregateSlice = append(aggregateSlice, agg)
 	}

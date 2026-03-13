@@ -9,7 +9,6 @@ import (
 	"github.com/omnistrate-oss/omnistrate-ctl/cmd/customnetwork"
 	"github.com/omnistrate-oss/omnistrate-ctl/internal/config"
 	"github.com/omnistrate-oss/omnistrate-ctl/internal/dataaccess"
-	"github.com/omnistrate-oss/omnistrate-ctl/internal/utils"
 	"github.com/omnistrate-oss/omnistrate-ctl/test/testutils"
 	"github.com/stretchr/testify/require"
 )
@@ -86,7 +85,7 @@ func Test_custom_network_lifecycle(t *testing.T) {
 
 func deleteCustomNetworkIfExists(t *testing.T, token, cloudProvider, region, customNetworkName string) {
 	ctx := context.Background()
-	customNetworks, err := dataaccess.FleetListCustomNetworks(ctx, token, utils.ToPtr(cloudProvider), utils.ToPtr(region))
+	customNetworks, err := dataaccess.FleetListCustomNetworks(ctx, token, new(cloudProvider), new(region))
 	require.NoError(t, err)
 
 	for _, network := range customNetworks.CustomNetworks {

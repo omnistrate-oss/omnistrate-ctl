@@ -101,7 +101,7 @@ func runDebugHelmLogs(cmd *cobra.Command, args []string) error {
 			}
 
 			// Convert to map
-			actualDebugData, ok := (*debugDataInterface).(map[string]interface{})
+			actualDebugData, ok := (*debugDataInterface).(map[string]any)
 			if !ok {
 				continue
 			}

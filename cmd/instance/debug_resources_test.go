@@ -89,13 +89,13 @@ func TestListTerraformResources(t *testing.T) {
 	instanceData := &openapiclientfleet.ResourceInstance{
 		ResourceVersionSummaries: []openapiclientfleet.ResourceVersionSummary{
 			{
-				ResourceName:                     strPtr("db"),
-				ResourceId:                       strPtr("tf-r-1"),
+				ResourceName:                     new("db"),
+				ResourceId:                       new("tf-r-1"),
 				TerraformDeploymentConfiguration: terraformConfig,
 			},
 			{
-				ResourceName: strPtr("cache"),
-				ResourceId:   strPtr("res-2"),
+				ResourceName: new("cache"),
+				ResourceId:   new("res-2"),
 			},
 		},
 	}
@@ -113,8 +113,4 @@ func TestListTerraformResources(t *testing.T) {
 	if results[0].key != "db" || results[0].id != "tf-r-1" {
 		t.Fatalf("unexpected terraform resource: %+v", results[0])
 	}
-}
-
-func strPtr(val string) *string {
-	return &val
 }

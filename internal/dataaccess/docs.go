@@ -58,10 +58,10 @@ type Document struct {
 
 // ComposeSpecResult represents a compose spec search result
 type ComposeSpecResult struct {
-	Tag        string      `json:"tag"`
-	URL        string      `json:"url"`
-	Content    string      `json:"content,omitempty"`
-	JSONSchema interface{} `json:"json_schema,omitempty"`
+	Tag        string `json:"tag"`
+	URL        string `json:"url"`
+	Content    string `json:"content,omitempty"`
+	JSONSchema any    `json:"json_schema,omitempty"`
 }
 
 // ComposeSpecAvailableTag represents a tag that is available in the compose spec documentation
@@ -177,7 +177,7 @@ func createIndexMapping() (mapping.IndexMapping, error) {
 	// Create a new index mapping
 	indexMapping := bleve.NewIndexMapping()
 
-	customWhitespaceTokenizer := map[string]interface{}{
+	customWhitespaceTokenizer := map[string]any{
 		"type":   regexp.Name,
 		"regexp": `[\p{L}\p{N}_-]+`, // Unicode letters, numbers, underscore, hyphen
 	}
@@ -188,7 +188,7 @@ func createIndexMapping() (mapping.IndexMapping, error) {
 	}
 
 	// Define custom whitespace analyzer for English language only
-	customWhitespaceAnalyzer := map[string]interface{}{
+	customWhitespaceAnalyzer := map[string]any{
 		"type":      custom.Name,
 		"tokenizer": "word_with_hyphen",
 		"token_filters": []string{
@@ -270,8 +270,8 @@ func parseDocumentationContentForIndexing(body string) ([]Document, error) {
 		}
 
 		// Check if line starts with "## " - this indicates a section name
-		if strings.HasPrefix(line, "## ") {
-			currentSection = strings.TrimPrefix(line, "## ")
+		if after, ok := strings.CutPrefix(line, "## "); ok {
+			currentSection = after
 			continue
 		}
 
@@ -670,7 +670,7 @@ func SearchComposeSpecSections(tag string) ([]ComposeSpecResult, error) {
 }
 
 // GetJSONSchema retrieves the JSON schema for a specific type
-func GetJSONSchema(ctx context.Context, schemaType string) (interface{}, error) {
+func GetJSONSchema(ctx context.Context, schemaType string) (any, error) {
 	// Get the v1 client
 	client := getV1Client()
 

@@ -4,7 +4,6 @@ import (
 	"context"
 	"testing"
 
-	"github.com/omnistrate-oss/omnistrate-ctl/internal/utils"
 	openapiclientfleet "github.com/omnistrate-oss/omnistrate-sdk-go/fleet"
 	"github.com/stretchr/testify/assert"
 )
@@ -38,11 +37,11 @@ func TestConvertToTableRows(t *testing.T) {
 			ClusterEndpoint: "https://cluster.example.com",
 			AdditionalEndpoints: map[string]openapiclientfleet.ClusterEndpoint{
 				"App": {
-					Endpoint:       utils.ToPtr("https://app.example.com"),
-					HealthStatus:   utils.ToPtr("HEALTHY"),
-					NetworkingType: utils.ToPtr("PUBLIC"),
+					Endpoint:       new("https://app.example.com"),
+					HealthStatus:   new("HEALTHY"),
+					NetworkingType: new("PUBLIC"),
 					OpenPorts:      []int64{443, 80},
-					Primary:        utils.ToPtr(true),
+					Primary:        new(true),
 				},
 			},
 		},

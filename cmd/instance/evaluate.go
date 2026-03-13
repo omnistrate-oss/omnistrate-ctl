@@ -97,7 +97,7 @@ func runEvaluate(cmd *cobra.Command, args []string) error {
 	}
 
 	// Prepare the request
-	var expressionMap map[string]interface{}
+	var expressionMap map[string]any
 	if expressionFile != "" {
 		// Load expressions from file
 		expressionMap, err = loadExpressionsFromFile(expressionFile)
@@ -118,7 +118,7 @@ func runEvaluate(cmd *cobra.Command, args []string) error {
 
 	// Create a result structure for consistent JSON output
 	evaluationResult := struct {
-		Result interface{} `json:"result"`
+		Result any `json:"result"`
 	}{
 		Result: result,
 	}
@@ -133,7 +133,7 @@ func runEvaluate(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
-func loadExpressionsFromFile(filePath string) (map[string]interface{}, error) {
+func loadExpressionsFromFile(filePath string) (map[string]any, error) {
 	// Check if file exists
 	if _, err := os.Stat(filePath); os.IsNotExist(err) {
 		return nil, fmt.Errorf("expression file not found: %s", filePath)
@@ -152,7 +152,7 @@ func loadExpressionsFromFile(filePath string) (map[string]interface{}, error) {
 	}
 
 	// Parse JSON content
-	var expressionMap map[string]interface{}
+	var expressionMap map[string]any
 	err = json.Unmarshal(content, &expressionMap)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse JSON expression file: %w", err)

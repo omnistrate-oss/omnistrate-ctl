@@ -91,7 +91,7 @@ func BackupConfigFile(configPath string) error {
 		return fmt.Errorf("failed to read configuration file for backup at '%s': %w", configPath, err)
 	}
 
-	if err := os.WriteFile(backupPath, data, 0o600); err != nil {
+	if err := os.WriteFile(filepath.Clean(backupPath), data, 0o600); err != nil { //nolint:gosec // path is derived from known config path
 		return fmt.Errorf("failed to write backup configuration file at '%s': %w", backupPath, err)
 	}
 

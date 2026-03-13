@@ -30,7 +30,7 @@ func buildOutputTreeFromJSON(rawJSON string) []outputNode {
 		return nil
 	}
 
-	var parsed map[string]interface{}
+	var parsed map[string]any
 	if err := json.Unmarshal([]byte(rawJSON), &parsed); err != nil {
 		// Not valid JSON — show as raw text
 		return []outputNode{{
@@ -52,7 +52,7 @@ func buildOutputTreeFromJSON(rawJSON string) []outputNode {
 	for _, key := range keys {
 		val := parsed[key]
 		// Each output is typically { "sensitive": bool, "type": ..., "value": ... }
-		if obj, ok := val.(map[string]interface{}); ok {
+		if obj, ok := val.(map[string]any); ok {
 			node := buildTerraformOutputNode(key, obj, 0)
 			roots = append(roots, *node)
 		} else {
@@ -66,7 +66,7 @@ func buildOutputTreeFromJSON(rawJSON string) []outputNode {
 
 // buildTerraformOutputNode builds a node for a terraform output entry,
 // showing the value prominently with type and sensitivity info
-func buildTerraformOutputNode(key string, obj map[string]interface{}, depth int) *outputNode {
+func buildTerraformOutputNode(key string, obj map[string]any, depth int) *outputNode {
 	sensitive, _ := obj["sensitive"].(bool)
 	value := obj["value"]
 
@@ -114,9 +114,9 @@ func findLatestOutputLog(files map[string]string, history []TerraformHistoryEntr
 	return files[outputKeys[len(outputKeys)-1]]
 }
 
-func buildJSONNode(key string, value interface{}, depth int) *outputNode {
+func buildJSONNode(key string, value any, depth int) *outputNode {
 	switch v := value.(type) {
-	case map[string]interface{}:
+	case map[string]any:
 		node := &outputNode{
 			key:        key,
 			nodeType:   "object",
@@ -136,7 +136,7 @@ func buildJSONNode(key string, value interface{}, depth int) *outputNode {
 		}
 		return node
 
-	case []interface{}:
+	case []any:
 		node := &outputNode{
 			key:        key,
 			nodeType:   "array",
@@ -229,15 +229,12 @@ func (m terraformDetailModel) renderTerraformOutputTab() string {
 	var b strings.Builder
 
 	headerStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("255"))
-	b.WriteString(fmt.Sprintf("  %s\n\n", headerStyle.Render("Terraform Output")))
+	fmt.Fprintf(&b, "  %s\n\n", headerStyle.Render("Terraform Output"))
 
 	visibleNodes := flattenOutputTree(m.outputTree)
 
 	// Viewport clipping
-	visibleRows := m.bodyHeight() - 4
-	if visibleRows < 1 {
-		visibleRows = 1
-	}
+	visibleRows := max(m.bodyHeight()-4, 1)
 
 	totalEntries := len(visibleNodes)
 
@@ -253,10 +250,7 @@ func (m terraformDetailModel) renderTerraformOutputTab() string {
 		scrollOffset = 0
 	}
 
-	end := scrollOffset + visibleRows
-	if end > totalEntries {
-		end = totalEntries
-	}
+	end := min(scrollOffset+visibleRows, totalEntries)
 
 	keyStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("117"))   // blue
 	strStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("114"))   // green
@@ -266,10 +260,7 @@ func (m terraformDetailModel) renderTerraformOutputTab() string {
 	braceStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("245")) // dim
 	selectedBg := lipgloss.NewStyle().Background(lipgloss.Color("236")) // subtle highlight
 
-	maxValWidth := m.contentWidth() - 20
-	if maxValWidth < 20 {
-		maxValWidth = 20
-	}
+	maxValWidth := max(m.contentWidth()-20, 20)
 
 	for idx := scrollOffset; idx < end; idx++ {
 		node := visibleNodes[idx]
@@ -319,7 +310,7 @@ func (m terraformDetailModel) renderTerraformOutputTab() string {
 			line = selectedBg.Render(line)
 		}
 
-		b.WriteString(fmt.Sprintf("  %s%s\n", cursor, line))
+		fmt.Fprintf(&b, "  %s%s\n", cursor, line)
 	}
 
 	// Scroll indicator
@@ -334,9 +325,9 @@ func (m terraformDetailModel) renderTerraformOutputTab() string {
 			pct := (scrollOffset * 100) / (totalEntries - visibleRows)
 			pos = fmt.Sprintf("%d%%", pct)
 		}
-		b.WriteString(fmt.Sprintf("\n  %s\n", dimStyle.Render(fmt.Sprintf("↑↓: navigate  enter: expand/collapse  [%d/%d %s]", m.outputCursor+1, totalEntries, pos))))
+		fmt.Fprintf(&b, "\n  %s\n", dimStyle.Render(fmt.Sprintf("↑↓: navigate  enter: expand/collapse  [%d/%d %s]", m.outputCursor+1, totalEntries, pos)))
 	} else {
-		b.WriteString(fmt.Sprintf("\n  %s\n", lipgloss.NewStyle().Foreground(lipgloss.Color("241")).Render("↑↓: navigate  enter: expand/collapse")))
+		fmt.Fprintf(&b, "\n  %s\n", lipgloss.NewStyle().Foreground(lipgloss.Color("241")).Render("↑↓: navigate  enter: expand/collapse"))
 	}
 
 	return b.String()

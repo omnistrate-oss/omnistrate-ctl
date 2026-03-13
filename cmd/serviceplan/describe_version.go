@@ -141,7 +141,7 @@ func formatServicePlanVersionDetails(ctx context.Context, token, serviceName, pl
 	var resources []model.Resource
 	for _, versionSetResource := range versionSet.Resources {
 		// Get resource details
-		desRes, err := dataaccess.DescribeResource(ctx, token, versionSet.ServiceId, versionSetResource.Id, utils.ToPtr(versionSet.ProductTierId), &versionSet.Version)
+		desRes, err := dataaccess.DescribeResource(ctx, token, versionSet.ServiceId, versionSetResource.Id, new(versionSet.ProductTierId), &versionSet.Version)
 		if err != nil {
 			return model.ServicePlanVersionDetails{}, err
 		}

@@ -43,5 +43,5 @@ func runDescribe(cmd *cobra.Command, args []string) error {
 	}
 
 	output, _ := cmd.Flags().GetString("output")
-	return utils.PrintTextTableJsonArrayOutput(output, []interface{}{result})
+	return utils.PrintTextTableJsonArrayOutput(output, []any{result})
 }

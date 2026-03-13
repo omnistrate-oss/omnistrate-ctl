@@ -66,10 +66,7 @@ func renderLiveIndicator(spinnerView string, refreshing bool, lastRefresh time.T
 		return fmt.Sprintf("  %s", live)
 	}
 	elapsed := time.Since(lastRefresh)
-	remaining := refreshInterval - elapsed
-	if remaining < 0 {
-		remaining = 0
-	}
+	remaining := max(refreshInterval-elapsed, 0)
 	secs := int(remaining.Seconds())
 	if secs <= 0 {
 		return fmt.Sprintf("  %s  %s %s", live, spinnerView, dimStyle.Render("Refreshing…"))
@@ -376,15 +373,9 @@ func renderWorkflowEventsTab(steps *ResourceWorkflowSteps, state *workflowErrors
 
 	var b strings.Builder
 
-	viewH := bodyHeight - 2
-	if viewH < 1 {
-		viewH = 1
-	}
+	viewH := max(bodyHeight-2, 1)
 
-	maxScroll := totalLines - viewH
-	if maxScroll < 0 {
-		maxScroll = 0
-	}
+	maxScroll := max(totalLines-viewH, 0)
 
 	// Auto-scroll to keep cursor visible
 	if cursorLine >= 0 {
@@ -403,10 +394,7 @@ func renderWorkflowEventsTab(steps *ResourceWorkflowSteps, state *workflowErrors
 
 	scroll := state.scroll
 
-	end := scroll + viewH
-	if end > totalLines {
-		end = totalLines
-	}
+	end := min(scroll+viewH, totalLines)
 
 	for i := scroll; i < end; i++ {
 		b.WriteString(rendered[i])
@@ -428,8 +416,8 @@ func renderWorkflowEventsTab(steps *ResourceWorkflowSteps, state *workflowErrors
 			pct := (scroll * 100) / maxScroll
 			pos = fmt.Sprintf("%d%%", pct)
 		}
-		b.WriteString(fmt.Sprintf("  %s\n", dimStyle.Render(
-			fmt.Sprintf("[%d/%d %s]", scroll+viewH, totalLines, pos))))
+		fmt.Fprintf(&b, "  %s\n", dimStyle.Render(
+			fmt.Sprintf("[%d/%d %s]", scroll+viewH, totalLines, pos)))
 	}
 
 	return b.String()
@@ -505,10 +493,7 @@ func renderTimelineView(steps *ResourceWorkflowSteps, contentWidth int, items []
 
 	// Layout: "  icon name  bar  duration"
 	// 2 indent + 2 icon+space + maxNameLen name + 2 gap + barW + 2 gap + 7 duration
-	barWidth := contentWidth - 2 - 2 - maxNameLen - 2 - 2 - 7
-	if barWidth < 20 {
-		barWidth = 20
-	}
+	barWidth := max(contentWidth-2-2-maxNameLen-2-2-7, 20)
 
 	var lines []string
 
@@ -531,10 +516,7 @@ func renderTimelineView(steps *ResourceWorkflowSteps, contentWidth int, items []
 	leftPad := 2 + 2 + maxNameLen + 2
 	startLabel := globalStart.Format("15:04:05")
 	endLabel := globalEnd.Format("15:04:05")
-	fillWidth := barWidth - len(startLabel) - len(endLabel)
-	if fillWidth < 1 {
-		fillWidth = 1
-	}
+	fillWidth := max(barWidth-len(startLabel)-len(endLabel), 1)
 	axisTimeLine := strings.Repeat(" ", leftPad) +
 		timeStyle.Render(startLabel) +
 		timeStyle.Render(strings.Repeat(" ", fillWidth)) +
@@ -562,18 +544,12 @@ func renderTimelineView(steps *ResourceWorkflowSteps, contentWidth int, items []
 
 	// Separator
 	lines = append(lines, "")
-	sepWidth := contentWidth - 4
-	if sepWidth < 20 {
-		sepWidth = 20
-	}
+	sepWidth := max(contentWidth-4, 20)
 	lines = append(lines, fmt.Sprintf("  %s", sepStyle.Render("── Events "+strings.Repeat("─", sepWidth-10))))
 	lines = append(lines, "")
 
 	// Event details per step
-	maxMsgWidth := contentWidth - 28
-	if maxMsgWidth < 20 {
-		maxMsgWidth = 20
-	}
+	maxMsgWidth := max(contentWidth-28, 20)
 
 	// Build line-to-item mapping for cursor highlighting
 	selectedLine := -1
@@ -742,10 +718,7 @@ func renderFlatStepRows(steps *ResourceWorkflowSteps, contentWidth int, _ []wfEv
 	runningStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("220"))
 	msgStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("252"))
 
-	maxMsgWidth := contentWidth - 32
-	if maxMsgWidth < 20 {
-		maxMsgWidth = 20
-	}
+	maxMsgWidth := max(contentWidth-32, 20)
 
 	var lines []string
 	selectedLine := -1
@@ -861,7 +834,7 @@ func depStatusIconAndStyle(status string, completed, running, failed, dim lipglo
 
 // actionIconAndStyle picks icon/style based on the actionStatus field in the event message JSON.
 func actionIconAndStyle(rawMessage string, completed, running, failed, dim lipgloss.Style) (string, lipgloss.Style) {
-	var parsed map[string]interface{}
+	var parsed map[string]any
 	if err := json.Unmarshal([]byte(rawMessage), &parsed); err != nil {
 		return "·", dim
 	}
@@ -895,7 +868,7 @@ func eventIconAndStyle(eventType string, completed, running, failed, dim lipglos
 
 // extractEventMessage parses the JSON message field and returns a human-readable string.
 func extractEventMessage(raw string) string {
-	var parsed map[string]interface{}
+	var parsed map[string]any
 	if err := json.Unmarshal([]byte(raw), &parsed); err != nil {
 		return raw
 	}
@@ -914,7 +887,7 @@ func extractEventMessage(raw string) string {
 
 // eventHasAction checks if a JSON event message contains an "action" field.
 func eventHasAction(raw string) bool {
-	var parsed map[string]interface{}
+	var parsed map[string]any
 	if err := json.Unmarshal([]byte(raw), &parsed); err != nil {
 		return false
 	}
@@ -938,31 +911,19 @@ func renderWfEventModal(state *workflowErrorsState, width, height int) string {
 	titleStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("230")).Background(lipgloss.Color("63")).Padding(0, 1)
 	header := lipgloss.Place(width, 1, lipgloss.Left, lipgloss.Top, titleStyle.Render(fmt.Sprintf("Event Detail · %s", state.modalTitle)))
 
-	bodyH := height - 4
-	if bodyH < 1 {
-		bodyH = 1
-	}
-	maxCodeWidth := width - 10
-	if maxCodeWidth < 20 {
-		maxCodeWidth = 20
-	}
+	bodyH := max(height-4, 1)
+	maxCodeWidth := max(width-10, 20)
 
 	lines := strings.Split(state.modalText, "\n")
 	totalLines := len(lines)
 
 	scroll := state.modalScroll
-	maxScroll := totalLines - bodyH
-	if maxScroll < 0 {
-		maxScroll = 0
-	}
+	maxScroll := max(totalLines-bodyH, 0)
 	if scroll > maxScroll {
 		scroll = maxScroll
 	}
 
-	end := scroll + bodyH
-	if end > totalLines {
-		end = totalLines
-	}
+	end := min(scroll+bodyH, totalLines)
 
 	lineNumStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("241"))
 	textStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("252"))
@@ -974,7 +935,7 @@ func renderWfEventModal(state *workflowErrorsState, width, height int) string {
 			line = string(runes[:maxCodeWidth-1]) + "…"
 		}
 		lineNum := lineNumStyle.Render(fmt.Sprintf("%4d", i+1))
-		b.WriteString(fmt.Sprintf("  %s │ %s\n", lineNum, textStyle.Render(line)))
+		fmt.Fprintf(&b, "  %s │ %s\n", lineNum, textStyle.Render(line))
 	}
 	for i := end - scroll; i < bodyH; i++ {
 		b.WriteString("\n")
@@ -999,15 +960,9 @@ func renderWfEventModal(state *workflowErrorsState, width, height int) string {
 
 // wfEventModalMaxScroll returns the max scroll for the event detail modal.
 func wfEventModalMaxScroll(state *workflowErrorsState, height int) int {
-	bodyH := height - 4
-	if bodyH < 1 {
-		bodyH = 1
-	}
+	bodyH := max(height-4, 1)
 	lines := strings.Split(state.modalText, "\n")
-	maxScroll := len(lines) - bodyH
-	if maxScroll < 0 {
-		maxScroll = 0
-	}
+	maxScroll := max(len(lines)-bodyH, 0)
 	return maxScroll
 }
 
@@ -1018,9 +973,9 @@ func workflowEventsCopyText(steps *ResourceWorkflowSteps) string {
 	}
 	var b strings.Builder
 	for _, step := range steps.Steps {
-		b.WriteString(fmt.Sprintf("\n=== %s [%s] %s → %s ===\n", step.stepDisplayName(), step.Status, step.StartTime, step.EndTime))
+		fmt.Fprintf(&b, "\n=== %s [%s] %s → %s ===\n", step.stepDisplayName(), step.Status, step.StartTime, step.EndTime)
 		for _, evt := range step.Events {
-			b.WriteString(fmt.Sprintf("[%s] %s: %s\n", evt.EventTime, evt.EventType, evt.Message))
+			fmt.Fprintf(&b, "[%s] %s: %s\n", evt.EventTime, evt.EventType, evt.Message)
 		}
 	}
 	return b.String()
@@ -1032,7 +987,7 @@ func formatEventDetail(evt *dataaccess.DebugEvent) string {
 		return ""
 	}
 	// Try to pretty-print as JSON
-	var parsed interface{}
+	var parsed any
 	if err := json.Unmarshal([]byte(evt.Message), &parsed); err == nil {
 		pretty, err := json.MarshalIndent(parsed, "", "  ")
 		if err == nil {
@@ -1044,7 +999,7 @@ func formatEventDetail(evt *dataaccess.DebugEvent) string {
 
 // extractEventAction returns the action name from a JSON event message, or a fallback.
 func extractEventAction(raw string) string {
-	var parsed map[string]interface{}
+	var parsed map[string]any
 	if err := json.Unmarshal([]byte(raw), &parsed); err == nil {
 		if action, ok := parsed["action"].(string); ok {
 			return action

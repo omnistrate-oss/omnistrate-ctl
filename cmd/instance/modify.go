@@ -135,7 +135,7 @@ func runModify(cmd *cobra.Command, args []string) error {
 		environmentID,
 		instanceID,
 		resourceID,
-		utils.ToPtr(networkType),
+		new(networkType),
 		formattedParams,
 		customTags,
 	)

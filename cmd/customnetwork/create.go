@@ -120,7 +120,7 @@ func createCustomNetwork(ctx context.Context, token, cloudProvider, region, cidr
 	*openapiclientfleet.FleetCustomNetwork, error) {
 	var nameApiParam *string
 	if len(name) > 0 {
-		nameApiParam = utils.ToPtr(name)
+		nameApiParam = new(name)
 	}
 
 	return dataaccess.FleetCreateCustomNetwork(ctx, token, cloudProvider, region, cidr, nameApiParam)

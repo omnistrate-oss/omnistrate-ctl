@@ -111,7 +111,7 @@ func getWorkflowEvents(cmd *cobra.Command, args []string) error {
 	}
 
 	outputFormat, _ := cmd.Flags().GetString("output")
-	return utils.PrintTextTableJsonArrayOutput(outputFormat, []interface{}{filteredResult})
+	return utils.PrintTextTableJsonArrayOutput(outputFormat, []any{filteredResult})
 }
 
 // WorkflowEventFilterOptions contains filtering options for workflow events
@@ -165,8 +165,8 @@ type WorkflowEventsSummary struct {
 	EnvironmentId  string                    `json:"environmentId"`
 	ServiceId      string                    `json:"serviceId"`
 	Resources      []WorkflowResourceSummary `json:"resources"`
-	FilteringStats map[string]interface{}    `json:"filteringStats,omitempty"`
-	AppliedFilters map[string]interface{}    `json:"appliedFilters,omitempty"`
+	FilteringStats map[string]any            `json:"filteringStats,omitempty"`
+	AppliedFilters map[string]any            `json:"appliedFilters,omitempty"`
 }
 
 func filterWorkflowEvents(result *fleet.GetWorkflowEventsResult, options WorkflowEventFilterOptions) (*WorkflowEventsSummary, error) {
@@ -285,7 +285,7 @@ func filterWorkflowEvents(result *fleet.GetWorkflowEventsResult, options Workflo
 	// Add filtering metadata
 	if options.ResourceID != "" || options.ResourceKey != "" || len(options.StepNames) > 0 ||
 		options.Since != "" || options.Until != "" || options.Detail {
-		appliedFilters := map[string]interface{}{}
+		appliedFilters := map[string]any{}
 
 		if options.ResourceID != "" {
 			appliedFilters["resourceId"] = options.ResourceID
@@ -308,7 +308,7 @@ func filterWorkflowEvents(result *fleet.GetWorkflowEventsResult, options Workflo
 		summary.AppliedFilters = appliedFilters
 
 		// Add statistics
-		summary.FilteringStats = map[string]interface{}{
+		summary.FilteringStats = map[string]any{
 			"totalResources":    len(result.Resources),
 			"filteredResources": len(summaryResources),
 			"totalSteps":        originalTotalSteps,

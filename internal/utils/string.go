@@ -78,7 +78,7 @@ func ReadFile(filePath string) ([]byte, error) {
 }
 
 // FormatJSON formats an interface{} as pretty-printed JSON
-func FormatJSON(data interface{}) (string, error) {
+func FormatJSON(data any) (string, error) {
 	jsonBytes, err := json.MarshalIndent(data, "", "  ")
 	if err != nil {
 		return "", errors.Wrap(err, "failed to format JSON")

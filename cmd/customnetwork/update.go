@@ -68,7 +68,7 @@ func runUpdate(cmd *cobra.Command, args []string) (err error) {
 	// Gather parameters
 	var updatedName *string
 	if len(nameFlag) > 0 {
-		updatedName = utils.ToPtr(nameFlag)
+		updatedName = new(nameFlag)
 	}
 
 	// Update

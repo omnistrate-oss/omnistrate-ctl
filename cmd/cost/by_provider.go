@@ -76,7 +76,7 @@ func runByProviderList(cmd *cobra.Command, args []string) error {
 	}
 
 	outputFormat, _ := cmd.Flags().GetString("output")
-	return utils.PrintTextTableJsonArrayOutput(outputFormat, []interface{}{result})
+	return utils.PrintTextTableJsonArrayOutput(outputFormat, []any{result})
 }
 
 func runByProviderShow(cmd *cobra.Command, args []string) error {
@@ -107,7 +107,7 @@ func runByProviderShow(cmd *cobra.Command, args []string) error {
 	}
 
 	outputFormat, _ := cmd.Flags().GetString("output")
-	return utils.PrintTextTableJsonArrayOutput(outputFormat, []interface{}{result})
+	return utils.PrintTextTableJsonArrayOutput(outputFormat, []any{result})
 }
 
 func runByProviderCompare(cmd *cobra.Command, args []string) error {
@@ -147,5 +147,5 @@ func runByProviderCompare(cmd *cobra.Command, args []string) error {
 	}
 
 	outputFormat, _ := cmd.Flags().GetString("output")
-	return utils.PrintTextTableJsonArrayOutput(outputFormat, []interface{}{result})
+	return utils.PrintTextTableJsonArrayOutput(outputFormat, []any{result})
 }

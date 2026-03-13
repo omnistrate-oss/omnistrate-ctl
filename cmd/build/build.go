@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	"gopkg.in/yaml.v3"
@@ -313,7 +314,7 @@ func runBuild(cmd *cobra.Command, args []string) error {
 			if _, err := os.Stat(fileToRead); err == nil {
 				tempFileData, err := os.ReadFile(filepath.Clean(fileToRead))
 				if err == nil {
-					var planCheck map[string]interface{}
+					var planCheck map[string]any
 					if err := yaml.Unmarshal(tempFileData, &planCheck); err == nil {
 						// Use the common function to detect spec type
 						specType = DetectSpecType(planCheck)
@@ -425,8 +426,8 @@ func runBuild(cmd *cobra.Command, args []string) error {
 		// Check if the image is accessible
 		var userNamePtr, passwordPtr *string
 		if imageRegistryAuthUsername != "" && imageRegistryAuthPassword != "" {
-			userNamePtr = utils.ToPtr(imageRegistryAuthUsername)
-			passwordPtr = utils.ToPtr(imageRegistryAuthPassword)
+			userNamePtr = new(imageRegistryAuthUsername)
+			passwordPtr = new(imageRegistryAuthPassword)
 		}
 
 		checkImageRes, err := dataaccess.CheckIfContainerImageAccessible(cmd.Context(), token, imageRegistry, image, userNamePtr, passwordPtr)
@@ -508,7 +509,7 @@ func runBuild(cmd *cobra.Command, args []string) error {
 		environmentPtr = nil
 	}
 
-	environmentTypePtr := utils.ToPtr(strings.ToUpper(environmentType))
+	environmentTypePtr := new(strings.ToUpper(environmentType))
 	if environmentType == "" {
 		environmentTypePtr = nil
 	}
@@ -546,7 +547,7 @@ func runBuild(cmd *cobra.Command, args []string) error {
 	if specType == ServicePlanSpecType {
 		// Extract plan name from YAML for display purposes
 		if output != "json" {
-			var yamlContent map[string]interface{}
+			var yamlContent map[string]any
 			if parseErr := yaml.Unmarshal(fileData, &yamlContent); parseErr == nil {
 				if planName, ok := yamlContent["name"].(string); ok && planName != "" {
 					spinner1.UpdateMessage(fmt.Sprintf("Building service '%s' with plan '%s'...", name, planName))
@@ -904,7 +905,7 @@ func runBuild(cmd *cobra.Command, args []string) error {
 						ServiceID,
 						"PUBLIC",
 						"PROD",
-						utils.ToPtr(EnvironmentID),
+						new(EnvironmentID),
 						defaultDeploymentConfigID,
 						true,
 						nil)
@@ -997,11 +998,11 @@ func BuildService(ctx context.Context, fileData []byte, token, name, specType st
 			Environment:                      environment,
 			EnvironmentType:                  environmentType,
 			FileContent:                      base64.StdEncoding.EncodeToString(fileData),
-			Release:                          utils.ToPtr(release),
-			ReleaseAsPreferred:               utils.ToPtr(releaseAsPreferred),
+			Release:                          new(release),
+			ReleaseAsPreferred:               new(releaseAsPreferred),
 			ReleaseVersionName:               releaseName,
-			Dryrun:                           utils.ToPtr(dryRun),
-			ForceCreateNewServicePlanVersion: utils.ToPtr(forceCreateNewServicePlanVersion),
+			Dryrun:                           new(dryRun),
+			ForceCreateNewServicePlanVersion: new(forceCreateNewServicePlanVersion),
 		}
 
 		buildRes, err := dataaccess.BuildServiceFromServicePlanSpec(ctx, token, request)
@@ -1016,7 +1017,7 @@ func BuildService(ctx context.Context, fileData []byte, token, name, specType st
 
 	case DockerComposeSpecType:
 		// Load the YAML content
-		var parsedYaml map[string]interface{}
+		var parsedYaml map[string]any
 		parsedYaml, err = loader.ParseYAML(fileData)
 		if err != nil {
 			err = errors.Wrap(err, "failed to parse YAML content")
@@ -1090,13 +1091,13 @@ func BuildService(ctx context.Context, fileData []byte, token, name, specType st
 			Environment:                      environment,
 			EnvironmentType:                  environmentType,
 			FileContent:                      base64.StdEncoding.EncodeToString(fileData),
-			Release:                          utils.ToPtr(release),
-			ReleaseAsPreferred:               utils.ToPtr(releaseAsPreferred),
+			Release:                          new(release),
+			ReleaseAsPreferred:               new(releaseAsPreferred),
 			ReleaseVersionName:               releaseName,
 			Configs:                          configs,
 			Secrets:                          secrets,
-			Dryrun:                           utils.ToPtr(dryRun),
-			ForceCreateNewServicePlanVersion: utils.ToPtr(forceCreateNewServicePlanVersion),
+			Dryrun:                           new(dryRun),
+			ForceCreateNewServicePlanVersion: new(forceCreateNewServicePlanVersion),
 		}
 
 		buildRes, err := dataaccess.BuildServiceFromComposeSpec(ctx, token, request)
@@ -1131,12 +1132,7 @@ func getSaaSPortalURL(serviceEnvironment *openapiclient.DescribeServiceEnvironme
 }
 
 func isValidSpecType(s string) bool {
-	for _, v := range validSpecType {
-		if v == s {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(validSpecType, s)
 }
 
 // Most compose files mount the configs directly as volumes. This function converts the volumes to configs.

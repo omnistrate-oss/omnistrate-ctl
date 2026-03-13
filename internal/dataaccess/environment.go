@@ -5,7 +5,6 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/omnistrate-oss/omnistrate-ctl/internal/utils"
 	openapiclientv1 "github.com/omnistrate-oss/omnistrate-sdk-go/v1"
 	"github.com/pkg/errors"
 )
@@ -30,11 +29,11 @@ func CreateServiceEnvironment(ctx context.Context,
 		CreateServiceEnvironmentRequest2(openapiclientv1.CreateServiceEnvironmentRequest2{
 			Name:                    name,
 			Description:             description,
-			Visibility:              utils.ToPtr(visibility),
-			Type:                    utils.ToPtr(environmentType),
+			Visibility:              new(visibility),
+			Type:                    new(environmentType),
 			SourceEnvironmentId:     sourceEnvID,
 			DeploymentConfigId:      deploymentConfigID,
-			AutoApproveSubscription: utils.ToPtr(autoApproveSubscription),
+			AutoApproveSubscription: new(autoApproveSubscription),
 			ServiceAuthPublicKey:    serviceAuthPublicKey,
 		}).Execute()
 	defer func() {

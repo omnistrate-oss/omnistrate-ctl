@@ -290,7 +290,7 @@ func GetOrganizationDeploymentCellTemplate(ctx context.Context, token string, en
 	}, nil
 }
 
-func ConvertToInternalAmenitiesList(data interface{}) ([]model.InternalAmenity, error) {
+func ConvertToInternalAmenitiesList(data any) ([]model.InternalAmenity, error) {
 	// Marshal to JSON
 	jsonBytes, err := json.Marshal(data)
 	if err != nil {
@@ -315,7 +315,7 @@ func ConvertToInternalAmenitiesList(data interface{}) ([]model.InternalAmenity, 
 	return result, nil
 }
 
-func interfaceToMap(data interface{}) (map[string]interface{}, error) {
+func interfaceToMap(data any) (map[string]any, error) {
 	// Marshal to JSON
 	jsonBytes, err := json.Marshal(data)
 	if err != nil {
@@ -323,7 +323,7 @@ func interfaceToMap(data interface{}) (map[string]interface{}, error) {
 	}
 
 	// Unmarshal to map[string]interface{}
-	var result map[string]interface{}
+	var result map[string]any
 	err = json.Unmarshal(jsonBytes, &result)
 	if err != nil {
 		return nil, err
@@ -397,17 +397,17 @@ func formatNodepoolForTable(entity openapiclientfleet.Entity, cloudProvider stri
 
 	switch cloudProvider {
 	case "gcp":
-		var nodePoolMap map[string]interface{}
+		var nodePoolMap map[string]any
 		var ok bool
 
 		if isDescribe {
 			// Describe response: properties.applyRequest.node_pool.*
-			if applyRequest, applyOk := properties["applyRequest"].(map[string]interface{}); applyOk {
-				nodePoolMap, ok = applyRequest["node_pool"].(map[string]interface{})
+			if applyRequest, applyOk := properties["applyRequest"].(map[string]any); applyOk {
+				nodePoolMap, ok = applyRequest["node_pool"].(map[string]any)
 			}
 		} else {
 			// List response: properties.node_pool.*
-			nodePoolMap, ok = properties["node_pool"].(map[string]interface{})
+			nodePoolMap, ok = properties["node_pool"].(map[string]any)
 		}
 
 		if ok {
@@ -418,7 +418,7 @@ func formatNodepoolForTable(entity openapiclientfleet.Entity, cloudProvider stri
 				tableView.ImageType = imageType
 			}
 
-			if autoscaling, ok := nodePoolMap["autoscaling"].(map[string]interface{}); ok {
+			if autoscaling, ok := nodePoolMap["autoscaling"].(map[string]any); ok {
 				if maxNodes, ok := autoscaling["max_node_count"].(float64); ok {
 					tableView.MaxNodes = int64(maxNodes)
 				}
@@ -426,12 +426,12 @@ func formatNodepoolForTable(entity openapiclientfleet.Entity, cloudProvider stri
 					tableView.MinNodes = int64(minNodes)
 				}
 			}
-			if locations, ok := nodePoolMap["node_locations"].([]interface{}); ok && len(locations) > 0 {
+			if locations, ok := nodePoolMap["node_locations"].([]any); ok && len(locations) > 0 {
 				if loc, ok := locations[0].(string); ok {
 					tableView.Location = loc
 				}
 			}
-			if nodeManagement, ok := nodePoolMap["node_management"].(map[string]interface{}); ok {
+			if nodeManagement, ok := nodePoolMap["node_management"].(map[string]any); ok {
 				if autoRepair, ok := nodeManagement["auto_repair"].(bool); ok {
 					tableView.AutoRepair = autoRepair
 				}
@@ -440,7 +440,7 @@ func formatNodepoolForTable(entity openapiclientfleet.Entity, cloudProvider stri
 				}
 			}
 			// Extract privateSubnet from labels without storing all labels
-			if labels, ok := nodePoolMap["labels"].(map[string]interface{}); ok {
+			if labels, ok := nodePoolMap["labels"].(map[string]any); ok {
 				if privateSubnetStr, ok := labels["omnistrate.com/private-subnet"].(string); ok {
 					tableView.PrivateSubnet = (privateSubnetStr == "true")
 				}
@@ -448,17 +448,17 @@ func formatNodepoolForTable(entity openapiclientfleet.Entity, cloudProvider stri
 		}
 
 	case "aws":
-		var nodegroupSpec map[string]interface{}
+		var nodegroupSpec map[string]any
 		var ok bool
 
 		if isDescribe {
 			// Describe response: properties.applyRequest.nodegroup_spec.*
-			if applyRequest, applyOk := properties["applyRequest"].(map[string]interface{}); applyOk {
-				nodegroupSpec, ok = applyRequest["nodegroup_spec"].(map[string]interface{})
+			if applyRequest, applyOk := properties["applyRequest"].(map[string]any); applyOk {
+				nodegroupSpec, ok = applyRequest["nodegroup_spec"].(map[string]any)
 			}
 		} else {
 			// List response: properties.nodegroup_spec.*
-			nodegroupSpec, ok = properties["nodegroup_spec"].(map[string]interface{})
+			nodegroupSpec, ok = properties["nodegroup_spec"].(map[string]any)
 		}
 
 		if ok {
@@ -469,7 +469,7 @@ func formatNodepoolForTable(entity openapiclientfleet.Entity, cloudProvider stri
 				tableView.CapacityType = capacityType
 			}
 
-			if scalingConfig, ok := nodegroupSpec["scaling_config"].(map[string]interface{}); ok {
+			if scalingConfig, ok := nodegroupSpec["scaling_config"].(map[string]any); ok {
 				if minSize, ok := scalingConfig["min_size"].(float64); ok {
 					tableView.MinNodes = int64(minSize)
 				}
@@ -478,21 +478,21 @@ func formatNodepoolForTable(entity openapiclientfleet.Entity, cloudProvider stri
 				}
 			}
 
-			if subnets, ok := nodegroupSpec["subnets"].([]interface{}); ok && len(subnets) > 0 {
+			if subnets, ok := nodegroupSpec["subnets"].([]any); ok && len(subnets) > 0 {
 				if subnet, ok := subnets[0].(string); ok {
 					tableView.Location = subnet
 				}
 			}
 
 			// Extract privateSubnet from labels without storing all labels
-			if labels, ok := nodegroupSpec["labels"].(map[string]interface{}); ok {
+			if labels, ok := nodegroupSpec["labels"].(map[string]any); ok {
 				if privateSubnetStr, ok := labels["omnistrate.com/private-subnet"].(string); ok {
 					tableView.PrivateSubnet = (privateSubnetStr == "true")
 				}
 			}
 
 			// Try to extract machine type from launch template name
-			if launchTemplate, ok := nodegroupSpec["launch_template"].(map[string]interface{}); ok {
+			if launchTemplate, ok := nodegroupSpec["launch_template"].(map[string]any); ok {
 				if templateName, ok := launchTemplate["name"].(string); ok {
 					// Format: hc-xxx-...-<instance-type>
 					// Convert dots to dashes in template name: t3.medium -> t3-medium
@@ -514,17 +514,17 @@ func formatNodepoolForTable(entity openapiclientfleet.Entity, cloudProvider stri
 		}
 
 	case "azure":
-		var nodePoolSpec map[string]interface{}
+		var nodePoolSpec map[string]any
 		var ok bool
 
 		if isDescribe {
 			// Describe response: properties.applyRequest.node_pool_spec.*
-			if applyRequest, applyOk := properties["applyRequest"].(map[string]interface{}); applyOk {
-				nodePoolSpec, ok = applyRequest["node_pool_spec"].(map[string]interface{})
+			if applyRequest, applyOk := properties["applyRequest"].(map[string]any); applyOk {
+				nodePoolSpec, ok = applyRequest["node_pool_spec"].(map[string]any)
 			}
 		} else {
 			// List response: properties.node_pool_spec.*
-			nodePoolSpec, ok = properties["node_pool_spec"].(map[string]interface{})
+			nodePoolSpec, ok = properties["node_pool_spec"].(map[string]any)
 		}
 
 		if ok {
@@ -539,7 +539,7 @@ func formatNodepoolForTable(entity openapiclientfleet.Entity, cloudProvider stri
 				tableView.MaxNodes = int64(maxCount)
 			}
 
-			if zones, ok := nodePoolSpec["availability_zones"].([]interface{}); ok && len(zones) > 0 {
+			if zones, ok := nodePoolSpec["availability_zones"].([]any); ok && len(zones) > 0 {
 				if zone, ok := zones[0].(string); ok {
 					tableView.Location = zone
 				}

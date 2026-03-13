@@ -1,6 +1,8 @@
 module github.com/omnistrate-oss/omnistrate-ctl
 
-go 1.25.3
+go 1.26
+
+toolchain go1.26.0
 
 require (
 	github.com/atotto/clipboard v0.1.4

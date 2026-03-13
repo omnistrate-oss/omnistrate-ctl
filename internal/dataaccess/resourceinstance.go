@@ -5,8 +5,6 @@ import (
 	"fmt"
 	"net/http"
 
-	"github.com/omnistrate-oss/omnistrate-ctl/internal/utils"
-
 	openapiclientfleet "github.com/omnistrate-oss/omnistrate-sdk-go/fleet"
 	openapiclientv1 "github.com/omnistrate-oss/omnistrate-sdk-go/v1"
 )
@@ -52,7 +50,7 @@ func RestoreResourceInstanceSnapshot(ctx context.Context, token string, serviceI
 
 	reqBody := openapiclientfleet.FleetRestoreResourceInstanceFromSnapshotRequest2{
 		InputParametersOverride: formattedParams,
-		NetworkType:             utils.ToPtr(networkType),
+		NetworkType:             new(networkType),
 	}
 
 	if tierVersionOverride != "" {
@@ -550,7 +548,7 @@ func DescribeResourceInstanceInstaller(ctx context.Context, token string, servic
 	return
 }
 
-func EvaluateExpression(ctx context.Context, token, serviceID, productTierID, instanceID, resourceKey, expression string, expressionMap map[string]interface{}) (result interface{}, err error) {
+func EvaluateExpression(ctx context.Context, token, serviceID, productTierID, instanceID, resourceKey, expression string, expressionMap map[string]any) (result any, err error) {
 	// Validate that either expression or expressionMap is provided
 	if expression == "" && expressionMap == nil {
 		return nil, fmt.Errorf("either expression or expressionMap is required")

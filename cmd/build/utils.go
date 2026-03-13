@@ -10,6 +10,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 
@@ -26,7 +27,7 @@ const (
 
 // DetectSpecType analyzes YAML content to determine if it contains service plan specifications
 // Returns ServicePlanSpecType if plan-specific keys are found, otherwise DockerComposeSpecType
-func DetectSpecType(yamlContent map[string]interface{}) string {
+func DetectSpecType(yamlContent map[string]any) string {
 	// Improved: Recursively check for plan spec keys at any level
 	planKeyGroups := [][]string{
 		{"helm", "helmChart", "helmChartConfiguration"},
@@ -46,22 +47,22 @@ func DetectSpecType(yamlContent map[string]interface{}) string {
 }
 
 // ContainsOmnistrateKey recursively searches for any x-omnistrate key in a map
-func ContainsOmnistrateKey(m map[string]interface{}) bool {
+func ContainsOmnistrateKey(m map[string]any) bool {
 	for k, v := range m {
 		// Check for any x-omnistrate key
 		if strings.HasPrefix(k, "x-omnistrate-") {
 			return true
 		}
 		// Recurse into nested maps
-		if sub, ok := v.(map[string]interface{}); ok {
+		if sub, ok := v.(map[string]any); ok {
 			if ContainsOmnistrateKey(sub) {
 				return true
 			}
 		}
 		// Recurse into slices of maps
-		if arr, ok := v.([]interface{}); ok {
+		if arr, ok := v.([]any); ok {
 			for _, item := range arr {
-				if subm, ok := item.(map[string]interface{}); ok {
+				if subm, ok := item.(map[string]any); ok {
 					if ContainsOmnistrateKey(subm) {
 						return true
 					}
@@ -73,23 +74,21 @@ func ContainsOmnistrateKey(m map[string]interface{}) bool {
 }
 
 // ContainsAnyKey recursively searches for any key in keys in a map
-func ContainsAnyKey(m map[string]interface{}, keys []string) bool {
+func ContainsAnyKey(m map[string]any, keys []string) bool {
 	for k, v := range m {
-		for _, key := range keys {
-			if k == key {
-				return true
-			}
+		if slices.Contains(keys, k) {
+			return true
 		}
 		// Recurse into nested maps
-		if sub, ok := v.(map[string]interface{}); ok {
+		if sub, ok := v.(map[string]any); ok {
 			if ContainsAnyKey(sub, keys) {
 				return true
 			}
 		}
 		// Recurse into slices of maps
-		if arr, ok := v.([]interface{}); ok {
+		if arr, ok := v.([]any); ok {
 			for _, item := range arr {
-				if subm, ok := item.(map[string]interface{}); ok {
+				if subm, ok := item.(map[string]any); ok {
 					if ContainsAnyKey(subm, keys) {
 						return true
 					}
@@ -121,7 +120,7 @@ func ArchiveArtifactPaths(baseDir string, artifactPaths []string) (map[string]st
 		resolvedPath = filepath.Clean(resolvedPath)
 
 		// Check if the path exists
-		info, err := os.Stat(resolvedPath)
+		info, err := os.Stat(resolvedPath) //nolint:gosec // G703: path is cleaned with filepath.Clean above
 		if err != nil {
 			return nil, fmt.Errorf("artifact path '%s' does not exist: %w", artifactPath, err)
 		}
@@ -130,7 +129,7 @@ func ArchiveArtifactPaths(baseDir string, artifactPaths []string) (map[string]st
 			// Path is a file - check if it's already a .tar.gz / .tgz file
 			if isGzipTarFile(resolvedPath) {
 				// Already a tar.gz file, just read and base64 encode it directly
-				fileContent, readErr := os.ReadFile(resolvedPath)
+				fileContent, readErr := os.ReadFile(resolvedPath) //nolint:gosec // G703: path is cleaned with filepath.Clean above
 				if readErr != nil {
 					return nil, fmt.Errorf("failed to read tar.gz file '%s': %w", artifactPath, readErr)
 				}
@@ -164,7 +163,7 @@ func createTarGzBase64(sourceDir string) (string, error) {
 	tarWriter := tar.NewWriter(gzWriter)
 
 	// Walk through the source directory
-	err := filepath.Walk(sourceDir, func(path string, info os.FileInfo, err error) error {
+	err := filepath.Walk(sourceDir, func(path string, info os.FileInfo, err error) error { //nolint:gosec // G703: sourceDir is validated by caller
 		if err != nil {
 			return err
 		}
@@ -205,7 +204,7 @@ func createTarGzBase64(sourceDir string) (string, error) {
 
 		// If it's a regular file, write its content
 		if info.Mode().IsRegular() {
-			file, err := os.Open(path)
+			file, err := os.Open(filepath.Clean(path)) //nolint:gosec // path comes from filepath.Walk within known directory
 			if err != nil {
 				return fmt.Errorf("failed to open file: %w", err)
 			}
@@ -244,7 +243,7 @@ func isGzipTarFile(filePath string) bool {
 	hasExtension := strings.HasSuffix(lower, ".tar.gz") || strings.HasSuffix(lower, ".tgz")
 
 	// Also verify by reading the first two bytes (gzip magic number)
-	f, err := os.Open(filePath)
+	f, err := os.Open(filePath) //nolint:gosec // G703: filePath is already cleaned by caller via filepath.Clean
 	if err != nil {
 		return hasExtension
 	}

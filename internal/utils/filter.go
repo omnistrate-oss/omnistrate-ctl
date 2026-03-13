@@ -14,8 +14,7 @@ func GetSupportedFilterKeys[T any](obj T) (supportedFilterKeys []string) {
 	}
 
 	objType := objValue.Type()
-	for i := 0; i < objType.NumField(); i++ {
-		field := objType.Field(i)
+	for field := range objType.Fields() {
 		jsonTag := field.Tag.Get("json")
 		if jsonTag != "" {
 			// jsonTag may have options, e.g., "name,omitempty"
@@ -34,8 +33,8 @@ func ParseFilters(filters []string, supportedFilterKeys []string) (filterMaps []
 			continue // Those are empty filters that are reset to default values when clean up args and flags
 		}
 		filterMap := make(map[string]string)
-		filterParts := strings.Split(filter, ",")
-		for _, part := range filterParts {
+		filterParts := strings.SplitSeq(filter, ",")
+		for part := range filterParts {
 			keyValue := strings.Split(part, ":")
 			if len(keyValue) != 2 {
 				err = fmt.Errorf("invalid filter format: %s, expected key:value", part)
@@ -110,7 +109,7 @@ func isFieldMatch(field reflect.Value, value string) bool {
 	switch field.Kind() {
 	case reflect.String:
 		fieldValue = field.String()
-	case reflect.Ptr:
+	case reflect.Pointer:
 		if field.IsNil() {
 			return false
 		}

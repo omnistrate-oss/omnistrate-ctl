@@ -101,7 +101,7 @@ func runByUserList(cmd *cobra.Command, args []string) error {
 	}
 
 	outputFormat, _ := cmd.Flags().GetString("output")
-	return utils.PrintTextTableJsonArrayOutput(outputFormat, []interface{}{result})
+	return utils.PrintTextTableJsonArrayOutput(outputFormat, []any{result})
 }
 
 func runByUserShow(cmd *cobra.Command, args []string) error {
@@ -136,7 +136,7 @@ func runByUserShow(cmd *cobra.Command, args []string) error {
 	}
 
 	outputFormat, _ := cmd.Flags().GetString("output")
-	return utils.PrintTextTableJsonArrayOutput(outputFormat, []interface{}{result})
+	return utils.PrintTextTableJsonArrayOutput(outputFormat, []any{result})
 }
 
 func runByUserTop(cmd *cobra.Command, args []string) error {
@@ -176,7 +176,7 @@ func runByUserTop(cmd *cobra.Command, args []string) error {
 	}
 
 	outputFormat, _ := cmd.Flags().GetString("output")
-	return utils.PrintTextTableJsonArrayOutput(outputFormat, []interface{}{result})
+	return utils.PrintTextTableJsonArrayOutput(outputFormat, []any{result})
 }
 
 func runByUserTopInstances(cmd *cobra.Command, args []string) error {
@@ -216,7 +216,7 @@ func runByUserTopInstances(cmd *cobra.Command, args []string) error {
 	}
 
 	outputFormat, _ := cmd.Flags().GetString("output")
-	return utils.PrintTextTableJsonArrayOutput(outputFormat, []interface{}{result})
+	return utils.PrintTextTableJsonArrayOutput(outputFormat, []any{result})
 }
 
 func runByUserCompare(cmd *cobra.Command, args []string) error {
@@ -260,5 +260,5 @@ func runByUserCompare(cmd *cobra.Command, args []string) error {
 	}
 
 	outputFormat, _ := cmd.Flags().GetString("output")
-	return utils.PrintTextTableJsonArrayOutput(outputFormat, []interface{}{result})
+	return utils.PrintTextTableJsonArrayOutput(outputFormat, []any{result})
 }

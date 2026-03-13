@@ -71,27 +71,27 @@ func TestCheckIfNilOrEmpty(t *testing.T) {
 		},
 		{
 			name:      "Empty string",
-			parameter: ToPtr(""),
+			parameter: new(""),
 			want:      true,
 		},
 		{
 			name:      "Non-empty string",
-			parameter: ToPtr("hello"),
+			parameter: new("hello"),
 			want:      false,
 		},
 		{
 			name:      "Whitespace string",
-			parameter: ToPtr(" "),
+			parameter: new(" "),
 			want:      true,
 		},
 		{
 			name:      "Whitespace string with leading and trailing spaces",
-			parameter: ToPtr("  "),
+			parameter: new("  "),
 			want:      true,
 		},
 		{
 			name:      "Non-empty string with leading and trailing spaces",
-			parameter: ToPtr(" hello "),
+			parameter: new(" hello "),
 			want:      false,
 		},
 	}
