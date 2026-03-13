@@ -28,7 +28,7 @@ type ResourceAdoptionConfig struct {
 // HelmAdoptionConfig represents the Helm adoption configuration
 type HelmAdoptionConfig struct {
 	ChartRepoURL         string             `yaml:"chartRepoURL"`
-	Password             *string            `yaml:"password,omitempty"`
+	Password             *string            `yaml:"password,omitempty"` //nolint:gosec // G117: field name required for YAML config deserialization
 	ReleaseName          string             `yaml:"releaseName"`
 	ReleaseNamespace     string             `yaml:"releaseNamespace"`
 	RuntimeConfiguration *HelmRuntimeConfig `yaml:"runtimeConfiguration,omitempty"`

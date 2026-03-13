@@ -28,7 +28,7 @@ type DeviceCodeResponse struct {
 
 // AccessTokenResponse represents the response from the jwt token request
 type AccessTokenResponse struct {
-	JWTToken string `json:"jwt_token"`
+	JWTToken string `json:"jwt_token"` //nolint:gosec // G117: field name required for API response deserialization
 }
 
 // GitHub client credentials
@@ -125,7 +125,7 @@ func requestDeviceCode(ctx context.Context, identityProviderName string) (*Devic
 	req.Header.Set("Accept", "application/json")
 
 	client := &http.Client{}
-	resp, err := client.Do(req)
+	resp, err := client.Do(req) //nolint:gosec // G704: URL is constructed from known OAuth provider endpoints
 	if err != nil {
 		return nil, err
 	}

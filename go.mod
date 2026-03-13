@@ -20,7 +20,6 @@ require (
 	github.com/hashicorp/go-retryablehttp v0.7.8
 	github.com/mitchellh/go-homedir v1.1.0
 	github.com/mitchellh/go-wordwrap v1.0.1
-	github.com/modelcontextprotocol/go-sdk v1.3.1
 	github.com/njayp/ophis v1.1.4
 	github.com/omnistrate-oss/omnistrate-sdk-go v0.0.99
 	github.com/pkg/browser v0.0.0-20240102092130-5ac0b6a4141c
@@ -97,6 +96,7 @@ require (
 	github.com/mitchellh/hashstructure/v2 v2.0.2 // indirect
 	github.com/mitchellh/mapstructure v1.5.0 // indirect
 	github.com/moby/spdystream v0.5.0 // indirect
+	github.com/modelcontextprotocol/go-sdk v1.3.1 // indirect
 	github.com/modern-go/concurrent v0.0.0-20180306012644-bacd9c7ef1dd // indirect
 	github.com/modern-go/reflect2 v1.0.3-0.20250322232337-35a7c28c31ee // indirect
 	github.com/mschoch/smat v0.2.0 // indirect

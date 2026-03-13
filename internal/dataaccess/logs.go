@@ -19,7 +19,7 @@ type LogsStream struct {
 type LogsConfig struct {
 	BaseURL  string
 	Username string
-	Password string
+	Password string //nolint:gosec // G117: field name required for log streaming config
 }
 
 // LogsService provides methods for log-related operations

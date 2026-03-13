@@ -26,6 +26,5 @@ omnistrate-ctl agent [operation] [flags]
 ### SEE ALSO
 
 * [omnistrate-ctl](omnistrate-ctl.md)	 - Manage your Omnistrate SaaS from the command line
-* [omnistrate-ctl agent chat](omnistrate-ctl_agent_chat.md)	 - Start an interactive AI agent chat with Omnistrate tools
 * [omnistrate-ctl agent init](omnistrate-ctl_agent_init.md)	 - Initialize Claude Code skills and agent instructions for Omnistrate
 
