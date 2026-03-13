@@ -1,7 +1,6 @@
 module github.com/omnistrate-oss/omnistrate-ctl
 
 go 1.26
-toolchain go1.26.0
 
 toolchain go1.26.0
 
