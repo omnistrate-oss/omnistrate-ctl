@@ -205,7 +205,7 @@ func createTarGzBase64(sourceDir string) (string, error) {
 
 		// If it's a regular file, write its content
 		if info.Mode().IsRegular() {
-			file, err := os.Open(path)
+			file, err := os.Open(filepath.Clean(path)) //nolint:gosec // path comes from filepath.Walk within known directory
 			if err != nil {
 				return fmt.Errorf("failed to open file: %w", err)
 			}

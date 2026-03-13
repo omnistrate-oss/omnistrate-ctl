@@ -249,7 +249,7 @@ func (m helmDetailModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 			}
 			// Start log polling
-			ctx, cancel := context.WithCancel(context.Background())
+			ctx, cancel := context.WithCancel(context.Background()) //nolint:gosec // cancel stored in m.logCancel
 			m.logCancel = cancel
 			m.logStreaming = true
 			cmds = append(cmds,
@@ -290,7 +290,7 @@ func (m helmDetailModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if m.logCancel != nil {
 				m.logCancel()
 			}
-			ctx, cancel := context.WithCancel(context.Background())
+			ctx, cancel := context.WithCancel(context.Background()) //nolint:gosec // cancel stored in m.logCancel
 			m.logCancel = cancel
 			m.logChan = make(chan logLineMsg, 50)
 			m.logStreaming = true
@@ -689,9 +689,9 @@ func (m helmDetailModel) renderHelmLogsTab() string {
 	if m.logFollow {
 		followText = " [following]"
 	}
-	b.WriteString(fmt.Sprintf("  %s\n\n",
+	fmt.Fprintf(&b, "  %s\n\n",
 		headerStyle.Render(fmt.Sprintf("Helm Install Log (%d lines%s%s)", len(m.logLines), statusText, followText)),
-	))
+	)
 
 	bodyH := m.helmBodyHeight() - 4
 	if bodyH < 1 {
@@ -731,7 +731,7 @@ func (m helmDetailModel) renderHelmLogsTab() string {
 		}
 		lineNum := lineNumStyle.Render(fmt.Sprintf("%4d", i+1))
 		styled := highlightHelmLogLine(line)
-		b.WriteString(fmt.Sprintf("  %s │ %s\n", lineNum, styled))
+		fmt.Fprintf(&b, "  %s │ %s\n", lineNum, styled)
 	}
 
 	// Pad remaining lines
@@ -751,8 +751,8 @@ func (m helmDetailModel) renderHelmLogsTab() string {
 			pct := (scroll * 100) / maxScroll
 			pos = fmt.Sprintf("%d%%", pct)
 		}
-		b.WriteString(fmt.Sprintf("  %s\n", dimStyle.Render(
-			fmt.Sprintf("[%d/%d %s]", scroll+bodyH, totalLines, pos))))
+		fmt.Fprintf(&b, "  %s\n", dimStyle.Render(
+			fmt.Sprintf("[%d/%d %s]", scroll+bodyH, totalLines, pos)))
 	}
 
 	return b.String()

@@ -418,7 +418,7 @@ func mergeMarkdownFileWithContent(srcContent, destPath string) error {
 	}
 
 	// Write merged content
-	if err := os.WriteFile(destPath, destContent, 0600); err != nil {
+	if err := os.WriteFile(filepath.Clean(destPath), destContent, 0600); err != nil { //nolint:gosec // path is constructed internally
 		return fmt.Errorf("failed to write destination file: %w", err)
 	}
 

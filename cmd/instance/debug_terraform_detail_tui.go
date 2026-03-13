@@ -608,7 +608,7 @@ func (m terraformDetailModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// Start log watcher for apply/destroy logs from configmap
 		var cmds []tea.Cmd
 		if msg.k8sConn != nil {
-			ctx, cancel := context.WithCancel(context.Background())
+			ctx, cancel := context.WithCancel(context.Background()) //nolint:gosec // cancel stored in m.logCancel
 			m.logCancel = cancel
 			m.logStreaming = true
 			cmds = append(cmds,

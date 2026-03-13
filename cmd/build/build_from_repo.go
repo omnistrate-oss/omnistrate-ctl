@@ -928,7 +928,7 @@ func BuildServiceFromRepository(cmd *cobra.Command, ctx context.Context, token, 
 					dockerfileData = append(dockerfileData, []byte(fmt.Sprintf("\nLABEL org.opencontainers.image.source=\"https://github.com/%s/%s\"\n", repoOwner, repoName))...)
 
 					// Write the Dockerfile back
-					err = os.WriteFile(dockerfilePath, dockerfileData, 0600)
+					err = os.WriteFile(filepath.Clean(dockerfilePath), dockerfileData, 0600) //nolint:gosec // path is constructed internally
 					if err != nil {
 						utils.HandleSpinnerError(spinner, sm, err)
 						return "", "", "", nil, err
