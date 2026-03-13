@@ -65,7 +65,7 @@ func orderPlanLevels(plan *PlanDAG) planDAGLayout {
 	pos := make(map[string]int)
 	updatePositions(levels, pos)
 
-	for pass := 0; pass < 2; pass++ {
+	for range 2 {
 		for levelIdx := 1; levelIdx < len(levels); levelIdx++ {
 			levels[levelIdx] = sortLevelByBarycenter(levels[levelIdx], incoming, pos, plan)
 			updatePositions(levels, pos)
@@ -451,7 +451,7 @@ func drawPlanDAGStyled(plan *PlanDAG, _ int, selectedNodeID string, expandedNode
 
 	// Draw dimmed connectors first, then highlighted ones on top,
 	// so highlighted lines are never overwritten by dimmed ones.
-	for pass := 0; pass < 2; pass++ {
+	for pass := range 2 {
 		for _, edge := range plan.Edges {
 			from, okFrom := placements[edge.From]
 			to, okTo := placements[edge.To]
@@ -614,7 +614,7 @@ func drawCard(canvas *dagCanvas, x, y, width, height int, card nodeCard, selecte
 		glowStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("205")).Bold(true)
 		gx, gy, gw, gh := x-1, y-1, width+2, height+2
 		// Heavy horizontal lines top/bottom
-		for col := 0; col < gw; col++ {
+		for col := range gw {
 			canvas.set(gx+col, gy, '━', glowStyle)
 			canvas.set(gx+col, gy+gh-1, '━', glowStyle)
 		}
@@ -788,10 +788,7 @@ func breakpointPopDownLine(width int) string {
 		return label
 	}
 
-	remaining := width - 1 - len(core) - 1
-	if remaining < 1 {
-		remaining = 1
-	}
+	remaining := max(width-1-len(core)-1, 1)
 
 	return "└" + core + strings.Repeat("─", remaining) + "┘"
 }
@@ -819,11 +816,8 @@ func drawProgressBar(canvas *dagCanvas, x, y, width int, card nodeCard, bgStyle 
 			r = '⠋'
 		}
 		// bar of ░ then space then spinner rune
-		barWidth := width - 2
-		if barWidth < 1 {
-			barWidth = 1
-		}
-		for i := 0; i < barWidth; i++ {
+		barWidth := max(width-2, 1)
+		for i := range barWidth {
 			canvas.set(x+i, y, '░', shimmerStyle)
 		}
 		canvas.set(x+barWidth, y, ' ', bgStyle)
@@ -850,15 +844,9 @@ func drawProgressBar(canvas *dagCanvas, x, y, width int, card nodeCard, bgStyle 
 	}
 
 	barWidth := width - labelWidth - 1
-	filled := int(math.Round(float64(barWidth) * float64(progress.Percent) / 100))
-	if filled < 0 {
-		filled = 0
-	}
-	if filled > barWidth {
-		filled = barWidth
-	}
+	filled := min(max(int(math.Round(float64(barWidth)*float64(progress.Percent)/100)), 0), barWidth)
 
-	for i := 0; i < barWidth; i++ {
+	for i := range barWidth {
 		ch := '░'
 		style := emptyStyle
 		if i < filled {
@@ -922,10 +910,7 @@ func drawConnectorDynamic(canvas *dagCanvas, from, to planDAGPlacement, cardWidt
 	fromY := from.y + fromHeight/2
 	toY := to.y + toHeight/2
 	startX := from.x + cardWidth
-	endX := to.x - 1
-	if endX < startX {
-		endX = startX
-	}
+	endX := max(to.x-1, startX)
 	midX := startX
 	if endX > startX {
 		midX = startX + (endX-startX)/2
@@ -1069,11 +1054,11 @@ func (c *dagCanvas) set(x, y int, ch rune, style lipgloss.Style) {
 }
 
 func (c *dagCanvas) drawBorder(x, y, width, height int, style lipgloss.Style) {
-	for col := 0; col < width; col++ {
+	for col := range width {
 		c.set(x+col, y, boxHLine, style)
 		c.set(x+col, y+height-1, boxHLine, style)
 	}
-	for row := 0; row < height; row++ {
+	for row := range height {
 		c.set(x, y+row, boxVLine, style)
 		c.set(x+width-1, y+row, boxVLine, style)
 	}

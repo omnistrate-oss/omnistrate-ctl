@@ -58,7 +58,7 @@ services:
 		require.NoError(t, err)
 
 		// Test that it's valid YAML
-		var yamlContent map[string]interface{}
+		var yamlContent map[string]any
 		err = yaml.Unmarshal(data, &yamlContent)
 		assert.NoError(t, err)
 		assert.Contains(t, yamlContent, "services")
@@ -84,7 +84,7 @@ services:
 		data, err := os.ReadFile(specFile)
 		require.NoError(t, err)
 
-		var yamlContent map[string]interface{}
+		var yamlContent map[string]any
 		err = yaml.Unmarshal(data, &yamlContent)
 		assert.NoError(t, err)
 		assert.Contains(t, yamlContent, "x-omnistrate-service-plan")
@@ -107,18 +107,18 @@ services:
 		require.NoError(t, err)
 
 		// Test the omnistrate key detection logic
-		var yamlContent map[string]interface{}
+		var yamlContent map[string]any
 		err = yaml.Unmarshal(data, &yamlContent)
 		require.NoError(t, err)
 
 		// Helper function to check for omnistrate keys
-		var containsOmnistrateKey func(m map[string]interface{}) bool
-		containsOmnistrateKey = func(m map[string]interface{}) bool {
+		var containsOmnistrateKey func(m map[string]any) bool
+		containsOmnistrateKey = func(m map[string]any) bool {
 			for k, v := range m {
 				if strings.HasPrefix(k, "x-omnistrate-") {
 					return true
 				}
-				if sub, ok := v.(map[string]interface{}); ok {
+				if sub, ok := v.(map[string]any); ok {
 					if containsOmnistrateKey(sub) {
 						return true
 					}
@@ -148,7 +148,7 @@ services:
 		data, err := os.ReadFile(malformedFile)
 		require.NoError(t, err)
 
-		var yamlContent map[string]interface{}
+		var yamlContent map[string]any
 		err = yaml.Unmarshal(data, &yamlContent)
 		assert.Error(t, err, "Should fail to parse malformed YAML")
 	})
@@ -318,7 +318,7 @@ func TestInstanceManagement(t *testing.T) {
 	})
 
 	t.Run("INST-006_InstanceCreationWithParams", func(t *testing.T) {
-		params := map[string]interface{}{
+		params := map[string]any{
 			"key":   "value",
 			"count": 3,
 		}
@@ -463,7 +463,7 @@ func TestParameterValidation(t *testing.T) {
 	t.Run("PARAM-001_ValidJSONParameters", func(t *testing.T) {
 		paramJSON := `{"key":"value","count":3,"enabled":true}`
 
-		var params map[string]interface{}
+		var params map[string]any
 		err := json.Unmarshal([]byte(paramJSON), &params)
 
 		assert.NoError(t, err)
@@ -475,7 +475,7 @@ func TestParameterValidation(t *testing.T) {
 	t.Run("PARAM-002_InvalidJSONParameters", func(t *testing.T) {
 		invalidJSON := `{"key":"value","count":}`
 
-		var params map[string]interface{}
+		var params map[string]any
 		err := json.Unmarshal([]byte(invalidJSON), &params)
 
 		assert.Error(t, err, "Should fail to parse invalid JSON")
@@ -496,7 +496,7 @@ func TestParameterValidation(t *testing.T) {
 		data, err := os.ReadFile(paramFile)
 		require.NoError(t, err)
 
-		var params map[string]interface{}
+		var params map[string]any
 		err = json.Unmarshal(data, &params)
 		assert.NoError(t, err)
 		assert.Equal(t, "testdb", params["database_name"])
@@ -513,7 +513,7 @@ func TestParameterValidation(t *testing.T) {
 	t.Run("PARAM-006_EmptyParameters", func(t *testing.T) {
 		emptyParams := `{}`
 
-		var params map[string]interface{}
+		var params map[string]any
 		err := json.Unmarshal([]byte(emptyParams), &params)
 
 		assert.NoError(t, err)
@@ -565,17 +565,18 @@ nested:
 func TestErrorHandling(t *testing.T) {
 	t.Run("ERR-003_LargeSpecFileProcessing", func(t *testing.T) {
 		// Create a large YAML content
-		largeContent := "services:\n"
-		for i := 0; i < 1000; i++ {
-			largeContent += fmt.Sprintf("  service%d:\n    image: nginx:latest\n", i)
+		var largeContent strings.Builder
+		largeContent.WriteString("services:\n")
+		for i := range 1000 {
+			fmt.Fprintf(&largeContent, "  service%d:\n    image: nginx:latest\n", i)
 		}
 
 		// Test that large content can be processed
-		var yamlContent map[string]interface{}
-		err := yaml.Unmarshal([]byte(largeContent), &yamlContent)
+		var yamlContent map[string]any
+		err := yaml.Unmarshal([]byte(largeContent.String()), &yamlContent)
 		assert.NoError(t, err, "Should handle large YAML files")
 
-		services, ok := yamlContent["services"].(map[string]interface{})
+		services, ok := yamlContent["services"].(map[string]any)
 		assert.True(t, ok)
 		assert.Equal(t, 1000, len(services), "Should have all 1000 services")
 	})
@@ -593,12 +594,12 @@ services:
       - service1
 `
 		// Test parsing of circular dependencies
-		var parsed map[string]interface{}
+		var parsed map[string]any
 		err := yaml.Unmarshal([]byte(yamlContent), &parsed)
 		assert.NoError(t, err, "YAML should parse successfully")
 
 		// Note: Actual circular dependency detection would be in deployment logic
-		services := parsed["services"].(map[string]interface{})
+		services := parsed["services"].(map[string]any)
 		assert.Contains(t, services, "service1")
 		assert.Contains(t, services, "service2")
 	})
@@ -741,7 +742,7 @@ func TestContainsString(t *testing.T) {
 func TestIsMissingParamValue(t *testing.T) {
 	tests := []struct {
 		name     string
-		value    interface{}
+		value    any
 		expected bool
 	}{
 		{
@@ -908,11 +909,11 @@ func TestParsePromptInputValue(t *testing.T) {
 	tests := []struct {
 		name     string
 		input    string
-		expected interface{}
+		expected any
 	}{
 		{name: "json integer", input: "42", expected: float64(42)},
 		{name: "json boolean", input: "true", expected: true},
-		{name: "json array", input: `["a","b"]`, expected: []interface{}{"a", "b"}},
+		{name: "json array", input: `["a","b"]`, expected: []any{"a", "b"}},
 		{name: "json null falls back to literal", input: "null", expected: "null"},
 		{name: "plain string", input: "db-user", expected: "db-user"},
 	}
@@ -926,7 +927,7 @@ func TestParsePromptInputValue(t *testing.T) {
 
 func TestApplyPromptedParamValues(t *testing.T) {
 	t.Run("fills only missing required values", func(t *testing.T) {
-		params := map[string]interface{}{
+		params := map[string]any{
 			"username": "",
 			"count":    nil,
 			"region":   "us-east-1",
@@ -946,7 +947,7 @@ func TestApplyPromptedParamValues(t *testing.T) {
 	})
 
 	t.Run("returns read error", func(t *testing.T) {
-		params := map[string]interface{}{"password": nil}
+		params := map[string]any{"password": nil}
 		err := applyPromptedParamValues(params, []string{"password"}, func(string) (string, error) {
 			return "", errors.New("read failed")
 		})
@@ -955,7 +956,7 @@ func TestApplyPromptedParamValues(t *testing.T) {
 	})
 
 	t.Run("keeps prompted null as literal string", func(t *testing.T) {
-		params := map[string]interface{}{"username": nil}
+		params := map[string]any{"username": nil}
 		err := applyPromptedParamValues(params, []string{"username"}, func(string) (string, error) {
 			return "null", nil
 		})

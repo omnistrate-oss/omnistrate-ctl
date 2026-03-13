@@ -268,7 +268,7 @@ func EnhanceServicePlansWithAccountInfo(ctx context.Context, token string, servi
 
 			// Initialize AdditionalProperties if nil
 			if service.ServiceEnvironments[envIdx].ServicePlans[planIdx].AdditionalProperties == nil {
-				service.ServiceEnvironments[envIdx].ServicePlans[planIdx].AdditionalProperties = make(map[string]interface{})
+				service.ServiceEnvironments[envIdx].ServicePlans[planIdx].AdditionalProperties = make(map[string]any)
 			}
 
 			// Add enhanced information to the existing service plan

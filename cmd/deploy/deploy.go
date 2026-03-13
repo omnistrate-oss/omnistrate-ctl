@@ -5,10 +5,12 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
 	"reflect"
 	"regexp"
+	"slices"
 	"strings"
 	"time"
 
@@ -346,7 +348,7 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 		}
 
 		// Check for omnistrate-specific configurations
-		var planCheck map[string]interface{}
+		var planCheck map[string]any
 		if err := yaml.Unmarshal(processedData, &planCheck); err == nil {
 			// Use the common function to detect spec type
 			specType = build.DetectSpecType(planCheck)
@@ -556,7 +558,7 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 				}
 
 				// Parse the JSON to extract credentials
-				var paramsMap map[string]interface{}
+				var paramsMap map[string]any
 				if err := json.Unmarshal([]byte(paramsJSON), &paramsMap); err != nil {
 					return fmt.Errorf("failed to parse credentials: %w", err)
 				}
@@ -738,37 +740,31 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 				return err
 			}
 			if deploymentYAML != nil {
-				composeMap := map[string]interface{}{}
+				composeMap := map[string]any{}
 				if err := yaml.Unmarshal(processedData, &composeMap); err != nil {
 					return pkgerrors.Wrap(err, "failed to parse compose YAML for injection")
 				}
-				depMap := map[string]interface{}{}
+				depMap := map[string]any{}
 				if err := yaml.Unmarshal(deploymentYAML, &depMap); err == nil {
 					if specType != build.DockerComposeSpecType {
 						// Inject deployment info under each service
-						if services, ok := composeMap["services"].(map[string]interface{}); ok {
+						if services, ok := composeMap["services"].(map[string]any); ok {
 							for svcName, svcVal := range services {
-								svcMap, ok := svcVal.(map[string]interface{})
+								svcMap, ok := svcVal.(map[string]any)
 								if !ok {
 									continue
 								}
-								for k, v := range depMap {
-									svcMap[k] = v
-								}
+								maps.Copy(svcMap, depMap)
 								services[svcName] = svcMap
 							}
 							composeMap["services"] = services
 						} else {
 							// Inject deployment info at root level
-							for k, v := range depMap {
-								composeMap[k] = v
-							}
+							maps.Copy(composeMap, depMap)
 						}
 					} else {
 						// Inject deployment info at root level
-						for k, v := range depMap {
-							composeMap[k] = v
-						}
+						maps.Copy(composeMap, depMap)
 					}
 				}
 				finalYAML, err := yaml.Marshal(composeMap)
@@ -1023,7 +1019,7 @@ func executeDeploymentWorkflow(cmd *cobra.Command, sm utils.SpinnerManager, toke
 }
 
 // createInstanceUnified creates an instance with or without subscription, removing duplicate code
-func createInstanceUnified(ctx context.Context, token, serviceID, environmentID, productTierID, cloudProvider, region, resourceID, instanceType string, formattedParams map[string]interface{}) (string, error) {
+func createInstanceUnified(ctx context.Context, token, serviceID, environmentID, productTierID, cloudProvider, region, resourceID, instanceType string, formattedParams map[string]any) (string, error) {
 	sm := utils.NewSpinnerManager()
 	sm.Start()
 	spinner := sm.AddSpinner("Step 2/2: Deploying a new instance")
@@ -1047,7 +1043,7 @@ func createInstanceUnified(ctx context.Context, token, serviceID, environmentID,
 	offering := res.Offerings[0]
 
 	// Create default parameters with common sensible defaults
-	defaultParams := map[string]interface{}{}
+	defaultParams := map[string]any{}
 	resourceKey := ""
 
 	if instanceType == "cloudAccount" {
@@ -1159,13 +1155,7 @@ func createInstanceUnified(ctx context.Context, token, serviceID, environmentID,
 		// Select default cloudProvider and region from offering.CloudProviders if available
 
 		if len(offering.CloudProviders) > 0 && cloudProvider != "" {
-			found := false
-			for _, cp := range offering.CloudProviders {
-				if cp == cloudProvider {
-					found = true
-					break
-				}
-			}
+			found := slices.Contains(offering.CloudProviders, cloudProvider)
 			if !found {
 				// fallback to first available provider, but explain
 				return "", fmt.Errorf("cloud provider '%s' is not supported for this service plan. Supported providers: %v", cloudProvider, offering.CloudProviders)
@@ -1189,30 +1179,21 @@ func createInstanceUnified(ctx context.Context, token, serviceID, environmentID,
 			azureRegions := offering.AzureRegions
 
 			// Check GCP regions first
-			for _, gcpRegion := range gcpRegions {
-				if gcpRegion == region {
-					cloudProvider = "gcp"
-					break
-				}
+			if slices.Contains(gcpRegions, region) {
+				cloudProvider = "gcp"
 			}
 
 			// check AWS regions
 			if cloudProvider == "" {
-				for _, awsRegion := range awsRegions {
-					if awsRegion == region {
-						cloudProvider = "aws"
-						break
-					}
+				if slices.Contains(awsRegions, region) {
+					cloudProvider = "aws"
 				}
 			}
 
 			// check Azure regions
 			if cloudProvider == "" {
-				for _, azureRegion := range azureRegions {
-					if azureRegion == region {
-						cloudProvider = "azure"
-						break
-					}
+				if slices.Contains(azureRegions, region) {
+					cloudProvider = "azure"
 				}
 			}
 
@@ -1232,13 +1213,7 @@ func createInstanceUnified(ctx context.Context, token, serviceID, environmentID,
 			case "azure":
 				regions = offering.AzureRegions
 			}
-			found := false
-			for _, rk := range regions {
-				if rk == region {
-					found = true
-					break
-				}
-			}
+			found := slices.Contains(regions, region)
 			if region == "" && len(regions) > 0 {
 				found = true // skip check if region is not specified
 				region = regions[0]
@@ -1504,22 +1479,22 @@ func findExistingService(ctx context.Context, token, serviceName string) (string
 }
 
 // findAllOmnistrateServicePlanBlocks recursively finds all x-omnistrate-service-plan blocks in any YAML document
-func findAllOmnistrateServicePlanBlocks(yamlContent interface{}) []map[string]interface{} {
-	var results []map[string]interface{}
-	var search func(node interface{})
-	search = func(node interface{}) {
+func findAllOmnistrateServicePlanBlocks(yamlContent any) []map[string]any {
+	var results []map[string]any
+	var search func(node any)
+	search = func(node any) {
 		switch v := node.(type) {
-		case map[string]interface{}:
+		case map[string]any:
 			for k, val := range v {
 				if k == "x-omnistrate-service-plan" {
-					if block, ok := val.(map[string]interface{}); ok {
+					if block, ok := val.(map[string]any); ok {
 						results = append(results, block)
 					}
 				}
 				// Recurse into all values
 				search(val)
 			}
-		case []interface{}:
+		case []any:
 			for _, item := range v {
 				search(item)
 			}
@@ -1544,7 +1519,7 @@ func extractCloudAccountsFromProcessedData(processedData []byte) (awsAccountID, 
 	}
 
 	// Simple helper to get string value with multiple key variations
-	getFirstString := func(m map[string]interface{}, keys ...string) string {
+	getFirstString := func(m map[string]any, keys ...string) string {
 		for _, key := range keys {
 			if v, ok := m[key].(string); ok && v != "" {
 				return v
@@ -1557,7 +1532,7 @@ func extractCloudAccountsFromProcessedData(processedData []byte) (awsAccountID, 
 	}
 
 	// Helper to extract account info from any map
-	extractAccountDetails := func(m map[string]interface{}) {
+	extractAccountDetails := func(m map[string]any) {
 		if awsAccountID == "" {
 			awsAccountID = getFirstString(m, "awsAccountId", "awsAccountID", "AwsAccountID", "AwsAccountId")
 		}
@@ -1582,15 +1557,15 @@ func extractCloudAccountsFromProcessedData(processedData []byte) (awsAccountID, 
 	}
 
 	// Helper to process deployment sections (hosted/byoa)
-	processDeploymentMap := func(depMap map[string]interface{}) {
+	processDeploymentMap := func(depMap map[string]any) {
 		if hosted, exists := depMap["hostedDeployment"]; exists {
-			if hostedMap, ok := hosted.(map[string]interface{}); ok {
+			if hostedMap, ok := hosted.(map[string]any); ok {
 				setDeploymentType("hosted")
 				extractAccountDetails(hostedMap)
 			}
 		}
 		if byoa, exists := depMap["byoaDeployment"]; exists {
-			if byoaMap, ok := byoa.(map[string]interface{}); ok {
+			if byoaMap, ok := byoa.(map[string]any); ok {
 				setDeploymentType(build.DeploymentTypeByoa)
 				extractAccountDetails(byoaMap)
 			}
@@ -1598,20 +1573,20 @@ func extractCloudAccountsFromProcessedData(processedData []byte) (awsAccountID, 
 	}
 
 	// Parse YAML content directly
-	var yamlContent map[string]interface{}
+	var yamlContent map[string]any
 	if err := yaml.Unmarshal(processedData, &yamlContent); err != nil {
 		return "", "", "", "", "", "", "", "" // Return empty values if YAML is invalid
 	}
 
 	// Check direct x-omnistrate-byoa/hosted keys
 	if byoa, exists := yamlContent["x-omnistrate-byoa"]; exists {
-		if byoaMap, ok := byoa.(map[string]interface{}); ok {
+		if byoaMap, ok := byoa.(map[string]any); ok {
 			setDeploymentType(build.DeploymentTypeByoa)
 			extractAccountDetails(byoaMap)
 		}
 	}
 	if hosted, exists := yamlContent["x-omnistrate-hosted"]; exists {
-		if hostedMap, ok := hosted.(map[string]interface{}); ok {
+		if hostedMap, ok := hosted.(map[string]any); ok {
 			setDeploymentType("hosted")
 			extractAccountDetails(hostedMap)
 		}
@@ -1619,10 +1594,10 @@ func extractCloudAccountsFromProcessedData(processedData []byte) (awsAccountID, 
 
 	// Check x-omnistrate-service-plan
 	if sp, exists := yamlContent["x-omnistrate-service-plan"]; exists {
-		if spMap, ok := sp.(map[string]interface{}); ok {
+		if spMap, ok := sp.(map[string]any); ok {
 			extractAccountDetails(spMap)
 			if deployment, exists := spMap["deployment"]; exists {
-				if depMap, ok := deployment.(map[string]interface{}); ok {
+				if depMap, ok := deployment.(map[string]any); ok {
 					processDeploymentMap(depMap)
 				}
 			}
@@ -1631,7 +1606,7 @@ func extractCloudAccountsFromProcessedData(processedData []byte) (awsAccountID, 
 
 	// Check top-level deployment
 	if deployment, exists := yamlContent["deployment"]; exists {
-		if depMap, ok := deployment.(map[string]interface{}); ok {
+		if depMap, ok := deployment.(map[string]any); ok {
 			processDeploymentMap(depMap)
 		}
 	}
@@ -1641,7 +1616,7 @@ func extractCloudAccountsFromProcessedData(processedData []byte) (awsAccountID, 
 	for _, spMap := range spBlocks {
 		extractAccountDetails(spMap)
 		if deployment, exists := spMap["deployment"]; exists {
-			if depMap, ok := deployment.(map[string]interface{}); ok {
+			if depMap, ok := deployment.(map[string]any); ok {
 				processDeploymentMap(depMap)
 			}
 		}
@@ -1761,14 +1736,14 @@ func createDeploymentYAML(
 	gcpServiceAccountEmail string,
 	azureSubscriptionID string,
 	azureTenantID string,
-) map[string]interface{} {
+) map[string]any {
 	// Validate deployment type
 	if deploymentType != build.DeploymentTypeHosted && deploymentType != build.DeploymentTypeByoa {
 		fmt.Printf("Warning: Invalid deployment type '%s'. Using default 'hosted'. Valid values are: hosted, byoa\n", deploymentType)
 		deploymentType = "hosted"
 	}
 
-	yamlDoc := make(map[string]interface{}) // Initialize yamlDoc as an empty map
+	yamlDoc := make(map[string]any) // Initialize yamlDoc as an empty map
 
 	if awsAccountID != "" && awsBootstrapRoleARN == "" {
 		// Default role ARN if not provided
@@ -1780,11 +1755,11 @@ func createDeploymentYAML(
 		gcpServiceAccountEmail = fmt.Sprintf("omnistrate-bootstrap@%s.iam.gserviceaccount.com", gcpProjectID)
 	}
 
-	getServicePlan := func() map[string]interface{} {
-		if sp, ok := yamlDoc["x-omnistrate-service-plan"].(map[string]interface{}); ok {
+	getServicePlan := func() map[string]any {
+		if sp, ok := yamlDoc["x-omnistrate-service-plan"].(map[string]any); ok {
 			return sp
 		}
-		return make(map[string]interface{})
+		return make(map[string]any)
 	}
 
 	// Build the deployment section based on deploymentType and specType
@@ -1792,16 +1767,16 @@ func createDeploymentYAML(
 	switch deploymentType {
 	case build.DeploymentTypeByoa:
 		if specType == build.ServicePlanSpecType {
-			yamlDoc["deployment"] = map[string]interface{}{
-				"byoaDeployment": map[string]interface{}{
+			yamlDoc["deployment"] = map[string]any{
+				"byoaDeployment": map[string]any{
 					"awsAccountId":               awsAccountID,
 					"awsBootstrapRoleAccountArn": awsBootstrapRoleARN,
 				},
 			}
 		} else {
 			sp := getServicePlan()
-			sp["deployment"] = map[string]interface{}{
-				"byoaDeployment": map[string]interface{}{
+			sp["deployment"] = map[string]any{
+				"byoaDeployment": map[string]any{
 					"awsAccountId":               awsAccountID,
 					"awsBootstrapRoleAccountArn": awsBootstrapRoleARN,
 				},
@@ -1811,10 +1786,10 @@ func createDeploymentYAML(
 
 	case build.DeploymentTypeHosted:
 		if specType == build.ServicePlanSpecType {
-			yamlDoc["deployment"] = map[string]interface{}{
-				"hostedDeployment": map[string]interface{}{},
+			yamlDoc["deployment"] = map[string]any{
+				"hostedDeployment": map[string]any{},
 			}
-			hosted := make(map[string]interface{})
+			hosted := make(map[string]any)
 			if awsAccountID != "" {
 				hosted["awsAccountId"] = awsAccountID
 				if awsBootstrapRoleARN != "" {
@@ -1836,10 +1811,10 @@ func createDeploymentYAML(
 					hosted["azureTenantId"] = azureTenantID
 				}
 			}
-			yamlDoc["deployment"].(map[string]interface{})["hostedDeployment"] = hosted
+			yamlDoc["deployment"].(map[string]any)["hostedDeployment"] = hosted
 		} else {
 			sp := getServicePlan()
-			hosted := make(map[string]interface{})
+			hosted := make(map[string]any)
 			if awsAccountID != "" {
 				hosted["awsAccountId"] = awsAccountID
 				if awsBootstrapRoleARN != "" {
@@ -1861,7 +1836,7 @@ func createDeploymentYAML(
 					hosted["azureTenantId"] = azureTenantID
 				}
 			}
-			sp["deployment"] = map[string]interface{}{
+			sp["deployment"] = map[string]any{
 				"hostedDeployment": hosted,
 			}
 			yamlDoc["x-omnistrate-service-plan"] = sp
@@ -1872,12 +1847,7 @@ func createDeploymentYAML(
 
 // containsString checks if a slice of strings contains a specific string.
 func containsString(slice []string, item string) bool {
-	for _, s := range slice {
-		if s == item {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(slice, item)
 }
 
 // CloudInstanceStatus holds cloud account instances grouped by status
@@ -2071,7 +2041,7 @@ func promptForCloudProvider() string {
 
 // promptForCloudCredentials prompts user for cloud-specific credentials
 func promptForCloudCredentials(cloudProvider string) (string, error) {
-	var params map[string]interface{}
+	var params map[string]any
 
 	switch cloudProvider {
 	case "aws":
@@ -2093,7 +2063,7 @@ func promptForCloudCredentials(cloudProvider string) (string, error) {
 			awsBootstrapRoleArn = fmt.Sprintf("arn:aws:iam::%s:role/omnistrate-bootstrap-role", awsAccountID)
 		}
 
-		params = map[string]interface{}{
+		params = map[string]any{
 			"account_configuration_method": "CloudFormation",
 			"aws_account_id":               awsAccountID,
 			"aws_bootstrap_role_arn":       awsBootstrapRoleArn,
@@ -2114,7 +2084,7 @@ func promptForCloudCredentials(cloudProvider string) (string, error) {
 			return "", fmt.Errorf("failed to read GCP Project Number: %w", err)
 		}
 
-		params = map[string]interface{}{
+		params = map[string]any{
 			"account_configuration_method": "GCPScript",
 			"gcp_project_id":               gcpProjectID,
 			"gcp_project_number":           gcpProjectNumber,
@@ -2135,7 +2105,7 @@ func promptForCloudCredentials(cloudProvider string) (string, error) {
 			return "", fmt.Errorf("failed to read Azure Tenant ID: %w", err)
 		}
 
-		params = map[string]interface{}{
+		params = map[string]any{
 			"account_configuration_method": "AzureScript",
 			"azure_subscription_id":        azureSubscriptionID,
 			"azure_tenant_id":              azureTenantID,
@@ -2186,7 +2156,7 @@ func waitForAccountVerification(ctx context.Context, token, serviceID,
 	retryInterval := 10 * time.Second
 	showCloudSetupInstruction := false
 
-	for i := 0; i < maxRetries; i++ {
+	for i := range maxRetries {
 		// Get all accounts for the cloud provider
 		_, existingInstances, err := listInstances(ctx, token, serviceID, environmentID, planID, "", "onlyCloudAccounts")
 		if err != nil {
@@ -2282,7 +2252,7 @@ func printMissingParamsGuidance(err error) {
 	))
 }
 
-func isMissingParamValue(value interface{}) bool {
+func isMissingParamValue(value any) bool {
 	if value == nil {
 		return true
 	}
@@ -2303,7 +2273,7 @@ func isInteractivePromptEnabled() bool {
 	return (stdinInfo.Mode() & os.ModeCharDevice) != 0
 }
 
-func promptForMissingRequiredParams(defaultParams map[string]interface{}, requiredParams []string) error {
+func promptForMissingRequiredParams(defaultParams map[string]any, requiredParams []string) error {
 	if len(requiredParams) == 0 {
 		return nil
 	}
@@ -2332,7 +2302,7 @@ func promptForMissingRequiredParams(defaultParams map[string]interface{}, requir
 	})
 }
 
-func applyPromptedParamValues(defaultParams map[string]interface{}, requiredParams []string, readValue func(string) (string, error)) error {
+func applyPromptedParamValues(defaultParams map[string]any, requiredParams []string, readValue func(string) (string, error)) error {
 	for _, paramKey := range requiredParams {
 		if !isMissingParamValue(defaultParams[paramKey]) {
 			continue
@@ -2346,8 +2316,8 @@ func applyPromptedParamValues(defaultParams map[string]interface{}, requiredPara
 	return nil
 }
 
-func parsePromptInputValue(value string) interface{} {
-	var parsed interface{}
+func parsePromptInputValue(value string) any {
+	var parsed any
 	if err := json.Unmarshal([]byte(value), &parsed); err == nil {
 		if parsed == nil {
 			return value

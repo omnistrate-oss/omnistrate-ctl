@@ -296,20 +296,14 @@ func (m terraformDetailModel) renderLogsTab() string {
 		labelText,
 	)
 
-	bodyH := m.bodyHeight() - 4
-	if bodyH < 1 {
-		bodyH = 1
-	}
+	bodyH := max(m.bodyHeight()-4, 1)
 
 	totalLines := len(m.logLines)
 
 	// Scroll position is managed in Update()
 	scroll := m.logScroll
 	// Clamp scroll
-	maxScroll := totalLines - bodyH
-	if maxScroll < 0 {
-		maxScroll = 0
-	}
+	maxScroll := max(totalLines-bodyH, 0)
 	if scroll > maxScroll {
 		scroll = maxScroll
 	}
@@ -317,16 +311,10 @@ func (m terraformDetailModel) renderLogsTab() string {
 		scroll = 0
 	}
 
-	end := scroll + bodyH
-	if end > totalLines {
-		end = totalLines
-	}
+	end := min(scroll+bodyH, totalLines)
 
 	lineNumStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("241"))
-	maxCodeWidth := m.contentWidth() - 9
-	if maxCodeWidth < 20 {
-		maxCodeWidth = 20
-	}
+	maxCodeWidth := max(m.contentWidth()-9, 20)
 
 	for i := scroll; i < end; i++ {
 		line := m.logLines[i]

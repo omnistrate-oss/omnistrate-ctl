@@ -11,15 +11,15 @@ import (
 )
 
 func TestDetectSpecType_TerraformSpec(t *testing.T) {
-	yamlContent := map[string]interface{}{
+	yamlContent := map[string]any{
 		"name": "Terraform",
-		"services": []interface{}{
-			map[string]interface{}{
+		"services": []any{
+			map[string]any{
 				"name": "terraformResource",
 				"type": "terraform",
-				"terraformConfigurations": map[string]interface{}{
-					"configurationPerCloudProvider": map[string]interface{}{
-						"aws": map[string]interface{}{
+				"terraformConfigurations": map[string]any{
+					"configurationPerCloudProvider": map[string]any{
+						"aws": map[string]any{
 							"terraformPath": "/",
 						},
 					},
@@ -33,12 +33,12 @@ func TestDetectSpecType_TerraformSpec(t *testing.T) {
 }
 
 func TestDetectSpecType_HelmSpec(t *testing.T) {
-	yamlContent := map[string]interface{}{
+	yamlContent := map[string]any{
 		"name": "Redis",
-		"services": []interface{}{
-			map[string]interface{}{
+		"services": []any{
+			map[string]any{
 				"name": "redis",
-				"helmChartConfiguration": map[string]interface{}{
+				"helmChartConfiguration": map[string]any{
 					"chartName": "redis",
 				},
 			},
@@ -50,9 +50,9 @@ func TestDetectSpecType_HelmSpec(t *testing.T) {
 }
 
 func TestDetectSpecType_DockerCompose(t *testing.T) {
-	yamlContent := map[string]interface{}{
-		"services": map[string]interface{}{
-			"web": map[string]interface{}{
+	yamlContent := map[string]any{
+		"services": map[string]any{
+			"web": map[string]any{
 				"image": "nginx",
 			},
 		},
@@ -65,13 +65,13 @@ func TestDetectSpecType_DockerCompose(t *testing.T) {
 func TestContainsOmnistrateKey(t *testing.T) {
 	tests := []struct {
 		name     string
-		content  map[string]interface{}
+		content  map[string]any
 		expected bool
 	}{
 		{
 			name: "has x-omnistrate-service-plan",
-			content: map[string]interface{}{
-				"x-omnistrate-service-plan": map[string]interface{}{
+			content: map[string]any{
+				"x-omnistrate-service-plan": map[string]any{
 					"name": "test",
 				},
 			},
@@ -79,8 +79,8 @@ func TestContainsOmnistrateKey(t *testing.T) {
 		},
 		{
 			name: "has x-omnistrate-hosted",
-			content: map[string]interface{}{
-				"x-omnistrate-hosted": map[string]interface{}{
+			content: map[string]any{
+				"x-omnistrate-hosted": map[string]any{
 					"AwsAccountId": "123",
 				},
 			},
@@ -88,9 +88,9 @@ func TestContainsOmnistrateKey(t *testing.T) {
 		},
 		{
 			name: "no omnistrate keys",
-			content: map[string]interface{}{
-				"services": map[string]interface{}{
-					"web": map[string]interface{}{
+			content: map[string]any{
+				"services": map[string]any{
+					"web": map[string]any{
 						"image": "nginx",
 					},
 				},

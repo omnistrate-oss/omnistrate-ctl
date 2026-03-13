@@ -3,13 +3,13 @@ package instance
 import "encoding/json"
 
 type HelmData struct {
-	ChartRepoName string                 `json:"chartRepoName"`
-	ChartRepoURL  string                 `json:"chartRepoURL"`
-	ChartVersion  string                 `json:"chartVersion"`
-	ChartValues   map[string]interface{} `json:"chartValues"`
-	InstallLog    string                 `json:"installLog"`
-	Namespace     string                 `json:"namespace"`
-	ReleaseName   string                 `json:"releaseName"`
+	ChartRepoName string         `json:"chartRepoName"`
+	ChartRepoURL  string         `json:"chartRepoURL"`
+	ChartVersion  string         `json:"chartVersion"`
+	ChartValues   map[string]any `json:"chartValues"`
+	InstallLog    string         `json:"installLog"`
+	Namespace     string         `json:"namespace"`
+	ReleaseName   string         `json:"releaseName"`
 }
 
 type TerraformData struct {
@@ -17,9 +17,9 @@ type TerraformData struct {
 	Logs  map[string]string `json:"logs"`
 }
 
-func parseHelmData(debugData map[string]interface{}) *HelmData {
+func parseHelmData(debugData map[string]any) *HelmData {
 	helmData := &HelmData{
-		ChartValues: make(map[string]interface{}),
+		ChartValues: make(map[string]any),
 	}
 
 	if chartRepoName, ok := debugData["chartRepoName"].(string); ok {
@@ -39,7 +39,7 @@ func parseHelmData(debugData map[string]interface{}) *HelmData {
 	}
 
 	if chartValuesStr, ok := debugData["chartValues"].(string); ok {
-		var chartValues map[string]interface{}
+		var chartValues map[string]any
 		if err := json.Unmarshal([]byte(chartValuesStr), &chartValues); err == nil {
 			helmData.ChartValues = chartValues
 		}

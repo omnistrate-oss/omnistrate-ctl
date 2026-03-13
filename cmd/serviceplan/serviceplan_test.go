@@ -1,7 +1,6 @@
 package serviceplan
 
 import (
-	"github.com/omnistrate-oss/omnistrate-ctl/internal/utils"
 	openapiclientfleet "github.com/omnistrate-oss/omnistrate-sdk-go/fleet"
 
 	"testing"
@@ -21,75 +20,75 @@ func TestFilterLatestNVersions(t *testing.T) {
 		{
 			name: "latestN is -1, return all service plans",
 			servicePlans: []openapiclientfleet.ServicePlanSearchRecord{
-				{ReleasedAt: utils.ToPtr("2023-08-01T00:00:00Z")},
-				{ReleasedAt: utils.ToPtr("2023-07-01T00:00:00Z")},
+				{ReleasedAt: new("2023-08-01T00:00:00Z")},
+				{ReleasedAt: new("2023-07-01T00:00:00Z")},
 			},
 			latestN: -1,
 			expected: []openapiclientfleet.ServicePlanSearchRecord{
-				{ReleasedAt: utils.ToPtr("2023-08-01T00:00:00Z")},
-				{ReleasedAt: utils.ToPtr("2023-07-01T00:00:00Z")},
+				{ReleasedAt: new("2023-08-01T00:00:00Z")},
+				{ReleasedAt: new("2023-07-01T00:00:00Z")},
 			},
 		},
 		{
 			name: "latestN is greater than available plans, return all service plans",
 			servicePlans: []openapiclientfleet.ServicePlanSearchRecord{
-				{ReleasedAt: utils.ToPtr("2023-08-01T00:00:00Z")},
-				{ReleasedAt: utils.ToPtr("2023-07-01T00:00:00Z")},
+				{ReleasedAt: new("2023-08-01T00:00:00Z")},
+				{ReleasedAt: new("2023-07-01T00:00:00Z")},
 			},
 			latestN: 5,
 			expected: []openapiclientfleet.ServicePlanSearchRecord{
-				{ReleasedAt: utils.ToPtr("2023-08-01T00:00:00Z")},
-				{ReleasedAt: utils.ToPtr("2023-07-01T00:00:00Z")},
+				{ReleasedAt: new("2023-08-01T00:00:00Z")},
+				{ReleasedAt: new("2023-07-01T00:00:00Z")},
 			},
 		},
 		{
 			name: "latestN is 1, return only the latest service plan",
 			servicePlans: []openapiclientfleet.ServicePlanSearchRecord{
-				{ReleasedAt: utils.ToPtr("2023-08-01T00:00:00Z")},
-				{ReleasedAt: utils.ToPtr("2023-07-01T00:00:00Z")},
+				{ReleasedAt: new("2023-08-01T00:00:00Z")},
+				{ReleasedAt: new("2023-07-01T00:00:00Z")},
 			},
 			latestN: 1,
 			expected: []openapiclientfleet.ServicePlanSearchRecord{
-				{ReleasedAt: utils.ToPtr("2023-08-01T00:00:00Z")},
+				{ReleasedAt: new("2023-08-01T00:00:00Z")},
 			},
 		},
 		{
 			name: "latestN is 2, return the latest 2 service plans",
 			servicePlans: []openapiclientfleet.ServicePlanSearchRecord{
-				{ReleasedAt: utils.ToPtr("2023-08-01T00:00:00Z")},
-				{ReleasedAt: utils.ToPtr("2023-07-01T00:00:00Z")},
-				{ReleasedAt: utils.ToPtr("2023-06-01T00:00:00Z")},
+				{ReleasedAt: new("2023-08-01T00:00:00Z")},
+				{ReleasedAt: new("2023-07-01T00:00:00Z")},
+				{ReleasedAt: new("2023-06-01T00:00:00Z")},
 			},
 			latestN: 2,
 			expected: []openapiclientfleet.ServicePlanSearchRecord{
-				{ReleasedAt: utils.ToPtr("2023-08-01T00:00:00Z")},
-				{ReleasedAt: utils.ToPtr("2023-07-01T00:00:00Z")},
+				{ReleasedAt: new("2023-08-01T00:00:00Z")},
+				{ReleasedAt: new("2023-07-01T00:00:00Z")},
 			},
 		},
 		{
 			name: "plans with nil release dates, sort properly",
 			servicePlans: []openapiclientfleet.ServicePlanSearchRecord{
-				{ReleasedAt: utils.ToPtr("2023-08-01T00:00:00Z")},
-				{ReleasedAt: utils.ToPtr("2023-07-01T00:00:00Z")},
+				{ReleasedAt: new("2023-08-01T00:00:00Z")},
+				{ReleasedAt: new("2023-07-01T00:00:00Z")},
 				{ReleasedAt: nil},
 			},
 			latestN: 2,
 			expected: []openapiclientfleet.ServicePlanSearchRecord{
-				{ReleasedAt: utils.ToPtr("2023-08-01T00:00:00Z")},
-				{ReleasedAt: utils.ToPtr("2023-07-01T00:00:00Z")},
+				{ReleasedAt: new("2023-08-01T00:00:00Z")},
+				{ReleasedAt: new("2023-07-01T00:00:00Z")},
 			},
 		},
 		{
 			name: "mix of plans with and without release dates, return correct latest plans",
 			servicePlans: []openapiclientfleet.ServicePlanSearchRecord{
-				{ReleasedAt: utils.ToPtr("2023-08-01T00:00:00Z")},
+				{ReleasedAt: new("2023-08-01T00:00:00Z")},
 				{ReleasedAt: nil},
-				{ReleasedAt: utils.ToPtr("2023-07-01T00:00:00Z")},
+				{ReleasedAt: new("2023-07-01T00:00:00Z")},
 			},
 			latestN: 2,
 			expected: []openapiclientfleet.ServicePlanSearchRecord{
-				{ReleasedAt: utils.ToPtr("2023-08-01T00:00:00Z")},
-				{ReleasedAt: utils.ToPtr("2023-07-01T00:00:00Z")},
+				{ReleasedAt: new("2023-08-01T00:00:00Z")},
+				{ReleasedAt: new("2023-07-01T00:00:00Z")},
 			},
 		},
 		{

@@ -174,7 +174,7 @@ func CreateCloudAccount(ctx context.Context, token string, params CloudAccountPa
 
 		request.CloudProviderId = cloudProviderID
 		request.AwsAccountID = &params.AwsAccountID
-		request.AwsBootstrapRoleARN = utils.ToPtr("arn:aws:iam::" + params.AwsAccountID + ":role/omnistrate-bootstrap-role")
+		request.AwsBootstrapRoleARN = new("arn:aws:iam::" + params.AwsAccountID + ":role/omnistrate-bootstrap-role")
 		request.Description = "AWS Account " + params.AwsAccountID
 	} else if params.GcpProjectID != "" {
 		// Get organization id
@@ -194,7 +194,7 @@ func CreateCloudAccount(ctx context.Context, token string, params CloudAccountPa
 		request.CloudProviderId = cloudProviderID
 		request.GcpProjectID = &params.GcpProjectID
 		request.GcpProjectNumber = &params.GcpProjectNumber
-		request.GcpServiceAccountEmail = utils.ToPtr(fmt.Sprintf("bootstrap-%s@%s.iam.gserviceaccount.com", *user.OrgId, params.GcpProjectID))
+		request.GcpServiceAccountEmail = new(fmt.Sprintf("bootstrap-%s@%s.iam.gserviceaccount.com", *user.OrgId, params.GcpProjectID))
 		request.Description = "GCP Account " + params.GcpProjectID
 	} else if params.AzureSubscriptionID != "" {
 		// Get azure cloud provider id

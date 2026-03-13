@@ -447,7 +447,7 @@ Select "Event Body" or "Channel Response" from the menu to view detailed content
 		event.GetChannelResponse() != nil)
 }
 
-func formatEventBody(body interface{}) string {
+func formatEventBody(body any) string {
 	heading := headingStyle.Render("Event Body")
 	if body == nil {
 		return heading + "\n\nNo event body available"
@@ -460,7 +460,7 @@ func formatEventBody(body interface{}) string {
 	return heading + "\n\n" + string(jsonBytes)
 }
 
-func formatChannelResponse(response interface{}) string {
+func formatChannelResponse(response any) string {
 	heading := headingStyle.Render("Channel Response")
 	if response == nil {
 		return heading + "\n\nNo channel response available"

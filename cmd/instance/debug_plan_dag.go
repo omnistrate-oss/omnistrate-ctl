@@ -3,6 +3,7 @@ package instance
 import (
 	"context"
 	"fmt"
+	"slices"
 	"sort"
 	"strings"
 
@@ -182,9 +183,7 @@ func computePlanLevels(nodes map[string]PlanDAGNode, edges []PlanDAGEdge) ([][]s
 	ready := collectZeroIndegree(indegree)
 
 	for len(ready) > 0 {
-		sort.Slice(ready, func(i, j int) bool {
-			return ready[i] < ready[j]
-		})
+		slices.Sort(ready)
 		levels = append(levels, ready)
 		processed += len(ready)
 

@@ -56,7 +56,7 @@ func getDeploymentCellWorkflowEvents(cmd *cobra.Command, args []string) error {
 
 	// For JSON output, return the raw result
 	if outputFormat == "json" {
-		return utils.PrintTextTableJsonArrayOutput(outputFormat, []interface{}{result})
+		return utils.PrintTextTableJsonArrayOutput(outputFormat, []any{result})
 	}
 
 	// For table and text output, format events with separators
@@ -75,8 +75,8 @@ func getDeploymentCellWorkflowEvents(cmd *cobra.Command, args []string) error {
 	return utils.PrintTextTableJsonArrayOutput(outputFormat, events)
 }
 
-func formatWorkflowEventsWithSeparators(result *openapiclientfleet.GetDeploymentCellWorkflowEventsResult) []interface{} {
-	var events []interface{}
+func formatWorkflowEventsWithSeparators(result *openapiclientfleet.GetDeploymentCellWorkflowEventsResult) []any {
+	var events []any
 
 	// Sort steps by the earliest event time in each step
 	sortedSteps := sortStepsByTime(result.EventsPerWorkflowStep)
@@ -165,7 +165,7 @@ func getEarliestEventTime(step openapiclientfleet.DeploymentCellEventsPerWorkflo
 	return earliestTime
 }
 
-func formatMetadata(metadata map[string]interface{}) string {
+func formatMetadata(metadata map[string]any) string {
 	if len(metadata) == 0 {
 		return ""
 	}

@@ -106,7 +106,7 @@ func runByCellList(cmd *cobra.Command, args []string) error {
 	}
 
 	outputFormat, _ := cmd.Flags().GetString("output")
-	return utils.PrintTextTableJsonArrayOutput(outputFormat, []interface{}{result})
+	return utils.PrintTextTableJsonArrayOutput(outputFormat, []any{result})
 }
 
 func runByCellShow(cmd *cobra.Command, args []string) error {
@@ -137,7 +137,7 @@ func runByCellShow(cmd *cobra.Command, args []string) error {
 	}
 
 	outputFormat, _ := cmd.Flags().GetString("output")
-	return utils.PrintTextTableJsonArrayOutput(outputFormat, []interface{}{result})
+	return utils.PrintTextTableJsonArrayOutput(outputFormat, []any{result})
 }
 
 func runByCellCompare(cmd *cobra.Command, args []string) error {
@@ -177,7 +177,7 @@ func runByCellCompare(cmd *cobra.Command, args []string) error {
 	}
 
 	outputFormat, _ := cmd.Flags().GetString("output")
-	return utils.PrintTextTableJsonArrayOutput(outputFormat, []interface{}{result})
+	return utils.PrintTextTableJsonArrayOutput(outputFormat, []any{result})
 }
 
 func runByCellTopInstances(cmd *cobra.Command, args []string) error {
@@ -213,7 +213,7 @@ func runByCellTopInstances(cmd *cobra.Command, args []string) error {
 	}
 
 	outputFormat, _ := cmd.Flags().GetString("output")
-	return utils.PrintTextTableJsonArrayOutput(outputFormat, []interface{}{result})
+	return utils.PrintTextTableJsonArrayOutput(outputFormat, []any{result})
 }
 
 func runByCellInProvider(cmd *cobra.Command, args []string) error {
@@ -244,7 +244,7 @@ func runByCellInProvider(cmd *cobra.Command, args []string) error {
 	}
 
 	outputFormat, _ := cmd.Flags().GetString("output")
-	return utils.PrintTextTableJsonArrayOutput(outputFormat, []interface{}{result})
+	return utils.PrintTextTableJsonArrayOutput(outputFormat, []any{result})
 }
 
 func runByCellInRegion(cmd *cobra.Command, args []string) error {
@@ -275,5 +275,5 @@ func runByCellInRegion(cmd *cobra.Command, args []string) error {
 	}
 
 	outputFormat, _ := cmd.Flags().GetString("output")
-	return utils.PrintTextTableJsonArrayOutput(outputFormat, []interface{}{result})
+	return utils.PrintTextTableJsonArrayOutput(outputFormat, []any{result})
 }

@@ -130,19 +130,19 @@ func NewLeveledLogger() *LeveledLogger {
 	return &LeveledLogger{}
 }
 
-func (l *LeveledLogger) Error(msg string, keysAndValues ...interface{}) {
+func (l *LeveledLogger) Error(msg string, keysAndValues ...any) {
 	log.Error().Msgf(msg, keysAndValues...)
 }
 
-func (l *LeveledLogger) Debug(msg string, keysAndValues ...interface{}) {
+func (l *LeveledLogger) Debug(msg string, keysAndValues ...any) {
 	log.Debug().Msgf(msg, keysAndValues...)
 }
 
-func (l *LeveledLogger) Info(msg string, keysAndValues ...interface{}) {
+func (l *LeveledLogger) Info(msg string, keysAndValues ...any) {
 	log.Info().Msgf(msg, keysAndValues...)
 }
 
-func (l *LeveledLogger) Warn(msg string, keysAndValues ...interface{}) {
+func (l *LeveledLogger) Warn(msg string, keysAndValues ...any) {
 	log.Warn().Msgf(msg, keysAndValues...)
 }
 

@@ -82,7 +82,7 @@ func runDebugDeploymentCell(cmd *cobra.Command, args []string) error {
 			}
 
 			// Try to parse as JSON for pretty formatting
-			var parsedContent interface{}
+			var parsedContent any
 			if err = json.Unmarshal(logContentBytes, &parsedContent); err == nil {
 				// Successfully parsed as JSON, format it nicely
 				var formattedJSON []byte

@@ -225,7 +225,7 @@ func printTemplateAsTable(template *model.DeploymentCellTemplate) error {
 		Description string `json:"description"`
 	}
 
-	var tableData []interface{}
+	var tableData []any
 
 	// Add managed amenities
 	for _, amenity := range template.ManagedAmenities {
@@ -306,7 +306,7 @@ func printDeploymentCellTemplateAsTable(template *model.DeploymentCellTemplate) 
 		Description string `json:"description"`
 	}
 
-	var tableData []interface{}
+	var tableData []any
 
 	// Add managed amenities
 	for _, amenity := range template.ManagedAmenities {

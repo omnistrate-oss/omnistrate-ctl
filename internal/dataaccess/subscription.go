@@ -250,7 +250,7 @@ type CreateSubscriptionOnBehalfOptions struct {
 	AllowCreatesWhenPaymentNotConfigured *bool
 	BillingProvider                      string
 	CustomPrice                          *bool
-	CustomPricePerUnit                   map[string]interface{}
+	CustomPricePerUnit                   map[string]any
 	ExternalPayerID                      string
 	MaxNumberOfInstances                 *int64
 	PriceEffectiveDate                   string

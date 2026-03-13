@@ -83,7 +83,7 @@ func TestSystemParametersCommandWithJSONOutput(t *testing.T) {
 	require.NoError(t, err, "Command should execute successfully")
 
 	// Verify output is valid JSON
-	var result interface{}
+	var result any
 	err = json.Unmarshal(buf.Bytes(), &result)
 	require.NoError(t, err, "Output should be valid JSON")
 	require.NotNil(t, result, "Result should not be nil")

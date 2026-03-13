@@ -49,20 +49,20 @@ type InstanceDeploymentStatus struct {
 	CreationTime             string                     `json:"creationTime,omitempty"`
 	LastModifiedTime         string                     `json:"lastModifiedTime,omitempty"`
 	ResourceDeploymentStatus []ResourceDeploymentStatus `json:"resourceDeploymentStatus"`
-	AppliedFilters           map[string]interface{}     `json:"appliedFilters,omitempty"`
-	FilteringStats           map[string]interface{}     `json:"filteringStats,omitempty"`
+	AppliedFilters           map[string]any             `json:"appliedFilters,omitempty"`
+	FilteringStats           map[string]any             `json:"filteringStats,omitempty"`
 }
 
 // ResourceDeploymentStatus represents compact deployment status for a single resource
 type ResourceDeploymentStatus struct {
-	ResourceID       string                 `json:"resourceId,omitempty"`
-	ResourceName     string                 `json:"resourceName,omitempty"`
-	Version          string                 `json:"version,omitempty"`
-	LatestVersion    string                 `json:"latestVersion,omitempty"`
-	PodStatus        map[string]string      `json:"podStatus,omitempty"`
-	DeploymentErrors string                 `json:"deploymentErrors,omitempty"`
-	DeploymentType   string                 `json:"deploymentType,omitempty"`
-	AdditionalInfo   map[string]interface{} `json:"additionalInfo,omitempty"`
+	ResourceID       string            `json:"resourceId,omitempty"`
+	ResourceName     string            `json:"resourceName,omitempty"`
+	Version          string            `json:"version,omitempty"`
+	LatestVersion    string            `json:"latestVersion,omitempty"`
+	PodStatus        map[string]string `json:"podStatus,omitempty"`
+	DeploymentErrors string            `json:"deploymentErrors,omitempty"`
+	DeploymentType   string            `json:"deploymentType,omitempty"`
+	AdditionalInfo   map[string]any    `json:"additionalInfo,omitempty"`
 }
 
 var describeCmd = &cobra.Command{
@@ -358,16 +358,16 @@ func filterInstanceByResource(ctx context.Context, token string, instance *opena
 			}
 		}
 
-		filteredInstance.ConsumptionResourceInstanceResult.DetailedNetworkTopology = utils.ToPtr(filteredTopology)
+		filteredInstance.ConsumptionResourceInstanceResult.DetailedNetworkTopology = new(filteredTopology)
 	}
 
 	// Add filtered resource information as additional metadata
 	if filteredInstance.AdditionalProperties == nil {
-		filteredInstance.AdditionalProperties = make(map[string]interface{})
+		filteredInstance.AdditionalProperties = make(map[string]any)
 	}
 
 	// Add filter information to the response
-	filterInfo := map[string]interface{}{}
+	filterInfo := map[string]any{}
 	if resourceID != "" {
 		filterInfo["resourceId"] = resourceID
 	}
@@ -377,7 +377,7 @@ func filterInstanceByResource(ctx context.Context, token string, instance *opena
 	filteredInstance.AdditionalProperties["appliedFilters"] = filterInfo
 
 	// Add count information for filtered resources
-	countInfo := map[string]interface{}{
+	countInfo := map[string]any{
 		"totalResourceVersionSummaries":    len(instance.ResourceVersionSummaries),
 		"filteredResourceVersionSummaries": len(filteredInstance.ResourceVersionSummaries),
 	}
@@ -426,7 +426,7 @@ func createInstanceDeploymentStatus(ctx context.Context, token string, instance 
 
 	// Apply resource filtering if specified
 	if resourceID != "" || resourceKey != "" {
-		var filterInfo, countInfo map[string]interface{}
+		var filterInfo, countInfo map[string]any
 		filteredSummaries, filterInfo, countInfo, err = filterResourceVersionSummariesForStatus(ctx, token, instance.ResourceVersionSummaries, serviceID, instance.ProductTierId, instance.TierVersion, resourceID, resourceKey)
 		if err != nil {
 			return nil, fmt.Errorf("failed to apply resource filter: %w", err)
@@ -448,7 +448,7 @@ func createInstanceDeploymentStatus(ctx context.Context, token string, instance 
 	return status, nil
 }
 
-func filterResourceVersionSummariesForStatus(ctx context.Context, token string, summaries []openapiclientfleet.ResourceVersionSummary, serviceID, productTierId, tierVersion, resourceID, resourceKey string) ([]openapiclientfleet.ResourceVersionSummary, map[string]interface{}, map[string]interface{}, error) {
+func filterResourceVersionSummariesForStatus(ctx context.Context, token string, summaries []openapiclientfleet.ResourceVersionSummary, serviceID, productTierId, tierVersion, resourceID, resourceKey string) ([]openapiclientfleet.ResourceVersionSummary, map[string]any, map[string]any, error) {
 	var filteredSummaries []openapiclientfleet.ResourceVersionSummary
 
 	// Get version set to map resource names to IDs if needed
@@ -506,7 +506,7 @@ func filterResourceVersionSummariesForStatus(ctx context.Context, token string, 
 	}
 
 	// Create filter info
-	filterInfo := map[string]interface{}{}
+	filterInfo := map[string]any{}
 	if resourceID != "" {
 		filterInfo["resourceId"] = resourceID
 	}
@@ -515,7 +515,7 @@ func filterResourceVersionSummariesForStatus(ctx context.Context, token string, 
 	}
 
 	// Create count info
-	countInfo := map[string]interface{}{
+	countInfo := map[string]any{
 		"totalResourceVersionSummaries":    len(summaries),
 		"filteredResourceVersionSummaries": len(filteredSummaries),
 	}
@@ -551,7 +551,7 @@ func createResourceDeploymentStatus(summary openapiclientfleet.ResourceVersionSu
 		}
 
 		// Add additional info for generic deployment
-		additionalInfo := make(map[string]interface{})
+		additionalInfo := make(map[string]any)
 		if generic.Image != nil {
 			additionalInfo["image"] = *generic.Image
 		}
@@ -578,7 +578,7 @@ func createResourceDeploymentStatus(summary openapiclientfleet.ResourceVersionSu
 		}
 
 		// Add helm-specific info
-		additionalInfo := make(map[string]interface{})
+		additionalInfo := make(map[string]any)
 		additionalInfo["chartName"] = helm.ChartName
 		additionalInfo["chartVersion"] = helm.ChartVersion
 		additionalInfo["releaseName"] = helm.ReleaseName
@@ -601,7 +601,7 @@ func createResourceDeploymentStatus(summary openapiclientfleet.ResourceVersionSu
 		}
 
 		// Add kustomize-specific info
-		additionalInfo := make(map[string]interface{})
+		additionalInfo := make(map[string]any)
 		additionalInfo["basePath"] = kustomize.BasePath
 		additionalInfo["overlays"] = kustomize.Overlays
 		status.AdditionalInfo = additionalInfo
@@ -617,7 +617,7 @@ func createResourceDeploymentStatus(summary openapiclientfleet.ResourceVersionSu
 		}
 
 		// Add terraform-specific info
-		additionalInfo := make(map[string]interface{})
+		additionalInfo := make(map[string]any)
 		if terraform.ConfigurationFiles != nil {
 			additionalInfo["configurationFiles"] = *terraform.ConfigurationFiles
 		}

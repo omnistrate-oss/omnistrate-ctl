@@ -10,6 +10,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 
@@ -26,7 +27,7 @@ const (
 
 // DetectSpecType analyzes YAML content to determine if it contains service plan specifications
 // Returns ServicePlanSpecType if plan-specific keys are found, otherwise DockerComposeSpecType
-func DetectSpecType(yamlContent map[string]interface{}) string {
+func DetectSpecType(yamlContent map[string]any) string {
 	// Improved: Recursively check for plan spec keys at any level
 	planKeyGroups := [][]string{
 		{"helm", "helmChart", "helmChartConfiguration"},
@@ -46,22 +47,22 @@ func DetectSpecType(yamlContent map[string]interface{}) string {
 }
 
 // ContainsOmnistrateKey recursively searches for any x-omnistrate key in a map
-func ContainsOmnistrateKey(m map[string]interface{}) bool {
+func ContainsOmnistrateKey(m map[string]any) bool {
 	for k, v := range m {
 		// Check for any x-omnistrate key
 		if strings.HasPrefix(k, "x-omnistrate-") {
 			return true
 		}
 		// Recurse into nested maps
-		if sub, ok := v.(map[string]interface{}); ok {
+		if sub, ok := v.(map[string]any); ok {
 			if ContainsOmnistrateKey(sub) {
 				return true
 			}
 		}
 		// Recurse into slices of maps
-		if arr, ok := v.([]interface{}); ok {
+		if arr, ok := v.([]any); ok {
 			for _, item := range arr {
-				if subm, ok := item.(map[string]interface{}); ok {
+				if subm, ok := item.(map[string]any); ok {
 					if ContainsOmnistrateKey(subm) {
 						return true
 					}
@@ -73,23 +74,21 @@ func ContainsOmnistrateKey(m map[string]interface{}) bool {
 }
 
 // ContainsAnyKey recursively searches for any key in keys in a map
-func ContainsAnyKey(m map[string]interface{}, keys []string) bool {
+func ContainsAnyKey(m map[string]any, keys []string) bool {
 	for k, v := range m {
-		for _, key := range keys {
-			if k == key {
-				return true
-			}
+		if slices.Contains(keys, k) {
+			return true
 		}
 		// Recurse into nested maps
-		if sub, ok := v.(map[string]interface{}); ok {
+		if sub, ok := v.(map[string]any); ok {
 			if ContainsAnyKey(sub, keys) {
 				return true
 			}
 		}
 		// Recurse into slices of maps
-		if arr, ok := v.([]interface{}); ok {
+		if arr, ok := v.([]any); ok {
 			for _, item := range arr {
-				if subm, ok := item.(map[string]interface{}); ok {
+				if subm, ok := item.(map[string]any); ok {
 					if ContainsAnyKey(subm, keys) {
 						return true
 					}

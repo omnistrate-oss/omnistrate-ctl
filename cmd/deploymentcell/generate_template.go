@@ -133,7 +133,7 @@ func generateDeploymentCellTemplate(ctx context.Context, token string, cloudProv
 	return model.DeploymentCellTemplate{}, fmt.Errorf("no configuration found for cloud provider '%s'", cloudProviderName)
 }
 
-func convertToDeploymentCellConfiguration(cellConfig interface{}) (model.DeploymentCellTemplate, error) {
+func convertToDeploymentCellConfiguration(cellConfig any) (model.DeploymentCellTemplate, error) {
 	result := model.DeploymentCellTemplate{}
 
 	// Handle the case where apiResponse is nil

@@ -5,7 +5,6 @@ import (
 	"net/http"
 
 	"github.com/omnistrate-oss/omnistrate-ctl/internal/model"
-	"github.com/omnistrate-oss/omnistrate-ctl/internal/utils"
 	openapiclient "github.com/omnistrate-oss/omnistrate-sdk-go/v1"
 )
 
@@ -37,21 +36,21 @@ func convertTemplateToOpenAPIFormat(deploymentConfig model.DeploymentCellTemplat
 	var amenitiesAPI []openapiclient.Amenity
 	for _, amenity := range deploymentConfig.ManagedAmenities {
 		apiAmenity := openapiclient.Amenity{
-			Name:        utils.ToPtr(amenity.Name),
+			Name:        new(amenity.Name),
 			Description: amenity.Description,
 			Type:        amenity.Type,
 			Properties:  amenity.Properties,
-			IsManaged:   utils.ToPtr(true),
+			IsManaged:   new(true),
 		}
 		amenitiesAPI = append(amenitiesAPI, apiAmenity)
 	}
 	for _, amenity := range deploymentConfig.CustomAmenities {
 		apiAmenity := openapiclient.Amenity{
-			Name:        utils.ToPtr(amenity.Name),
+			Name:        new(amenity.Name),
 			Description: amenity.Description,
 			Type:        amenity.Type,
 			Properties:  amenity.Properties,
-			IsManaged:   utils.ToPtr(false),
+			IsManaged:   new(false),
 		}
 		amenitiesAPI = append(amenitiesAPI, apiAmenity)
 	}
@@ -59,7 +58,7 @@ func convertTemplateToOpenAPIFormat(deploymentConfig model.DeploymentCellTemplat
 		Amenities: amenitiesAPI,
 	}
 
-	apiModel.DeploymentCellConfigurationPerCloudProvider = utils.ToPtr(configPerCloudProvider)
+	apiModel.DeploymentCellConfigurationPerCloudProvider = new(configPerCloudProvider)
 
 	return apiModel
 }
@@ -76,7 +75,7 @@ func UpdateServiceProviderOrganization(ctx context.Context, token string, deploy
 
 	req := apiClient.SpOrganizationApiAPI.SpOrganizationApiModifyServiceProviderOrganization(ctxWithToken)
 	spOrg := openapiclient.ModifyServiceProviderOrganizationRequest2{
-		DeploymentCellConfigurations: utils.ToPtr(configMap),
+		DeploymentCellConfigurations: new(configMap),
 	}
 	req = req.ModifyServiceProviderOrganizationRequest2(spOrg)
 	var r *http.Response

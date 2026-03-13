@@ -45,7 +45,7 @@ func (ls *LogsService) IsLogsEnabled(instance *openapiclientfleet.ResourceInstan
 	if featRaw, ok := features["LOGS#INTERNAL"]; ok {
 		// featRaw is interface{}, so cast to ProductTierFeature
 		// Try concrete type first
-		if feat, ok := featRaw.(map[string]interface{}); ok {
+		if feat, ok := featRaw.(map[string]any); ok {
 			if enabled, ok := feat["enabled"].(bool); ok && enabled {
 				return true
 			}

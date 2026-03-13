@@ -3,7 +3,6 @@ package dataaccess
 import (
 	"context"
 
-	"github.com/omnistrate-oss/omnistrate-ctl/internal/utils"
 	openapiclientv1 "github.com/omnistrate-oss/omnistrate-sdk-go/v1"
 )
 
@@ -51,11 +50,11 @@ func ReleaseServicePlan(ctx context.Context, token, serviceID, serviceAPIID, pro
 
 	r, err := apiClient.ServiceApiApiAPI.ServiceApiApiReleaseServiceAPI(ctxWithToken, serviceID, serviceAPIID).
 		ReleaseServiceAPIRequest2(openapiclientv1.ReleaseServiceAPIRequest2{
-			ProductTierId:  utils.ToPtr(productTierID),
+			ProductTierId:  new(productTierID),
 			VersionSetName: versionSetName,
-			VersionSetType: utils.ToPtr("Major"),
-			IsPreferred:    utils.ToPtr(isPreferred),
-			DryRun:         utils.ToPtr(dryrun),
+			VersionSetType: new("Major"),
+			IsPreferred:    new(isPreferred),
+			DryRun:         new(dryrun),
 		}).Execute()
 	defer func() {
 		if r != nil {

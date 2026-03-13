@@ -85,7 +85,7 @@ func ResumeInstanceDeploymentEntity(ctx context.Context, token string, instanceI
 
 	urlPath := fmt.Sprintf("http://localhost:80/2022-09-01-00/%s/resume/%s/%s", deploymentType, instanceID, deploymentName)
 	// Set payload
-	var payload map[string]interface{}
+	var payload map[string]any
 	switch deploymentType {
 	case "terraform":
 		if deploymentAction == "" {
@@ -93,7 +93,7 @@ func ResumeInstanceDeploymentEntity(ctx context.Context, token string, instanceI
 			return
 		}
 
-		payload = map[string]interface{}{
+		payload = map[string]any{
 			"token":           token,
 			"name":            deploymentName,
 			"instanceID":      instanceID,
@@ -144,7 +144,7 @@ func PatchInstanceDeploymentEntity(ctx context.Context, token string, instanceID
 
 	urlPath := fmt.Sprintf("http://localhost:80/2022-09-01-00/%s/%s/%s", deploymentType, instanceID, deploymentName)
 	// Set payload
-	var payload map[string]interface{}
+	var payload map[string]any
 	switch deploymentType {
 	case "terraform":
 		if deploymentAction == "" {
@@ -160,7 +160,7 @@ func PatchInstanceDeploymentEntity(ctx context.Context, token string, instanceID
 			return
 		}
 
-		payload = map[string]interface{}{
+		payload = map[string]any{
 			"token":           token,
 			"name":            deploymentName,
 			"instanceID":      instanceID,

@@ -31,9 +31,9 @@ spec:
 		{
 			Name: "test-secrets",
 			Type: &manifestType,
-			Properties: map[string]interface{}{
-				"manifests": []interface{}{
-					map[string]interface{}{"file": "test-manifest.yaml"},
+			Properties: map[string]any{
+				"manifests": []any{
+					map[string]any{"file": "test-manifest.yaml"},
 				},
 			},
 		},
@@ -51,7 +51,7 @@ spec:
 	}
 
 	props := result[0].Properties
-	manifests, ok := props["manifests"].([]map[string]interface{})
+	manifests, ok := props["manifests"].([]map[string]any)
 	if !ok {
 		t.Fatalf("manifests property is not []map[string]interface{}")
 	}
@@ -60,7 +60,7 @@ spec:
 		t.Fatalf("expected 1 manifest, got %d", len(manifests))
 	}
 
-	def, ok := manifests[0]["def"].(map[string]interface{})
+	def, ok := manifests[0]["def"].(map[string]any)
 	if !ok {
 		t.Fatalf("def property is not a map[string]interface{}")
 	}
@@ -82,10 +82,10 @@ spec:
 func TestProcessManifestAmenities_InlineDefinition(t *testing.T) {
 	// Create an amenity with an inline definition as a map
 	manifestType := AmenityTypeKubernetesManifest
-	inlineDef := map[string]interface{}{
+	inlineDef := map[string]any{
 		"apiVersion": "v1",
 		"kind":       "ConfigMap",
-		"metadata": map[string]interface{}{
+		"metadata": map[string]any{
 			"name": "test-config",
 		},
 	}
@@ -94,9 +94,9 @@ func TestProcessManifestAmenities_InlineDefinition(t *testing.T) {
 		{
 			Name: "test-inline",
 			Type: &manifestType,
-			Properties: map[string]interface{}{
-				"manifests": []interface{}{
-					map[string]interface{}{"def": inlineDef},
+			Properties: map[string]any{
+				"manifests": []any{
+					map[string]any{"def": inlineDef},
 				},
 			},
 		},
@@ -110,12 +110,12 @@ func TestProcessManifestAmenities_InlineDefinition(t *testing.T) {
 
 	// Verify the result - inline def should be preserved
 	props := result[0].Properties
-	manifests, ok := props["manifests"].([]map[string]interface{})
+	manifests, ok := props["manifests"].([]map[string]any)
 	if !ok {
 		t.Fatalf("manifests property is not []map[string]interface{}")
 	}
 
-	def, ok := manifests[0]["def"].(map[string]interface{})
+	def, ok := manifests[0]["def"].(map[string]any)
 	if !ok {
 		t.Fatalf("def property is not a map[string]interface{}")
 	}
@@ -151,10 +151,10 @@ metadata:
 	}
 
 	// Inline definition as a map
-	inlineDef := map[string]interface{}{
+	inlineDef := map[string]any{
 		"apiVersion": "v1",
 		"kind":       "Pod",
-		"metadata": map[string]interface{}{
+		"metadata": map[string]any{
 			"name": "inline-pod",
 		},
 	}
@@ -165,11 +165,11 @@ metadata:
 		{
 			Name: "mixed-secrets",
 			Type: &manifestType,
-			Properties: map[string]interface{}{
-				"manifests": []interface{}{
-					map[string]interface{}{"file": "./secret1.yaml"},
-					map[string]interface{}{"file": "./secret2.yaml"},
-					map[string]interface{}{"def": inlineDef},
+			Properties: map[string]any{
+				"manifests": []any{
+					map[string]any{"file": "./secret1.yaml"},
+					map[string]any{"file": "./secret2.yaml"},
+					map[string]any{"def": inlineDef},
 				},
 			},
 		},
@@ -183,7 +183,7 @@ metadata:
 
 	// Verify the result
 	props := result[0].Properties
-	manifests, ok := props["manifests"].([]map[string]interface{})
+	manifests, ok := props["manifests"].([]map[string]any)
 	if !ok {
 		t.Fatalf("manifests property is not []map[string]interface{}")
 	}
@@ -195,7 +195,7 @@ metadata:
 	// Check all have def with correct kind
 	expectedKinds := []string{"Secret", "Secret", "Pod"}
 	for i, expectedKind := range expectedKinds {
-		def, ok := manifests[i]["def"].(map[string]interface{})
+		def, ok := manifests[i]["def"].(map[string]any)
 		if !ok {
 			t.Fatalf("manifest %d: def property is not a map[string]interface{}", i)
 		}
@@ -212,7 +212,7 @@ func TestProcessManifestAmenities_NonManifestType(t *testing.T) {
 		{
 			Name: "helm-chart",
 			Type: &otherType,
-			Properties: map[string]interface{}{
+			Properties: map[string]any{
 				"chart": "nginx",
 			},
 		},
@@ -240,9 +240,9 @@ func TestProcessManifestAmenities_FileNotFound(t *testing.T) {
 		{
 			Name: "missing-file",
 			Type: &manifestType,
-			Properties: map[string]interface{}{
-				"manifests": []interface{}{
-					map[string]interface{}{"file": "nonexistent.yaml"},
+			Properties: map[string]any{
+				"manifests": []any{
+					map[string]any{"file": "nonexistent.yaml"},
 				},
 			},
 		},
@@ -261,9 +261,9 @@ func TestProcessManifestAmenities_InvalidEntry(t *testing.T) {
 		{
 			Name: "invalid-entry",
 			Type: &manifestType,
-			Properties: map[string]interface{}{
-				"manifests": []interface{}{
-					map[string]interface{}{}, // No file or def
+			Properties: map[string]any{
+				"manifests": []any{
+					map[string]any{}, // No file or def
 				},
 			},
 		},
@@ -282,11 +282,11 @@ func TestProcessManifestAmenities_BothFileAndDef(t *testing.T) {
 		{
 			Name: "both-file-and-def",
 			Type: &manifestType,
-			Properties: map[string]interface{}{
-				"manifests": []interface{}{
-					map[string]interface{}{
+			Properties: map[string]any{
+				"manifests": []any{
+					map[string]any{
 						"file": "some-file.yaml",
-						"def": map[string]interface{}{
+						"def": map[string]any{
 							"apiVersion": "v1",
 							"kind":       "Pod",
 						},
@@ -309,8 +309,8 @@ func TestProcessManifestAmenities_EmptyManifests(t *testing.T) {
 		{
 			Name: "empty-manifests",
 			Type: &manifestType,
-			Properties: map[string]interface{}{
-				"manifests": []interface{}{},
+			Properties: map[string]any{
+				"manifests": []any{},
 			},
 		},
 	}
@@ -337,9 +337,9 @@ func TestProcessManifestAmenities_InvalidYAML(t *testing.T) {
 		{
 			Name: "invalid-yaml",
 			Type: &manifestType,
-			Properties: map[string]interface{}{
-				"manifests": []interface{}{
-					map[string]interface{}{"file": "invalid.yaml"},
+			Properties: map[string]any{
+				"manifests": []any{
+					map[string]any{"file": "invalid.yaml"},
 				},
 			},
 		},
@@ -365,7 +365,7 @@ func TestManifestEntry_Validate(t *testing.T) {
 		},
 		{
 			name: "valid def entry",
-			entry: ManifestEntry{Def: map[string]interface{}{
+			entry: ManifestEntry{Def: map[string]any{
 				"apiVersion": "v1",
 				"kind":       "Pod",
 			}},
@@ -380,7 +380,7 @@ func TestManifestEntry_Validate(t *testing.T) {
 			name: "both file and def",
 			entry: ManifestEntry{
 				File: "test.yaml",
-				Def: map[string]interface{}{
+				Def: map[string]any{
 					"apiVersion": "v1",
 				},
 			},
@@ -416,7 +416,7 @@ func TestManifestProperties_Validate(t *testing.T) {
 			props: ManifestProperties{
 				Manifests: []ManifestEntry{
 					{File: "test1.yaml"},
-					{Def: map[string]interface{}{"apiVersion": "v1"}},
+					{Def: map[string]any{"apiVersion": "v1"}},
 				},
 			},
 			wantErr: false,

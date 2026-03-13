@@ -12,8 +12,8 @@ func TestFromPtr(t *testing.T) {
 	var strPtr *string
 	var intPtr *int
 
-	assert.Equal("test", FromPtr(ToPtr("test")))
+	assert.Equal("test", FromPtr(new("test")))
 	assert.Equal("", FromPtr(strPtr))
-	assert.Equal(11, FromPtr(ToPtr(11)))
+	assert.Equal(11, FromPtr(new(11)))
 	assert.Equal(0, FromPtr(intPtr))
 }

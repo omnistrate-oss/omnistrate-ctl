@@ -242,7 +242,7 @@ func syncDeploymentCellWithTemplate(ctx context.Context, token string, deploymen
 
 	// Perform sync with organization template
 	fmt.Printf("Syncing deployment cell with organization template for environment '%s'...\n", envType)
-	err = dataaccess.UpdateHostCluster(ctx, token, deploymentCellID, nil, utils.ToPtr(true))
+	err = dataaccess.UpdateHostCluster(ctx, token, deploymentCellID, nil, new(true))
 	if err != nil {
 		utils.PrintError(fmt.Errorf("failed to sync deployment cell with organization template: %w", err))
 		return err
@@ -328,21 +328,21 @@ func updateDeploymentCellFromFile(ctx context.Context, token string, deploymentC
 
 	for _, a := range templateConfig.ManagedAmenities {
 		pendingChanges = append(pendingChanges, fleet.Amenity{
-			Name:        utils.ToPtr(a.Name),
+			Name:        new(a.Name),
 			Description: a.Description,
 			Type:        a.Type,
 			Properties:  a.Properties,
-			IsManaged:   utils.ToPtr(true),
+			IsManaged:   new(true),
 		})
 	}
 
 	for _, a := range templateConfig.CustomAmenities {
 		pendingChanges = append(pendingChanges, fleet.Amenity{
-			Name:        utils.ToPtr(a.Name),
+			Name:        new(a.Name),
 			Description: a.Description,
 			Type:        a.Type,
 			Properties:  a.Properties,
-			IsManaged:   utils.ToPtr(false),
+			IsManaged:   new(false),
 		})
 	}
 

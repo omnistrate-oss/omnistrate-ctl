@@ -98,13 +98,13 @@ func skipInstances(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	payload := map[string]interface{}{
+	payload := map[string]any{
 		"resource-ids": resourceIDs,
 	}
 	return manageLifecycle(cmd, args, model.SkipInstancesAction, payload)
 }
 
-func manageLifecycle(cmd *cobra.Command, args []string, action model.UpgradeMaintenanceAction, actionPayload map[string]interface{}) error {
+func manageLifecycle(cmd *cobra.Command, args []string, action model.UpgradeMaintenanceAction, actionPayload map[string]any) error {
 	defer config.CleanupArgsAndFlags(cmd, &args)
 
 	// Retrieve flags

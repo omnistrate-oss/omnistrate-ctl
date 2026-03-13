@@ -16,8 +16,8 @@ const (
 
 // ManifestEntry represents a single manifest entry which can be either a file reference or an inline definition
 type ManifestEntry struct {
-	File string                 `json:"file,omitempty" yaml:"file,omitempty"`
-	Def  map[string]interface{} `json:"def,omitempty" yaml:"def,omitempty"`
+	File string         `json:"file,omitempty" yaml:"file,omitempty"`
+	Def  map[string]any `json:"def,omitempty" yaml:"def,omitempty"`
 }
 
 // Validate checks that the manifest entry has exactly one of file or def set
@@ -108,7 +108,7 @@ func processAmenity(amenity Amenity, baseDir string) (Amenity, error) {
 	}
 
 	// Create a new amenity with processed properties
-	newProperties := make(map[string]interface{})
+	newProperties := make(map[string]any)
 	for k, v := range amenity.Properties {
 		if k != "manifests" {
 			newProperties[k] = v
@@ -116,9 +116,9 @@ func processAmenity(amenity Amenity, baseDir string) (Amenity, error) {
 	}
 
 	// Convert processed entries back to []map[string]interface{} for API compatibility
-	processedManifests := make([]map[string]interface{}, 0, len(processedEntries))
+	processedManifests := make([]map[string]any, 0, len(processedEntries))
 	for _, entry := range processedEntries {
-		processedManifests = append(processedManifests, map[string]interface{}{"def": entry.Def})
+		processedManifests = append(processedManifests, map[string]any{"def": entry.Def})
 	}
 	newProperties["manifests"] = processedManifests
 
@@ -131,7 +131,7 @@ func processAmenity(amenity Amenity, baseDir string) (Amenity, error) {
 }
 
 // parseManifestProperties converts the raw properties map to a ManifestProperties struct
-func parseManifestProperties(properties map[string]interface{}) (ManifestProperties, error) {
+func parseManifestProperties(properties map[string]any) (ManifestProperties, error) {
 	// Marshal to JSON then unmarshal to struct for type-safe conversion
 	jsonBytes, err := json.Marshal(properties)
 	if err != nil {
@@ -165,7 +165,7 @@ func processManifestEntry(entry ManifestEntry, baseDir string, index int) (Manif
 	}
 
 	// Parse YAML content into a map
-	var defMap map[string]interface{}
+	var defMap map[string]any
 	if err := yaml.Unmarshal(content, &defMap); err != nil {
 		return ManifestEntry{}, fmt.Errorf("manifest entry %d: failed to parse YAML from file '%s': %w", index, filePath, err)
 	}

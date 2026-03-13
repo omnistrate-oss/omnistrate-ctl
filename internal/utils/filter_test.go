@@ -80,7 +80,7 @@ func TestMatchesFilters(t *testing.T) {
 	require := require.New(t)
 	tests := []struct {
 		name             string
-		model            interface{}
+		model            any
 		filters          []map[string]string
 		ok               bool
 		expectError      bool

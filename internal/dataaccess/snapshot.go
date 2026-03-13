@@ -4,8 +4,6 @@ import (
 	"context"
 	"net/http"
 
-	"github.com/omnistrate-oss/omnistrate-ctl/internal/utils"
-
 	openapiclientfleet "github.com/omnistrate-oss/omnistrate-sdk-go/fleet"
 )
 
@@ -147,7 +145,7 @@ func RestoreSnapshot(ctx context.Context, token, serviceID, environmentID, snaps
 
 	reqBody := openapiclientfleet.FleetRestoreResourceInstanceFromSnapshotRequest2{
 		InputParametersOverride: formattedParams,
-		NetworkType:             utils.ToPtr(networkType),
+		NetworkType:             new(networkType),
 	}
 
 	if tierVersionOverride != "" {

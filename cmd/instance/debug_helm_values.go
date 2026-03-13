@@ -27,14 +27,14 @@ type HelmValuesOutput struct {
 }
 
 type HelmValuesResource struct {
-	ResourceID    string                 `json:"resourceId"`
-	ResourceKey   string                 `json:"resourceKey"`
-	ChartRepoName string                 `json:"chartRepoName,omitempty"`
-	ChartRepoURL  string                 `json:"chartRepoURL,omitempty"`
-	ChartVersion  string                 `json:"chartVersion,omitempty"`
-	ChartValues   map[string]interface{} `json:"chartValues"`
-	Namespace     string                 `json:"namespace,omitempty"`
-	ReleaseName   string                 `json:"releaseName,omitempty"`
+	ResourceID    string         `json:"resourceId"`
+	ResourceKey   string         `json:"resourceKey"`
+	ChartRepoName string         `json:"chartRepoName,omitempty"`
+	ChartRepoURL  string         `json:"chartRepoURL,omitempty"`
+	ChartVersion  string         `json:"chartVersion,omitempty"`
+	ChartValues   map[string]any `json:"chartValues"`
+	Namespace     string         `json:"namespace,omitempty"`
+	ReleaseName   string         `json:"releaseName,omitempty"`
 }
 
 func runDebugHelmValues(cmd *cobra.Command, args []string) error {
@@ -104,7 +104,7 @@ func runDebugHelmValues(cmd *cobra.Command, args []string) error {
 			}
 
 			// Convert to map
-			actualDebugData, ok := (*debugDataInterface).(map[string]interface{})
+			actualDebugData, ok := (*debugDataInterface).(map[string]any)
 			if !ok {
 				continue
 			}

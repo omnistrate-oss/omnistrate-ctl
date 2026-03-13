@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"maps"
 	"strings"
 	"time"
 
@@ -471,23 +472,15 @@ func (m *dagModel) applyProgressIfReady() tea.Cmd {
 
 		// Apply workflow progress as base
 		if m.wfResult != nil {
-			for id, prog := range m.wfResult.progressByID {
-				m.plan.ProgressByID[id] = prog
-			}
-			for key, prog := range m.wfResult.progressByKey {
-				m.plan.ProgressByKey[key] = prog
-			}
-			for name, prog := range m.wfResult.progressByName {
-				m.plan.ProgressByName[name] = prog
-			}
+			maps.Copy(m.plan.ProgressByID, m.wfResult.progressByID)
+			maps.Copy(m.plan.ProgressByKey, m.wfResult.progressByKey)
+			maps.Copy(m.plan.ProgressByName, m.wfResult.progressByName)
 			// Merge workflow steps
 			if m.wfResult.workflowStepsByKey != nil {
 				if m.plan.WorkflowStepsByKey == nil {
 					m.plan.WorkflowStepsByKey = make(map[string]*ResourceWorkflowSteps)
 				}
-				for key, steps := range m.wfResult.workflowStepsByKey {
-					m.plan.WorkflowStepsByKey[key] = steps
-				}
+				maps.Copy(m.plan.WorkflowStepsByKey, m.wfResult.workflowStepsByKey)
 			}
 		}
 
@@ -520,9 +513,7 @@ func copyStringMap(src map[string]string) map[string]string {
 		return nil
 	}
 	dst := make(map[string]string, len(src))
-	for key, value := range src {
-		dst[key] = value
-	}
+	maps.Copy(dst, src)
 	return dst
 }
 
@@ -720,10 +711,7 @@ func (m dagModel) openNodeDetail() (tea.Model, tea.Cmd) {
 		detail := newTerraformDetailModel(node, m.debugData)
 		detail.width = m.width
 		detail.height = m.height
-		detail.progressBar.Width = m.width - 40
-		if detail.progressBar.Width < 20 {
-			detail.progressBar.Width = 20
-		}
+		detail.progressBar.Width = max(m.width-40, 20)
 		m.detailModel = detail
 		m.inDetail = true
 		return m, detail.Init()
@@ -763,14 +751,8 @@ func (m dagModel) View() string {
 func (m dagModel) bodySize() (int, int) {
 	headerHeight := 1
 	helpHeight := 1
-	bodyHeight := m.height - headerHeight - helpHeight
-	if bodyHeight < 1 {
-		bodyHeight = 1
-	}
-	bodyWidth := m.width
-	if bodyWidth < 1 {
-		bodyWidth = 1
-	}
+	bodyHeight := max(m.height-headerHeight-helpHeight, 1)
+	bodyWidth := max(m.width, 1)
 	return bodyWidth, bodyHeight
 }
 
@@ -814,7 +796,7 @@ func (m dagModel) renderBody(width, height int) string {
 	startY := clamp(m.scrollY, 0, m.maxScrollY())
 
 	visible := make([]string, height)
-	for i := 0; i < height; i++ {
+	for i := range height {
 		lineIndex := startY + i
 		line := ""
 		if lineIndex < len(m.lines) {

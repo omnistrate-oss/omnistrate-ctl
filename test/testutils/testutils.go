@@ -2,6 +2,7 @@ package testutils
 
 import (
 	"os"
+	"slices"
 	"testing"
 
 	"github.com/pkg/errors"
@@ -15,12 +16,7 @@ func Cleanup() {
 }
 
 func Contains(arr []string, s string) bool {
-	for _, a := range arr {
-		if a == s {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(arr, s)
 }
 
 func GetTestAccount() (string, string, error) {

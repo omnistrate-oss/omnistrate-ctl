@@ -17,7 +17,7 @@ type AmenitiesConfiguration struct {
 	EnvironmentType string `json:"environment_type"`
 
 	// Configuration template data
-	ConfigurationTemplate map[string]interface{} `json:"configuration_template"`
+	ConfigurationTemplate map[string]any `json:"configuration_template"`
 
 	// Metadata
 	CreatedAt time.Time `json:"created_at"`
@@ -55,26 +55,26 @@ func (ac AmenitiesConfiguration) ToTableView() AmenitiesConfigurationTableView {
 
 // Amenity represents an amenity in the deployment cell
 type Amenity struct {
-	Name        string                 `json:"name" yaml:"name"`
-	Description *string                `json:"description,omitempty" yaml:"description,omitempty"`
-	Type        *string                `json:"type,omitempty" yaml:"type,omitempty"`
-	Properties  map[string]interface{} `json:"properties,omitempty" yaml:"properties,omitempty"`
+	Name        string         `json:"name" yaml:"name"`
+	Description *string        `json:"description,omitempty" yaml:"description,omitempty"`
+	Type        *string        `json:"type,omitempty" yaml:"type,omitempty"`
+	Properties  map[string]any `json:"properties,omitempty" yaml:"properties,omitempty"`
 }
 
 type InternalAmenity struct {
-	Name        string                 `json:"name" yaml:"name"`
-	Description *string                `json:"description,omitempty" yaml:"description,omitempty"`
-	Type        *string                `json:"type,omitempty" yaml:"type,omitempty"`
-	IsManaged   *bool                  `json:"isManaged,omitempty" yaml:"isManaged,omitempty"`
-	Properties  map[string]interface{} `json:"properties,omitempty" yaml:"properties,omitempty"`
+	Name        string         `json:"name" yaml:"name"`
+	Description *string        `json:"description,omitempty" yaml:"description,omitempty"`
+	Type        *string        `json:"type,omitempty" yaml:"type,omitempty"`
+	IsManaged   *bool          `json:"isManaged,omitempty" yaml:"isManaged,omitempty"`
+	Properties  map[string]any `json:"properties,omitempty" yaml:"properties,omitempty"`
 }
 
 // AmenityConfig represents an amenity configuration in a more structured format
 type AmenityConfig struct {
-	Name        string                 `json:"name" yaml:"name"`
-	Modifiable  *bool                  `json:"modifiable,omitempty" yaml:"modifiable,omitempty"`
-	Description *string                `json:"description,omitempty" yaml:"description,omitempty"`
-	IsManaged   *bool                  `json:"isManaged,omitempty" yaml:"isManaged,omitempty"`
-	Type        *string                `json:"type,omitempty" yaml:"type,omitempty"`
-	Properties  map[string]interface{} `json:"properties,omitempty" yaml:"properties,omitempty"`
+	Name        string         `json:"name" yaml:"name"`
+	Modifiable  *bool          `json:"modifiable,omitempty" yaml:"modifiable,omitempty"`
+	Description *string        `json:"description,omitempty" yaml:"description,omitempty"`
+	IsManaged   *bool          `json:"isManaged,omitempty" yaml:"isManaged,omitempty"`
+	Type        *string        `json:"type,omitempty" yaml:"type,omitempty"`
+	Properties  map[string]any `json:"properties,omitempty" yaml:"properties,omitempty"`
 }

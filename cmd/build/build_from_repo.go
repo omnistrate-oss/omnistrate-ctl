@@ -646,7 +646,7 @@ func BuildServiceFromRepository(cmd *cobra.Command, ctx context.Context, token, 
 	spinner.Complete()
 
 	var fileData []byte
-	var parsedYaml map[string]interface{}
+	var parsedYaml map[string]any
 	var project *types.Project
 	dockerfilePaths := make(map[string]string)        // service -> dockerfile path
 	versionTaggedImageUrls := make(map[string]string) // service -> image url with digest tag
@@ -738,7 +738,7 @@ func BuildServiceFromRepository(cmd *cobra.Command, ctx context.Context, token, 
 					}
 
 					// Parse JSON response to extract login field
-					var response map[string]interface{}
+					var response map[string]any
 					if err := json.Unmarshal(ghUsernameOutput, &response); err != nil {
 						utils.HandleSpinnerError(spinner, sm, fmt.Errorf("failed to parse GitHub API response: %v, response: %s", err, string(ghUsernameOutput)))
 						return "", "", "", nil, err
@@ -860,7 +860,7 @@ func BuildServiceFromRepository(cmd *cobra.Command, ctx context.Context, token, 
 				}
 
 				// Parse JSON response to extract login field
-				var response map[string]interface{}
+				var response map[string]any
 				if err := json.Unmarshal(ghUsernameOutput, &response); err != nil {
 					utils.HandleSpinnerError(spinner, sm, fmt.Errorf("failed to parse GitHub API response: %v, response: %s", err, string(ghUsernameOutput)))
 					return "", "", "", nil, err
@@ -925,7 +925,7 @@ func BuildServiceFromRepository(cmd *cobra.Command, ctx context.Context, token, 
 					spinner.UpdateMessage("Labeling Docker image with the repository name: Already labeled")
 				} else {
 					// Append the label to the Dockerfile
-					dockerfileData = append(dockerfileData, []byte(fmt.Sprintf("\nLABEL org.opencontainers.image.source=\"https://github.com/%s/%s\"\n", repoOwner, repoName))...)
+					dockerfileData = append(dockerfileData, fmt.Appendf(nil, "\nLABEL org.opencontainers.image.source=\"https://github.com/%s/%s\"\n", repoOwner, repoName)...)
 
 					// Write the Dockerfile back
 					err = os.WriteFile(filepath.Clean(dockerfilePath), dockerfileData, 0600) //nolint:gosec // path is constructed internally
@@ -1042,7 +1042,7 @@ func BuildServiceFromRepository(cmd *cobra.Command, ctx context.Context, token, 
 				// Convert output to string and search for the Digest line
 				var digest string
 				digestOutputStr := string(digestOutput)
-				for _, line := range strings.Split(digestOutputStr, "\n") {
+				for line := range strings.SplitSeq(digestOutputStr, "\n") {
 					if strings.Contains(line, "Digest:") {
 						parts := strings.Split(line, ":")
 						if len(parts) < 3 {
@@ -1139,8 +1139,8 @@ func BuildServiceFromRepository(cmd *cobra.Command, ctx context.Context, token, 
 			generateComposeSpecRequest := openapiclient.GenerateComposeSpecFromContainerImageRequest2{
 				ImageRegistry:        "ghcr.io",
 				Image:                strings.TrimPrefix(versionTaggedImageUrls[defaultServiceName], "ghcr.io/"),
-				Username:             utils.ToPtr(ghUsername),
-				Password:             utils.ToPtr(pat),
+				Username:             new(ghUsername),
+				Password:             new(pat),
 				EnvironmentVariables: formattedEnvVars,
 			}
 
@@ -1177,13 +1177,13 @@ func BuildServiceFromRepository(cmd *cobra.Command, ctx context.Context, token, 
 
 			if deploymentType != "" {
 				if awsAccountID != "" {
-					fileData = append(fileData, []byte(fmt.Sprintf("      AwsAccountId: '%s'\n", awsAccountID))...)
+					fileData = append(fileData, fmt.Appendf(nil, "      AwsAccountId: '%s'\n", awsAccountID)...)
 					awsBootstrapRoleAccountARN := fmt.Sprintf("arn:aws:iam::%s:role/omnistrate-bootstrap-role", awsAccountID)
-					fileData = append(fileData, []byte(fmt.Sprintf("      AwsBootstrapRoleAccountArn: '%s'\n", awsBootstrapRoleAccountARN))...)
+					fileData = append(fileData, fmt.Appendf(nil, "      AwsBootstrapRoleAccountArn: '%s'\n", awsBootstrapRoleAccountARN)...)
 				}
 				if gcpProjectID != "" {
-					fileData = append(fileData, []byte(fmt.Sprintf("      GcpProjectId: '%s'\n", gcpProjectID))...)
-					fileData = append(fileData, []byte(fmt.Sprintf("      GcpProjectNumber: '%s'\n", gcpProjectNumber))...)
+					fileData = append(fileData, fmt.Appendf(nil, "      GcpProjectId: '%s'\n", gcpProjectID)...)
+					fileData = append(fileData, fmt.Appendf(nil, "      GcpProjectNumber: '%s'\n", gcpProjectNumber)...)
 
 					// Get organization id
 					user, err := dataaccess.DescribeUser(ctx, token)
@@ -1193,7 +1193,7 @@ func BuildServiceFromRepository(cmd *cobra.Command, ctx context.Context, token, 
 					}
 
 					gcpServiceAccountEmail := fmt.Sprintf("bootstrap-%s@%s.iam.gserviceaccount.com", *user.OrgId, gcpProjectID)
-					fileData = append(fileData, []byte(fmt.Sprintf("      GcpServiceAccountEmail: '%s'\n", gcpServiceAccountEmail))...)
+					fileData = append(fileData, fmt.Appendf(nil, "      GcpServiceAccountEmail: '%s'\n", gcpServiceAccountEmail)...)
 				}
 				fileData = appendAzureConfig(fileData, azureSubscriptionID, azureTenantID)
 			}
@@ -1220,13 +1220,13 @@ func BuildServiceFromRepository(cmd *cobra.Command, ctx context.Context, token, 
 
 				if deploymentType != "" {
 					if awsAccountID != "" {
-						fileData = append(fileData, []byte(fmt.Sprintf("      AwsAccountId: '%s'\n", awsAccountID))...)
+						fileData = append(fileData, fmt.Appendf(nil, "      AwsAccountId: '%s'\n", awsAccountID)...)
 						awsBootstrapRoleAccountARN := fmt.Sprintf("arn:aws:iam::%s:role/omnistrate-bootstrap-role", awsAccountID)
-						fileData = append(fileData, []byte(fmt.Sprintf("      AwsBootstrapRoleAccountArn: '%s'\n", awsBootstrapRoleAccountARN))...)
+						fileData = append(fileData, fmt.Appendf(nil, "      AwsBootstrapRoleAccountArn: '%s'\n", awsBootstrapRoleAccountARN)...)
 					}
 					if gcpProjectID != "" {
-						fileData = append(fileData, []byte(fmt.Sprintf("      GcpProjectId: '%s'\n", gcpProjectID))...)
-						fileData = append(fileData, []byte(fmt.Sprintf("      GcpProjectNumber: '%s'\n", gcpProjectNumber))...)
+						fileData = append(fileData, fmt.Appendf(nil, "      GcpProjectId: '%s'\n", gcpProjectID)...)
+						fileData = append(fileData, fmt.Appendf(nil, "      GcpProjectNumber: '%s'\n", gcpProjectNumber)...)
 
 						// Get organization id
 						user, err := dataaccess.DescribeUser(ctx, token)
@@ -1236,7 +1236,7 @@ func BuildServiceFromRepository(cmd *cobra.Command, ctx context.Context, token, 
 						}
 
 						gcpServiceAccountEmail := fmt.Sprintf("bootstrap-%s@%s.iam.gserviceaccount.com", *user.OrgId, gcpProjectID)
-						fileData = append(fileData, []byte(fmt.Sprintf("      GcpServiceAccountEmail: '%s'\n", gcpServiceAccountEmail))...)
+						fileData = append(fileData, fmt.Appendf(nil, "      GcpServiceAccountEmail: '%s'\n", gcpServiceAccountEmail)...)
 					}
 					fileData = appendAzureConfig(fileData, azureSubscriptionID, azureTenantID)
 				}
@@ -1244,13 +1244,13 @@ func BuildServiceFromRepository(cmd *cobra.Command, ctx context.Context, token, 
 
 			// Append the image registry attributes to the compose spec if it doesn't exist
 			if !strings.Contains(string(fileData), "x-omnistrate-image-registry-attributes") {
-				fileData = append(fileData, []byte(fmt.Sprintf(`
+				fileData = append(fileData, fmt.Appendf(nil, `
 x-omnistrate-image-registry-attributes:
   ghcr.io:
     auth:
       password: ${{ secrets.GitHubPAT }}
       username: %s
-`, ghUsername))...)
+`, ghUsername)...)
 			}
 
 			// Write the compose spec to a file
@@ -1380,8 +1380,8 @@ x-omnistrate-image-registry-attributes:
 // appendAzureConfig appends Azure configuration to fileData if Azure credentials are provided
 func appendAzureConfig(fileData []byte, azureSubscriptionID, azureTenantID string) []byte {
 	if azureSubscriptionID != "" {
-		fileData = append(fileData, []byte(fmt.Sprintf("      AzureSubscriptionId: '%s'\n", azureSubscriptionID))...)
-		fileData = append(fileData, []byte(fmt.Sprintf("      AzureTenantId: '%s'\n", azureTenantID))...)
+		fileData = append(fileData, fmt.Appendf(nil, "      AzureSubscriptionId: '%s'\n", azureSubscriptionID)...)
+		fileData = append(fileData, fmt.Appendf(nil, "      AzureTenantId: '%s'\n", azureTenantID)...)
 	}
 	return fileData
 }
@@ -1412,7 +1412,7 @@ func createProdEnv(ctx context.Context, token string, serviceID string, devEnvir
 		serviceID,
 		"PUBLIC",
 		"PROD",
-		utils.ToPtr(devEnvironmentID),
+		new(devEnvironmentID),
 		defaultDeploymentConfigID,
 		true,
 		nil,

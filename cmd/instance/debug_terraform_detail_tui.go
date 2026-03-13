@@ -251,10 +251,7 @@ func (m terraformDetailModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
-		m.progressBar.Width = m.width - 40
-		if m.progressBar.Width < 20 {
-			m.progressBar.Width = 20
-		}
+		m.progressBar.Width = max(m.width-40, 20)
 		return m, tea.ClearScreen
 	case tea.KeyMsg:
 		switch msg.String() {
@@ -494,10 +491,7 @@ func (m terraformDetailModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 			} else if m.activeTab == tabWfErrors {
 				items := flattenWfEventItems(m.getTfWfEvents())
-				pageItems := m.bodyHeight() / 2
-				if pageItems < 1 {
-					pageItems = 1
-				}
+				pageItems := max(m.bodyHeight()/2, 1)
 				m.wfErrors.cursor -= pageItems
 				if m.wfErrors.cursor < 0 {
 					m.wfErrors.cursor = 0
@@ -539,10 +533,7 @@ func (m terraformDetailModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 			} else if m.activeTab == tabWfErrors {
 				items := flattenWfEventItems(m.getTfWfEvents())
-				pageItems := m.bodyHeight() / 2
-				if pageItems < 1 {
-					pageItems = 1
-				}
+				pageItems := max(m.bodyHeight()/2, 1)
 				m.wfErrors.cursor += pageItems
 				if m.wfErrors.cursor >= len(items) {
 					m.wfErrors.cursor = len(items) - 1
@@ -566,14 +557,8 @@ func (m terraformDetailModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.logFollow = !m.logFollow
 				if m.logFollow {
 					// Snap to bottom
-					bodyH := m.bodyHeight() - 4
-					if bodyH < 1 {
-						bodyH = 1
-					}
-					maxSc := len(m.logLines) - bodyH
-					if maxSc < 0 {
-						maxSc = 0
-					}
+					bodyH := max(m.bodyHeight()-4, 1)
+					maxSc := max(len(m.logLines)-bodyH, 0)
 					m.logScroll = maxSc
 				}
 			}
@@ -639,14 +624,8 @@ func (m terraformDetailModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		// If follow mode is on, snap to bottom
 		if m.logFollow {
-			bodyH := m.bodyHeight() - 4
-			if bodyH < 1 {
-				bodyH = 1
-			}
-			maxSc := len(m.logLines) - bodyH
-			if maxSc < 0 {
-				maxSc = 0
-			}
+			bodyH := max(m.bodyHeight()-4, 1)
+			maxSc := max(len(m.logLines)-bodyH, 0)
 			m.logScroll = maxSc
 		}
 		return m, waitForLogLines(m.logChan)
@@ -727,14 +706,8 @@ func (m terraformDetailModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m terraformDetailModel) logMaxScroll() int {
-	bodyH := m.bodyHeight() - 4
-	if bodyH < 1 {
-		bodyH = 1
-	}
-	maxScroll := len(m.logLines) - bodyH
-	if maxScroll < 0 {
-		maxScroll = 0
-	}
+	bodyH := max(m.bodyHeight()-4, 1)
+	maxScroll := max(len(m.logLines)-bodyH, 0)
 	return maxScroll
 }
 
@@ -742,10 +715,7 @@ func (m terraformDetailModel) progressMaxScroll() int {
 	content := m.renderProgressTab()
 	lines := strings.Split(content, "\n")
 	bodyH := m.bodyHeight()
-	maxScroll := len(lines) - bodyH
-	if maxScroll < 0 {
-		maxScroll = 0
-	}
+	maxScroll := max(len(lines)-bodyH, 0)
 	return maxScroll
 }
 
@@ -755,30 +725,21 @@ func (m terraformDetailModel) fileScrollMax() int {
 	}
 	lines := strings.Split(m.fileContent, "\n")
 	// headerLines in renderFileContentView is 2
-	bodyH := m.bodyHeight() - 2
-	if bodyH < 1 {
-		bodyH = 1
-	}
-	maxScroll := len(lines) - bodyH
-	if maxScroll < 0 {
-		maxScroll = 0
-	}
+	bodyH := max(m.bodyHeight()-2, 1)
+	maxScroll := max(len(lines)-bodyH, 0)
 	return maxScroll
 }
 
 func (m terraformDetailModel) bodyHeight() int {
 	// header(1) + tab row(3) + window bottom border(1) + window padding(2) + footer(1) = 8
-	h := m.height - 8
-	if h < 1 {
-		h = 1
-	}
+	h := max(m.height-8, 1)
 	return h
 }
 
 // errorModalLines returns the non-empty lines of the error modal text.
 func (m terraformDetailModel) errorModalLines() []string {
 	var lines []string
-	for _, line := range strings.Split(m.errorModalText, "\n") {
+	for line := range strings.SplitSeq(m.errorModalText, "\n") {
 		trimmed := strings.TrimSpace(line)
 		if trimmed == "" {
 			continue
@@ -790,14 +751,8 @@ func (m terraformDetailModel) errorModalLines() []string {
 
 func (m terraformDetailModel) errorModalMaxScroll() int {
 	// header(1) + border(2) + footer(1) + padding(2) = 6
-	bodyH := m.height - 6
-	if bodyH < 1 {
-		bodyH = 1
-	}
-	maxScroll := len(m.errorModalLines()) - bodyH
-	if maxScroll < 0 {
-		maxScroll = 0
-	}
+	bodyH := max(m.height-6, 1)
+	maxScroll := max(len(m.errorModalLines())-bodyH, 0)
 	return maxScroll
 }
 
@@ -811,14 +766,10 @@ func (m terraformDetailModel) renderErrorModal() string {
 	header := lipgloss.Place(m.width, 1, lipgloss.Left, lipgloss.Top, titleStyle.Render(title))
 
 	// Body
-	bodyH := m.height - 4 // header + footer + padding
-	if bodyH < 1 {
-		bodyH = 1
-	}
-	maxCodeWidth := m.width - 10
-	if maxCodeWidth < 20 {
-		maxCodeWidth = 20
-	}
+	bodyH := max(
+		// header + footer + padding
+		m.height-4, 1)
+	maxCodeWidth := max(m.width-10, 20)
 
 	lines := m.errorModalLines()
 	totalLines := len(lines)
@@ -829,10 +780,7 @@ func (m terraformDetailModel) renderErrorModal() string {
 		scroll = maxScroll
 	}
 
-	end := scroll + bodyH
-	if end > totalLines {
-		end = totalLines
-	}
+	end := min(scroll+bodyH, totalLines)
 
 	var b strings.Builder
 	for i := scroll; i < end; i++ {
@@ -874,10 +822,7 @@ func (m terraformDetailModel) renderErrorModal() string {
 // contentWidth returns the usable width inside the content window (minus borders and padding)
 func (m terraformDetailModel) contentWidth() int {
 	// window border(2) + window padding(2) = 4
-	w := m.width - 4
-	if w < 20 {
-		w = 20
-	}
+	w := max(m.width-4, 20)
 	return w
 }
 
@@ -1037,19 +982,13 @@ func (m terraformDetailModel) getTabContent() string {
 
 	bodyH := m.bodyHeight()
 	// Clamp scroll
-	maxScroll := len(lines) - bodyH
-	if maxScroll < 0 {
-		maxScroll = 0
-	}
+	maxScroll := max(len(lines)-bodyH, 0)
 	if m.scrollY > maxScroll {
 		m.scrollY = maxScroll
 	}
 
 	start := m.scrollY
-	end := start + bodyH
-	if end > len(lines) {
-		end = len(lines)
-	}
+	end := min(start+bodyH, len(lines))
 
 	visible := lines[start:end]
 	for len(visible) < bodyH {
@@ -1430,10 +1369,7 @@ func (m terraformDetailModel) renderOperationHistoryTab() string {
 
 	// Simple row-based viewport clipping (each row = 1 line, no inline expansion)
 	totalRows := len(rows)
-	visibleRows := m.bodyHeight() - 4
-	if visibleRows < 1 {
-		visibleRows = 1
-	}
+	visibleRows := max(m.bodyHeight()-4, 1)
 
 	scrollOffset := 0
 	if m.historyCursor >= visibleRows {
@@ -1446,10 +1382,7 @@ func (m terraformDetailModel) renderOperationHistoryTab() string {
 		scrollOffset = 0
 	}
 
-	end := scrollOffset + visibleRows
-	if end > totalRows {
-		end = totalRows
-	}
+	end := min(scrollOffset+visibleRows, totalRows)
 
 	// Styles
 	dateStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("230"))
@@ -1593,10 +1526,7 @@ func (m terraformDetailModel) renderOperationHistoryTab() string {
 	// Scroll indicator
 	if totalRows > visibleRows {
 		pos := ""
-		maxOffset := totalRows - visibleRows
-		if maxOffset < 1 {
-			maxOffset = 1
-		}
+		maxOffset := max(totalRows-visibleRows, 1)
 		if scrollOffset == 0 {
 			pos = "top"
 		} else if end >= totalRows {
@@ -1678,10 +1608,7 @@ func (m terraformDetailModel) renderTerraformFilesTab() string {
 	selectedStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("230")).Bold(true).Background(lipgloss.Color("62"))
 
 	// Viewport: reserve 3 lines for header + 1 for footer hint
-	visibleRows := m.bodyHeight() - 4
-	if visibleRows < 1 {
-		visibleRows = 1
-	}
+	visibleRows := max(m.bodyHeight()-4, 1)
 
 	totalEntries := len(m.fileTree.Flat)
 
@@ -1697,10 +1624,7 @@ func (m terraformDetailModel) renderTerraformFilesTab() string {
 		scrollOffset = 0
 	}
 
-	end := scrollOffset + visibleRows
-	if end > totalEntries {
-		end = totalEntries
-	}
+	end := min(scrollOffset+visibleRows, totalEntries)
 
 	for i := scrollOffset; i < end; i++ {
 		entry := m.fileTree.Flat[i]
@@ -1781,31 +1705,16 @@ func (m terraformDetailModel) renderFileContent() string {
 		filename = m.fileTree.Flat[m.fileCursor].Name
 	}
 
-	bodyH := m.bodyHeight() - headerLines
-	if bodyH < 1 {
-		bodyH = 1
-	}
+	bodyH := max(m.bodyHeight()-headerLines, 1)
 
 	// Max width for code: content width minus "  " (2) + linenum (4) + " │ " (3) = 9
-	maxCodeWidth := m.contentWidth() - 9
-	if maxCodeWidth < 20 {
-		maxCodeWidth = 20
-	}
+	maxCodeWidth := max(m.contentWidth()-9, 20)
 
 	// Clamp file scroll
-	maxScroll := len(lines) - bodyH
-	if maxScroll < 0 {
-		maxScroll = 0
-	}
-	scroll := m.fileScroll
-	if scroll > maxScroll {
-		scroll = maxScroll
-	}
+	maxScroll := max(len(lines)-bodyH, 0)
+	scroll := min(m.fileScroll, maxScroll)
 
-	end := scroll + bodyH
-	if end > len(lines) {
-		end = len(lines)
-	}
+	end := min(scroll+bodyH, len(lines))
 
 	for i := scroll; i < end; i++ {
 		line := lines[i]

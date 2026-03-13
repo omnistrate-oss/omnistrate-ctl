@@ -94,5 +94,5 @@ func getRegionCost(cmd *cobra.Command, args []string) error {
 	}
 
 	outputFormat, _ := cmd.Flags().GetString("output")
-	return utils.PrintTextTableJsonArrayOutput(outputFormat, []interface{}{result})
+	return utils.PrintTextTableJsonArrayOutput(outputFormat, []any{result})
 }

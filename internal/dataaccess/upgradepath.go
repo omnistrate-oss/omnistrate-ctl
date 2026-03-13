@@ -13,7 +13,7 @@ func CreateUpgradePath(ctx context.Context, token, serviceID, productTierID, sou
 	ctxWithToken := context.WithValue(ctx, openapiclientfleet.ContextAccessToken, token)
 	apiClient := getFleetClient()
 
-	additionalProperties := map[string]interface{}{
+	additionalProperties := map[string]any{
 		"notifyCustomer": notifyCustomer,
 	}
 
@@ -50,7 +50,7 @@ func ManageLifecycle(ctx context.Context, token, serviceID, productTierID, upgra
 	return ManageLifecycleWithPayload(ctx, token, serviceID, productTierID, upgradePathID, action, nil)
 }
 
-func ManageLifecycleWithPayload(ctx context.Context, token, serviceID, productTierID, upgradePathID string, action model.UpgradeMaintenanceAction, actionPayload map[string]interface{}) (*openapiclientfleet.UpgradePath, error) {
+func ManageLifecycleWithPayload(ctx context.Context, token, serviceID, productTierID, upgradePathID string, action model.UpgradeMaintenanceAction, actionPayload map[string]any) (*openapiclientfleet.UpgradePath, error) {
 	ctxWithToken := context.WithValue(ctx, openapiclientfleet.ContextAccessToken, token)
 	apiClient := getFleetClient()
 

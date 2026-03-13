@@ -113,7 +113,7 @@ func (m helmDetailModel) fetchHelmData() tea.Cmd {
 				continue
 			}
 
-			actualDebugData, ok := (*debugDataInterface).(map[string]interface{})
+			actualDebugData, ok := (*debugDataInterface).(map[string]any)
 			if !ok {
 				continue
 			}
@@ -155,7 +155,7 @@ func watchHelmLogs(ctx context.Context, dd DebugData, nodeKey string, ch chan lo
 					if !ok || debugDataInterface == nil {
 						continue
 					}
-					actualDebugData, ok := (*debugDataInterface).(map[string]interface{})
+					actualDebugData, ok := (*debugDataInterface).(map[string]any)
 					if !ok {
 						continue
 					}
@@ -272,14 +272,8 @@ func (m helmDetailModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.logLines = append(m.logLines, msg.lines...)
 		}
 		if m.logFollow {
-			bodyH := m.helmBodyHeight() - 4
-			if bodyH < 1 {
-				bodyH = 1
-			}
-			maxSc := len(m.logLines) - bodyH
-			if maxSc < 0 {
-				maxSc = 0
-			}
+			bodyH := max(m.helmBodyHeight()-4, 1)
+			maxSc := max(len(m.logLines)-bodyH, 0)
 			m.logScroll = maxSc
 		}
 		return m, waitForLogLines(m.logChan)
@@ -426,10 +420,7 @@ func (m helmDetailModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 			case helmTabWfErrors:
 				items := flattenWfEventItems(m.getWfEvents())
-				pageItems := m.helmBodyHeight() / 2
-				if pageItems < 1 {
-					pageItems = 1
-				}
+				pageItems := max(m.helmBodyHeight()/2, 1)
 				m.wfErrors.cursor -= pageItems
 				if m.wfErrors.cursor < 0 {
 					m.wfErrors.cursor = 0
@@ -454,10 +445,7 @@ func (m helmDetailModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 			case helmTabWfErrors:
 				items := flattenWfEventItems(m.getWfEvents())
-				pageItems := m.helmBodyHeight() / 2
-				if pageItems < 1 {
-					pageItems = 1
-				}
+				pageItems := max(m.helmBodyHeight()/2, 1)
 				m.wfErrors.cursor += pageItems
 				if m.wfErrors.cursor >= len(items) {
 					m.wfErrors.cursor = len(items) - 1
@@ -470,14 +458,8 @@ func (m helmDetailModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if m.activeTab == helmTabLogs {
 				m.logFollow = !m.logFollow
 				if m.logFollow {
-					bodyH := m.helmBodyHeight() - 4
-					if bodyH < 1 {
-						bodyH = 1
-					}
-					maxSc := len(m.logLines) - bodyH
-					if maxSc < 0 {
-						maxSc = 0
-					}
+					bodyH := max(m.helmBodyHeight()-4, 1)
+					maxSc := max(len(m.logLines)-bodyH, 0)
 					m.logScroll = maxSc
 				}
 			}
@@ -693,18 +675,12 @@ func (m helmDetailModel) renderHelmLogsTab() string {
 		headerStyle.Render(fmt.Sprintf("Helm Install Log (%d lines%s%s)", len(m.logLines), statusText, followText)),
 	)
 
-	bodyH := m.helmBodyHeight() - 4
-	if bodyH < 1 {
-		bodyH = 1
-	}
+	bodyH := max(m.helmBodyHeight()-4, 1)
 
 	totalLines := len(m.logLines)
 	scroll := m.logScroll
 
-	maxScroll := totalLines - bodyH
-	if maxScroll < 0 {
-		maxScroll = 0
-	}
+	maxScroll := max(totalLines-bodyH, 0)
 	if scroll > maxScroll {
 		scroll = maxScroll
 	}
@@ -712,16 +688,10 @@ func (m helmDetailModel) renderHelmLogsTab() string {
 		scroll = 0
 	}
 
-	end := scroll + bodyH
-	if end > totalLines {
-		end = totalLines
-	}
+	end := min(scroll+bodyH, totalLines)
 
 	lineNumStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("241"))
-	maxCodeWidth := m.helmContentWidth() - 9
-	if maxCodeWidth < 20 {
-		maxCodeWidth = 20
-	}
+	maxCodeWidth := max(m.helmContentWidth()-9, 20)
 
 	for i := scroll; i < end; i++ {
 		line := m.logLines[i]
@@ -784,10 +754,7 @@ func (m helmDetailModel) renderHelmValuesTab() string {
 
 	visibleNodes := flattenOutputTree(m.valuesTree)
 
-	visibleRows := m.helmBodyHeight() - 4
-	if visibleRows < 1 {
-		visibleRows = 1
-	}
+	visibleRows := max(m.helmBodyHeight()-4, 1)
 
 	totalEntries := len(visibleNodes)
 
@@ -802,10 +769,7 @@ func (m helmDetailModel) renderHelmValuesTab() string {
 		scrollOffset = 0
 	}
 
-	end := scrollOffset + visibleRows
-	if end > totalEntries {
-		end = totalEntries
-	}
+	end := min(scrollOffset+visibleRows, totalEntries)
 
 	keyStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("117"))
 	strStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("114"))
@@ -815,10 +779,7 @@ func (m helmDetailModel) renderHelmValuesTab() string {
 	braceStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("245"))
 	selectedBg := lipgloss.NewStyle().Background(lipgloss.Color("236"))
 
-	maxValWidth := m.helmContentWidth() - 20
-	if maxValWidth < 20 {
-		maxValWidth = 20
-	}
+	maxValWidth := max(m.helmContentWidth()-20, 20)
 
 	for idx := scrollOffset; idx < end; idx++ {
 		node := visibleNodes[idx]
@@ -936,30 +897,18 @@ func (m helmDetailModel) helmCopyableContent() string {
 
 func (m helmDetailModel) helmBodyHeight() int {
 	// header(1) + tab row(3) + window bottom border(1) + window padding(2) + footer(1) = 8
-	h := m.height - 8
-	if h < 1 {
-		h = 1
-	}
+	h := max(m.height-8, 1)
 	return h
 }
 
 func (m helmDetailModel) helmContentWidth() int {
-	w := m.width - 4
-	if w < 20 {
-		w = 20
-	}
+	w := max(m.width-4, 20)
 	return w
 }
 
 func (m helmDetailModel) helmLogMaxScroll() int {
-	bodyH := m.helmBodyHeight() - 4
-	if bodyH < 1 {
-		bodyH = 1
-	}
-	maxScroll := len(m.logLines) - bodyH
-	if maxScroll < 0 {
-		maxScroll = 0
-	}
+	bodyH := max(m.helmBodyHeight()-4, 1)
+	maxScroll := max(len(m.logLines)-bodyH, 0)
 	return maxScroll
 }
 
@@ -980,7 +929,7 @@ func (m helmDetailModel) renderHelmWfErrorsTab() string {
 
 // buildHelmValuesTree builds a tree of outputNodes from helm chart values (a plain map).
 // Unlike terraform output which has sensitive/type wrappers, helm values are raw JSON.
-func buildHelmValuesTree(values map[string]interface{}, _ string) []outputNode {
+func buildHelmValuesTree(values map[string]any, _ string) []outputNode {
 	if len(values) == 0 {
 		return nil
 	}

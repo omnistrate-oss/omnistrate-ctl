@@ -210,7 +210,7 @@ func getSourceEnvironmentID(ctx context.Context, token, serviceID, sourceEnvName
 
 	for _, env := range describeServiceRes.ServiceEnvironments {
 		if strings.EqualFold(env.Name, sourceEnvName) {
-			return utils.ToPtr(env.Id), nil
+			return new(env.Id), nil
 		}
 	}
 
@@ -230,7 +230,7 @@ func getVisibility(envType string) string {
 
 func getPublicKeyPtr(visibility string) *string {
 	if visibility == "PRIVATE" {
-		return utils.ToPtr(config.GetDefaultServiceAuthPublicKey())
+		return new(config.GetDefaultServiceAuthPublicKey())
 	}
 	return nil
 }

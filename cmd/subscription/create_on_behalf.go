@@ -59,7 +59,7 @@ func runCreateOnBehalf(cmd *cobra.Command, args []string) error {
 	}
 
 	// Parse custom price per unit if provided
-	var customPricePerUnit map[string]interface{}
+	var customPricePerUnit map[string]any
 	if customPricePerUnitStr != "" {
 		if err := json.Unmarshal([]byte(customPricePerUnitStr), &customPricePerUnit); err != nil {
 			return err
@@ -97,5 +97,5 @@ func runCreateOnBehalf(cmd *cobra.Command, args []string) error {
 	}
 
 	output, _ := cmd.Flags().GetString("output")
-	return utils.PrintTextTableJsonArrayOutput(output, []interface{}{result})
+	return utils.PrintTextTableJsonArrayOutput(output, []any{result})
 }
