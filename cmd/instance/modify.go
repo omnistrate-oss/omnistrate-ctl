@@ -175,11 +175,11 @@ func runModify(cmd *cobra.Command, args []string) error {
 		if err != nil {
 			// Handle spinner error if deployment monitoring fails
 			fmt.Println("❌ Deployment failed")
-			PrintWorkflowDebugGuidance(formattedInstance.InstanceID, workflowResult, err)
 		} else {
 			fmt.Println("✅ Deployment successful")
-			PrintWorkflowDebugGuidance(formattedInstance.InstanceID, workflowResult, nil)
 		}
+		PrintWorkflowDebugGuidance(formattedInstance.InstanceID, workflowResult, nil)
+
 	}
 
 	return nil
