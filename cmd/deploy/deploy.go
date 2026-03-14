@@ -1269,11 +1269,15 @@ func createInstanceUnified(ctx context.Context, token, serviceID, environmentID,
 		}
 
 		// Extract CREATE verb parameters and set defaults
+		paramDisplayNames := make(map[string]string)
 		if len(resApiParams.ConsumptionDescribeServiceOfferingResourceResult.Apis) > 0 {
 			for _, apiSpec := range resApiParams.ConsumptionDescribeServiceOfferingResourceResult.Apis {
 				if apiSpec.Verb == "CREATE" {
 
 					for _, inputParam := range apiSpec.InputParameters {
+						if inputParam.DisplayName != "" {
+							paramDisplayNames[inputParam.Key] = inputParam.DisplayName
+						}
 						// Handle special system parameters
 						switch inputParam.Key {
 						case "subscriptionId", "cloud_provider", "region":
@@ -1315,7 +1319,10 @@ func createInstanceUnified(ctx context.Context, token, serviceID, environmentID,
 
 		var promptErr error
 		if len(defaultRequiredParams) > 0 {
-			promptErr = promptForMissingRequiredParams(defaultParams, defaultRequiredParams)
+			sm.Stop()
+			promptErr = promptForMissingRequiredParams(defaultParams, defaultRequiredParams, paramDisplayNames)
+			sm = utils.NewSpinnerManager()
+			sm.Start()
 		}
 
 		// Validate that all required parameters have values
@@ -2303,7 +2310,7 @@ func isInteractivePromptEnabled() bool {
 	return (stdinInfo.Mode() & os.ModeCharDevice) != 0
 }
 
-func promptForMissingRequiredParams(defaultParams map[string]interface{}, requiredParams []string) error {
+func promptForMissingRequiredParams(defaultParams map[string]interface{}, requiredParams []string, displayNames map[string]string) error {
 	if len(requiredParams) == 0 {
 		return nil
 	}
@@ -2317,7 +2324,11 @@ func promptForMissingRequiredParams(defaultParams map[string]interface{}, requir
 	reader := bufio.NewReader(os.Stdin)
 	return applyPromptedParamValues(defaultParams, requiredParams, func(paramKey string) (string, error) {
 		for {
-			fmt.Printf("Enter value for '%s': ", paramKey)
+			promptLabel := paramKey
+			if name, ok := displayNames[paramKey]; ok && name != "" {
+				promptLabel = fmt.Sprintf("%s (%s)", name, paramKey)
+			}
+			fmt.Printf("Enter value for '%s': ", promptLabel)
 			value, err := reader.ReadString('\n')
 			if err != nil {
 				return "", fmt.Errorf("failed to read value for '%s': %w", paramKey, err)
