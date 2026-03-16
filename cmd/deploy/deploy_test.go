@@ -904,6 +904,59 @@ services:
 	}
 }
 
+func TestFormatPromptLabel(t *testing.T) {
+	tests := []struct {
+		name         string
+		paramKey     string
+		displayNames map[string]string
+		expected     string
+	}{
+		{
+			name:         "key only when no display names map",
+			paramKey:     "disk_size",
+			displayNames: nil,
+			expected:     "disk_size",
+		},
+		{
+			name:         "key only when key not in display names",
+			paramKey:     "disk_size",
+			displayNames: map[string]string{"username": "Username"},
+			expected:     "disk_size",
+		},
+		{
+			name:         "display name with key in parentheses",
+			paramKey:     "disk_size",
+			displayNames: map[string]string{"disk_size": "Disk Size"},
+			expected:     "Disk Size (disk_size)",
+		},
+		{
+			name:         "empty display name falls back to key",
+			paramKey:     "disk_size",
+			displayNames: map[string]string{"disk_size": ""},
+			expected:     "disk_size",
+		},
+		{
+			name:         "empty display names map returns key",
+			paramKey:     "password",
+			displayNames: map[string]string{},
+			expected:     "password",
+		},
+		{
+			name:         "display name with special characters",
+			paramKey:     "db_password",
+			displayNames: map[string]string{"db_password": "Database Password (required)"},
+			expected:     "Database Password (required) (db_password)",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := formatPromptLabel(tt.paramKey, tt.displayNames)
+			require.Equal(t, tt.expected, result)
+		})
+	}
+}
+
 func TestParsePromptInputValue(t *testing.T) {
 	tests := []struct {
 		name     string

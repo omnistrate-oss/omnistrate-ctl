@@ -1321,7 +1321,6 @@ func createInstanceUnified(ctx context.Context, token, serviceID, environmentID,
 		if len(defaultRequiredParams) > 0 {
 			sm.Stop()
 			promptErr = promptForMissingRequiredParams(defaultParams, defaultRequiredParams, paramDisplayNames)
-			sm = utils.NewSpinnerManager()
 			sm.Start()
 		}
 
@@ -1333,6 +1332,7 @@ func createInstanceUnified(ctx context.Context, token, serviceID, environmentID,
 			}
 		}
 		if len(stillMissingParams) > 0 {
+			sm.Stop()
 			if promptErr != nil {
 				return "", fmt.Errorf("missing required parameters for instance creation: %v (%w)", stillMissingParams, promptErr)
 			}
@@ -2324,10 +2324,7 @@ func promptForMissingRequiredParams(defaultParams map[string]interface{}, requir
 	reader := bufio.NewReader(os.Stdin)
 	return applyPromptedParamValues(defaultParams, requiredParams, func(paramKey string) (string, error) {
 		for {
-			promptLabel := paramKey
-			if name, ok := displayNames[paramKey]; ok && name != "" {
-				promptLabel = fmt.Sprintf("%s (%s)", name, paramKey)
-			}
+			promptLabel := formatPromptLabel(paramKey, displayNames)
 			fmt.Printf("Enter value for '%s': ", promptLabel)
 			value, err := reader.ReadString('\n')
 			if err != nil {
@@ -2341,6 +2338,17 @@ func promptForMissingRequiredParams(defaultParams map[string]interface{}, requir
 			return value, nil
 		}
 	})
+}
+
+// formatPromptLabel returns a user-friendly label for a parameter prompt.
+// When a display name is available it returns "DisplayName (key)", otherwise just the key.
+func formatPromptLabel(paramKey string, displayNames map[string]string) string {
+	if displayNames != nil {
+		if name, ok := displayNames[paramKey]; ok && name != "" {
+			return fmt.Sprintf("%s (%s)", name, paramKey)
+		}
+	}
+	return paramKey
 }
 
 func applyPromptedParamValues(defaultParams map[string]interface{}, requiredParams []string, readValue func(string) (string, error)) error {
