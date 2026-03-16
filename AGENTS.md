@@ -78,6 +78,32 @@ grep "func (a \*<EntityName>ApiAPIService)" \
   $(go env GOMODCACHE)/github.com/omnistrate-oss/omnistrate-sdk-go@v0.0.90/v1/api_<entity>_api.go
 ```
 
+## Spinner Usage — Nil Guard Required
+
+Spinners are only created when `output != "json"`, so both `spinner` and `sm` will be **nil** in JSON output mode. `Spinner.UpdateMessage()`, `.Complete()`, and `.Error()` are **NOT nil-safe** — calling them on a nil receiver will panic.
+
+**Rule: Always guard direct spinner/sm method calls with a nil check.**
+
+```go
+// ✅ Correct — guarded
+if spinner != nil {
+    spinner.UpdateMessage("Processing...")
+}
+
+// ✅ Correct — HandleSpinnerError/HandleSpinnerSuccess are already nil-safe
+utils.HandleSpinnerError(spinner, sm, err)
+utils.HandleSpinnerSuccess(spinner, sm, "Done")
+
+// ❌ Wrong — will panic when output is "json"
+spinner.UpdateMessage("Processing...")
+spinner.Complete()
+sm.Stop()
+```
+
+The same applies to `sm.AddSpinner()`, `sm.Start()`, `sm.Stop()` — guard with `if sm != nil`.
+
+Reference for correct multi-spinner pattern: `cmd/build/build.go` (artifact upload section), `cmd/instance/version_upgrade.go`.
+
 ## Agent Instructions: Adding New Entity Operations
 
 When asked to add CLI support for a new Omnistrate entity, follow this systematic workflow:
