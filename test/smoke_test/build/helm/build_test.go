@@ -175,3 +175,74 @@ func Test_build_dry_run(t *testing.T) {
 	err = cmd.RootCmd.ExecuteContext(ctx)
 	require.NoError(err)
 }
+
+func Test_build_output_format(t *testing.T) {
+	testutils.SmokeTest(t)
+
+	ctx := context.TODO()
+
+	require := require.New(t)
+	defer testutils.Cleanup()
+
+	var err error
+
+	// Step 1: login
+	testEmail, testPassword, err := testutils.GetTestAccount()
+	require.NoError(err)
+	cmd.RootCmd.SetArgs([]string{"login", fmt.Sprintf("--email=%s", testEmail), fmt.Sprintf("--password=%s", testPassword)})
+	err = cmd.RootCmd.ExecuteContext(ctx)
+	require.NoError(err)
+
+	serviceName := "build-output-format-helm-test" + uuid.NewString()
+
+	// PASS: json output — previously panicked with nil spinner dereference in ServicePlanSpec path
+	cmd.RootCmd.SetArgs([]string{
+		"build",
+		"--spec-type", "ServicePlanSpec",
+		"-f", "../../specfiles/helm/redis.yaml",
+		"--name", serviceName,
+		"--description", "Test output format for ServicePlanSpec",
+		"--environment", "dev",
+		"--environment-type", "dev",
+		"--release",
+		"--output", "json",
+	})
+	err = cmd.RootCmd.ExecuteContext(ctx)
+	require.NoError(err)
+
+	// PASS: table output
+	cmd.RootCmd.SetArgs([]string{
+		"build",
+		"--spec-type", "ServicePlanSpec",
+		"-f", "../../specfiles/helm/redis.yaml",
+		"--name", serviceName,
+		"--description", "Test output format for ServicePlanSpec",
+		"--environment", "dev",
+		"--environment-type", "dev",
+		"--release",
+		"--output", "table",
+	})
+	err = cmd.RootCmd.ExecuteContext(ctx)
+	require.NoError(err)
+
+	// PASS: text output
+	cmd.RootCmd.SetArgs([]string{
+		"build",
+		"--spec-type", "ServicePlanSpec",
+		"-f", "../../specfiles/helm/redis.yaml",
+		"--name", serviceName,
+		"--description", "Test output format for ServicePlanSpec",
+		"--environment", "dev",
+		"--environment-type", "dev",
+		"--release",
+		"--output", "text",
+	})
+	err = cmd.RootCmd.ExecuteContext(ctx)
+	require.NoError(err)
+
+	// Cleanup: remove service
+	cmd.RootCmd.SetArgs([]string{"service", "delete", "--id", build.ServiceID})
+	err = cmd.RootCmd.ExecuteContext(ctx)
+	require.NoError(err)
+}
+
