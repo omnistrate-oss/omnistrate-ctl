@@ -545,7 +545,7 @@ func runBuild(cmd *cobra.Command, args []string) error {
 
 	if specType == ServicePlanSpecType {
 		// Extract plan name from YAML for display purposes
-		if output != "json" {
+		if spinner1 != nil {
 			var yamlContent map[string]interface{}
 			if parseErr := yaml.Unmarshal(fileData, &yamlContent); parseErr == nil {
 				if planName, ok := yamlContent["name"].(string); ok && planName != "" {
@@ -555,7 +555,9 @@ func runBuild(cmd *cobra.Command, args []string) error {
 		}
 
 		// Step 1: Prepare service build - find or create service hierarchy and get upload tasks
-		spinner1.UpdateMessage("Preparing service build...")
+		if spinner1 != nil {
+			spinner1.UpdateMessage("Preparing service build...")
+		}
 
 		hierarchyResult, hierarchyErr := FindOrCreateServiceHierarchy(
 			cmd.Context(),
@@ -579,7 +581,9 @@ func runBuild(cmd *cobra.Command, args []string) error {
 			release = true
 		}
 
-		spinner1.UpdateMessage("Service build prepared successfully")
+		if spinner1 != nil {
+			spinner1.UpdateMessage("Service build prepared successfully")
+		}
 
 		// Step 2: Upload artifacts using tasks from prepare response
 		if len(hierarchyResult.ArtifactUploadingTasks) > 0 && !dryRun {
