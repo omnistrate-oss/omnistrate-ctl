@@ -245,4 +245,3 @@ func Test_build_output_format(t *testing.T) {
 	err = cmd.RootCmd.ExecuteContext(ctx)
 	require.NoError(err)
 }
-

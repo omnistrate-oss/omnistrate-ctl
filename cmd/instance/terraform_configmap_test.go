@@ -77,3 +77,87 @@ func TestFindBestProgressConfigMap(t *testing.T) {
 		t.Fatalf("expected terraform-progress-2, got %s", best.Name)
 	}
 }
+
+func TestMerge(t *testing.T) {
+	dataplaneConfigMaps := []corev1.ConfigMap{
+		{
+			ObjectMeta: metav1.ObjectMeta{Name: "tf-state-tf-r-dataplane-instance-abc"},
+			Data:       map[string]string{"main.tf": "dataplane resource"},
+		},
+		{
+			ObjectMeta: metav1.ObjectMeta{Name: "terraform-progress-dp-1"},
+			Data:       map[string]string{"log": "dataplane log"},
+		},
+	}
+
+	controlPlaneConfigMaps := []corev1.ConfigMap{
+		{
+			ObjectMeta: metav1.ObjectMeta{Name: "tf-state-tf-r-cpresource-instance-abc"},
+			Data:       map[string]string{"main.tf": "control plane resource"},
+		},
+		{
+			ObjectMeta: metav1.ObjectMeta{Name: "terraform-progress-cp-1"},
+			Data:       map[string]string{"log": "control plane log"},
+		},
+	}
+
+	dpIndex := newTerraformConfigMapIndex("instance-abc", dataplaneConfigMaps)
+	cpIndex := newTerraformConfigMapIndex("instance-abc", controlPlaneConfigMaps)
+
+	dpIndex.merge(cpIndex)
+
+	// Both resources should be present
+	if _, ok := dpIndex.stateByResource["tf-r-dataplane"]; !ok {
+		t.Fatalf("expected dataplane resource in merged index")
+	}
+	if _, ok := dpIndex.stateByResource["tf-r-cpresource"]; !ok {
+		t.Fatalf("expected control plane resource in merged index")
+	}
+
+	// Progress configmaps from both should be present
+	if len(dpIndex.progress) != 2 {
+		t.Fatalf("expected 2 progress configmaps after merge, got %d", len(dpIndex.progress))
+	}
+}
+
+func TestMerge_DoesNotOverwrite(t *testing.T) {
+	// Same resource ID exists in both clusters — dataplane should win
+	dataplaneConfigMaps := []corev1.ConfigMap{
+		{
+			ObjectMeta: metav1.ObjectMeta{Name: "tf-state-tf-r-shared-instance-abc"},
+			Data:       map[string]string{"main.tf": "dataplane version"},
+		},
+	}
+	controlPlaneConfigMaps := []corev1.ConfigMap{
+		{
+			ObjectMeta: metav1.ObjectMeta{Name: "tf-state-tf-r-shared-instance-abc"},
+			Data:       map[string]string{"main.tf": "control plane version"},
+		},
+	}
+
+	dpIndex := newTerraformConfigMapIndex("instance-abc", dataplaneConfigMaps)
+	cpIndex := newTerraformConfigMapIndex("instance-abc", controlPlaneConfigMaps)
+
+	dpIndex.merge(cpIndex)
+
+	cm := dpIndex.stateByResource["tf-r-shared"]
+	if cm == nil {
+		t.Fatalf("expected tf-r-shared in merged index")
+	}
+	if cm.Data["main.tf"] != "dataplane version" {
+		t.Fatalf("expected dataplane version to be preserved, got %q", cm.Data["main.tf"])
+	}
+}
+
+func TestMerge_NilOther(t *testing.T) {
+	configMaps := []corev1.ConfigMap{
+		{ObjectMeta: metav1.ObjectMeta{Name: "tf-state-tf-r-1-instance-abc"}},
+	}
+
+	index := newTerraformConfigMapIndex("instance-abc", configMaps)
+	index.merge(nil)
+
+	if _, ok := index.stateByResource["tf-r-1"]; !ok {
+		t.Fatalf("expected tf-r-1 to still be present after nil merge")
+	}
+}

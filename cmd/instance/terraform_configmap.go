@@ -64,6 +64,27 @@ func loadTerraformConfigMapIndexForInstance(ctx context.Context, token string, i
 		return nil, nil, err
 	}
 
+	// If a control plane deployment cell exists (for ControlPlane-targeted resources),
+	// also load ConfigMaps from that cluster and merge into the index.
+	if cpCellID := instanceData.GetControlPlaneDeploymentCellID(); cpCellID != "" && cpCellID != deploymentCellID {
+		cpKubeConfig, cpErr := dataaccess.GetKubeConfigForHostCluster(ctx, token, cpCellID, "cluster-admin")
+		if cpErr != nil {
+			return nil, nil, fmt.Errorf("failed to get kubeconfig for control plane deployment cell %s: %w", cpCellID, cpErr)
+		}
+
+		cpConn, cpErr := newK8sConnectionFromKubeConfigResult(cpKubeConfig)
+		if cpErr != nil {
+			return nil, nil, fmt.Errorf("failed to create Kubernetes client for control plane deployment cell %s: %w", cpCellID, cpErr)
+		}
+
+		cpIndex, cpErr := loadTerraformConfigMapIndex(ctx, cpConn.clientset, actualInstanceID)
+		if cpErr != nil {
+			return nil, nil, fmt.Errorf("failed to load terraform configmaps from control plane deployment cell %s: %w", cpCellID, cpErr)
+		}
+
+		index.merge(cpIndex)
+	}
+
 	return index, conn, nil
 }
 
@@ -185,6 +206,20 @@ func newTerraformConfigMapIndex(instanceID string, configMaps []corev1.ConfigMap
 	}
 
 	return index
+}
+
+// merge incorporates state and progress ConfigMaps from another index,
+// without overwriting entries already present in this index.
+func (index *terraformConfigMapIndex) merge(other *terraformConfigMapIndex) {
+	if other == nil {
+		return
+	}
+	for resourceID, cm := range other.stateByResource {
+		if _, exists := index.stateByResource[resourceID]; !exists {
+			index.stateByResource[resourceID] = cm
+		}
+	}
+	index.progress = append(index.progress, other.progress...)
 }
 
 func (index *terraformConfigMapIndex) terraformDataForResource(resourceID string) *TerraformData {
