@@ -173,7 +173,7 @@ func makeStubLoader(cellConfigMaps map[string][]corev1.ConfigMap) k8sConnectionL
 		for i := range cms {
 			objects[i] = &cms[i]
 		}
-		clientset := fake.NewSimpleClientset(objects...)
+		clientset := fake.NewClientset(objects...)
 		return &k8sConnection{clientset: clientset}, nil
 	}
 }
