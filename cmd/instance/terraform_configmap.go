@@ -34,24 +34,49 @@ type terraformConfigMapIndex struct {
 
 // k8sConnection holds both the clientset and rest config for k8s operations
 type k8sConnection struct {
-	clientset  *kubernetes.Clientset
+	clientset  kubernetes.Interface
 	restConfig *rest.Config
 }
 
-func loadTerraformConfigMapIndexForInstance(ctx context.Context, token string, instanceData *openapiclientfleet.ResourceInstance, instanceID string) (*terraformConfigMapIndex, *k8sConnection, error) {
+// k8sConnections holds connections for both the dataplane and (optionally) control-plane clusters.
+type k8sConnections struct {
+	dataplane    *k8sConnection
+	controlPlane *k8sConnection // nil if no control-plane deployment cell
+}
+
+// k8sConnectionLoader is a function that fetches a k8s connection for a given deployment cell.
+// It is used as a dependency injection point to make loadTerraformConfigMapIndexForInstanceWithLoader testable.
+type k8sConnectionLoader func(ctx context.Context, token, cellID string) (*k8sConnection, error)
+
+// loadK8sConnectionForCell fetches the kubeconfig and creates a k8s connection for a given cell.
+func loadK8sConnectionForCell(ctx context.Context, token, cellID string) (*k8sConnection, error) {
+	kubeConfig, err := dataaccess.GetKubeConfigForHostCluster(ctx, token, cellID, "cluster-admin")
+	if err != nil {
+		return nil, fmt.Errorf("failed to get kubeconfig for deployment cell %s: %w", cellID, err)
+	}
+	conn, err := newK8sConnectionFromKubeConfigResult(kubeConfig)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create Kubernetes client for deployment cell %s: %w", cellID, err)
+	}
+	return conn, nil
+}
+
+func loadTerraformConfigMapIndexForInstance(ctx context.Context, token string, instanceData *openapiclientfleet.ResourceInstance, instanceID string) (*terraformConfigMapIndex, *k8sConnections, error) {
+	return loadTerraformConfigMapIndexForInstanceWithLoader(ctx, token, instanceData, instanceID, loadK8sConnectionForCell)
+}
+
+// loadTerraformConfigMapIndexForInstanceWithLoader loads and merges terraform ConfigMaps from all
+// relevant clusters (dataplane and optionally control-plane). The loader parameter is used to obtain
+// a k8s connection for a given cell ID, making this function testable via injection.
+func loadTerraformConfigMapIndexForInstanceWithLoader(ctx context.Context, token string, instanceData *openapiclientfleet.ResourceInstance, instanceID string, loader k8sConnectionLoader) (*terraformConfigMapIndex, *k8sConnections, error) {
 	if instanceData == nil || instanceData.DeploymentCellID == nil || *instanceData.DeploymentCellID == "" {
 		return nil, nil, fmt.Errorf("deployment cell ID not found for instance %s", instanceID)
 	}
 
 	deploymentCellID := *instanceData.DeploymentCellID
-	kubeConfig, err := dataaccess.GetKubeConfigForHostCluster(ctx, token, deploymentCellID, "cluster-admin")
+	dpConn, err := loader(ctx, token, deploymentCellID)
 	if err != nil {
-		return nil, nil, fmt.Errorf("failed to get kubeconfig for deployment cell %s: %w", deploymentCellID, err)
-	}
-
-	conn, err := newK8sConnectionFromKubeConfigResult(kubeConfig)
-	if err != nil {
-		return nil, nil, fmt.Errorf("failed to create Kubernetes client for deployment cell %s: %w", deploymentCellID, err)
+		return nil, nil, err
 	}
 
 	actualInstanceID := instanceID
@@ -59,22 +84,19 @@ func loadTerraformConfigMapIndexForInstance(ctx context.Context, token string, i
 		actualInstanceID = id
 	}
 
-	index, err := loadTerraformConfigMapIndex(ctx, conn.clientset, actualInstanceID)
+	index, err := loadTerraformConfigMapIndex(ctx, dpConn.clientset, actualInstanceID)
 	if err != nil {
 		return nil, nil, err
 	}
 
+	conns := &k8sConnections{dataplane: dpConn}
+
 	// If a control plane deployment cell exists (for ControlPlane-targeted resources),
 	// also load ConfigMaps from that cluster and merge into the index.
 	if cpCellID := instanceData.GetControlPlaneDeploymentCellID(); cpCellID != "" && cpCellID != deploymentCellID {
-		cpKubeConfig, cpErr := dataaccess.GetKubeConfigForHostCluster(ctx, token, cpCellID, "cluster-admin")
+		cpConn, cpErr := loader(ctx, token, cpCellID)
 		if cpErr != nil {
-			return nil, nil, fmt.Errorf("failed to get kubeconfig for control plane deployment cell %s: %w", cpCellID, cpErr)
-		}
-
-		cpConn, cpErr := newK8sConnectionFromKubeConfigResult(cpKubeConfig)
-		if cpErr != nil {
-			return nil, nil, fmt.Errorf("failed to create Kubernetes client for control plane deployment cell %s: %w", cpCellID, cpErr)
+			return nil, nil, cpErr
 		}
 
 		cpIndex, cpErr := loadTerraformConfigMapIndex(ctx, cpConn.clientset, actualInstanceID)
@@ -83,9 +105,10 @@ func loadTerraformConfigMapIndexForInstance(ctx context.Context, token string, i
 		}
 
 		index.merge(cpIndex)
+		conns.controlPlane = cpConn
 	}
 
-	return index, conn, nil
+	return index, conns, nil
 }
 
 // newK8sConnectionFromKubeConfigResult writes a temp kubeconfig file from the API result and creates a k8s connection.

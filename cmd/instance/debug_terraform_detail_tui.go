@@ -35,7 +35,7 @@ type fileContentMsg struct {
 type terraformDataMsg struct {
 	progress     *TerraformProgressData
 	history      []TerraformHistoryEntry
-	k8sConn      *k8sConnection
+	k8sConn      *k8sConnections
 	fileTree     *TerraformFileTree
 	tfOutputJSON string // latest terraform output JSON from configmap
 	err          error
@@ -74,7 +74,7 @@ type terraformDetailModel struct {
 	loadErr     error
 
 	// K8s connection for file operations
-	k8sConn *k8sConnection
+	k8sConn *k8sConnections
 
 	// Terraform Files tab data
 	fileTree       *TerraformFileTree
@@ -203,8 +203,8 @@ func (m terraformDetailModel) fetchData() tea.Cmd {
 
 		// Fetch terraform output JSON from configmap Files (tf-state)
 		var tfOutputJSON string
-		if conn != nil {
-			index, indexErr := loadTerraformConfigMapIndex(ctx, conn.clientset, m.debugData.InstanceID)
+		if conn != nil && conn.dataplane != nil {
+			index, indexErr := loadTerraformConfigMapIndex(ctx, conn.dataplane.clientset, m.debugData.InstanceID)
 			if indexErr == nil && index != nil {
 				var tfData *TerraformData
 				for _, key := range resourceConfigMapKeys(m.node.ID) {
@@ -222,12 +222,12 @@ func (m terraformDetailModel) fetchData() tea.Cmd {
 
 		// Fetch file tree from the terraform executor pod
 		var fileTree *TerraformFileTree
-		if progress != nil && conn != nil && progress.TerraformName != "" {
+		if progress != nil && conn != nil && conn.dataplane != nil && progress.TerraformName != "" {
 			podName := terraformExecutorPodName(progress.TerraformName)
 			// Try apply directory first (most common), then diff
 			for _, op := range []string{"apply", "diff", "output"} {
 				basePath := terraformFilesBasePath(progress.TerraformName, progress.InstanceID, op)
-				tree, fetchErr := fetchTerraformFileTree(ctx, conn, terraformConfigMapNamespace, podName, basePath)
+				tree, fetchErr := fetchTerraformFileTree(ctx, conn.dataplane, terraformConfigMapNamespace, podName, basePath)
 				if fetchErr == nil && tree != nil && len(tree.Flat) > 0 {
 					fileTree = tree
 					break
@@ -417,7 +417,7 @@ func (m terraformDetailModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 						if m.fileCursor >= len(m.fileTree.Flat) {
 							m.fileCursor = len(m.fileTree.Flat) - 1
 						}
-					} else if m.k8sConn != nil {
+					} else if m.k8sConn != nil && m.k8sConn.dataplane != nil {
 						m.fileLoading = true
 						m.viewingFile = true
 						m.fileScroll = 0
@@ -607,12 +607,12 @@ func (m terraformDetailModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		// Start log watcher for apply/destroy logs from configmap
 		var cmds []tea.Cmd
-		if msg.k8sConn != nil {
+		if msg.k8sConn != nil && msg.k8sConn.dataplane != nil {
 			ctx, cancel := context.WithCancel(context.Background())
 			m.logCancel = cancel
 			m.logStreaming = true
 			cmds = append(cmds,
-				watchApplyDestroyLogs(ctx, msg.k8sConn, m.debugData.InstanceID, m.node.ID, m.history, m.logChan),
+				watchApplyDestroyLogs(ctx, msg.k8sConn.dataplane, m.debugData.InstanceID, m.node.ID, m.history, m.logChan),
 				waitForLogLines(m.logChan),
 			)
 		}
@@ -662,11 +662,13 @@ func (m terraformDetailModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.logChan = make(chan logLineMsg, 50)
 			m.logStreaming = true
 			m.logErr = nil
-			return m, tea.Batch(
-				tea.Tick(logPollInterval, func(time.Time) tea.Msg { return nil }),
-				watchApplyDestroyLogs(ctx, m.k8sConn, m.debugData.InstanceID, m.node.ID, m.history, m.logChan),
-				waitForLogLines(m.logChan),
-			)
+			if m.k8sConn != nil && m.k8sConn.dataplane != nil {
+				return m, tea.Batch(
+					tea.Tick(logPollInterval, func(time.Time) tea.Msg { return nil }),
+					watchApplyDestroyLogs(ctx, m.k8sConn.dataplane, m.debugData.InstanceID, m.node.ID, m.history, m.logChan),
+					waitForLogLines(m.logChan),
+				)
+			}
 		}
 		m.logDone = true
 	case progressTickMsg:
@@ -1643,7 +1645,7 @@ func formatHistoryTimeOnly(t string) string {
 func (m terraformDetailModel) fetchFileContent(filePath string) tea.Cmd {
 	return tea.Batch(m.spinner.Tick, func() tea.Msg {
 		ctx := context.Background()
-		content, err := fetchFileContentFromPod(ctx, m.k8sConn, m.fileTree.Namespace, m.fileTree.PodName, filePath)
+		content, err := fetchFileContentFromPod(ctx, m.k8sConn.dataplane, m.fileTree.Namespace, m.fileTree.PodName, filePath)
 		return fileContentMsg{content: content, err: err}
 	})
 }
