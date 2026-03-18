@@ -34,24 +34,74 @@ type terraformConfigMapIndex struct {
 
 // k8sConnection holds both the clientset and rest config for k8s operations
 type k8sConnection struct {
-	clientset  *kubernetes.Clientset
+	clientset  kubernetes.Interface
 	restConfig *rest.Config
 }
 
-func loadTerraformConfigMapIndexForInstance(ctx context.Context, token string, instanceData *openapiclientfleet.ResourceInstance, instanceID string) (*terraformConfigMapIndex, *k8sConnection, error) {
+// k8sConnections holds connections for both the dataplane and (optionally) control-plane clusters.
+type k8sConnections struct {
+	dataplane    *k8sConnection
+	controlPlane *k8sConnection // nil if no control-plane deployment cell
+}
+
+// findConnectionWithStateConfigMap returns the first k8sConnection (trying dataplane, then control-plane)
+// that contains a tf-state ConfigMap for the given resource. Falls back to dataplane if neither has data.
+func findConnectionWithStateConfigMap(conns *k8sConnections, instanceID, resourceID string) *k8sConnection {
+	if conns == nil {
+		return nil
+	}
+	for _, c := range []*k8sConnection{conns.dataplane, conns.controlPlane} {
+		if c == nil {
+			continue
+		}
+		ctx := context.Background()
+		index, err := loadTerraformConfigMapIndex(ctx, c.clientset, instanceID)
+		if err != nil || index == nil {
+			continue
+		}
+		for _, key := range resourceConfigMapKeys(resourceID) {
+			if _, ok := index.stateByResource[key]; ok {
+				return c
+			}
+		}
+	}
+	// Fall back to dataplane if no state configmap was found anywhere
+	return conns.dataplane
+}
+
+// k8sConnectionLoader is a function that fetches a k8s connection for a given deployment cell.
+// It is used as a dependency injection point to make loadTerraformConfigMapIndexForInstanceWithLoader testable.
+type k8sConnectionLoader func(ctx context.Context, token, cellID string) (*k8sConnection, error)
+
+// loadK8sConnectionForCell fetches the kubeconfig and creates a k8s connection for a given cell.
+func loadK8sConnectionForCell(ctx context.Context, token, cellID string) (*k8sConnection, error) {
+	kubeConfig, err := dataaccess.GetKubeConfigForHostCluster(ctx, token, cellID, "cluster-admin")
+	if err != nil {
+		return nil, fmt.Errorf("failed to get kubeconfig for deployment cell %s: %w", cellID, err)
+	}
+	conn, err := newK8sConnectionFromKubeConfigResult(kubeConfig)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create Kubernetes client for deployment cell %s: %w", cellID, err)
+	}
+	return conn, nil
+}
+
+func loadTerraformConfigMapIndexForInstance(ctx context.Context, token string, instanceData *openapiclientfleet.ResourceInstance, instanceID string) (*terraformConfigMapIndex, *k8sConnections, error) {
+	return loadTerraformConfigMapIndexForInstanceWithLoader(ctx, token, instanceData, instanceID, loadK8sConnectionForCell)
+}
+
+// loadTerraformConfigMapIndexForInstanceWithLoader loads and merges terraform ConfigMaps from all
+// relevant clusters (dataplane and optionally control-plane). The loader parameter is used to obtain
+// a k8s connection for a given cell ID, making this function testable via injection.
+func loadTerraformConfigMapIndexForInstanceWithLoader(ctx context.Context, token string, instanceData *openapiclientfleet.ResourceInstance, instanceID string, loader k8sConnectionLoader) (*terraformConfigMapIndex, *k8sConnections, error) {
 	if instanceData == nil || instanceData.DeploymentCellID == nil || *instanceData.DeploymentCellID == "" {
 		return nil, nil, fmt.Errorf("deployment cell ID not found for instance %s", instanceID)
 	}
 
 	deploymentCellID := *instanceData.DeploymentCellID
-	kubeConfig, err := dataaccess.GetKubeConfigForHostCluster(ctx, token, deploymentCellID, "cluster-admin")
+	dpConn, err := loader(ctx, token, deploymentCellID)
 	if err != nil {
-		return nil, nil, fmt.Errorf("failed to get kubeconfig for deployment cell %s: %w", deploymentCellID, err)
-	}
-
-	conn, err := newK8sConnectionFromKubeConfigResult(kubeConfig)
-	if err != nil {
-		return nil, nil, fmt.Errorf("failed to create Kubernetes client for deployment cell %s: %w", deploymentCellID, err)
+		return nil, nil, err
 	}
 
 	actualInstanceID := instanceID
@@ -59,12 +109,31 @@ func loadTerraformConfigMapIndexForInstance(ctx context.Context, token string, i
 		actualInstanceID = id
 	}
 
-	index, err := loadTerraformConfigMapIndex(ctx, conn.clientset, actualInstanceID)
+	index, err := loadTerraformConfigMapIndex(ctx, dpConn.clientset, actualInstanceID)
 	if err != nil {
 		return nil, nil, err
 	}
 
-	return index, conn, nil
+	conns := &k8sConnections{dataplane: dpConn}
+
+	// If a control plane deployment cell exists (for ControlPlane-targeted resources),
+	// also load ConfigMaps from that cluster and merge into the index.
+	if cpCellID := instanceData.GetControlPlaneDeploymentCellID(); cpCellID != "" && cpCellID != deploymentCellID {
+		cpConn, cpErr := loader(ctx, token, cpCellID)
+		if cpErr != nil {
+			return nil, nil, cpErr
+		}
+
+		cpIndex, cpErr := loadTerraformConfigMapIndex(ctx, cpConn.clientset, actualInstanceID)
+		if cpErr != nil {
+			return nil, nil, fmt.Errorf("failed to load terraform configmaps from control plane deployment cell %s: %w", cpCellID, cpErr)
+		}
+
+		index.merge(cpIndex)
+		conns.controlPlane = cpConn
+	}
+
+	return index, conns, nil
 }
 
 // newK8sConnectionFromKubeConfigResult writes a temp kubeconfig file from the API result and creates a k8s connection.
@@ -185,6 +254,20 @@ func newTerraformConfigMapIndex(instanceID string, configMaps []corev1.ConfigMap
 	}
 
 	return index
+}
+
+// merge incorporates state and progress ConfigMaps from another index,
+// without overwriting entries already present in this index.
+func (index *terraformConfigMapIndex) merge(other *terraformConfigMapIndex) {
+	if other == nil {
+		return
+	}
+	for resourceID, cm := range other.stateByResource {
+		if _, exists := index.stateByResource[resourceID]; !exists {
+			index.stateByResource[resourceID] = cm
+		}
+	}
+	index.progress = append(index.progress, other.progress...)
 }
 
 func (index *terraformConfigMapIndex) terraformDataForResource(resourceID string) *TerraformData {

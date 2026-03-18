@@ -50,7 +50,7 @@ type TerraformHistoryEntry struct {
 }
 
 // fetchTerraformProgress fetches and parses terraform progress for a given resource node
-func fetchTerraformProgress(ctx context.Context, token string, instanceData *openapiclientfleet.ResourceInstance, instanceID, resourceID string) (*TerraformProgressData, []TerraformHistoryEntry, *k8sConnection, error) {
+func fetchTerraformProgress(ctx context.Context, token string, instanceData *openapiclientfleet.ResourceInstance, instanceID, resourceID string) (*TerraformProgressData, []TerraformHistoryEntry, *k8sConnections, error) {
 	index, conn, err := loadTerraformConfigMapIndexForInstance(ctx, token, instanceData, instanceID)
 	if err != nil {
 		return nil, nil, nil, fmt.Errorf("failed to load terraform configmap index: %w", err)

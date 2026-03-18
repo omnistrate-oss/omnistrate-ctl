@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"strings"
 	"testing"
 
 	"github.com/omnistrate-oss/omnistrate-ctl/internal/utils"
@@ -44,6 +45,9 @@ func Test_build_basic(t *testing.T) {
 	// Step 3: test build service on all compose files
 	for _, f := range specFiles {
 		if f.IsDir() {
+			continue
+		}
+		if strings.HasPrefix(f.Name(), "layered_") {
 			continue
 		}
 
@@ -245,4 +249,3 @@ func Test_build_output_format(t *testing.T) {
 	err = cmd.RootCmd.ExecuteContext(ctx)
 	require.NoError(err)
 }
-

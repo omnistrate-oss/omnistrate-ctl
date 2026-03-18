@@ -31,6 +31,7 @@ type TerraformFileTree struct {
 	BasePath  string
 	Root      *TerraformFileEntry
 	Flat      []*TerraformFileEntry // flattened visible entries for rendering
+	conn      *k8sConnection        // the k8s connection where the executor pod was found
 }
 
 // terraformExecutorPodName builds the pod name for the terraform executor
