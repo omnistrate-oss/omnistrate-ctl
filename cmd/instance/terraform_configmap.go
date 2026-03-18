@@ -44,6 +44,31 @@ type k8sConnections struct {
 	controlPlane *k8sConnection // nil if no control-plane deployment cell
 }
 
+// findConnectionWithStateConfigMap returns the first k8sConnection (trying dataplane, then control-plane)
+// that contains a tf-state ConfigMap for the given resource. Falls back to dataplane if neither has data.
+func findConnectionWithStateConfigMap(conns *k8sConnections, instanceID, resourceID string) *k8sConnection {
+	if conns == nil {
+		return nil
+	}
+	for _, c := range []*k8sConnection{conns.dataplane, conns.controlPlane} {
+		if c == nil {
+			continue
+		}
+		ctx := context.Background()
+		index, err := loadTerraformConfigMapIndex(ctx, c.clientset, instanceID)
+		if err != nil || index == nil {
+			continue
+		}
+		for _, key := range resourceConfigMapKeys(resourceID) {
+			if _, ok := index.stateByResource[key]; ok {
+				return c
+			}
+		}
+	}
+	// Fall back to dataplane if no state configmap was found anywhere
+	return conns.dataplane
+}
+
 // k8sConnectionLoader is a function that fetches a k8s connection for a given deployment cell.
 // It is used as a dependency injection point to make loadTerraformConfigMapIndexForInstanceWithLoader testable.
 type k8sConnectionLoader func(ctx context.Context, token, cellID string) (*k8sConnection, error)
