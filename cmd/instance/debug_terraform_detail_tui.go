@@ -204,6 +204,12 @@ func (m terraformDetailModel) fetchData() tea.Cmd {
 		// Fetch terraform output JSON from configmap Files (tf-state).
 		// Try both dataplane and control-plane clusters.
 		var tfOutputJSON string
+		if conn == nil {
+			return terraformDataMsg{
+				progress: progress,
+				history:  history,
+			}
+		}
 		for _, c := range []*k8sConnection{conn.dataplane, conn.controlPlane} {
 			if c == nil {
 				continue
@@ -697,7 +703,9 @@ func (m terraformDetailModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.refreshing = false
 		m.lastProgressRefresh = time.Now()
 		if msg.err == nil {
-			m.tfProgress = msg.progress
+			if msg.progress != nil {
+				m.tfProgress = msg.progress
+			}
 			m.history = msg.history
 			// Don't rebuild timeline while user is reading error modal
 			if m.errorModalText == "" {
