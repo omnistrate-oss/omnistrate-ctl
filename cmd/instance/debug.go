@@ -241,8 +241,7 @@ func collectResourceDebugInfo(ctx context.Context, token, serviceID, environment
 
 	// Remove entries that have no debug data
 	for key, info := range result {
-		if info.Helm == nil && info.TerraformProgress == nil && len(info.TerraformHistory) == 0 &&
-			len(info.TerraformFiles) == 0 && len(info.TerraformLogs) == 0 {
+		if !info.hasData() {
 			delete(result, key)
 		}
 	}

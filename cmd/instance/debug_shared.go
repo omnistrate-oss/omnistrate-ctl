@@ -33,6 +33,12 @@ type ResourceDebugInfo struct {
 	TerraformLogs     map[string]string       `json:"terraformLogs,omitempty"`
 }
 
+// hasData returns true if any debug data has been populated for this resource.
+func (r *ResourceDebugInfo) hasData() bool {
+	return r.Helm != nil || r.TerraformProgress != nil ||
+		len(r.TerraformHistory) > 0 || len(r.TerraformFiles) > 0 || len(r.TerraformLogs) > 0
+}
+
 func parseHelmData(debugData map[string]interface{}) *HelmData {
 	helmData := &HelmData{
 		ChartValues: make(map[string]interface{}),
