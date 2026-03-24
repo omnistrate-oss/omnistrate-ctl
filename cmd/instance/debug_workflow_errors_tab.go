@@ -116,7 +116,7 @@ func fetchWfEventsForResource(data DebugData, resourceKey string) tea.Cmd {
 type WorkflowStepInfo struct {
 	Name         string                  `json:"name"`
 	DisplayName  string                  `json:"displayName,omitempty"` // overridden display name (e.g. "Waiting for dependencies" for Bootstrap)
-	Status       string                  `json:"status"`               // "success", "in-progress", "failed", "pending"
+	Status       string                  `json:"status"`                // "success", "in-progress", "failed", "pending"
 	StartTime    string                  `json:"startTime,omitempty"`
 	EndTime      string                  `json:"endTime,omitempty"`
 	Events       []dataaccess.DebugEvent `json:"events,omitempty"`
