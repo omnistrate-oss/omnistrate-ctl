@@ -358,11 +358,11 @@ func TestResourceDebugInfoTerraformJSON(t *testing.T) {
 		ResourceKey:  "database",
 		ResourceType: "terraform",
 		TerraformProgress: &TerraformProgressData{
-			TerraformName:  "tf-database",
-			InstanceID:     "inst-1",
-			ResourceID:     "tf-r-1",
-			Status:         "in-progress",
-			TotalResources: 5,
+			TerraformName:   "tf-database",
+			InstanceID:      "inst-1",
+			ResourceID:      "tf-r-1",
+			Status:          "in-progress",
+			TotalResources:  5,
 			FailedResources: 1,
 			Resources: []TerraformResourceDetail{
 				{Address: "aws_rds_instance.main", Type: "aws_rds_instance", Name: "main", State: "ready"},
