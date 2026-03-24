@@ -114,20 +114,20 @@ func fetchWfEventsForResource(data DebugData, resourceKey string) tea.Cmd {
 
 // WorkflowStepInfo holds step-level summary with timing and events.
 type WorkflowStepInfo struct {
-	Name         string
-	DisplayName  string // overridden display name (e.g. "Waiting for dependencies" for Bootstrap)
-	Status       string // "success", "in-progress", "failed", "pending"
-	StartTime    string
-	EndTime      string
-	Events       []dataaccess.DebugEvent
-	DepTimelines []depTimeline // populated for bootstrap steps only
+	Name         string                  `json:"name"`
+	DisplayName  string                  `json:"displayName,omitempty"` // overridden display name (e.g. "Waiting for dependencies" for Bootstrap)
+	Status       string                  `json:"status"`               // "success", "in-progress", "failed", "pending"
+	StartTime    string                  `json:"startTime,omitempty"`
+	EndTime      string                  `json:"endTime,omitempty"`
+	Events       []dataaccess.DebugEvent `json:"events,omitempty"`
+	DepTimelines []depTimeline           `json:"depTimelines,omitempty"` // populated for bootstrap steps only
 }
 
 // depTimeline holds the completion status of a dependency resource for Bootstrap step rendering.
 type depTimeline struct {
-	Name       string // dependency resource name or key
-	Status     string // overall status: "completed", "running", "pending", "failed"
-	FinishedAt string // RFC3339 time when the dependency finished (empty if not done)
+	Name       string `json:"name"`                 // dependency resource name or key
+	Status     string `json:"status"`               // overall status: "completed", "running", "pending", "failed"
+	FinishedAt string `json:"finishedAt,omitempty"` // RFC3339 time when the dependency finished (empty if not done)
 }
 
 // stepDisplayName returns the display name for the step (using override if set).
@@ -140,7 +140,7 @@ func (s WorkflowStepInfo) stepDisplayName() string {
 
 // ResourceWorkflowSteps holds the ordered list of workflow steps for a resource.
 type ResourceWorkflowSteps struct {
-	Steps []WorkflowStepInfo
+	Steps []WorkflowStepInfo `json:"steps"`
 }
 
 // wfEventItem represents a selectable row in the workflow events tab.

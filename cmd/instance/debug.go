@@ -28,8 +28,8 @@ var debugCmd = &cobra.Command{
 type DebugData struct {
 	InstanceID    string   `json:"instanceId"`
 	PlanDAG       *PlanDAG `json:"planDag,omitempty"`
-	ServiceID     string   `json:"-"`
-	EnvironmentID string   `json:"-"`
+	ServiceID     string   `json:"serviceId,omitempty"`
+	EnvironmentID string   `json:"environmentId,omitempty"`
 	Token         string   `json:"-"`
 }
 
@@ -181,11 +181,17 @@ func runDebugJSON(instanceID, token string) error {
 	}
 	if planDAG != nil {
 		attachWorkflowProgress(ctx, token, serviceID, environmentID, instanceID, planDAG)
+		// Enrich bootstrap steps with dependency timelines for all resources
+		for resourceKey, steps := range planDAG.WorkflowStepsByKey {
+			enrichBootstrapSteps(steps, resourceKey, planDAG)
+		}
 	}
 
 	data := DebugData{
-		InstanceID: instanceID,
-		PlanDAG:    planDAG,
+		InstanceID:    instanceID,
+		ServiceID:     serviceID,
+		EnvironmentID: environmentID,
+		PlanDAG:       planDAG,
 	}
 
 	jsonData, err := json.MarshalIndent(data, "", "  ")
