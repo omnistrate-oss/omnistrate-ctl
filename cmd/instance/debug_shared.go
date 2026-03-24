@@ -17,6 +17,22 @@ type TerraformData struct {
 	Logs  map[string]string `json:"logs"`
 }
 
+// ResourceDebugInfo holds all debug information for a specific resource in the plan DAG.
+type ResourceDebugInfo struct {
+	ResourceID   string `json:"resourceId"`
+	ResourceKey  string `json:"resourceKey"`
+	ResourceType string `json:"resourceType"`
+
+	// Helm-specific data (populated for helm resources)
+	Helm *HelmData `json:"helm,omitempty"`
+
+	// Terraform-specific data (populated for terraform resources)
+	TerraformProgress *TerraformProgressData  `json:"terraformProgress,omitempty"`
+	TerraformHistory  []TerraformHistoryEntry `json:"terraformHistory,omitempty"`
+	TerraformFiles    map[string]string       `json:"terraformFiles,omitempty"`
+	TerraformLogs     map[string]string       `json:"terraformLogs,omitempty"`
+}
+
 func parseHelmData(debugData map[string]interface{}) *HelmData {
 	helmData := &HelmData{
 		ChartValues: make(map[string]interface{}),

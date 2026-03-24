@@ -6,6 +6,7 @@ import (
 
 	"github.com/omnistrate-oss/omnistrate-ctl/internal/dataaccess"
 	"github.com/stretchr/testify/require"
+	corev1 "k8s.io/api/core/v1"
 )
 
 func TestDebugDataJSONIncludesServiceAndEnvironment(t *testing.T) {
@@ -219,6 +220,26 @@ func TestDebugDataJSONRoundTrip(t *testing.T) {
 				},
 			},
 		},
+		ResourceDebugInfo: map[string]*ResourceDebugInfo{
+			"db": {
+				ResourceID:   "r-1",
+				ResourceKey:  "db",
+				ResourceType: "terraform",
+				TerraformProgress: &TerraformProgressData{
+					TerraformName:  "tf-db",
+					Status:         "completed",
+					TotalResources: 3,
+					Resources: []TerraformResourceDetail{
+						{Address: "aws_instance.main", Type: "aws_instance", Name: "main", State: "ready"},
+					},
+				},
+				TerraformHistory: []TerraformHistoryEntry{
+					{Operation: "apply", Status: "completed", OperationID: "op-1"},
+				},
+				TerraformFiles: map[string]string{"main.tf": "resource \"aws_instance\" {}"},
+				TerraformLogs:  map[string]string{"log/op-1-apply.log": "Apply complete!"},
+			},
+		},
 	}
 
 	jsonBytes, err := json.MarshalIndent(original, "", "  ")
@@ -251,6 +272,26 @@ func TestDebugDataJSONRoundTrip(t *testing.T) {
 	require.Equal("Bootstrap", roundTripped.PlanDAG.WorkflowStepsByKey["db"].Steps[0].Name)
 	require.Equal("success", roundTripped.PlanDAG.WorkflowStepsByKey["db"].Steps[0].Status)
 	require.Len(roundTripped.PlanDAG.WorkflowStepsByKey["db"].Steps[0].Events, 1)
+
+	// Verify ResourceDebugInfo round-trips
+	require.Contains(roundTripped.ResourceDebugInfo, "db")
+	dbInfo := roundTripped.ResourceDebugInfo["db"]
+	require.Equal("r-1", dbInfo.ResourceID)
+	require.Equal("db", dbInfo.ResourceKey)
+	require.Equal("terraform", dbInfo.ResourceType)
+
+	require.NotNil(dbInfo.TerraformProgress)
+	require.Equal("tf-db", dbInfo.TerraformProgress.TerraformName)
+	require.Equal("completed", dbInfo.TerraformProgress.Status)
+	require.Equal(3, dbInfo.TerraformProgress.TotalResources)
+	require.Len(dbInfo.TerraformProgress.Resources, 1)
+	require.Equal("aws_instance.main", dbInfo.TerraformProgress.Resources[0].Address)
+
+	require.Len(dbInfo.TerraformHistory, 1)
+	require.Equal("apply", dbInfo.TerraformHistory[0].Operation)
+
+	require.Contains(dbInfo.TerraformFiles, "main.tf")
+	require.Contains(dbInfo.TerraformLogs, "log/op-1-apply.log")
 }
 
 func TestDebugCommandStructure(t *testing.T) {
@@ -262,4 +303,206 @@ func TestDebugCommandStructure(t *testing.T) {
 	flag := debugCmd.Flags().Lookup("output")
 	require.NotNil(flag)
 	require.Equal("interactive", flag.DefValue)
+}
+
+func TestResourceDebugInfoHelmJSON(t *testing.T) {
+	require := require.New(t)
+
+	info := ResourceDebugInfo{
+		ResourceID:   "r-helm-1",
+		ResourceKey:  "web-server",
+		ResourceType: "helm",
+		Helm: &HelmData{
+			ChartRepoName: "bitnami",
+			ChartRepoURL:  "https://charts.bitnami.com/bitnami",
+			ChartVersion:  "1.0.0",
+			ChartValues:   map[string]interface{}{"replicaCount": float64(3)},
+			InstallLog:    "Install complete",
+			Namespace:     "default",
+			ReleaseName:   "web-server",
+		},
+	}
+
+	jsonBytes, err := json.Marshal(info)
+	require.NoError(err)
+
+	var decoded map[string]interface{}
+	err = json.Unmarshal(jsonBytes, &decoded)
+	require.NoError(err)
+
+	require.Equal("r-helm-1", decoded["resourceId"])
+	require.Equal("web-server", decoded["resourceKey"])
+	require.Equal("helm", decoded["resourceType"])
+
+	helm, ok := decoded["helm"].(map[string]interface{})
+	require.True(ok, "helm should be a map")
+	require.Equal("bitnami", helm["chartRepoName"])
+	require.Equal("https://charts.bitnami.com/bitnami", helm["chartRepoURL"])
+	require.Equal("1.0.0", helm["chartVersion"])
+	require.Equal("Install complete", helm["installLog"])
+	require.Equal("default", helm["namespace"])
+	require.Equal("web-server", helm["releaseName"])
+
+	// Verify terraform fields are omitted
+	require.NotContains(decoded, "terraformProgress")
+	require.NotContains(decoded, "terraformHistory")
+	require.NotContains(decoded, "terraformFiles")
+	require.NotContains(decoded, "terraformLogs")
+}
+
+func TestResourceDebugInfoTerraformJSON(t *testing.T) {
+	require := require.New(t)
+
+	info := ResourceDebugInfo{
+		ResourceID:   "tf-r-1",
+		ResourceKey:  "database",
+		ResourceType: "terraform",
+		TerraformProgress: &TerraformProgressData{
+			TerraformName:  "tf-database",
+			InstanceID:     "inst-1",
+			ResourceID:     "tf-r-1",
+			Status:         "in-progress",
+			TotalResources: 5,
+			FailedResources: 1,
+			Resources: []TerraformResourceDetail{
+				{Address: "aws_rds_instance.main", Type: "aws_rds_instance", Name: "main", State: "ready"},
+				{Address: "aws_security_group.db", Type: "aws_security_group", Name: "db", State: "in-progress"},
+			},
+		},
+		TerraformHistory: []TerraformHistoryEntry{
+			{Operation: "plan", Status: "completed", OperationID: "op-1", StartedAt: "2024-01-01T00:00:00Z"},
+			{Operation: "apply", Status: "failed", OperationID: "op-2", Error: "timeout"},
+		},
+		TerraformFiles: map[string]string{
+			"main.tf":      "resource \"aws_rds_instance\" \"main\" {}",
+			"variables.tf": "variable \"instance_class\" {}",
+		},
+		TerraformLogs: map[string]string{
+			"log/op-2-apply.log": "Error: timeout waiting for resource",
+		},
+	}
+
+	jsonBytes, err := json.Marshal(info)
+	require.NoError(err)
+
+	var decoded ResourceDebugInfo
+	err = json.Unmarshal(jsonBytes, &decoded)
+	require.NoError(err)
+
+	require.Equal("tf-r-1", decoded.ResourceID)
+	require.Equal("database", decoded.ResourceKey)
+	require.Equal("terraform", decoded.ResourceType)
+	require.Nil(decoded.Helm, "helm should be nil for terraform resource")
+
+	require.NotNil(decoded.TerraformProgress)
+	require.Equal("in-progress", decoded.TerraformProgress.Status)
+	require.Equal(5, decoded.TerraformProgress.TotalResources)
+	require.Equal(1, decoded.TerraformProgress.FailedResources)
+	require.Len(decoded.TerraformProgress.Resources, 2)
+
+	require.Len(decoded.TerraformHistory, 2)
+	require.Equal("apply", decoded.TerraformHistory[1].Operation)
+	require.Equal("timeout", decoded.TerraformHistory[1].Error)
+
+	require.Len(decoded.TerraformFiles, 2)
+	require.Contains(decoded.TerraformFiles, "main.tf")
+
+	require.Len(decoded.TerraformLogs, 1)
+	require.Contains(decoded.TerraformLogs, "log/op-2-apply.log")
+}
+
+func TestResourceDebugInfoOmitsEmptyFields(t *testing.T) {
+	require := require.New(t)
+
+	info := ResourceDebugInfo{
+		ResourceID:   "r-1",
+		ResourceKey:  "cache",
+		ResourceType: "other",
+	}
+
+	jsonBytes, err := json.Marshal(info)
+	require.NoError(err)
+
+	var decoded map[string]interface{}
+	err = json.Unmarshal(jsonBytes, &decoded)
+	require.NoError(err)
+
+	require.Equal("r-1", decoded["resourceId"])
+	require.NotContains(decoded, "helm")
+	require.NotContains(decoded, "terraformProgress")
+	require.NotContains(decoded, "terraformHistory")
+	require.NotContains(decoded, "terraformFiles")
+	require.NotContains(decoded, "terraformLogs")
+}
+
+func TestDebugDataJSONOmitsEmptyResourceDebugInfo(t *testing.T) {
+	require := require.New(t)
+
+	data := DebugData{
+		InstanceID: "inst-1",
+	}
+
+	jsonBytes, err := json.Marshal(data)
+	require.NoError(err)
+
+	var decoded map[string]interface{}
+	err = json.Unmarshal(jsonBytes, &decoded)
+	require.NoError(err)
+
+	require.NotContains(decoded, "resourceDebugInfo", "empty resourceDebugInfo should be omitted")
+}
+
+func TestExtractTerraformProgressFromIndex(t *testing.T) {
+	require := require.New(t)
+
+	// Create a mock configmap index with state and progress configmaps
+	index := &terraformConfigMapIndex{
+		instanceID:     "inst-1",
+		instanceSuffix: "inst-1",
+		stateByResource: map[string]*corev1.ConfigMap{
+			"tf-r-abc123": {
+				Data: map[string]string{
+					"history": `[{"operation":"apply","status":"completed","operationId":"op-1","startedAt":"2024-01-01T00:00:00Z","completedAt":"2024-01-01T00:05:00Z"}]`,
+				},
+			},
+		},
+		progress: []*corev1.ConfigMap{
+			{
+				Data: map[string]string{
+					"progress": `{"terraformName":"tf-db","instanceID":"inst-1","resourceID":"r-abc123","status":"completed","startedAt":"2024-01-01T00:00:00Z","totalResources":2,"resources":[{"address":"aws_instance.main","state":"ready"}]}`,
+				},
+			},
+		},
+	}
+
+	progress, history := extractTerraformProgressFromIndex(index, "inst-1", "r-abc123")
+
+	require.NotNil(progress)
+	require.Equal("completed", progress.Status)
+	require.Equal(2, progress.TotalResources)
+	require.Len(progress.Resources, 1)
+	require.Equal("aws_instance.main", progress.Resources[0].Address)
+
+	require.Len(history, 1)
+	require.Equal("apply", history[0].Operation)
+	require.Equal("completed", history[0].Status)
+}
+
+func TestExtractTerraformProgressFromIndexNilIndex(t *testing.T) {
+	progress, history := extractTerraformProgressFromIndex(nil, "inst-1", "r-1")
+	require.Nil(t, progress)
+	require.Nil(t, history)
+}
+
+func TestExtractTerraformProgressFromIndexNoMatch(t *testing.T) {
+	index := &terraformConfigMapIndex{
+		instanceID:      "inst-1",
+		instanceSuffix:  "inst-1",
+		stateByResource: map[string]*corev1.ConfigMap{},
+		progress:        []*corev1.ConfigMap{},
+	}
+
+	progress, history := extractTerraformProgressFromIndex(index, "inst-1", "r-nonexistent")
+	require.Nil(t, progress)
+	require.Nil(t, history)
 }
