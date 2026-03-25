@@ -204,12 +204,6 @@ func (m terraformDetailModel) fetchData() tea.Cmd {
 		// Fetch terraform output JSON from configmap Files (tf-state).
 		// Try both dataplane and control-plane clusters.
 		var tfOutputJSON string
-		if conn == nil {
-			return terraformDataMsg{
-				progress: progress,
-				history:  history,
-			}
-		}
 		for _, c := range []*k8sConnection{conn.dataplane, conn.controlPlane} {
 			if c == nil {
 				continue
@@ -376,7 +370,7 @@ func (m terraformDetailModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "down", "j":
 			if m.wfErrors.modalText != "" {
 				m.wfErrors.modalScroll++
-				maxScroll := wfEventModalMaxScroll(m.wfErrors, m.width, m.height)
+				maxScroll := wfEventModalMaxScroll(m.wfErrors, m.height)
 				if m.wfErrors.modalScroll > maxScroll {
 					m.wfErrors.modalScroll = maxScroll
 				}
@@ -536,7 +530,7 @@ func (m terraformDetailModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "pgdown":
 			if m.wfErrors.modalText != "" {
 				m.wfErrors.modalScroll += m.bodyHeight()
-				maxScroll := wfEventModalMaxScroll(m.wfErrors, m.width, m.height)
+				maxScroll := wfEventModalMaxScroll(m.wfErrors, m.height)
 				if m.wfErrors.modalScroll > maxScroll {
 					m.wfErrors.modalScroll = maxScroll
 				}
@@ -703,9 +697,7 @@ func (m terraformDetailModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.refreshing = false
 		m.lastProgressRefresh = time.Now()
 		if msg.err == nil {
-			if msg.progress != nil {
-				m.tfProgress = msg.progress
-			}
+			m.tfProgress = msg.progress
 			m.history = msg.history
 			// Don't rebuild timeline while user is reading error modal
 			if m.errorModalText == "" {
@@ -758,12 +750,7 @@ func (m terraformDetailModel) logMaxScroll() int {
 	if bodyH < 1 {
 		bodyH = 1
 	}
-	maxCodeWidth := m.contentWidth() - 9
-	if maxCodeWidth < 20 {
-		maxCodeWidth = 20
-	}
-	vlines := expandLinesToVisual(m.logLines, maxCodeWidth)
-	maxScroll := len(vlines) - bodyH
+	maxScroll := len(m.logLines) - bodyH
 	if maxScroll < 0 {
 		maxScroll = 0
 	}
@@ -791,12 +778,7 @@ func (m terraformDetailModel) fileScrollMax() int {
 	if bodyH < 1 {
 		bodyH = 1
 	}
-	maxCodeWidth := m.contentWidth() - 9
-	if maxCodeWidth < 20 {
-		maxCodeWidth = 20
-	}
-	vlines := expandLinesToVisual(lines, maxCodeWidth)
-	maxScroll := len(vlines) - bodyH
+	maxScroll := len(lines) - bodyH
 	if maxScroll < 0 {
 		maxScroll = 0
 	}
@@ -831,12 +813,7 @@ func (m terraformDetailModel) errorModalMaxScroll() int {
 	if bodyH < 1 {
 		bodyH = 1
 	}
-	maxCodeWidth := m.width - 10
-	if maxCodeWidth < 20 {
-		maxCodeWidth = 20
-	}
-	vlines := expandLinesToVisual(m.errorModalLines(), maxCodeWidth)
-	maxScroll := len(vlines) - bodyH
+	maxScroll := len(m.errorModalLines()) - bodyH
 	if maxScroll < 0 {
 		maxScroll = 0
 	}
@@ -863,10 +840,7 @@ func (m terraformDetailModel) renderErrorModal() string {
 	}
 
 	lines := m.errorModalLines()
-
-	// Expand lines with wrapping
-	vlines := expandLinesToVisual(lines, maxCodeWidth)
-	totalLines := len(vlines)
+	totalLines := len(lines)
 
 	scroll := m.errorModalScroll
 	maxScroll := m.errorModalMaxScroll()
@@ -881,13 +855,13 @@ func (m terraformDetailModel) renderErrorModal() string {
 
 	var b strings.Builder
 	for i := scroll; i < end; i++ {
-		vl := vlines[i]
-		if vl.sourceNum > 0 {
-			lineNum := lineNumStyle.Render(fmt.Sprintf("%4d", vl.sourceNum))
-			b.WriteString(fmt.Sprintf("  %s │ %s\n", lineNum, errStyle.Render(vl.text)))
-		} else {
-			b.WriteString(fmt.Sprintf("  %s   %s\n", "    ", errStyle.Render(vl.text)))
+		line := lines[i]
+		runes := []rune(line)
+		if len(runes) > maxCodeWidth {
+			line = string(runes[:maxCodeWidth-1]) + "…"
 		}
+		lineNum := lineNumStyle.Render(fmt.Sprintf("%4d", i+1))
+		b.WriteString(fmt.Sprintf("  %s │ %s\n", lineNum, errStyle.Render(line)))
 	}
 	// Pad remaining lines
 	for i := end - scroll; i < bodyH; i++ {
@@ -1842,12 +1816,8 @@ func (m terraformDetailModel) renderFileContent() string {
 		maxCodeWidth = 20
 	}
 
-	// Expand source lines into visual lines with wrapping
-	vlines := expandLinesToVisual(lines, maxCodeWidth)
-
-	// Clamp file scroll against visual line count
-	totalVisual := len(vlines)
-	maxScroll := totalVisual - bodyH
+	// Clamp file scroll
+	maxScroll := len(lines) - bodyH
 	if maxScroll < 0 {
 		maxScroll = 0
 	}
@@ -1857,19 +1827,21 @@ func (m terraformDetailModel) renderFileContent() string {
 	}
 
 	end := scroll + bodyH
-	if end > totalVisual {
-		end = totalVisual
+	if end > len(lines) {
+		end = len(lines)
 	}
 
 	for i := scroll; i < end; i++ {
-		vl := vlines[i]
-		code := syntaxHighlightLine(vl.text, filename)
-		if vl.sourceNum > 0 {
-			lineNum := lineNumStyle.Render(fmt.Sprintf("%4d", vl.sourceNum))
-			b.WriteString(fmt.Sprintf("  %s │ %s\n", lineNum, code))
-		} else {
-			b.WriteString(fmt.Sprintf("  %s   %s\n", "    ", code))
+		line := lines[i]
+		// Truncate to fit window width
+		runes := []rune(line)
+		if len(runes) > maxCodeWidth {
+			runes = runes[:maxCodeWidth-1]
+			line = string(runes) + "…"
 		}
+		lineNum := lineNumStyle.Render(fmt.Sprintf("%4d", i+1))
+		code := syntaxHighlightLine(line, filename)
+		b.WriteString(fmt.Sprintf("  %s │ %s\n", lineNum, code))
 	}
 
 	return b.String()

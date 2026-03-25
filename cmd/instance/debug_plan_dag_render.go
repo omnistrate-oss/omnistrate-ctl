@@ -196,51 +196,6 @@ func wrapText(text string, width int) []string {
 	return lines
 }
 
-// softWrapLine wraps a single line at character boundaries to fit within maxWidth.
-// Returns a slice of strings, each no wider than maxWidth runes.
-func softWrapLine(line string, maxWidth int) []string {
-	if maxWidth <= 0 {
-		return []string{line}
-	}
-	runes := []rune(line)
-	if len(runes) <= maxWidth {
-		return []string{line}
-	}
-	var result []string
-	for len(runes) > maxWidth {
-		result = append(result, string(runes[:maxWidth]))
-		runes = runes[maxWidth:]
-	}
-	if len(runes) > 0 {
-		result = append(result, string(runes))
-	}
-	return result
-}
-
-// visualLine represents a single visual line in a wrapped code/log viewer.
-// sourceNum is the 1-based source line number for the first visual line of a source line,
-// or 0 for continuation lines.
-type visualLine struct {
-	text      string
-	sourceNum int
-}
-
-// expandLinesToVisual wraps each source line and builds a flat slice of visual lines.
-func expandLinesToVisual(sourceLines []string, maxWidth int) []visualLine {
-	var vlines []visualLine
-	for i, line := range sourceLines {
-		wrapped := softWrapLine(line, maxWidth)
-		for j, wl := range wrapped {
-			num := 0
-			if j == 0 {
-				num = i + 1
-			}
-			vlines = append(vlines, visualLine{text: wl, sourceNum: num})
-		}
-	}
-	return vlines
-}
-
 type styledCell struct {
 	ch    rune
 	style lipgloss.Style

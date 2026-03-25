@@ -386,7 +386,7 @@ func (m helmDetailModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "down", "j":
 			if m.wfErrors.modalText != "" {
 				m.wfErrors.modalScroll++
-				maxScroll := wfEventModalMaxScroll(m.wfErrors, m.width, m.height)
+				maxScroll := wfEventModalMaxScroll(m.wfErrors, m.height)
 				if m.wfErrors.modalScroll > maxScroll {
 					m.wfErrors.modalScroll = maxScroll
 				}
@@ -439,7 +439,7 @@ func (m helmDetailModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "pgdown":
 			if m.wfErrors.modalText != "" {
 				m.wfErrors.modalScroll += m.helmBodyHeight()
-				maxScroll := wfEventModalMaxScroll(m.wfErrors, m.width, m.height)
+				maxScroll := wfEventModalMaxScroll(m.wfErrors, m.height)
 				if m.wfErrors.modalScroll > maxScroll {
 					m.wfErrors.modalScroll = maxScroll
 				}
@@ -698,15 +698,7 @@ func (m helmDetailModel) renderHelmLogsTab() string {
 		bodyH = 1
 	}
 
-	lineNumStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("241"))
-	maxCodeWidth := m.helmContentWidth() - 9
-	if maxCodeWidth < 20 {
-		maxCodeWidth = 20
-	}
-
-	// Expand all source lines into visual lines with wrapping
-	vlines := expandLinesToVisual(m.logLines, maxCodeWidth)
-	totalLines := len(vlines)
+	totalLines := len(m.logLines)
 	scroll := m.logScroll
 
 	maxScroll := totalLines - bodyH
@@ -725,15 +717,21 @@ func (m helmDetailModel) renderHelmLogsTab() string {
 		end = totalLines
 	}
 
+	lineNumStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("241"))
+	maxCodeWidth := m.helmContentWidth() - 9
+	if maxCodeWidth < 20 {
+		maxCodeWidth = 20
+	}
+
 	for i := scroll; i < end; i++ {
-		vl := vlines[i]
-		styled := highlightHelmLogLine(vl.text)
-		if vl.sourceNum > 0 {
-			lineNum := lineNumStyle.Render(fmt.Sprintf("%4d", vl.sourceNum))
-			b.WriteString(fmt.Sprintf("  %s │ %s\n", lineNum, styled))
-		} else {
-			b.WriteString(fmt.Sprintf("  %s   %s\n", "    ", styled))
+		line := m.logLines[i]
+		runes := []rune(line)
+		if len(runes) > maxCodeWidth {
+			line = string(runes[:maxCodeWidth-1]) + "…"
 		}
+		lineNum := lineNumStyle.Render(fmt.Sprintf("%4d", i+1))
+		styled := highlightHelmLogLine(line)
+		b.WriteString(fmt.Sprintf("  %s │ %s\n", lineNum, styled))
 	}
 
 	// Pad remaining lines
@@ -817,6 +815,10 @@ func (m helmDetailModel) renderHelmValuesTab() string {
 	braceStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("245"))
 	selectedBg := lipgloss.NewStyle().Background(lipgloss.Color("236"))
 
+	maxValWidth := m.helmContentWidth() - 20
+	if maxValWidth < 20 {
+		maxValWidth = 20
+	}
 
 	for idx := scrollOffset; idx < end; idx++ {
 		node := visibleNodes[idx]
@@ -845,6 +847,10 @@ func (m helmDetailModel) renderHelmValuesTab() string {
 			switch node.nodeType {
 			case "string":
 				val := node.value
+				runes := []rune(val)
+				if len(runes) > maxValWidth {
+					val = string(runes[:maxValWidth-1]) + "…"
+				}
 				styledVal = strStyle.Render(fmt.Sprintf("%q", val))
 			case "number":
 				styledVal = numStyle.Render(node.value)
@@ -950,12 +956,7 @@ func (m helmDetailModel) helmLogMaxScroll() int {
 	if bodyH < 1 {
 		bodyH = 1
 	}
-	maxCodeWidth := m.helmContentWidth() - 9
-	if maxCodeWidth < 20 {
-		maxCodeWidth = 20
-	}
-	vlines := expandLinesToVisual(m.logLines, maxCodeWidth)
-	maxScroll := len(vlines) - bodyH
+	maxScroll := len(m.logLines) - bodyH
 	if maxScroll < 0 {
 		maxScroll = 0
 	}

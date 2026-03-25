@@ -114,20 +114,20 @@ func fetchWfEventsForResource(data DebugData, resourceKey string) tea.Cmd {
 
 // WorkflowStepInfo holds step-level summary with timing and events.
 type WorkflowStepInfo struct {
-	Name         string
-	DisplayName  string // overridden display name (e.g. "Waiting for dependencies" for Bootstrap)
-	Status       string // "success", "in-progress", "failed", "pending"
-	StartTime    string
-	EndTime      string
-	Events       []dataaccess.DebugEvent
-	DepTimelines []depTimeline // populated for bootstrap steps only
+	Name         string                  `json:"name"`
+	DisplayName  string                  `json:"displayName,omitempty"` // overridden display name (e.g. "Waiting for dependencies" for Bootstrap)
+	Status       string                  `json:"status"`                // "success", "in-progress", "failed", "pending"
+	StartTime    string                  `json:"startTime,omitempty"`
+	EndTime      string                  `json:"endTime,omitempty"`
+	Events       []dataaccess.DebugEvent `json:"events,omitempty"`
+	DepTimelines []depTimeline           `json:"depTimelines,omitempty"` // populated for bootstrap steps only
 }
 
 // depTimeline holds the completion status of a dependency resource for Bootstrap step rendering.
 type depTimeline struct {
-	Name       string // dependency resource name or key
-	Status     string // overall status: "completed", "running", "pending", "failed"
-	FinishedAt string // RFC3339 time when the dependency finished (empty if not done)
+	Name       string `json:"name"`                 // dependency resource name or key
+	Status     string `json:"status"`               // overall status: "completed", "running", "pending", "failed"
+	FinishedAt string `json:"finishedAt,omitempty"` // RFC3339 time when the dependency finished (empty if not done)
 }
 
 // stepDisplayName returns the display name for the step (using override if set).
@@ -140,7 +140,7 @@ func (s WorkflowStepInfo) stepDisplayName() string {
 
 // ResourceWorkflowSteps holds the ordered list of workflow steps for a resource.
 type ResourceWorkflowSteps struct {
-	Steps []WorkflowStepInfo
+	Steps []WorkflowStepInfo `json:"steps"`
 }
 
 // wfEventItem represents a selectable row in the workflow events tab.
@@ -644,7 +644,10 @@ func renderTimelineView(steps *ResourceWorkflowSteps, contentWidth int, items []
 			msg := extractEventMessage(evt.Message)
 
 			firstLine := strings.Split(msg, "\n")[0]
-			wrappedMsg := softWrapLine(firstLine, maxMsgWidth)
+			runes := []rune(firstLine)
+			if len(runes) > maxMsgWidth {
+				firstLine = string(runes[:maxMsgWidth-1]) + "…"
+			}
 
 			evtLineIdx := len(lines)
 			if itemIdx == cursorItem {
@@ -655,15 +658,8 @@ func renderTimelineView(steps *ResourceWorkflowSteps, contentWidth int, items []
 			lines = append(lines, fmt.Sprintf("    %s %s %s",
 				evtStyle.Render(evtIcon),
 				dimStyle.Render(ts),
-				msgStyle.Render(wrappedMsg[0]),
+				msgStyle.Render(firstLine),
 			))
-			// Continuation lines aligned under message text
-			if len(wrappedMsg) > 1 {
-				contPad := "      " + strings.Repeat(" ", len(ts)) + " "
-				for _, wl := range wrappedMsg[1:] {
-					lines = append(lines, fmt.Sprintf("%s%s", contPad, msgStyle.Render(wl)))
-				}
-			}
 		}
 
 		if i < len(steps.Steps)-1 {
@@ -805,7 +801,10 @@ func renderFlatStepRows(steps *ResourceWorkflowSteps, contentWidth int, _ []wfEv
 			msg := extractEventMessage(evt.Message)
 
 			firstLine := strings.Split(msg, "\n")[0]
-			wrappedMsg := softWrapLine(firstLine, maxMsgWidth)
+			runes := []rune(firstLine)
+			if len(runes) > maxMsgWidth {
+				firstLine = string(runes[:maxMsgWidth-1]) + "…"
+			}
 
 			evtLineIdx := len(lines)
 			if itemIdx == cursor {
@@ -816,15 +815,8 @@ func renderFlatStepRows(steps *ResourceWorkflowSteps, contentWidth int, _ []wfEv
 			lines = append(lines, fmt.Sprintf("    %s %s %s",
 				evtStyle.Render(evtIcon),
 				dimStyle.Render(ts),
-				msgStyle.Render(wrappedMsg[0]),
+				msgStyle.Render(firstLine),
 			))
-			// Continuation lines aligned under message text
-			if len(wrappedMsg) > 1 {
-				contPad := "      " + strings.Repeat(" ", len(ts)) + " "
-				for _, wl := range wrappedMsg[1:] {
-					lines = append(lines, fmt.Sprintf("%s%s", contPad, msgStyle.Render(wl)))
-				}
-			}
 		}
 
 		if i < len(steps.Steps)-1 {
@@ -956,10 +948,7 @@ func renderWfEventModal(state *workflowErrorsState, width, height int) string {
 	}
 
 	lines := strings.Split(state.modalText, "\n")
-
-	// Expand source lines into visual lines with wrapping
-	vlines := expandLinesToVisual(lines, maxCodeWidth)
-	totalLines := len(vlines)
+	totalLines := len(lines)
 
 	scroll := state.modalScroll
 	maxScroll := totalLines - bodyH
@@ -979,13 +968,13 @@ func renderWfEventModal(state *workflowErrorsState, width, height int) string {
 	textStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("252"))
 	var b strings.Builder
 	for i := scroll; i < end; i++ {
-		vl := vlines[i]
-		if vl.sourceNum > 0 {
-			lineNum := lineNumStyle.Render(fmt.Sprintf("%4d", vl.sourceNum))
-			b.WriteString(fmt.Sprintf("  %s │ %s\n", lineNum, textStyle.Render(vl.text)))
-		} else {
-			b.WriteString(fmt.Sprintf("  %s   %s\n", "    ", textStyle.Render(vl.text)))
+		line := lines[i]
+		runes := []rune(line)
+		if len(runes) > maxCodeWidth {
+			line = string(runes[:maxCodeWidth-1]) + "…"
 		}
+		lineNum := lineNumStyle.Render(fmt.Sprintf("%4d", i+1))
+		b.WriteString(fmt.Sprintf("  %s │ %s\n", lineNum, textStyle.Render(line)))
 	}
 	for i := end - scroll; i < bodyH; i++ {
 		b.WriteString("\n")
@@ -1009,18 +998,13 @@ func renderWfEventModal(state *workflowErrorsState, width, height int) string {
 }
 
 // wfEventModalMaxScroll returns the max scroll for the event detail modal.
-func wfEventModalMaxScroll(state *workflowErrorsState, width, height int) int {
+func wfEventModalMaxScroll(state *workflowErrorsState, height int) int {
 	bodyH := height - 4
 	if bodyH < 1 {
 		bodyH = 1
 	}
-	maxCodeWidth := width - 10
-	if maxCodeWidth < 20 {
-		maxCodeWidth = 20
-	}
 	lines := strings.Split(state.modalText, "\n")
-	vlines := expandLinesToVisual(lines, maxCodeWidth)
-	maxScroll := len(vlines) - bodyH
+	maxScroll := len(lines) - bodyH
 	if maxScroll < 0 {
 		maxScroll = 0
 	}
