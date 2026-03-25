@@ -88,6 +88,8 @@ func extractTerraformProgressFromIndex(index *terraformConfigMapIndex, instanceI
 
 	var history []TerraformHistoryEntry
 	if err := json.Unmarshal([]byte(historyJSON), &history); err != nil {
+		// Surface history parse problems so that "no data" states are diagnosable.
+		fmt.Printf("warning: failed to parse terraform history for instance %s, resource %s: %v\n", instanceID, resourceID, err)
 		return nil, nil
 	}
 
