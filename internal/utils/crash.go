@@ -28,7 +28,7 @@ func HandlePanic() {
 	}
 
 	// Restore terminal state: show cursor and exit alt-screen
-	fmt.Fprint(os.Stderr, "\033[?25h") // show cursor
+	fmt.Fprint(os.Stderr, "\033[?25h")   // show cursor
 	fmt.Fprint(os.Stderr, "\033[?1049l") // exit alt-screen
 	os.Stderr.Sync()
 

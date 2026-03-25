@@ -95,7 +95,7 @@ func runDebugDeploymentCell(cmd *cobra.Command, args []string) error {
 			}
 
 			if err = os.WriteFile(filePath, logContentBytes, 0600); err != nil {
-				fmt.Printf("Warning: Failed to write logs for service %s: %v\n", serviceName, err)
+				fmt.Fprintf(os.Stderr, "Warning: Failed to write logs for service %s: %v\n", serviceName, err)
 				continue
 			}
 
