@@ -266,7 +266,6 @@ func (m terraformDetailModel) renderTerraformOutputTab() string {
 	braceStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("245")) // dim
 	selectedBg := lipgloss.NewStyle().Background(lipgloss.Color("236")) // subtle highlight
 
-
 	for idx := scrollOffset; idx < end; idx++ {
 		node := visibleNodes[idx]
 		indent := strings.Repeat("  ", node.depth)
