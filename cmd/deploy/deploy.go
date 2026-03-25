@@ -884,6 +884,8 @@ func executeDeploymentWorkflow(cmd *cobra.Command, sm utils.SpinnerManager, toke
 		if instanceID != "" && len(existingInstanceIDs) == 0 {
 			spinner.UpdateMessage(fmt.Sprintf("%s: No existing instance found for instance ID: %s (provided instance does not match)", spinnerMsg, instanceID))
 			spinner.Error()
+			// Stop spinner manager before printing multi-line guidance to avoid interleaved output.
+			sm.Stop()
 			fmt.Fprintln(os.Stderr)
 			fmt.Fprintln(os.Stderr, "❌ No instance found with the given --instance-id.")
 			fmt.Fprintf(os.Stderr, "   Instance ID: %s\n\n", instanceID)
