@@ -81,7 +81,7 @@ func runEnable(cmd *cobra.Command, flags *enableFlags) error {
 
 	// Backup config before modifying
 	if err := manager.BackupConfig(); err != nil {
-		fmt.Printf("Warning: failed to create backup: %v\n", err)
+		fmt.Fprintf(os.Stderr, "Warning: failed to create backup: %v\n", err)
 	}
 
 	if err := manager.AddServer(serverName, server); err != nil {

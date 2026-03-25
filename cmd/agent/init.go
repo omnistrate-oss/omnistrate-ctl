@@ -140,7 +140,7 @@ func runInit(cmd *cobra.Command, args []string) error {
 	readmePath := filepath.Join(sourceDir, "README.md")
 	readmeContent, err := os.ReadFile(readmePath)
 	if err != nil {
-		fmt.Printf("⚠️ Warning: Could not read README.md: %v\n", err)
+		fmt.Fprintf(os.Stderr, "⚠️ Warning: Could not read README.md: %v\n", err)
 	} else {
 		// Extract skills from README
 		fmt.Println("Initializing the following skills:")
