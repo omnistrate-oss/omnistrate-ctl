@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"fmt"
+	"os"
 	"strings"
 
 	"github.com/omnistrate-oss/omnistrate-ctl/cmd/common"
@@ -104,7 +105,7 @@ func runDescribe(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		// Don't fail the entire command if account info enhancement fails
 		// Just log a warning and continue
-		fmt.Printf("Warning: Could not enhance service plans with account information: %v\n", err)
+		fmt.Fprintf(os.Stderr, "Warning: Could not enhance service plans with account information: %v\n", err)
 	}
 
 	utils.HandleSpinnerSuccess(spinner, sm, "Successfully described service")

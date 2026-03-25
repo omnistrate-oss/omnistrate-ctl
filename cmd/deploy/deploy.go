@@ -884,13 +884,15 @@ func executeDeploymentWorkflow(cmd *cobra.Command, sm utils.SpinnerManager, toke
 		if instanceID != "" && len(existingInstanceIDs) == 0 {
 			spinner.UpdateMessage(fmt.Sprintf("%s: No existing instance found for instance ID: %s (provided instance does not match)", spinnerMsg, instanceID))
 			spinner.Error()
-			fmt.Println()
-			fmt.Println("❌ No instance found with the given --instance-id.")
-			fmt.Printf("   Instance ID: %s\n\n", instanceID)
-			fmt.Println("Next steps:")
-			fmt.Println("  - Check the instance ID value.")
-			fmt.Println("  - List instances for this service: omnistrate-ctl instance list --service", serviceName)
-			return nil
+			// Stop spinner manager before printing multi-line guidance to avoid interleaved output.
+			sm.Stop()
+			fmt.Fprintln(os.Stderr)
+			fmt.Fprintln(os.Stderr, "❌ No instance found with the given --instance-id.")
+			fmt.Fprintf(os.Stderr, "   Instance ID: %s\n\n", instanceID)
+			fmt.Fprintln(os.Stderr, "Next steps:")
+			fmt.Fprintln(os.Stderr, "  - Check the instance ID value.")
+			fmt.Fprintln(os.Stderr, "  - List instances for this service: omnistrate-ctl instance list --service", serviceName)
+			return fmt.Errorf("no instance found with the given --instance-id: %s", instanceID)
 		}
 
 		// Display automatic instance handling message
@@ -955,7 +957,7 @@ func executeDeploymentWorkflow(cmd *cobra.Command, sm utils.SpinnerManager, toke
 			fmt.Printf("BYOA deployment detected. Creating cloud account instance...\n")
 			cloudAccountInstanceID, targetCloudProvider, err := createCloudAccountInstances(cmd.Context(), token, serviceID, environmentID, planID, cloudProvider, sm)
 			if err != nil {
-				fmt.Printf("Warning: Failed to create cloud account instances: %v\n", err)
+				fmt.Fprintf(os.Stderr, "Warning: Failed to create cloud account instances: %v\n", err)
 				return err
 			}
 			cloudProvider = targetCloudProvider
@@ -1012,7 +1014,7 @@ func executeDeploymentWorkflow(cmd *cobra.Command, sm utils.SpinnerManager, toke
 	if finalInstanceID != "" {
 		err = instance.DisplayWorkflowResourceDataWithSpinners(cmd.Context(), token, finalInstanceID, instanceActionType)
 		if err != nil {
-			fmt.Printf("❌ Deployment workflow failed: %s\n", err)
+			fmt.Fprintf(os.Stderr, "❌ Deployment workflow failed: %s\n", err)
 			return err
 		} else {
 			fmt.Println("✅ Deployment successful")
@@ -1349,11 +1351,11 @@ func createInstanceUnified(ctx context.Context, token, serviceID, environmentID,
 
 		// Warn user about unused parameters
 		if len(unusedParams) > 0 {
-			fmt.Printf("⚠️  Warning: The following parameters were provided but are not supported by this service and will be ignored:\n")
+			fmt.Fprintf(os.Stderr, "⚠️  Warning: The following parameters were provided but are not supported by this service and will be ignored:\n")
 			for _, param := range unusedParams {
-				fmt.Printf("   - %s\n", param)
+				fmt.Fprintf(os.Stderr, "   - %s\n", param)
 			}
-			fmt.Println()
+			fmt.Fprintln(os.Stderr)
 		}
 	}
 	spinner = sm.AddSpinner("Step 2/2: Deploying a new instance")
@@ -1771,7 +1773,7 @@ func createDeploymentYAML(
 ) map[string]interface{} {
 	// Validate deployment type
 	if deploymentType != build.DeploymentTypeHosted && deploymentType != build.DeploymentTypeByoa {
-		fmt.Printf("Warning: Invalid deployment type '%s'. Using default 'hosted'. Valid values are: hosted, byoa\n", deploymentType)
+		fmt.Fprintf(os.Stderr, "Warning: Invalid deployment type '%s'. Using default 'hosted'. Valid values are: hosted, byoa\n", deploymentType)
 		deploymentType = "hosted"
 	}
 
@@ -2001,7 +2003,7 @@ func createCloudAccountInstances(ctx context.Context, token, serviceID, environm
 	fmt.Println("\n🔄 Checking for account verification...")
 	accountID, err := waitForAccountVerification(ctx, token, serviceID, environmentID, planID, createdInstanceID, targetCloudProvider)
 	if err != nil {
-		fmt.Printf("❌ Account verification failed: %v\n", err)
+		fmt.Fprintf(os.Stderr, "❌ Account verification failed: %v\n", err)
 		return createdInstanceID, targetCloudProvider, err
 	}
 
@@ -2197,7 +2199,7 @@ func waitForAccountVerification(ctx context.Context, token, serviceID,
 		// Get all accounts for the cloud provider
 		_, existingInstances, err := listInstances(ctx, token, serviceID, environmentID, planID, "", "onlyCloudAccounts")
 		if err != nil {
-			fmt.Printf("⚠️  Failed to check account status: %v\n", err)
+			fmt.Fprintf(os.Stderr, "⚠️  Failed to check account status: %v\n", err)
 			time.Sleep(retryInterval)
 			continue
 		}

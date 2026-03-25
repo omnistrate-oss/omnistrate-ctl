@@ -73,7 +73,7 @@ func runDisable(flags *disableFlags) error {
 
 	// Backup config before modifying
 	if err := manager.BackupConfig(); err != nil {
-		fmt.Printf("Warning: failed to create backup: %v\n", err)
+		fmt.Fprintf(os.Stderr, "Warning: failed to create backup: %v\n", err)
 	}
 
 	if err := manager.RemoveServer(serverName); err != nil {

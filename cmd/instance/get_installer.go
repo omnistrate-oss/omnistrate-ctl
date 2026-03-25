@@ -148,7 +148,7 @@ func downloadFile(url, filepath string, spinner *utils.Spinner) error {
 	defer func() {
 		if closeErr := out.Close(); closeErr != nil {
 			// Log the error but don't override the main error
-			fmt.Printf("Warning: failed to close file: %v\n", closeErr)
+			fmt.Fprintf(os.Stderr, "Warning: failed to close file: %v\n", closeErr)
 		}
 	}()
 
@@ -160,7 +160,7 @@ func downloadFile(url, filepath string, spinner *utils.Spinner) error {
 	defer func() {
 		if closeErr := resp.Body.Close(); closeErr != nil {
 			// Log the error but don't override the main error
-			fmt.Printf("Warning: failed to close response body: %v\n", closeErr)
+			fmt.Fprintf(os.Stderr, "Warning: failed to close response body: %v\n", closeErr)
 		}
 	}()
 

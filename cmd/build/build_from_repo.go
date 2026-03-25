@@ -542,7 +542,7 @@ func runBuildFromRepo(cmd *cobra.Command, args []string) error {
 			if err != nil {
 				// If we can't get account details but the account was previously verified as READY,
 				// continue with a warning instead of failing the build
-				fmt.Printf(" Warning: Could not fetch details for AWS account %s: %v\n", awsAccountID, err)
+				fmt.Fprintf(os.Stderr, " Warning: Could not fetch details for AWS account %s: %v\n", awsAccountID, err)
 				fmt.Printf(" Your AWS account appears to be functional based on earlier checks.\n")
 			} else {
 				fmt.Printf(" Verify your cloud provider account %s following the instructions below:\n", account.Name)
@@ -554,7 +554,7 @@ func runBuildFromRepo(cmd *cobra.Command, args []string) error {
 		if gcpAccountUnverified {
 			account, err := dataaccess.DescribeAccount(cmd.Context(), token, unverifiedGcpAccountConfigID)
 			if err != nil {
-				fmt.Printf(" Warning: Could not fetch details for GCP account %s: %v\n", gcpProjectID, err)
+				fmt.Fprintf(os.Stderr, " Warning: Could not fetch details for GCP account %s: %v\n", gcpProjectID, err)
 				fmt.Printf(" Your GCP account appears to be functional based on earlier checks.\n")
 			} else {
 				fmt.Printf(" Verify your cloud provider account %s following the instructions below:\n", account.Name)
@@ -564,7 +564,7 @@ func runBuildFromRepo(cmd *cobra.Command, args []string) error {
 		if azureAccountUnverified {
 			account, err := dataaccess.DescribeAccount(cmd.Context(), token, unverifiedAzureAccountConfigID)
 			if err != nil {
-				fmt.Printf(" Warning: Could not fetch details for Azure account %s: %v\n", azureSubscriptionID, err)
+				fmt.Fprintf(os.Stderr, " Warning: Could not fetch details for Azure account %s: %v\n", azureSubscriptionID, err)
 				fmt.Printf(" Your Azure account appears to be functional based on earlier checks.\n")
 			} else {
 				fmt.Printf(" Verify your cloud provider account %s following the instructions below:\n", account.Name)

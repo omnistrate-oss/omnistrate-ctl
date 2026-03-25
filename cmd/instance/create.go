@@ -3,6 +3,7 @@ package instance
 import (
 	"context"
 	"fmt"
+	"os"
 	"strings"
 
 	"github.com/omnistrate-oss/omnistrate-ctl/cmd/common"
@@ -310,7 +311,8 @@ func runCreate(cmd *cobra.Command, args []string) error {
 		err = DisplayWorkflowResourceDataWithSpinners(cmd.Context(), token, formattedInstance.InstanceID, "create")
 		if err != nil {
 			// Handle spinner error if deployment monitoring fails
-			fmt.Println("❌ Deployment failed")
+			fmt.Fprintln(os.Stderr, "❌ Deployment failed")
+			return err
 		} else {
 			fmt.Println("✅ Deployment successful")
 		}

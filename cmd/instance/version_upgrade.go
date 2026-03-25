@@ -346,7 +346,8 @@ func runVersionUpgrade(cmd *cobra.Command, args []string) error {
 		err = DisplayWorkflowResourceDataWithSpinners(cmd.Context(), token, formattedInstance.InstanceID, "upgrade")
 		if err != nil {
 			// Handle spinner error if deployment monitoring fails
-			fmt.Println("❌ Deployment failed")
+			fmt.Fprintln(os.Stderr, "❌ Deployment failed")
+			return err
 		} else {
 			fmt.Println("✅ Deployment successful")
 		}

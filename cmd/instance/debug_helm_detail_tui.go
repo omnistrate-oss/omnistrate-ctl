@@ -817,7 +817,6 @@ func (m helmDetailModel) renderHelmValuesTab() string {
 	braceStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("245"))
 	selectedBg := lipgloss.NewStyle().Background(lipgloss.Color("236"))
 
-
 	for idx := scrollOffset; idx < end; idx++ {
 		node := visibleNodes[idx]
 		indent := strings.Repeat("  ", node.depth)

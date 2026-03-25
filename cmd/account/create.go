@@ -3,6 +3,7 @@ package account
 import (
 	"context"
 	"fmt"
+	"os"
 	"time"
 
 	"github.com/omnistrate-oss/omnistrate-ctl/cmd/common"
@@ -236,8 +237,8 @@ func WaitForAccountReady(ctx context.Context, token, accountID string) error {
 	for {
 		select {
 		case <-timeout:
-			fmt.Printf("\n⚠️  Warning: Account did not become READY after 10 minutes. Please check account status with 'omnistrate-ctl account describe %s'\n", accountID)
-			return nil
+			fmt.Fprintf(os.Stderr, "\n⚠️  Warning: Account did not become READY after 10 minutes. Please check account status with 'omnistrate-ctl account describe %s'\n", accountID)
+			return fmt.Errorf("account %s did not become READY after 10 minutes", accountID)
 		case <-ticker.C:
 			account, err := dataaccess.DescribeAccount(ctx, token, accountID)
 			if err != nil {
