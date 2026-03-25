@@ -376,7 +376,7 @@ func (m terraformDetailModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "down", "j":
 			if m.wfErrors.modalText != "" {
 				m.wfErrors.modalScroll++
-				maxScroll := wfEventModalMaxScroll(m.wfErrors, m.height)
+				maxScroll := wfEventModalMaxScroll(m.wfErrors, m.width, m.height)
 				if m.wfErrors.modalScroll > maxScroll {
 					m.wfErrors.modalScroll = maxScroll
 				}
@@ -536,7 +536,7 @@ func (m terraformDetailModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "pgdown":
 			if m.wfErrors.modalText != "" {
 				m.wfErrors.modalScroll += m.bodyHeight()
-				maxScroll := wfEventModalMaxScroll(m.wfErrors, m.height)
+				maxScroll := wfEventModalMaxScroll(m.wfErrors, m.width, m.height)
 				if m.wfErrors.modalScroll > maxScroll {
 					m.wfErrors.modalScroll = maxScroll
 				}
@@ -758,7 +758,12 @@ func (m terraformDetailModel) logMaxScroll() int {
 	if bodyH < 1 {
 		bodyH = 1
 	}
-	maxScroll := len(m.logLines) - bodyH
+	maxCodeWidth := m.contentWidth() - 9
+	if maxCodeWidth < 20 {
+		maxCodeWidth = 20
+	}
+	vlines := expandLinesToVisual(m.logLines, maxCodeWidth)
+	maxScroll := len(vlines) - bodyH
 	if maxScroll < 0 {
 		maxScroll = 0
 	}
@@ -786,7 +791,12 @@ func (m terraformDetailModel) fileScrollMax() int {
 	if bodyH < 1 {
 		bodyH = 1
 	}
-	maxScroll := len(lines) - bodyH
+	maxCodeWidth := m.contentWidth() - 9
+	if maxCodeWidth < 20 {
+		maxCodeWidth = 20
+	}
+	vlines := expandLinesToVisual(lines, maxCodeWidth)
+	maxScroll := len(vlines) - bodyH
 	if maxScroll < 0 {
 		maxScroll = 0
 	}
@@ -821,7 +831,12 @@ func (m terraformDetailModel) errorModalMaxScroll() int {
 	if bodyH < 1 {
 		bodyH = 1
 	}
-	maxScroll := len(m.errorModalLines()) - bodyH
+	maxCodeWidth := m.width - 10
+	if maxCodeWidth < 20 {
+		maxCodeWidth = 20
+	}
+	vlines := expandLinesToVisual(m.errorModalLines(), maxCodeWidth)
+	maxScroll := len(vlines) - bodyH
 	if maxScroll < 0 {
 		maxScroll = 0
 	}
@@ -848,7 +863,10 @@ func (m terraformDetailModel) renderErrorModal() string {
 	}
 
 	lines := m.errorModalLines()
-	totalLines := len(lines)
+
+	// Expand lines with wrapping
+	vlines := expandLinesToVisual(lines, maxCodeWidth)
+	totalLines := len(vlines)
 
 	scroll := m.errorModalScroll
 	maxScroll := m.errorModalMaxScroll()
@@ -863,13 +881,13 @@ func (m terraformDetailModel) renderErrorModal() string {
 
 	var b strings.Builder
 	for i := scroll; i < end; i++ {
-		line := lines[i]
-		runes := []rune(line)
-		if len(runes) > maxCodeWidth {
-			line = string(runes[:maxCodeWidth-1]) + "…"
+		vl := vlines[i]
+		if vl.sourceNum > 0 {
+			lineNum := lineNumStyle.Render(fmt.Sprintf("%4d", vl.sourceNum))
+			b.WriteString(fmt.Sprintf("  %s │ %s\n", lineNum, errStyle.Render(vl.text)))
+		} else {
+			b.WriteString(fmt.Sprintf("  %s   %s\n", "    ", errStyle.Render(vl.text)))
 		}
-		lineNum := lineNumStyle.Render(fmt.Sprintf("%4d", i+1))
-		b.WriteString(fmt.Sprintf("  %s │ %s\n", lineNum, errStyle.Render(line)))
 	}
 	// Pad remaining lines
 	for i := end - scroll; i < bodyH; i++ {
@@ -1824,8 +1842,12 @@ func (m terraformDetailModel) renderFileContent() string {
 		maxCodeWidth = 20
 	}
 
-	// Clamp file scroll
-	maxScroll := len(lines) - bodyH
+	// Expand source lines into visual lines with wrapping
+	vlines := expandLinesToVisual(lines, maxCodeWidth)
+
+	// Clamp file scroll against visual line count
+	totalVisual := len(vlines)
+	maxScroll := totalVisual - bodyH
 	if maxScroll < 0 {
 		maxScroll = 0
 	}
@@ -1835,21 +1857,19 @@ func (m terraformDetailModel) renderFileContent() string {
 	}
 
 	end := scroll + bodyH
-	if end > len(lines) {
-		end = len(lines)
+	if end > totalVisual {
+		end = totalVisual
 	}
 
 	for i := scroll; i < end; i++ {
-		line := lines[i]
-		// Truncate to fit window width
-		runes := []rune(line)
-		if len(runes) > maxCodeWidth {
-			runes = runes[:maxCodeWidth-1]
-			line = string(runes) + "…"
+		vl := vlines[i]
+		code := syntaxHighlightLine(vl.text, filename)
+		if vl.sourceNum > 0 {
+			lineNum := lineNumStyle.Render(fmt.Sprintf("%4d", vl.sourceNum))
+			b.WriteString(fmt.Sprintf("  %s │ %s\n", lineNum, code))
+		} else {
+			b.WriteString(fmt.Sprintf("  %s   %s\n", "    ", code))
 		}
-		lineNum := lineNumStyle.Render(fmt.Sprintf("%4d", i+1))
-		code := syntaxHighlightLine(line, filename)
-		b.WriteString(fmt.Sprintf("  %s │ %s\n", lineNum, code))
 	}
 
 	return b.String()
