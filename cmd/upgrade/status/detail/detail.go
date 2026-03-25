@@ -1,24 +1,25 @@
 package detail
 
 import (
-	"encoding/json"
 	"fmt"
-	"github.com/omnistrate/ctl/dataaccess"
-	"github.com/omnistrate/ctl/model"
-	"github.com/omnistrate/ctl/utils"
+
+	"github.com/omnistrate-oss/omnistrate-ctl/cmd/common"
+
+	"github.com/omnistrate-oss/omnistrate-ctl/internal/config"
+	"github.com/omnistrate-oss/omnistrate-ctl/internal/dataaccess"
+	"github.com/omnistrate-oss/omnistrate-ctl/internal/model"
+	"github.com/omnistrate-oss/omnistrate-ctl/internal/utils"
 	"github.com/spf13/cobra"
 )
 
 const (
-	detailExample = `  # Get upgrade status detail
-  omctl upgrade status detail <upgrade>`
+	detailExample = `# Get upgrade status detail
+omnistrate-ctl upgrade status detail [upgrade-id]`
 )
-
-var output string
 
 var Cmd = &cobra.Command{
 	Use:          "detail [upgrade-id] [flags]",
-	Short:        "Get upgrade status detail",
+	Short:        "Get Upgrade status detail",
 	Example:      detailExample,
 	RunE:         run,
 	SilenceUsage: true,
@@ -26,52 +27,72 @@ var Cmd = &cobra.Command{
 
 func init() {
 	Cmd.Args = cobra.ExactArgs(1)
-
-	Cmd.Flags().StringVarP(&output, "output", "o", "text", "Output format (text|table|json)")
 }
 
 func run(cmd *cobra.Command, args []string) error {
-	token, err := utils.GetToken()
+	defer config.CleanupArgsAndFlags(cmd, &args)
+
+	// Retrieve args
+	upgradePathID := args[0]
+
+	// Retrieve flags
+	output, err := cmd.Flags().GetString("output")
 	if err != nil {
 		utils.PrintError(err)
 		return err
 	}
 
-	res := make([]*model.UpgradeStatusDetail, 0)
-
-	upgradePathID := args[0]
-	searchRes, err := dataaccess.SearchInventory(token, fmt.Sprintf("upgradepath:%s", upgradePathID))
+	// Validate user login
+	token, err := common.GetTokenWithLogin()
 	if err != nil {
 		utils.PrintError(err)
+		return err
+	}
+
+	// Initialize spinner if output is not json
+	var sm utils.SpinnerManager
+	var spinner *utils.Spinner
+	if output != "json" {
+		sm = utils.NewSpinnerManager()
+		msg := "Retrieving upgrade status detail..."
+		spinner = sm.AddSpinner(msg)
+		sm.Start()
+	}
+
+	formattedUpgradeStatusDetails := make([]*model.UpgradeStatusDetail, 0)
+
+	searchRes, err := dataaccess.SearchInventory(cmd.Context(), token, fmt.Sprintf("upgradepath:%s", upgradePathID))
+	if err != nil {
+		utils.HandleSpinnerError(spinner, sm, err)
 		return err
 	}
 
 	if len(searchRes.UpgradePathResults) == 0 {
 		err = fmt.Errorf("%s not found", upgradePathID)
-		utils.PrintError(err)
+		utils.HandleSpinnerError(spinner, sm, err)
 		return err
 	}
 
 	found := false
 	var serviceID, productTierID string
 	for _, upgradePath := range searchRes.UpgradePathResults {
-		if string(upgradePath.ID) == upgradePathID {
+		if upgradePath.Id == upgradePathID {
 			found = true
-			serviceID = string(upgradePath.ServiceID)
-			productTierID = string(upgradePath.ProductTierID)
+			serviceID = upgradePath.ServiceId
+			productTierID = upgradePath.ProductTierID
 			break
 		}
 	}
 
 	if !found {
 		err = fmt.Errorf("%s not found", upgradePathID)
-		utils.PrintError(err)
+		utils.HandleSpinnerError(spinner, sm, err)
 		return err
 	}
 
-	instanceUpgrades, err := dataaccess.ListEligibleInstancesPerUpgrade(token, serviceID, productTierID, upgradePathID)
+	instanceUpgrades, err := dataaccess.ListEligibleInstancesPerUpgrade(cmd.Context(), token, serviceID, productTierID, upgradePathID)
 	if err != nil {
-		utils.PrintError(err)
+		utils.HandleSpinnerError(spinner, sm, err)
 		return err
 	}
 
@@ -85,41 +106,25 @@ func run(cmd *cobra.Command, args []string) error {
 		if instanceUpgrade.UpgradeEndTime != nil {
 			endTime = *instanceUpgrade.UpgradeEndTime
 		}
-		res = append(res, &model.UpgradeStatusDetail{
+		formattedUpgradeStatusDetails = append(formattedUpgradeStatusDetails, &model.UpgradeStatusDetail{
 			UpgradeID:        upgradePathID,
-			InstanceID:       string(instanceUpgrade.InstanceID),
-			UpgradeStatus:    string(instanceUpgrade.Status),
+			InstanceID:       instanceUpgrade.InstanceId,
+			UpgradeStatus:    instanceUpgrade.Status,
 			UpgradeStartTime: startTime,
 			UpgradeEndTime:   endTime,
 		})
 	}
 
-	var jsonData []string
-	for _, instance := range res {
-		data, err := json.MarshalIndent(instance, "", "    ")
-		if err != nil {
-			utils.PrintError(err)
-			return err
-		}
-
-		jsonData = append(jsonData, string(data))
+	if len(formattedUpgradeStatusDetails) == 0 {
+		utils.HandleSpinnerSuccess(spinner, sm, "No upgrade found")
+		return nil
+	} else {
+		utils.HandleSpinnerSuccess(spinner, sm, "Upgrade status detail retrieved")
 	}
 
-	switch output {
-	case "text":
-		err = utils.PrintText(jsonData)
-		if err != nil {
-			return err
-		}
-	case "table":
-		err = utils.PrintTable(jsonData)
-		if err != nil {
-			return err
-		}
-	case "json":
-		fmt.Printf("%+v\n", jsonData)
-	default:
-		err = fmt.Errorf("invalid output format: %s", output)
+	// Print output
+	err = utils.PrintTextTableJsonArrayOutput(output, formattedUpgradeStatusDetails)
+	if err != nil {
 		utils.PrintError(err)
 		return err
 	}

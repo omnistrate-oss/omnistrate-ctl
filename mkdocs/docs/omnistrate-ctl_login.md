@@ -13,21 +13,21 @@ omnistrate-ctl login [flags]
 ### Examples
 
 ```
-  # Login interactively with a single sign-on provider or using email and password
-  omctl login
+# Select login method with a prompt
+omnistrate-ctl login
 
-  # Login with email and password
-  omctl login --email email --password password
+# Login with email and password
+omnistrate-ctl login --email email --password password
 
-  # Login with environment variables
+# Login with environment variables
   export OMNISTRATE_USER_NAME=YOUR_EMAIL
   export OMNISTRATE_PASSWORD=YOUR_PASSWORD
   ./omnistrate-ctl-darwin-arm64 login --email "$OMNISTRATE_USER_NAME" --password "$OMNISTRATE_PASSWORD"
 
-  # Login with email and password from stdin. Save the password in a file and use cat to read it
+# Login with email and password from stdin. Save the password in a file and use cat to read it
   cat ~/omnistrate_pass.txt | omnistrate-ctl login --email email --password-stdin
 
-  # Login with email and password from stdin. Save the password in an environment variable and use echo to read it
+# Login with email and password from stdin. Save the password in an environment variable and use echo to read it
   echo $OMNISTRATE_PASSWORD | omnistrate-ctl login --email email --password-stdin
 ```
 
@@ -45,7 +45,8 @@ omnistrate-ctl login [flags]
 ### Options inherited from parent commands
 
 ```
-  -v, --version   Print the version number of omnistrate-ctl
+  -o, --output string   Output format (text|table|json) (default "table")
+  -v, --version         Print the version number of omnistrate-ctl
 ```
 
 ### SEE ALSO

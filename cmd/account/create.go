@@ -1,26 +1,34 @@
 package account
 
 import (
+	"context"
 	"fmt"
-	accountconfigapi "github.com/omnistrate/api-design/v1/pkg/registration/gen/account_config_api"
-	commonutils "github.com/omnistrate/commons/pkg/utils"
-	"github.com/omnistrate/ctl/dataaccess"
-	"github.com/omnistrate/ctl/utils"
+	"os"
+	"time"
+
+	"github.com/omnistrate-oss/omnistrate-ctl/cmd/common"
+	"github.com/omnistrate-oss/omnistrate-ctl/internal/config"
+	"github.com/omnistrate-oss/omnistrate-ctl/internal/dataaccess"
+	"github.com/omnistrate-oss/omnistrate-ctl/internal/utils"
+	openapiclient "github.com/omnistrate-oss/omnistrate-sdk-go/v1"
 	"github.com/spf13/cobra"
 )
 
 const (
-	createExample = `  # Create aws account
-  omctl account create <name> --aws-account-id <aws-account-id>
+	createExample = `# Create aws account
+omnistrate-ctl account create [account-name] --aws-account-id=[account-id]
 
-  # Create gcp account
-  omctl account create <name> --gcp-project-id <gcp-project-id> --gcp-project-number <gcp-project-number>`
+# Create gcp account
+omnistrate-ctl account create [account-name] --gcp-project-id=[project-id] --gcp-project-number=[project-number]
+
+# Create azure account
+omnistrate-ctl account create [account-name] --azure-subscription-id=[subscription-id] --azure-tenant-id=[tenant-id]`
 )
 
 var createCmd = &cobra.Command{
-	Use:          "create --name=[name] [--aws-account-id=account-id] [--gcp-project-id=project-id] [--gcp-project-number=project-number]",
-	Short:        "Create an account",
-	Long:         `Create an account with the specified name and cloud provider details.`,
+	Use:          "create [account-name] [--aws-account-id=account-id] [--gcp-project-id=project-id] [--gcp-project-number=project-number] [--azure-subscription-id=subscription-id] [--azure-tenant-id=tenant-id]",
+	Short:        "Create a Cloud Provider Account",
+	Long:         `This command helps you create a Cloud Provider Account in your account list.`,
 	Example:      createExample,
 	RunE:         runCreate,
 	SilenceUsage: true,
@@ -32,83 +40,213 @@ func init() {
 	createCmd.Flags().String("aws-account-id", "", "AWS account ID")
 	createCmd.Flags().String("gcp-project-id", "", "GCP project ID")
 	createCmd.Flags().String("gcp-project-number", "", "GCP project number")
+	createCmd.Flags().String("azure-subscription-id", "", "Azure subscription ID")
+	createCmd.Flags().String("azure-tenant-id", "", "Azure tenant ID")
+	createCmd.Flags().Bool("skip-wait", false, "Skip waiting for account to become READY")
 
-	err := createCmd.MarkFlagRequired("name")
-	if err != nil {
-		return
-	}
-
-	createCmd.MarkFlagsMutuallyExclusive("aws-account-id", "gcp-project-id")
-	createCmd.MarkFlagsOneRequired("aws-account-id", "gcp-project-id")
+	// Add validation to the flags
+	createCmd.MarkFlagsOneRequired("aws-account-id", "gcp-project-id", "azure-subscription-id")
 	createCmd.MarkFlagsRequiredTogether("gcp-project-id", "gcp-project-number")
+	createCmd.MarkFlagsRequiredTogether("azure-subscription-id", "azure-tenant-id")
 }
 
 func runCreate(cmd *cobra.Command, args []string) error {
-	// Get flags
+	defer config.CleanupArgsAndFlags(cmd, &args)
+
+	// Retrieve args
+	var name string
+	if len(args) > 0 {
+		name = args[0]
+	}
+
+	// Retrieve flags
 	awsAccountID, _ := cmd.Flags().GetString("aws-account-id")
 	gcpProjectID, _ := cmd.Flags().GetString("gcp-project-id")
 	gcpProjectNumber, _ := cmd.Flags().GetString("gcp-project-number")
+	azureSubscriptionID, _ := cmd.Flags().GetString("azure-subscription-id")
+	azureTenantID, _ := cmd.Flags().GetString("azure-tenant-id")
+	output, _ := cmd.Flags().GetString("output")
+	skipWait, _ := cmd.Flags().GetBool("skip-wait")
+	if (awsAccountID != "" && gcpProjectID != "") ||
+		(awsAccountID != "" && azureSubscriptionID != "") ||
+		(gcpProjectID != "" && azureSubscriptionID != "") {
+		return fmt.Errorf("only one of --aws-account-id, --gcp-project-id, or --azure-subscription-id can be used at a time")
+	}
 
-	// Validate user is currently logged in
-	token, err := utils.GetToken()
+	if (gcpProjectID != "" && gcpProjectNumber == "") || (gcpProjectID == "" && gcpProjectNumber != "") {
+		return fmt.Errorf("both --gcp-project-id and --gcp-project-number must be provided together")
+	}
+	if (azureSubscriptionID != "" && azureTenantID == "") || (azureSubscriptionID == "" && azureTenantID != "") {
+		return fmt.Errorf("both --azure-subscription-id and --azure-tenant-id must be provided together")
+	}
+
+	// Validate user login
+	token, err := common.GetTokenWithLogin()
 	if err != nil {
 		utils.PrintError(err)
 		return err
 	}
 
-	// Create account
-	request := &accountconfigapi.CreateAccountConfigRequest{
-		Token: token,
-		Name:  args[0],
+	// Initialize spinner if output is not JSON
+	var sm utils.SpinnerManager
+	var spinner *utils.Spinner
+	if output != "json" {
+		sm = utils.NewSpinnerManager()
+		msg := "Creating account..."
+		spinner = sm.AddSpinner(msg)
+		sm.Start()
 	}
 
-	if awsAccountID != "" {
-		// Get aws cloud provider id
-		cloudProviderID, err := dataaccess.GetCloudProviderByName(token, "aws")
-		if err != nil {
-			utils.PrintError(err)
-			return err
+	// Create account using helper function
+	params := CloudAccountParams{
+		Name:                name,
+		AwsAccountID:        awsAccountID,
+		GcpProjectID:        gcpProjectID,
+		GcpProjectNumber:    gcpProjectNumber,
+		AzureSubscriptionID: azureSubscriptionID,
+		AzureTenantID:       azureTenantID,
+	}
+
+	account, err := CreateCloudAccount(cmd.Context(), token, params, spinner, sm)
+	if err != nil {
+		return err
+	}
+	utils.HandleSpinnerSuccess(spinner, sm, "Successfully created account")
+
+	// Print output
+	err = utils.PrintTextTableJsonOutput(output, account)
+	if err != nil {
+		utils.PrintError(err)
+		return err
+	}
+
+	// Print next step
+	if output != "json" {
+		dataaccess.PrintNextStepVerifyAccountMsg(account)
+	}
+
+	// Wait for account to become READY (poll up to 10 min)
+	if !skipWait {
+		var waitSpinner *utils.Spinner
+		if output != "json" {
+			fmt.Printf("\n")
+			sm = utils.NewSpinnerManager()
+			waitSpinner = sm.AddSpinner("Waiting for account to become READY (may take up to 10 minutes)...")
+			sm.Start()
 		}
 
-		request.CloudProviderID = accountconfigapi.CloudProviderID(cloudProviderID)
-		request.AwsAccountID = &awsAccountID
-		request.AwsBootstrapRoleARN = commonutils.ToPtr("arn:aws:iam::" + awsAccountID + ":role/omnistrate-bootstrap-role")
-		request.Description = "AWS Account" + awsAccountID
-	} else {
-		// Get organization id
-		user, err := dataaccess.DescribeUser(token)
+		err = WaitForAccountReady(cmd.Context(), token, account.Id)
 		if err != nil {
-			utils.PrintError(err)
+			utils.HandleSpinnerError(waitSpinner, sm, err)
+			utils.PrintError(fmt.Errorf("account did not become READY: %v", err))
 			return err
+		}
+		utils.HandleSpinnerSuccess(waitSpinner, sm, "Account is now READY")
+	}
+
+	return nil
+}
+
+// CloudAccountParams holds the parameters for creating a cloud account
+type CloudAccountParams struct {
+	Name                string
+	AwsAccountID        string
+	GcpProjectID        string
+	GcpProjectNumber    string
+	AzureSubscriptionID string
+	AzureTenantID       string
+}
+
+// CreateCloudAccount creates a cloud provider account and returns the account config ID and account details
+// This function is reusable across different commands that need to create accounts
+func CreateCloudAccount(ctx context.Context, token string, params CloudAccountParams, spinner *utils.Spinner, sm utils.SpinnerManager) (account *openapiclient.DescribeAccountConfigResult, err error) {
+	// Prepare request
+	request := openapiclient.CreateAccountConfigRequest2{
+		Name: params.Name,
+	}
+
+	if params.AwsAccountID != "" {
+		// Get aws cloud provider id
+		cloudProviderID, err := dataaccess.GetCloudProviderByName(ctx, token, "aws")
+		if err != nil {
+			utils.HandleSpinnerError(spinner, sm, err)
+			return nil, err
+		}
+
+		request.CloudProviderId = cloudProviderID
+		request.AwsAccountID = &params.AwsAccountID
+		request.AwsBootstrapRoleARN = utils.ToPtr("arn:aws:iam::" + params.AwsAccountID + ":role/omnistrate-bootstrap-role")
+		request.Description = "AWS Account " + params.AwsAccountID
+	} else if params.GcpProjectID != "" {
+		// Get organization id
+		user, err := dataaccess.DescribeUser(ctx, token)
+		if err != nil {
+			utils.HandleSpinnerError(spinner, sm, err)
+			return nil, err
 		}
 
 		// Get gcp cloud provider id
-		cloudProviderID, err := dataaccess.GetCloudProviderByName(token, "gcp")
+		cloudProviderID, err := dataaccess.GetCloudProviderByName(ctx, token, "gcp")
 		if err != nil {
-			utils.PrintError(err)
-			return err
+			utils.HandleSpinnerError(spinner, sm, err)
+			return nil, err
 		}
 
-		request.CloudProviderID = accountconfigapi.CloudProviderID(cloudProviderID)
-		request.GcpProjectID = &gcpProjectID
-		request.GcpProjectNumber = &gcpProjectNumber
-		request.GcpServiceAccountEmail = commonutils.ToPtr(fmt.Sprintf("bootstrap-%s@%s.iam.gserviceaccount.com", user.OrgID, gcpProjectID))
-		request.Description = "GCP Account" + gcpProjectID
+		request.CloudProviderId = cloudProviderID
+		request.GcpProjectID = &params.GcpProjectID
+		request.GcpProjectNumber = &params.GcpProjectNumber
+		request.GcpServiceAccountEmail = utils.ToPtr(fmt.Sprintf("bootstrap-%s@%s.iam.gserviceaccount.com", *user.OrgId, params.GcpProjectID))
+		request.Description = "GCP Account " + params.GcpProjectID
+	} else if params.AzureSubscriptionID != "" {
+		// Get azure cloud provider id
+		cloudProviderID, err := dataaccess.GetCloudProviderByName(ctx, token, "azure")
+		if err != nil {
+			utils.HandleSpinnerError(spinner, sm, err)
+			return nil, err
+		}
+
+		request.CloudProviderId = cloudProviderID
+		request.AzureSubscriptionID = &params.AzureSubscriptionID
+		request.AzureTenantID = &params.AzureTenantID
+		request.Description = "Azure Account " + params.AzureSubscriptionID
+	} else {
+		return nil, fmt.Errorf("no cloud provider credentials provided")
 	}
 
-	accountConfigId, err := dataaccess.CreateAccount(request)
+	// Create account
+	accountConfigID, err := dataaccess.CreateAccount(ctx, token, request)
 	if err != nil {
-		utils.PrintError(err)
-		return err
+		utils.HandleSpinnerError(spinner, sm, err)
+		return nil, err
 	}
-	utils.PrintSuccess("Account created successfully")
 
-	account, err := dataaccess.DescribeAccount(token, string(accountConfigId))
+	// Describe account
+	account, err = dataaccess.DescribeAccount(ctx, token, accountConfigID)
 	if err != nil {
-		utils.PrintError(err)
-		return err
+		return nil, err
 	}
-	dataaccess.PrintNextStepVerifyAccountMsg(account)
 
-	return nil
+	return account, nil
+}
+
+// waitForAccountReady polls for account status to become READY, up to 10 minutes
+func WaitForAccountReady(ctx context.Context, token, accountID string) error {
+	timeout := time.After(10 * time.Minute)
+	ticker := time.NewTicker(10 * time.Second)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-timeout:
+			fmt.Fprintf(os.Stderr, "\n⚠️  Warning: Account did not become READY after 10 minutes. Please check account status with 'omnistrate-ctl account describe %s'\n", accountID)
+			return fmt.Errorf("account %s did not become READY after 10 minutes", accountID)
+		case <-ticker.C:
+			account, err := dataaccess.DescribeAccount(ctx, token, accountID)
+			if err != nil {
+				return err
+			}
+			if account.Status == "READY" {
+				return nil
+			}
+		}
+	}
 }

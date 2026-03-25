@@ -1,18 +1,18 @@
 # Logo: https://assets.stickpng.com/images/62debc4fff3c6e4b8b5de8d3.png
 version: "3"
 x-omnistrate-service-plan:
-  name: 'Hosted MySQL Cluster'
-  tenancyType: 'OMNISTRATE_DEDICATED_TENANCY'
+  name: "Hosted MySQL Cluster"
+  tenancyType: "OMNISTRATE_DEDICATED_TENANCY"
   deployment:
     hostedDeployment:
-      GcpProjectId: 'omnistrate-dataplane-host-dev'
-      GcpProjectNumber: '61114262792'
-      GcpServiceAccountEmail: 'bootstrap.getservice@gcp.test.iam'
+      GcpProjectId: "omnistrate-dataplane-host-dev"
+      GcpProjectNumber: "61114262792"
+      GcpServiceAccountEmail: "bootstrap.getservice@gcp.test.iam"
 x-omnistrate-integrations:
   - omnistrateMetrics:
       additionalMetrics:
         mySQL: # pod
-          prometheusEndpoint: ':9090/metrics'
+          prometheusEndpoint: ":9090/metrics"
           metrics:
             Aborted_connects: # metric name
             Threads_connected: # metric name
@@ -22,9 +22,6 @@ x-omnistrate-integrations:
                   protocol: https
               all: # another serie
                 aggregationFunction: sum
-x-internal-integrations:
-  billing:
-    S3BucketARN: arn:aws:s3:::my_billing_bucket_name
 services:
   MySQL:
     image: mysql:latest
@@ -95,4 +92,4 @@ services:
         overUtilizedThreshold: 80
       enableMultiZone: true
     ports:
-      - '3306:3306'
+      - "3306:3306"

@@ -11,27 +11,6 @@ Omnistrate automatically installs this charts and maintains the deployment of th
 omnistrate-ctl helm [operation] [flags]
 ```
 
-### Examples
-
-```
-  # Delete a Helm package
-  omctl helm delete redis --version=20.0.1
-
-  # Describe the Redis Operator Helm Chart
-  omctl helm describe redis --version=20.0.1
-
-  # List all Helm packages that are saved
-  omctl helm list
-
-  # List all Helm Packages and the Kubernetes clusters that they are installed on
-  omctl helm list-installations --host-cluster-id=[host-cluster-id]
-
-  # Install the Redis Operator Helm Chart
-  omctl helm save redis --repo-url=https://charts.bitnami.com/bitnami --version=20.0.1 --namespace=redis-operator
-
-
-```
-
 ### Options
 
 ```
@@ -41,7 +20,8 @@ omnistrate-ctl helm [operation] [flags]
 ### Options inherited from parent commands
 
 ```
-  -v, --version   Print the version number of omnistrate-ctl
+  -o, --output string   Output format (text|table|json) (default "table")
+  -v, --version         Print the version number of omnistrate-ctl
 ```
 
 ### SEE ALSO

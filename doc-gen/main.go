@@ -3,7 +3,7 @@ package main
 import (
 	"log"
 
-	"github.com/omnistrate/ctl/cmd"
+	"github.com/omnistrate-oss/omnistrate-ctl/cmd"
 	"github.com/spf13/cobra/doc"
 )
 

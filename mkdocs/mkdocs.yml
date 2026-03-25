@@ -1,21 +1,25 @@
-site_name: " " 
+site_name: " "
 site_url: https://ctl.omnistrate.cloud/
 site_description: >-
   Omnistrate CTL Manual
+repo_url: https://github.com/omnistrate-oss/omnistrate-ctl
+repo_name: omnistrate-oss/omnistrate-ctl
 
 # TODO 0.0.0.0
 
 theme:
   logo: assets/logo.png
   name: material
-  favicon: images/favicon.png
+  favicon: favicon.ico
+  icon:
+    repo: fontawesome/brands/github
   features:
     #- navigation.tabs
     #- navigation.sections
     - navigation.expand
     - navigation.path
     - navigation.indexes
-   # - toc.integrate
+    # - toc.integrate
     - navigation.top
     - search.suggest
     - search.highlight
@@ -26,108 +30,69 @@ theme:
   palette:
     - scheme: default
       toggle:
-        icon: material/toggle-switch-off-outline 
+        icon: material/brightness-7
         name: Switch to dark mode
       primary: custom
       accent: indigo
-    - scheme: slate 
+    - scheme: slate
       toggle:
-        icon: material/toggle-switch
-        name: Switch to light mode    
+        icon: material/brightness-4
+        name: Switch to light mode
       primary: blue grey
-      accent: lime  
+      accent: lime
 
 validation:
   absolute_links: ignore
 
 nav:
-  - Install CTL: 'install.md'
+  - Install CTL: "index.md"
   - Integrate CTL: "integrating.md"
+  - CTL Usage: "omnistrate-ctl.md"
   - Commands:
-    - auth:
-      - login: 'omnistrate-ctl_login.md'
-      - logout: 'omnistrate-ctl_logout.md'
-    - account:
-      - command : 'omnistrate-ctl_account.md'
-      - operations: 
-        - create: 'omnistrate-ctl_account_create.md'
-        - delete: 'omnistrate-ctl_account_delete.md'
-        - describe: 'omnistrate-ctl_account_describe.md'
-        - list: 'omnistrate-ctl_account_list.md'
-    - environment:
-      - command: 'omnistrate-ctl_environment.md'
-      - operations: 
-        - create: 'omnistrate-ctl_environment_create.md'
-        - delete: 'omnistrate-ctl_environment_delete.md'
-        - describe: 'omnistrate-ctl_environment_describe.md'
-        - list: 'omnistrate-ctl_environment_list.md'
-        - promote: 'omnistrate-ctl_environment_promote.md'
-    - build: 'omnistrate-ctl_build.md'
-    - domain:
-      - command: 'omnistrate-ctl_domain.md'
-      - operations: 
-        - create: 'omnistrate-ctl_domain_create.md'
-        - delete: 'omnistrate-ctl_domain_delete.md'
-        - describe: 'omnistrate-ctl_domain_describe.md'
-        - list: 'omnistrate-ctl_domain_list.md'
-    - helm:
-      - command: 'omnistrate-ctl_helm.md'
-      - operations: 
-        - save: 'omnistrate-ctl_helm_save.md'
-        - list: 'omnistrate-ctl_helm_list.md'
-        - list-installations: 'omnistrate-ctl_helm_list-installations.md'
-        - describe: 'omnistrate-ctl_helm_describe.md'
-        - delete: 'omnistrate-ctl_helm_delete.md'
-    - instance:
-      - command: 'omnistrate-ctl_instance.md'
-      - operations:
-        - create: 'omnistrate-ctl_instance_create.md'
-        - delete: 'omnistrate-ctl_instance_delete.md'
-        - describe: 'omnistrate-ctl_instance_describe.md'
-        - list: 'omnistrate-ctl_instance_list.md'
-    - service:
-      - command: 'omnistrate-ctl_service.md'
-      - operations:
-        - delete: 'omnistrate-ctl_service_delete.md'
-        - describe: 'omnistrate-ctl_service_describe.md'
-        - list: 'omnistrate-ctl_service_list.md'
-    - service-plan:
-      - command: 'omnistrate-ctl_service-plan.md'
-      - operations:
-        - delete: 'omnistrate-ctl_service-plan_delete.md'
-        - describe: 'omnistrate-ctl_service-plan_describe.md'
-        - describe-version: 'omnistrate-ctl_service-plan_describe-version.md'
-        - list: 'omnistrate-ctl_service-plan_list.md'
-        - list-versions: 'omnistrate-ctl_service-plan_list-versions.md'
-        - release: 'omnistrate-ctl_service-plan_release.md'
-        - set-default: 'omnistrate-ctl_service-plan_set-default.md'
-    - subscription:
-      - command: 'omnistrate-ctl_subscription.md'
-      - operations:
-        - describe: 'omnistrate-ctl_subscription_describe.md'
-        - list: 'omnistrate-ctl_subscription_list.md'
-    - upgrade:
-      - command: 'omnistrate-ctl_upgrade.md'
-      - operations:
-        - status: 'omnistrate-ctl_upgrade_status.md'
-        - status detail: 'omnistrate-ctl_upgrade_status_detail.md'
+      - login: "omnistrate-ctl_login.md"
+      - logout: "omnistrate-ctl_logout.md"
+      - mcp: "omnistrate-ctl_mcp.md"
+      - agent: "omnistrate-ctl_agent.md"
+      - account: "omnistrate-ctl_account.md"
+      - alarms: "omnistrate-ctl_alarms.md"
+      - audit: "omnistrate-ctl_audit.md"
+      - build: "omnistrate-ctl_build.md"
+      - build-from-repo: "omnistrate-ctl_build-from-repo.md"
+      - cost: "omnistrate-ctl_cost.md"
+      - custom-network: "omnistrate-ctl_custom-network.md"
+      - deploy: "omnistrate-ctl_deploy.md"
+      - deployment-cell: "omnistrate-ctl_deployment-cell.md"
+      - docs: "omnistrate-ctl_docs.md"
+      - domain: "omnistrate-ctl_domain.md"
+      - environment: "omnistrate-ctl_environment.md"
+      - helm: "omnistrate-ctl_helm.md"
+      - instance: "omnistrate-ctl_instance.md"
+      - operations: "omnistrate-ctl_operations.md"
+      - secret: "omnistrate-ctl_secret.md"
+      - service-plan: "omnistrate-ctl_service-plan.md"
+      - service: "omnistrate-ctl_service.md"
+      - snapshot: "omnistrate-ctl_snapshot.md"
+      - subscription: "omnistrate-ctl_subscription.md"
+      - upgrade: "omnistrate-ctl_upgrade.md"
+      - workflow: "omnistrate-ctl_workflow.md"
 
 extra_css:
   - stylesheets/extra.css
 
+  
+
 extra:
   homepage: https://docs.omnistrate.com/
   social:
-    - icon: fontawesome/brands/facebook
-      link: https://www.facebook.com/omnistrate
-    - icon: fontawesome/brands/twitter
-      link: https://twitter.com/omnistrate
+    - icon: fontawesome/brands/x-twitter
+      link: https://x.com/omnistrate/
     - icon: fontawesome/brands/linkedin
-      link: https://www.linkedin.com/company/omnistrate/about/
+      link: https://www.linkedin.com/company/omnistrate/
+    - icon: fontawesome/brands/github
+      link: https://github.com/omnistrate-oss/omnistrate-ctl
   analytics:
     provider: google
     property: G-2VH2LJR946
-
 extra_javascript:
   # - javascripts/mathjax.js
   # - javascripts/tawk.js
@@ -159,8 +124,28 @@ plugins:
   - glightbox:
       skip_classes:
         - skip-lightbox
-  - include_dir_to_nav
-  - search
+  - search:
+      lang: 
+        - en
+  - minify:
+      minify_html: true
+      minify_js: true
+      minify_css: true
+      htmlmin_opts:
+        remove_comments: true
+      cache_safe: true
+  - llmstxt:
+      full_output: llms-full.txt
+      sections:
+        Installation: 
+          - index.md
+          - integrating.md
+        Commands:
+          - omnistrate-ctl*.md
+
+  - redirects:
+      redirect_maps:
+        install.md: index.md
 
 copyright: |
-  &copy; 2023 Omnistrate.Inc All rights reserved.
+  &copy; 2025 Omnistrate.Inc All rights reserved.

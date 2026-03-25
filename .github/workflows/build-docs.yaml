@@ -1,0 +1,67 @@
+name: Build documentation
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+    branches: ["main"]
+
+jobs:
+  docs-check:
+    name: Check Documentation is up-to-date
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Set up go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: "go.mod"
+          cache-dependency-path: "**/go.sum"
+
+      - name: Get dependencies
+        timeout-minutes: 10
+        run: |
+          make download
+
+      - name: Generate docs
+        timeout-minutes: 10
+        run: |
+          make gen-doc
+
+      - name: Diff generated code
+        run: |
+          git diff --compact-summary --exit-code -- ./mkdocs/docs || (echo; echo "Unexpected difference in directories after docs generation. Run 'make gen-doc' command and commit"; exit 1)
+
+  build-docs:
+    name: Build Documentation
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          cd mkdocs
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Build documentation
+        run: |
+          cd mkdocs
+          mkdocs build --strict
+          echo "Documentation build completed successfully!"
+          echo "The --strict flag ensures that warnings are treated as errors."
+          echo "All links, paths, and files have been validated during the build process."

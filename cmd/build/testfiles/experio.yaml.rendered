@@ -1,0 +1,128 @@
+name: testfiles
+services:
+  client:
+    container_name: client
+    environment:
+      CHOKIDAR_USEPOLLING: "true"
+      KC_DB_PASSWORD: $var.backendhostportal
+      VITE_CACHE_DIR: ./vite
+    image: ghcr.io/experio-ai/experio-dockerfile.client:sha-0d1b8e629f5c97a824590b13f500f478cd440aafecb15c4f9303337b45f8fed1
+    networks:
+      default: null
+    ports:
+    - mode: ingress
+      target: 8080
+      published: "8080"
+      protocol: tcp
+    x-omnistrate-api-params:
+    - defaultvalue: portal.whiteswansec.io
+      description: Backend host portal
+      export: true
+      key: backendhostportal
+      modifiable: true
+      name: Backend Host Portal
+      required: false
+      type: String
+    - defaultvalue: https://portal.whiteswansec.io
+      description: Backend url
+      export: true
+      key: backendurl
+      modifiable: true
+      name: Backend url
+      required: false
+      type: String
+  postgres:
+    environment:
+      ALLOWED_HOSTS: '{{ $sys.network.externalClusterEndpoint }},server,localhost,127.0.0.1,0.0.0.0'
+      ALLOWED_HOSTS2: '{{ $sys.network.externalClusterEndpoint }},server,localhost,127.0.0.1,0.0.0.0'
+      CONFIG_PATH: /app/jobs/config
+      CURRENT_DOMAIN: '{{ $sys.network.externalClusterEndpoint }}'
+      CURRENT_PORT: "8080"
+      DB_HOST: postgres
+      DB_NAME: mydb
+      DB_PASS: 33vhjvh@z!sfg$3#
+      DB_USER: myuser
+      DEBUG: "True"
+      DOCKER_UID: "1000"
+      POSTGRES_DB: mydb
+      POSTGRES_PASSWORD: 33vhjvh@z!sfg$3#
+      POSTGRES_USER: myuser
+      SECURITY_CONTEXT_GROUP_ID: "999"
+      SECURITY_CONTEXT_USER_ID: "999"
+    image: postgres:12
+    networks:
+      default: null
+    ports:
+    - mode: ingress
+      target: 5432
+      published: "5432"
+      protocol: tcp
+    restart: always
+    volumes:
+    - type: volume
+      source: local_postgres_data
+      target: /var/lib/postgresql/data
+      volume: {}
+    - type: volume
+      source: local_postgres_data_backups
+      target: /backups
+      volume: {}
+  redis:
+    container_name: redis
+    image: redis/redis-stack-server:latest
+    networks:
+      default: null
+    ports:
+    - mode: ingress
+      target: 6379
+      published: "6379"
+      protocol: tcp
+    restart: always
+    volumes:
+    - type: volume
+      source: local_redis_data
+      target: /data
+      volume: {}
+  server:
+    command:
+    - /start
+    depends_on:
+      postgres:
+        condition: service_started
+        required: true
+    environment:
+      ALLOWED_HOSTS: '{{ $sys.network.externalClusterEndpoint }},server,localhost,127.0.0.1,0.0.0.0'
+      CONFIG_PATH: /app/jobs/config
+      CURRENT_DOMAIN: '{{ $sys.network.externalClusterEndpoint }}'
+      CURRENT_PORT: "8080"
+      DB_HOST: postgres
+      DB_NAME: mydb
+      DB_PASS: 33vhjvh@z!sfg$3#
+      DB_USER: myuser
+      DEBUG: "True"
+      DOCKER_UID: "1000"
+    image: ghcr.io/experio-ai/experio-dockerfile.server:sha-47065d21819504bca486ae305ed9ca67632be085640f7cef4369fb628e646c72
+    networks:
+      default: null
+    ports:
+    - mode: ingress
+      target: 8000
+      published: "8000"
+      protocol: tcp
+    restart: always
+    user: "1000"
+networks:
+  default:
+    name: testfiles_default
+volumes:
+  local_postgres_data:
+    name: testfiles_local_postgres_data
+  local_postgres_data_backups:
+    name: testfiles_local_postgres_data_backups
+  local_redis_data:
+    name: testfiles_local_redis_data
+x-omnistrate-image-registry-attributes:
+  ghcr.io:
+    auth:
+      password: ${{ secrets.GitHubPAT }}
+      username: abc

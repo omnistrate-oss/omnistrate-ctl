@@ -1,11 +1,11 @@
 version: "3"
 x-omnistrate-service-plan:
-  name: 'BYOA Postgres cluster'
-  tenancyType: 'OMNISTRATE_MULTI_TENANCY'
+  name: "BYOA Postgres cluster"
+  tenancyType: "OMNISTRATE_MULTI_TENANCY"
   deployment:
     byoaDeployment:
-      AwsAccountId: '339713121445'
-      AwsBootstrapRoleAccountArn: 'arn:aws:iam::339713121445:role/omnistrate-bootstrap-role'
+      AwsAccountId: "339713121445"
+      AwsBootstrapRoleAccountArn: "arn:aws:iam::339713121445:role/omnistrate-bootstrap-role"
 x-omnistrate-integrations:
   - omnistrateLogging
   - omnistrateMetrics
@@ -115,10 +115,10 @@ services:
     deploy:
       resources:
         limits:
-          cpus: '0.50'
+          cpus: "0.50"
           memory: 50M
         reservations:
-          cpus: '0.25'
+          cpus: "0.25"
           memory: 20M
     x-omnistrate-compute:
       instanceTypes:

@@ -1,24 +1,27 @@
 package environment
 
 import (
-	"encoding/json"
+	"context"
 	"fmt"
-	"github.com/chelnak/ysmrr"
-	serviceenvironmentapi "github.com/omnistrate/api-design/v1/pkg/registration/gen/service_environment_api"
-	"github.com/omnistrate/ctl/dataaccess"
-	"github.com/omnistrate/ctl/model"
-	"github.com/omnistrate/ctl/utils"
+	"strings"
+
+	"github.com/omnistrate-oss/omnistrate-ctl/cmd/common"
+	openapiclientv1 "github.com/omnistrate-oss/omnistrate-sdk-go/v1"
+
+	"github.com/omnistrate-oss/omnistrate-ctl/internal/config"
+	"github.com/omnistrate-oss/omnistrate-ctl/internal/dataaccess"
+	"github.com/omnistrate-oss/omnistrate-ctl/internal/model"
+	"github.com/omnistrate-oss/omnistrate-ctl/internal/utils"
 	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
-	"strings"
 )
 
 const (
-	promoteExample = `  # Promote environment
-  omctl environment promote [service-name] [environment-name]
+	promoteExample = `# Promote environment
+omnistrate-ctl environment promote [service-name] [environment-name]
 
-  # Promote environment by ID instead of name
-  omctl environment promote --service-id [service-id] --environment-id [environment-id]`
+# Promote environment by ID instead of name
+omnistrate-ctl environment promote --service-id=[service-id] --environment-id=[environment-id]`
 )
 
 var promoteCmd = &cobra.Command{
@@ -31,21 +34,20 @@ var promoteCmd = &cobra.Command{
 }
 
 func init() {
-	promoteCmd.Flags().StringP("output", "o", "text", "Output format (text|table|json)")
 	promoteCmd.Flags().StringP("service-id", "", "", "Service ID. Required if service name is not provided")
 	promoteCmd.Flags().StringP("environment-id", "", "", "Environment ID. Required if environment name is not provided")
 }
 
 func runPromote(cmd *cobra.Command, args []string) error {
-	defer utils.CleanupArgsAndFlags(cmd, &args)
+	defer config.CleanupArgsAndFlags(cmd, &args)
 
 	// Retrieve flags
 	output, _ := cmd.Flags().GetString("output")
-	serviceId, _ := cmd.Flags().GetString("service-id")
-	environmentId, _ := cmd.Flags().GetString("environment-id")
+	serviceID, _ := cmd.Flags().GetString("service-id")
+	environmentID, _ := cmd.Flags().GetString("environment-id")
 
 	// Validate input arguments
-	if err := validatePromoteArguments(args, serviceId, environmentId); err != nil {
+	if err := validatePromoteArguments(args, serviceID, environmentID); err != nil {
 		utils.PrintError(err)
 		return err
 	}
@@ -57,43 +59,43 @@ func runPromote(cmd *cobra.Command, args []string) error {
 	}
 
 	// Validate user login
-	token, err := utils.GetToken()
+	token, err := common.GetTokenWithLogin()
 	if err != nil {
 		utils.PrintError(err)
 		return err
 	}
 
 	// Initialize spinner if output is not JSON
-	var sm ysmrr.SpinnerManager
-	var spinner *ysmrr.Spinner
+	var sm utils.SpinnerManager
+	var spinner *utils.Spinner
 	if output != "json" {
-		sm = ysmrr.NewSpinnerManager()
+		sm = utils.NewSpinnerManager()
 		spinner = sm.AddSpinner("Promoting environment...")
 		sm.Start()
 	}
 
 	// Check if the environment exists
-	serviceId, serviceName, environmentId, _, err = getServiceEnvironment(token, serviceId, serviceName, environmentId, environmentName)
+	serviceID, serviceName, environmentID, err = getServiceEnvironment(cmd.Context(), token, serviceID, serviceName, environmentID, environmentName)
 	if err != nil {
 		utils.HandleSpinnerError(spinner, sm, err)
 		return err
 	}
 
 	// Promote the environment
-	if err = dataaccess.PromoteServiceEnvironment(token, serviceId, environmentId); err != nil {
+	if err = dataaccess.PromoteServiceEnvironment(cmd.Context(), token, serviceID, environmentID); err != nil {
 		utils.HandleSpinnerError(spinner, sm, err)
 		return err
 	}
 
 	// Describe the promoted environment
-	environment, err := dataaccess.DescribeServiceEnvironment(token, serviceId, environmentId)
+	environment, err := dataaccess.DescribeServiceEnvironment(cmd.Context(), token, serviceID, environmentID)
 	if err != nil {
 		utils.HandleSpinnerError(spinner, sm, err)
 		return err
 	}
 
 	// Get promote status and format output
-	formattedPromotions, err := formatPromoteStatus(token, serviceId, environmentId, serviceName, environment)
+	formattedPromotions, err := formatPromoteStatus(cmd.Context(), token, serviceID, environmentID, serviceName, environment)
 	if err != nil {
 		utils.HandleSpinnerError(spinner, sm, err)
 		return err
@@ -111,8 +113,8 @@ func runPromote(cmd *cobra.Command, args []string) error {
 
 // Helper functions
 
-func validatePromoteArguments(args []string, serviceId, environmentId string) error {
-	if len(args) == 0 && (serviceId == "" || environmentId == "") {
+func validatePromoteArguments(args []string, serviceID, environmentID string) error {
+	if len(args) == 0 && (serviceID == "" || environmentID == "") {
 		return fmt.Errorf("please provide the service name and environment name or the service ID and environment ID")
 	}
 	if len(args) > 0 && len(args) != 2 {
@@ -121,8 +123,8 @@ func validatePromoteArguments(args []string, serviceId, environmentId string) er
 	return nil
 }
 
-func getServiceEnvironment(token, serviceIdArg, serviceNameArg, environmentIdArg, environmentNameArg string) (serviceId, serviceName, environmentId, environmentName string, err error) {
-	services, err := dataaccess.ListServices(token)
+func getServiceEnvironment(ctx context.Context, token, serviceIDArg, serviceNameArg, environmentIDArg, environmentNameArg string) (serviceID, serviceName, environmentID string, err error) {
+	services, err := dataaccess.ListServices(ctx, token)
 	if err != nil {
 		return
 	}
@@ -130,24 +132,23 @@ func getServiceEnvironment(token, serviceIdArg, serviceNameArg, environmentIdArg
 	serviceEnvironmentsMap := make(map[string]map[string]bool)
 
 	for _, service := range services.Services {
-		if string(service.ID) != serviceIdArg && !strings.EqualFold(service.Name, serviceNameArg) {
+		if service.Id != serviceIDArg && !strings.EqualFold(service.Name, serviceNameArg) {
 			continue
 		}
 
 		for _, environment := range service.ServiceEnvironments {
-			if string(environment.ID) != environmentIdArg && !strings.EqualFold(environment.Name, environmentNameArg) {
+			if environment.Id != environmentIDArg && !strings.EqualFold(environment.Name, environmentNameArg) {
 				continue
 			}
 
-			if _, exists := serviceEnvironmentsMap[string(service.ID)]; !exists {
-				serviceEnvironmentsMap[string(service.ID)] = make(map[string]bool)
+			if _, exists := serviceEnvironmentsMap[service.Id]; !exists {
+				serviceEnvironmentsMap[service.Id] = make(map[string]bool)
 			}
-			serviceEnvironmentsMap[string(service.ID)][string(environment.ID)] = true
+			serviceEnvironmentsMap[service.Id][environment.Id] = true
 
-			serviceId = string(service.ID)
-			environmentId = string(environment.ID)
+			serviceID = service.Id
+			environmentID = environment.Id
 			serviceName = service.Name
-			environmentName = environment.Name
 		}
 	}
 
@@ -155,42 +156,37 @@ func getServiceEnvironment(token, serviceIdArg, serviceNameArg, environmentIdArg
 		err = errors.New("environment not found. Please check the input values and try again")
 		return
 	}
-	if len(serviceEnvironmentsMap) > 1 || len(serviceEnvironmentsMap[serviceId]) > 1 {
+	if len(serviceEnvironmentsMap) > 1 || len(serviceEnvironmentsMap[serviceID]) > 1 {
 		err = errors.New("multiple environments found. Please provide the service ID and environment ID instead of the names")
 		return
 	}
 	return
 }
 
-func formatPromoteStatus(token, serviceId, environmentId, serviceName string, environment *serviceenvironmentapi.DescribeServiceEnvironmentResult) ([]string, error) {
-	promotions, err := dataaccess.PromoteServiceEnvironmentStatus(token, serviceId, environmentId)
+func formatPromoteStatus(ctx context.Context, token, serviceID, environmentID, serviceName string, environment *openapiclientv1.DescribeServiceEnvironmentResult) ([]model.Promotion, error) {
+	promotions, err := dataaccess.PromoteServiceEnvironmentStatus(ctx, token, serviceID, environmentID)
 	if err != nil {
 		return nil, err
 	}
 
-	var formattedPromotions []string
+	var formattedPromotions []model.Promotion
 	for _, promotion := range promotions {
-		targetEnvID := string(promotion.TargetEnvironmentID)
-		targetEnv, err := dataaccess.DescribeServiceEnvironment(token, serviceId, targetEnvID)
+		targetEnvID := promotion.TargetEnvironmentID
+		targetEnv, err := dataaccess.DescribeServiceEnvironment(ctx, token, serviceID, targetEnvID)
 		if err != nil {
 			return nil, err
 		}
 
 		formattedPromotion := model.Promotion{
-			ServiceID:             string(environment.ServiceID),
+			ServiceID:             environment.ServiceId,
 			ServiceName:           serviceName,
-			SourceEnvironmentID:   string(environment.ID),
+			SourceEnvironmentID:   environment.Id,
 			SourceEnvironmentName: environment.Name,
 			TargetEnvID:           targetEnvID,
 			TargetEnvName:         targetEnv.Name,
 			PromoteStatus:         promotion.Status,
 		}
-
-		data, err := json.MarshalIndent(formattedPromotion, "", "    ")
-		if err != nil {
-			return nil, err
-		}
-		formattedPromotions = append(formattedPromotions, string(data))
+		formattedPromotions = append(formattedPromotions, formattedPromotion)
 	}
 
 	if len(formattedPromotions) == 0 {

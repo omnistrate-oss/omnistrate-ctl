@@ -1,32 +1,32 @@
 package serviceplan
 
 import (
-	"encoding/json"
+	"context"
 	"fmt"
-	"github.com/chelnak/ysmrr"
-	tierversionsetapi "github.com/omnistrate/api-design/v1/pkg/registration/gen/tier_version_set_api"
-	commonutils "github.com/omnistrate/commons/pkg/utils"
-	"github.com/omnistrate/ctl/dataaccess"
-	"github.com/omnistrate/ctl/model"
-	"github.com/omnistrate/ctl/utils"
-	"github.com/spf13/cobra"
 	"strings"
+
+	"github.com/omnistrate-oss/omnistrate-ctl/cmd/common"
+
+	"github.com/omnistrate-oss/omnistrate-ctl/internal/config"
+	"github.com/omnistrate-oss/omnistrate-ctl/internal/dataaccess"
+	"github.com/omnistrate-oss/omnistrate-ctl/internal/model"
+	"github.com/omnistrate-oss/omnistrate-ctl/internal/utils"
+	openapiclient "github.com/omnistrate-oss/omnistrate-sdk-go/v1"
+	"github.com/spf13/cobra"
 )
 
 const (
-	describeVersionExample = `  # Describe a service plan version
-  omctl service-plan describe-version [service-name] [plan-name] --version [version]
+	describeVersionExample = `# Describe a service plan version
+omnistrate-ctl service-plan describe-version [service-name] [plan-name] --version [version]
 
-  # Describe a service plan version by ID instead of name
-  omctl service-plan describe-version --service-id [service-id] --plan-id [plan-id] --version [version]`
-
-	defaultDescribeVersionOutput = "json"
+# Describe a service plan version by ID instead of name
+omnistrate-ctl service-plan describe-version --service-id [service-id] --plan-id [plan-id] --version [version]`
 )
 
 var describeVersionCmd = &cobra.Command{
 	Use:          "describe-version [service-name] [plan-name] [flags]",
-	Short:        "Describe a service plan version",
-	Long:         `This command helps you describe a service plan version in your service.`,
+	Short:        "Describe a specific version of a Service Plan",
+	Long:         `This command helps you get details of a specific version of a Service Plan for your service. You can get environment, enabled features, and resource configuration details for the version.`,
 	Example:      describeVersionExample,
 	RunE:         runDescribeVersion,
 	SilenceUsage: true,
@@ -34,8 +34,10 @@ var describeVersionCmd = &cobra.Command{
 
 func init() {
 	describeVersionCmd.Flags().StringP("version", "v", "", "Service plan version (latest|preferred|1.0 etc.)")
+	describeVersionCmd.Flags().StringP("environment", "", "", "Environment name. Use this flag with service name and plan name to describe the version in a specific environment")
 	describeVersionCmd.Flags().StringP("service-id", "", "", "Service ID. Required if service name is not provided")
-	describeVersionCmd.Flags().StringP("plan-id", "", "", "Environment ID. Required if plan name is not provided")
+	describeVersionCmd.Flags().StringP("plan-id", "", "", "Plan ID. Required if plan name is not provided")
+	describeVersionCmd.Flags().StringP("output", "o", "json", "Output format. Only json is supported")
 
 	err := describeVersionCmd.MarkFlagRequired("version")
 	if err != nil {
@@ -44,16 +46,17 @@ func init() {
 }
 
 func runDescribeVersion(cmd *cobra.Command, args []string) error {
-	defer utils.CleanupArgsAndFlags(cmd, &args)
+	defer config.CleanupArgsAndFlags(cmd, &args)
 
 	// Retrieve flags
-	serviceId, _ := cmd.Flags().GetString("service-id")
-	planId, _ := cmd.Flags().GetString("plan-id")
+	serviceID, _ := cmd.Flags().GetString("service-id")
+	planID, _ := cmd.Flags().GetString("plan-id")
 	version, _ := cmd.Flags().GetString("version")
-	output := defaultDescribeVersionOutput
+	environment, _ := cmd.Flags().GetString("environment")
+	output, _ := cmd.Flags().GetString("output")
 
 	// Validate input arguments
-	if err := validateDescribeVersionArguments(args, serviceId, planId); err != nil {
+	if err := validateDescribeVersionArguments(args, serviceID, planID, output); err != nil {
 		utils.PrintError(err)
 		return err
 	}
@@ -65,60 +68,53 @@ func runDescribeVersion(cmd *cobra.Command, args []string) error {
 	}
 
 	// Validate user login
-	token, err := utils.GetToken()
+	token, err := common.GetTokenWithLogin()
 	if err != nil {
 		utils.PrintError(err)
 		return err
 	}
 
 	// Initialize spinner if output is not JSON
-	var sm ysmrr.SpinnerManager
-	var spinner *ysmrr.Spinner
+	var sm utils.SpinnerManager
+	var spinner *utils.Spinner
 	if output != "json" {
-		sm = ysmrr.NewSpinnerManager()
-		spinner = sm.AddSpinner("Describing service plan...")
+		sm = utils.NewSpinnerManager()
+		spinner = sm.AddSpinner("Describing service plan version...")
 		sm.Start()
 	}
 
 	// Check if the service plan exists
-	serviceId, serviceName, planId, _, environment, err := getServicePlan(token, serviceId, serviceName, planId, planName)
+	serviceID, serviceName, planID, environment, err = getServicePlan(cmd.Context(), token, serviceID, serviceName, planID, planName, environment)
 	if err != nil {
 		utils.HandleSpinnerError(spinner, sm, err)
 		return err
 	}
 
 	// Get the target version
-	version, err = getTargetVersion(token, serviceId, planId, version)
+	version, err = getTargetVersion(cmd.Context(), token, serviceID, planID, version)
 	if err != nil {
 		utils.HandleSpinnerError(spinner, sm, err)
 		return err
 	}
 
 	// Describe the version set
-	servicePlan, err := dataaccess.DescribeVersionSet(token, serviceId, planId, version)
+	servicePlan, err := dataaccess.DescribeVersionSet(cmd.Context(), token, serviceID, planID, version)
 	if err != nil {
 		utils.HandleSpinnerError(spinner, sm, err)
 		return err
 	}
 
 	// Format the service plan details
-	formattedServicePlan, err := formatServicePlanVersionDetails(token, serviceName, planName, environment, servicePlan)
+	formattedServicePlanVersion, err := formatServicePlanVersionDetails(cmd.Context(), token, serviceName, planName, environment, servicePlan)
 	if err != nil {
 		utils.HandleSpinnerError(spinner, sm, err)
 		return err
 	}
 
 	// Handle output based on format
-	utils.HandleSpinnerSuccess(spinner, sm, "Service plan details retrieved successfully")
+	utils.HandleSpinnerSuccess(spinner, sm, "Service plan version details retrieved successfully")
 
-	// Marshal data
-	data, err := json.MarshalIndent(formattedServicePlan, "", "    ")
-	if err != nil {
-		utils.PrintError(err)
-		return err
-	}
-
-	if err = utils.PrintTextTableJsonOutput(output, string(data)); err != nil {
+	if err = utils.PrintTextTableJsonOutput(output, formattedServicePlanVersion); err != nil {
 		return err
 	}
 
@@ -127,30 +123,34 @@ func runDescribeVersion(cmd *cobra.Command, args []string) error {
 
 // Helper functions
 
-func validateDescribeVersionArguments(args []string, serviceId, planId string) error {
-	if len(args) == 0 && (serviceId == "" || planId == "") {
+func validateDescribeVersionArguments(args []string, serviceID, planID, json string) error {
+	if len(args) == 0 && (serviceID == "" || planID == "") {
 		return fmt.Errorf("please provide the service name and service plan name or the service ID and service plan ID")
 	}
 	if len(args) > 0 && len(args) != 2 {
 		return fmt.Errorf("invalid arguments: %s. Need 2 arguments: [service-name] [plan-name]", strings.Join(args, " "))
 	}
+	if json != "json" {
+		return fmt.Errorf("only json output is supported")
+	}
 	return nil
 }
 
-func formatServicePlanVersionDetails(token, serviceName, planName, environment string, versionSet *tierversionsetapi.TierVersionSet) (model.ServicePlanVersionDetails, error) {
+func formatServicePlanVersionDetails(ctx context.Context, token, serviceName, planName, environment string, versionSet *openapiclient.TierVersionSet) (model.ServicePlanVersionDetails, error) {
 	// Get resource details
 	var resources []model.Resource
 	for _, versionSetResource := range versionSet.Resources {
 		// Get resource details
-		desRes, err := dataaccess.DescribeResource(token, string(versionSet.ServiceID), string(versionSetResource.ID), commonutils.ToPtr(string(versionSet.ProductTierID)), &versionSet.Version)
+		desRes, err := dataaccess.DescribeResource(ctx, token, versionSet.ServiceId, versionSetResource.Id, utils.ToPtr(versionSet.ProductTierId), &versionSet.Version)
 		if err != nil {
 			return model.ServicePlanVersionDetails{}, err
 		}
 
 		resource := model.Resource{
-			ResourceID:   string(desRes.ID),
-			ResourceName: desRes.Name,
-			ResourceType: string(desRes.ResourceType),
+			ResourceID:          desRes.Id,
+			ResourceName:        desRes.Name,
+			ResourceDescription: desRes.Description,
+			ResourceType:        desRes.ResourceType,
 		}
 
 		if desRes.ActionHooks != nil {
@@ -203,13 +203,13 @@ func formatServicePlanVersionDetails(token, serviceName, planName, environment s
 	}
 
 	formattedServicePlan := model.ServicePlanVersionDetails{
-		PlanID:             string(versionSet.ProductTierID),
+		PlanID:             versionSet.ProductTierId,
 		PlanName:           planName,
-		ServiceID:          string(versionSet.ServiceID),
+		ServiceID:          versionSet.ServiceId,
 		ServiceName:        serviceName,
 		Environment:        environment,
 		Version:            versionSet.Version,
-		ReleaseDescription: utils.GetStrValue(versionSet.Name),
+		ReleaseDescription: utils.FromPtr(versionSet.Name),
 		VersionSetStatus:   versionSet.Status,
 		EnabledFeatures:    versionSet.EnabledFeatures,
 		Resources:          resources,

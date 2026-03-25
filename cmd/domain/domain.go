@@ -1,7 +1,6 @@
 package domain
 
 import (
-	"github.com/omnistrate/ctl/utils"
 	"github.com/spf13/cobra"
 )
 
@@ -18,8 +17,6 @@ func init() {
 	Cmd.AddCommand(createCmd)
 	Cmd.AddCommand(deleteCmd)
 	Cmd.AddCommand(listCmd)
-
-	Cmd.Example = utils.CombineSubCmdExamples(Cmd)
 }
 
 func run(cmd *cobra.Command, args []string) {

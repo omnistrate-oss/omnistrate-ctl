@@ -5,40 +5,39 @@
 
 version: 2
 updates:
-
   - package-ecosystem: "github-actions"
     # Workflow files stored in the default location of `.github/workflows`. (You don't need to specify `/.github/workflows` for `directory`. You can use `directory: "/"`.)
     directory: "/"
     schedule:
       interval: "monthly"
-    groups: 
+    groups:
       github-actions:
         dependency-type: "production"
         update-types:
-        - "minor"
-        - "patch"
+          - "minor"
+          - "patch"
 
   - package-ecosystem: "gomod" # See documentation for possible values
     directory: "/" # Location of package manifests
     schedule:
       interval: "monthly"
-    groups: 
+    groups:
       gomod-updates:
         dependency-type: "production"
         update-types:
-        - "minor"
-        - "patch"
+          - "minor"
+          - "patch"
 
   - package-ecosystem: "gomod" # See documentation for possible values
     directory: "/test/integration_test" # Location of package manifests
     schedule:
       interval: "monthly"
-    groups: 
+    groups:
       gomod-updates:
         dependency-type: "production"
         update-types:
-        - "minor"
-        - "patch"
+          - "minor"
+          - "patch"
 
   - package-ecosystem: "docker" # See documentation for possible values
     directory: "/build/" # Location of package manifests

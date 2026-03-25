@@ -1,0 +1,35 @@
+name: Redis Server # Service Plan Name
+deployment:
+  hostedDeployment:
+    AwsAccountId: "339713121445"
+    AwsBootstrapRoleAccountArn: "arn:aws:iam::339713121445:role/omnistrate-bootstrap-role"
+    GcpProjectId: "omnistrate-dataplane-host-dev"
+    GcpProjectNumber: "61114262792"
+    GcpServiceAccountEmail: "bootstrap.getservice@gcp.test.iam"
+x-git-configuration: &git-configuration
+  reference: refs/heads/main
+  repositoryUrl: https://github.com/omnistrate/ctl.git
+  accessToken: "{{ $secret.GITHUB_TOKEN }}"
+
+services:
+  - name: Redis Cluster
+    network:
+      ports:
+        - 6379
+    helmChartConfiguration:
+      chartName: redis
+      chartVersion: 19.6.2
+      chartRepoName: bitnami
+      chartRepoURL: https://charts.bitnami.com/bitnami
+      layeredChartValues:
+        - scope:
+            "{{ $sys.deploymentCell.cloudProviderName }}": "aws"
+          valuesFile:
+            path: /test/smoke_test/specfiles/helm/layered_values.yaml
+            gitConfiguration:
+              <<: *git-configuration
+        - valuesFile:
+            path: /test/smoke_test/specfiles/helm/layered_values-2.yaml
+            gitConfiguration:
+              <<: *git-configuration
+

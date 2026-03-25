@@ -1,32 +1,41 @@
 package cmd
 
 import (
+	"context"
 	"fmt"
 	"os"
 
-	"github.com/omnistrate/ctl/cmd/account"
-	"github.com/omnistrate/ctl/cmd/auth/login"
-	"github.com/omnistrate/ctl/cmd/auth/logout"
-	"github.com/omnistrate/ctl/cmd/build"
-	"github.com/omnistrate/ctl/cmd/deprecated"
-	"github.com/omnistrate/ctl/cmd/domain"
-	"github.com/omnistrate/ctl/cmd/environment"
-	"github.com/omnistrate/ctl/cmd/helm"
-	"github.com/omnistrate/ctl/cmd/instance"
-	"github.com/omnistrate/ctl/cmd/service"
-	"github.com/omnistrate/ctl/cmd/serviceplan"
-	"github.com/omnistrate/ctl/cmd/subscription"
-	"github.com/omnistrate/ctl/cmd/upgrade"
-
 	"github.com/fatih/color"
 	"github.com/mitchellh/go-wordwrap"
+	"github.com/omnistrate-oss/omnistrate-ctl/cmd/account"
+	"github.com/omnistrate-oss/omnistrate-ctl/cmd/agent"
+	"github.com/omnistrate-oss/omnistrate-ctl/cmd/alarms"
+	"github.com/omnistrate-oss/omnistrate-ctl/cmd/audit"
+	"github.com/omnistrate-oss/omnistrate-ctl/cmd/auth/login"
+	"github.com/omnistrate-oss/omnistrate-ctl/cmd/auth/logout"
+	"github.com/omnistrate-oss/omnistrate-ctl/cmd/build"
+	"github.com/omnistrate-oss/omnistrate-ctl/cmd/cost"
+	"github.com/omnistrate-oss/omnistrate-ctl/cmd/customnetwork"
+	"github.com/omnistrate-oss/omnistrate-ctl/cmd/deploy"
+	"github.com/omnistrate-oss/omnistrate-ctl/cmd/deploymentcell"
+	"github.com/omnistrate-oss/omnistrate-ctl/cmd/docs"
+	"github.com/omnistrate-oss/omnistrate-ctl/cmd/domain"
+	"github.com/omnistrate-oss/omnistrate-ctl/cmd/environment"
+	"github.com/omnistrate-oss/omnistrate-ctl/cmd/helm"
+	"github.com/omnistrate-oss/omnistrate-ctl/cmd/instance"
+	"github.com/omnistrate-oss/omnistrate-ctl/cmd/mcp"
+	"github.com/omnistrate-oss/omnistrate-ctl/cmd/operations"
+	"github.com/omnistrate-oss/omnistrate-ctl/cmd/secret"
+	"github.com/omnistrate-oss/omnistrate-ctl/cmd/service"
+	"github.com/omnistrate-oss/omnistrate-ctl/cmd/serviceplan"
+	"github.com/omnistrate-oss/omnistrate-ctl/cmd/servicesorchestration"
+	"github.com/omnistrate-oss/omnistrate-ctl/cmd/snapshot"
+	"github.com/omnistrate-oss/omnistrate-ctl/cmd/subscription"
+	"github.com/omnistrate-oss/omnistrate-ctl/cmd/upgrade"
+	"github.com/omnistrate-oss/omnistrate-ctl/cmd/workflow"
+	"github.com/omnistrate-oss/omnistrate-ctl/internal/config"
+	"github.com/omnistrate-oss/omnistrate-ctl/internal/utils"
 	"github.com/spf13/cobra"
-)
-
-var (
-	CommitID  string
-	Version   string
-	Timestamp string
 )
 
 const versionDescription = "Omnistrate CTL %s"
@@ -36,9 +45,23 @@ var RootCmd = &cobra.Command{
 	Use:   "omnistrate-ctl",
 	Short: "Manage your Omnistrate SaaS from the command line",
 	Long: wordwrap.WrapString(`
-Omnistrate CTL is a command line tool designed to streamline the creation, deployment, and management of your Omnistrate SaaS. Use it to build services from docker-compose files, manage service plans, and interact with the Omnistrate platform efficiently.
+Omnistrate CTL is the command line interface to build, manage, and operate software or agent distributions anywhere - across clouds, regions, customer-controlled environments, and on-premises - using Omnistrate platform.
 
-For additional support, please refer to the CTL reference documentation at https://docs.omnistrate.com/getting-started/ctl-reference/.`, 80),
+Key Features:
+- Build your software or agent distributions: Create service plan from code, docker images, docker compose, helm, terraform and more.
+- Debug and Test your service deployments: Easily debug and test your service deployments in your development environment.
+- Automate your CI/CD pipelines: Integrate Omnistrate CTL into your CI/CD pipelines to automate the build, deployment, and management of your service plans.
+- Operate at Scale: Manage large-scale deployments with robust tools and automation.
+
+Resources:
+- Getting Started: https://docs.omnistrate.com/getting-started/
+- Quick Start: https://docs.omnistrate.com/getting-started/getting-started-with-ctl/
+- AI Agent Setup: https://docs.omnistrate.com/getting-started/mcp-server/
+- CTL Manual: https://ctl.omnistrate.cloud/
+
+Available Commands:
+
+`, 100),
 	Run:               runRoot,
 	DisableAutoGenTag: true,
 	Aliases:           []string{"omctl"},
@@ -48,7 +71,7 @@ func runRoot(cmd *cobra.Command, args []string) {
 	// Check if the version flag is set
 	versionFlag, err := cmd.Flags().GetBool("version")
 	if err == nil && versionFlag {
-		fmt.Println(fmt.Sprintf(versionDescription, Version))
+		fmt.Println(fmt.Sprintf(versionDescription, config.Version))
 		return
 	}
 
@@ -80,7 +103,9 @@ const figletStr = `                  _     __           __
 // Execute adds all child commands to the root command and sets flags appropriately.
 // This is called by main.main(). It only needs to happen once to the RootCmd.
 func Execute() {
-	err := RootCmd.Execute()
+	ctx := context.Background()
+	utils.ConfigureLoggingFromEnvOnce()
+	err := RootCmd.ExecuteContext(ctx)
 	if err != nil {
 		os.Exit(1)
 	}
@@ -88,24 +113,38 @@ func Execute() {
 
 func init() {
 	RootCmd.PersistentFlags().BoolP("version", "v", false, "Print the version number of omnistrate-ctl")
+	RootCmd.PersistentFlags().StringP("output", "o", "table", "Output format (text|table|json)")
 
 	RootCmd.AddCommand(login.LoginCmd)
 	RootCmd.AddCommand(logout.LogoutCmd)
 
 	RootCmd.AddCommand(build.BuildCmd)
+	RootCmd.AddCommand(build.BuildFromRepoCmd)
+	RootCmd.AddCommand(deploy.DeployCmd)
 
 	RootCmd.AddCommand(service.Cmd)
 	RootCmd.AddCommand(account.Cmd)
+	RootCmd.AddCommand(agent.Cmd)
+	RootCmd.AddCommand(alarms.Cmd)
+	RootCmd.AddCommand(docs.Cmd)
 	RootCmd.AddCommand(domain.Cmd)
 	RootCmd.AddCommand(upgrade.Cmd)
 	RootCmd.AddCommand(helm.Cmd)
 	RootCmd.AddCommand(instance.Cmd)
+	RootCmd.AddCommand(snapshot.Cmd)
 	RootCmd.AddCommand(serviceplan.Cmd)
 	RootCmd.AddCommand(subscription.Cmd)
 	RootCmd.AddCommand(environment.Cmd)
+	RootCmd.AddCommand(customnetwork.Cmd)
+	RootCmd.AddCommand(deploymentcell.Cmd)
+	RootCmd.AddCommand(servicesorchestration.Cmd)
+	RootCmd.AddCommand(secret.Cmd)
+	RootCmd.AddCommand(workflow.Cmd)
+	RootCmd.AddCommand(cost.Cmd)
+	RootCmd.AddCommand(operations.Cmd)
+	RootCmd.AddCommand(audit.Cmd)
+	RootCmd.AddCommand(mcp.Cmd)
 
-	// Deprecated
-	RootCmd.AddCommand(deprecated.DescribeCmd)
-	RootCmd.AddCommand(deprecated.ListCmd)
-	RootCmd.AddCommand(deprecated.RemoveCmd)
+	// Hide the default completion command
+	RootCmd.Root().CompletionOptions.DisableDefaultCmd = true
 }

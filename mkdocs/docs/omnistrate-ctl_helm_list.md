@@ -13,21 +13,21 @@ omnistrate-ctl helm list [flags]
 ### Examples
 
 ```
-  # List all Helm packages that are saved
-  omctl helm list
+# List all Helm packages that are saved
+omnistrate-ctl helm list
 ```
 
 ### Options
 
 ```
-  -h, --help            help for list
-  -o, --output string   Output format (text|table|json) (default "text")
+  -h, --help   help for list
 ```
 
 ### Options inherited from parent commands
 
 ```
-  -v, --version   Print the version number of omnistrate-ctl
+  -o, --output string   Output format (text|table|json) (default "table")
+  -v, --version         Print the version number of omnistrate-ctl
 ```
 
 ### SEE ALSO

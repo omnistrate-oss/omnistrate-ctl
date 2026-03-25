@@ -2,45 +2,48 @@ package environment
 
 import (
 	"fmt"
-	"github.com/chelnak/ysmrr"
-	"github.com/omnistrate/ctl/dataaccess"
-	"github.com/omnistrate/ctl/utils"
-	"github.com/spf13/cobra"
 	"strings"
+
+	"github.com/omnistrate-oss/omnistrate-ctl/cmd/common"
+
+	"github.com/omnistrate-oss/omnistrate-ctl/internal/config"
+	"github.com/omnistrate-oss/omnistrate-ctl/internal/dataaccess"
+	"github.com/omnistrate-oss/omnistrate-ctl/internal/utils"
+	"github.com/spf13/cobra"
 )
 
 const (
-	deleteExample = `  # Delete environment
-  omctl environment delete [service-name] [environment-name]
+	deleteExample = `# Delete environment
+omnistrate-ctl environment delete [service-name] [environment-name]
 
-  # Delete environment by ID instead of name
-  omctl environment delete --service-id [service-id] --environment-id [environment-id]`
+# Delete environment by ID instead of name
+omnistrate-ctl environment delete --service-id=[service-id] --environment-id=[environment-id]`
 )
 
 var deleteCmd = &cobra.Command{
 	Use:          "delete [service-name] [environment-name] [flags]",
-	Short:        "Delete a environment",
-	Long:         `This command helps you delete a environment in your service.`,
+	Short:        "Delete a Service Environment",
+	Long:         `This command helps you delete an environment from your service.`,
 	Example:      deleteExample,
 	RunE:         runDelete,
 	SilenceUsage: true,
 }
 
 func init() {
-	deleteCmd.Flags().StringP("output", "o", "text", "Output format (text|table|json)")
 	deleteCmd.Flags().StringP("service-id", "", "", "Service ID. Required if service name is not provided")
 	deleteCmd.Flags().StringP("environment-id", "", "", "Environment ID. Required if environment name is not provided")
 }
+
 func runDelete(cmd *cobra.Command, args []string) error {
-	defer utils.CleanupArgsAndFlags(cmd, &args)
+	defer config.CleanupArgsAndFlags(cmd, &args)
 
 	// Retrieve flags
 	output, _ := cmd.Flags().GetString("output")
-	serviceId, _ := cmd.Flags().GetString("service-id")
-	environmentId, _ := cmd.Flags().GetString("environment-id")
+	serviceID, _ := cmd.Flags().GetString("service-id")
+	environmentID, _ := cmd.Flags().GetString("environment-id")
 
 	// Validate input arguments
-	if err := validateDeleteArguments(args, serviceId, environmentId); err != nil {
+	if err := validateDeleteArguments(args, serviceID, environmentID); err != nil {
 		utils.PrintError(err)
 		return err
 	}
@@ -52,44 +55,44 @@ func runDelete(cmd *cobra.Command, args []string) error {
 	}
 
 	// Validate user login
-	token, err := utils.GetToken()
+	token, err := common.GetTokenWithLogin()
 	if err != nil {
 		utils.PrintError(err)
 		return err
 	}
 
 	// Initialize spinner if output is not JSON
-	var sm ysmrr.SpinnerManager
-	var spinner *ysmrr.Spinner
+	var sm utils.SpinnerManager
+	var spinner *utils.Spinner
 	if output != "json" {
-		sm = ysmrr.NewSpinnerManager()
+		sm = utils.NewSpinnerManager()
 		spinner = sm.AddSpinner("Deleting environment...")
 		sm.Start()
 	}
 
 	// Check if the environment exists
-	serviceId, _, environmentId, _, err = getServiceEnvironment(token, serviceId, serviceName, environmentId, environmentName)
+	serviceID, _, environmentID, err = getServiceEnvironment(cmd.Context(), token, serviceID, serviceName, environmentID, environmentName)
 	if err != nil {
 		utils.HandleSpinnerError(spinner, sm, err)
 		return err
 	}
 
 	// Delete the environment
-	if err = dataaccess.DeleteServiceEnvironment(token, serviceId, environmentId); err != nil {
+	if err = dataaccess.DeleteServiceEnvironment(cmd.Context(), token, serviceID, environmentID); err != nil {
 		utils.HandleSpinnerError(spinner, sm, err)
 		return err
 	}
 
 	// Handle success message
-	utils.HandleSpinnerSuccess(spinner, sm, "Environment deleted successfully")
+	utils.HandleSpinnerSuccess(spinner, sm, "Successfully deleted environment")
 
 	return nil
 }
 
 // Helper functions
 
-func validateDeleteArguments(args []string, serviceId, environmentId string) error {
-	if len(args) == 0 && (serviceId == "" || environmentId == "") {
+func validateDeleteArguments(args []string, serviceID, environmentID string) error {
+	if len(args) == 0 && (serviceID == "" || environmentID == "") {
 		return fmt.Errorf("please provide the service name and environment name or the service ID and environment ID")
 	}
 	if len(args) > 0 && len(args) != 2 {

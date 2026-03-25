@@ -1,0 +1,11 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: "{{ $sys.id }}-pvc"
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: omnistrate-platform-default
+  resources:
+    requests:
+      storage: 5Gi

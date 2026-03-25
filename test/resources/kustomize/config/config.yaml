@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: pg-app-config
+data:
+  # Simple key-value pairs
+  DB_HOST: "database.example.com"
+  DB_PORT: "5432"
+  API_URL: "https://api.example.com"
+
+  # Config file style
+  config.properties: |
+    environment=production
+    log.level=INFO
+    max.connections=100

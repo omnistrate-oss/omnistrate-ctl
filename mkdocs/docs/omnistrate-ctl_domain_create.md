@@ -1,10 +1,10 @@
 ## omnistrate-ctl domain create
 
-Create a domain
+Create a Custom Domain
 
 ### Synopsis
 
-Create a domain with the specified name and custom domain. The domain will be created for the specified environment type.
+This command helps you create a Custom Domain.
 
 ```
 omnistrate-ctl domain create [flags]
@@ -13,11 +13,11 @@ omnistrate-ctl domain create [flags]
 ### Examples
 
 ```
-  # Create a custom domain for dev environment
-  omctl domain create dev --domain abc.dev --environment-type dev
+# Create a custom domain for dev environment
+omnistrate-ctl domain create dev --domain=abc.dev --environment-type=dev
 
-  # Create a custom domain for prod environment
-  omctl domain create abc.cloud --domain abc.cloud --environment-type prod
+# Create a custom domain for prod environment
+omnistrate-ctl domain create abc.cloud --domain=abc.cloud --environment-type=prod
 ```
 
 ### Options
@@ -31,7 +31,8 @@ omnistrate-ctl domain create [flags]
 ### Options inherited from parent commands
 
 ```
-  -v, --version   Print the version number of omnistrate-ctl
+  -o, --output string   Output format (text|table|json) (default "table")
+  -v, --version         Print the version number of omnistrate-ctl
 ```
 
 ### SEE ALSO

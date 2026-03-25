@@ -1,0 +1,25 @@
+resources:
+  - pg.yaml
+  - pgpv.yaml
+  - pgpvc.yaml
+  - hpa.yaml
+  - https://github.com/omnistrate/resource-spec-samples//e2etestv2/original/kustomize/config?ref=v3.7.23
+
+namespace: "{{ $sys.id }}"
+
+configMapGenerator:
+  - name: pg-config
+    literals:
+      - defaultPassword=admin
+      - pgDefaultUsername={{ $var.username }}
+      - pgDefaultPassword={{ $var.password }}
+      - dbEndpoint1={{ $terraformChild.out.db_endpoints_1 }}
+      - dbEndpoint2={{ $terraformChild.out.db_endpoints_2.endpoint }}
+      - redisEndpoint={{ $terraformChild2.out.redis_endpoint }}
+      - pubsubId={{ $terraformChild2.out.pubsub_id }}
+
+secretGenerator:
+  - name: pg-secret
+    type: Opaque
+    files:
+      - config.toml

@@ -13,14 +13,24 @@ omnistrate-ctl instance describe [instance-id] [flags]
 ### Examples
 
 ```
-  # Describe an instance deployment
-  omctl instance describe instance-abcd1234
+# Describe an instance deployment
+omnistrate-ctl instance describe instance-abcd1234
+
+# Get compact deployment status information
+omnistrate-ctl instance describe instance-abcd1234 --deployment-status
+
+# Get deployment status for specific resource only  
+omnistrate-ctl instance describe instance-abcd1234 --deployment-status --resource-key mydb
 ```
 
 ### Options
 
 ```
-  -h, --help   help for describe
+      --deployment-status     Return compact deployment status information instead of full instance details
+  -h, --help                  help for describe
+  -o, --output string         Output format. Only json is supported (default "json")
+      --resource-id string    Filter results by resource ID
+      --resource-key string   Filter results by resource key
 ```
 
 ### Options inherited from parent commands

@@ -2,22 +2,15 @@ name: Build
 
 on:
   push:
-    branches: [ "master" ]
+    branches: ["main"]
   pull_request:
-    branches: [ "master" ]
+    branches: ["main"]
   merge_group:
-    branches: [ "master" ]
+    branches: ["main"]
 
 env:
-  GOPRIVATE: "github.com/omnistrate/*"
-  GOPROXY: ${{ secrets.GOPROXY }}
-  GOSUMDB: ${{ secrets.GOSUMDB }}
   # test coverage threshold
-  TESTCOVERAGE_THRESHOLD: 6
-  # integration test variables
-  IAM_ROLE_ARN: arn:aws:iam::469745361314:role/github-actions-s3-store-test-role
-  IAM_ROLE_SESSION_DURATION: 900
-  AWS_REGION: us-west-2
+  GOLANG_CI_VERSION: v2.5.0
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
@@ -27,6 +20,7 @@ jobs:
 
   # security scan is included in linter
   lint:
+    if : github.event_name != 'push'
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -34,45 +28,29 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Generate token
-        id: generate_token
-        uses: tibdex/github-app-token@3beb63f4bd073e61482598c45c71c1019b59b73a
-        with:
-          app_id: ${{ secrets.CI_APP_ID }}
-          private_key: ${{ secrets.CI_APP_PRIVATE_KEY }}
-
-      - name: Configure git for private repo access
-        env:
-          GH_ACCESS_TOKEN: ${{ steps.generate_token.outputs.token }}
-        run: |
-          echo "machine github.com login api password ${GH_ACCESS_TOKEN}" > ~/.netrc
+        uses: actions/checkout@v6
 
       - name: Set up go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v6
         with:
-          go-version-file: 'go.mod'
-          token: ${{ steps.generate_token.outputs.token }}
-          cache-dependency-path: '**/go.sum'
+          go-version-file: "go.mod"
+          cache-dependency-path: "**/go.sum"
 
       - name: Get dependencies
         timeout-minutes: 10
         run: |
-          make tidy
+          make download
 
       - name: golangci-lint
         timeout-minutes: 20
-        uses: golangci/golangci-lint-action@v5
+        uses: golangci/golangci-lint-action@v9
         with:
-          # Optional: version of golangci-lint to use in form of v1.2 or v1.2.3 or `latest` to use the latest version
-          version: v1.56.2
-          args: ./... --timeout=10m
+          version: ${{ env.GOLANG_CI_VERSION }}
+          args: ./...
           skip-cache: true
-          only-new-issues: ${{ github.event_name == 'pull_request' || github.event_name == 'merge_group' }}
-          install-mode: "goinstall"
 
   build:
+    if : github.event_name != 'push'
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -84,125 +62,89 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Generate token
-        id: generate_token
-        uses: tibdex/github-app-token@3beb63f4bd073e61482598c45c71c1019b59b73a
-        with:
-          app_id: ${{ secrets.CI_APP_ID }}
-          private_key: ${{ secrets.CI_APP_PRIVATE_KEY }}
-
-      - name: Configure git for private repo access
-        env:
-          GH_ACCESS_TOKEN: ${{ steps.generate_token.outputs.token }}
-        run: |
-          echo "machine github.com login api password ${GH_ACCESS_TOKEN}" > ~/.netrc
+        uses: actions/checkout@v6
 
       - name: Check dependencies
         timeout-minutes: 10
-        run: | 
+        run: |
           make check-dependencies
-
-      - name: Set up go
-        uses: actions/setup-go@v5
-        with:
-          go-version-file: 'go.mod'
-          token: ${{ steps.generate_token.outputs.token }}
-          cache-dependency-path: '**/go.sum'
 
       - name: Get dependencies
         timeout-minutes: 10
         run: |
-         GOOS=${{ matrix.goos }} GOARCH=${{ matrix.goarch }} make tidy
+          GOOS=${{ matrix.goos }} GOARCH=${{ matrix.goarch }} make download
 
       - name: Build
         timeout-minutes: 20
         run: |
-         GOOS=${{ matrix.goos }} GOARCH=${{ matrix.goarch }} make build
+          GOOS=${{ matrix.goos }} GOARCH=${{ matrix.goarch }} make build
 
       - name: Gotestsum installer
         uses: autero1/action-gotestsum@v2.0.0
         with:
-          gotestsum_version: 1.11.0
+          gotestsum_version: 1.13.0
 
       - name: Unit test
-        timeout-minutes: 20 
+        timeout-minutes: 20
         run: |
-          gotestsum --format github-actions -- ./... -skip test -cover -coverprofile coverage.out -covermode count
-          go tool cover -func=coverage.out -o coverage-report.txt
+          gotestsum --format github-actions -- ./... -skip test
 
-      - name: Test coverage check
-        timeout-minutes: 10
-        run: |
-          cat coverage-report.txt | grep total | awk '{print $$3}' | sed 's/[%]//g' | awk '{if ($$1 < $TESTCOVERAGE_THRESHOLD) {print "Test coverage is below threshold"; exit 1} else {print "Test coverage is above threshold"}}'
-  
-  smoke-tests:
+  integration-tests:
     environment: Dev-us-west-2
     if: github.event_name != 'push'
     needs: [build, lint]
     runs-on: ubuntu-latest
     permissions:
       contents: read
-
     concurrency:
-      group: ${{ github.workflow }}-Dev-us-west-2
-      cancel-in-progress: false
+      group: ${{ github.workflow }}-integration-tests
+      cancel-in-progress: true
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Generate token
-        id: generate_token
-        uses: tibdex/github-app-token@3beb63f4bd073e61482598c45c71c1019b59b73a
-        with:
-          app_id: ${{ secrets.CI_APP_ID }}
-          private_key: ${{ secrets.CI_APP_PRIVATE_KEY }}
-
-      - name: Configure git for private repo access
-        env:
-          GH_ACCESS_TOKEN: ${{ steps.generate_token.outputs.token }}
-        run: |
-          echo "machine github.com login api password ${GH_ACCESS_TOKEN}" > ~/.netrc
+        uses: actions/checkout@v6
 
       - name: Set up go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v6
         with:
-          go-version-file: 'go.mod'
-          token: ${{ steps.generate_token.outputs.token }}
-          cache-dependency-path: '**/go.sum'
+          go-version-file: "go.mod"
+          cache-dependency-path: "**/go.sum"
 
       - name: Get dependencies
         timeout-minutes: 10
         run: |
-          make tidy
-
-      - name: Build
-        timeout-minutes: 20
-        run: |
-          make build
+          make download
 
       - name: Gotestsum installer
         uses: autero1/action-gotestsum@v2.0.0
         with:
           gotestsum_version: 1.11.0
 
-      - name: Smoke test
-        timeout-minutes: 20
-        env: 
-          ENABLE_SMOKE_TEST: true
-          SMOKE_TEST_EMAIL: ${{ secrets.SMOKE_TEST_EMAIL }}
-          SMOKE_TEST_PASSWORD: ${{ secrets.SMOKE_TEST_PASSWORD}}
+      - name: Integraiton test
+        timeout-minutes: 30
+        env:
+          ENABLE_INTEGRATION_TEST: true
+          TEST_EMAIL: ${{ secrets.SMOKE_TEST_EMAIL }}
+          TEST_PASSWORD: ${{ secrets.SMOKE_TEST_PASSWORD}}
           OMNISTRATE_ROOT_DOMAIN: ${{ vars.OMNISTRATE_ROOT_DOMAIN}}
-          LOG_LEVEL: debug
-          LOG_FORMAT: pretty
-          DRY_RUN: true
-        run: gotestsum --format github-actions -- ./... -timeout 600s -p 1 -p 1 -v
+          OMNISTRATE_DRY_RUN: true
+        run: gotestsum --format github-actions -- ./test/integration_test/... -timeout 1800s -p 1 -p 1 -v
+
+  smoke-tests:
+    if: github.event_name != 'push'
+    needs: [build, lint]
+    concurrency:
+      group: ${{ github.workflow }}-smoke-tests
+      cancel-in-progress: true
+    uses: ./.github/workflows/smoke-tests.yml
+    with:
+      environment: Dev-us-west-2
+    secrets: inherit
+    permissions:
+      contents: read
 
   publish:
     if: github.event_name == 'push'
-    needs: [build, lint]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -210,7 +152,7 @@ jobs:
       group: Publish-'${{ github.workflow }}'
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Bump version and push tag
         id: tag_version

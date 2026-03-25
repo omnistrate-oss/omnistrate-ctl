@@ -1,14 +1,14 @@
-version: '3.9'
+version: "3.9"
 x-omnistrate-service-plan:
-  name: 'BYOA Postgres'
-  tenancyType: 'OMNISTRATE_DEDICATED_TENANCY'
+  name: "BYOA Postgres"
+  tenancyType: "OMNISTRATE_DEDICATED_TENANCY"
   deployment:
     byoaDeployment:
-      AwsAccountId: '339713121445'
-      AwsBootstrapRoleAccountArn: 'arn:aws:iam::339713121445:role/omnistrate-bootstrap-role'
+      AwsAccountId: "339713121445"
+      AwsBootstrapRoleAccountArn: "arn:aws:iam::339713121445:role/omnistrate-bootstrap-role"
 x-customer-integrations:
   metrics:
-    prometheusEndpoint: ':9090'
+    prometheusEndpoint: ":9090"
     provider: native
   logs:
     provider: native
@@ -16,7 +16,7 @@ services:
   postgres:
     image: postgres
     ports:
-      - '5432:5432'
+      - "5432:5432"
     environment:
       - SECURITY_CONTEXT_USER_ID=999
       - SECURITY_CONTEXT_GROUP_ID=999

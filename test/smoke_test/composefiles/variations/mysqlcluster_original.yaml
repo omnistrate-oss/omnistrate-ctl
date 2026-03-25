@@ -1,31 +1,26 @@
 # Logo: https://assets.stickpng.com/images/62debc4fff3c6e4b8b5de8d3.png
 version: "3"
 x-omnistrate-service-plan:
-  name: 'Hosted MySQL Cluster'
-  tenancyType: 'OMNISTRATE_DEDICATED_TENANCY'
+  name: "Hosted MySQL Cluster"
+  tenancyType: "OMNISTRATE_DEDICATED_TENANCY"
   deployment:
     hostedDeployment:
-      AwsAccountId: '339713121445'
-      AwsBootstrapRoleAccountArn: 'arn:aws:iam::339713121445:role/omnistrate-bootstrap-role'
+      AwsAccountId: "339713121445"
+      AwsBootstrapRoleAccountArn: "arn:aws:iam::339713121445:role/omnistrate-bootstrap-role"
 x-omnistrate-integrations:
   - omnistrateLogging
 x-internal-integrations:
-  metrics:
-    prometheusEndpoint: ':9090'
-    provider: signoz
-    endpoint: signoz.endpoint.test
-    secretLocators:
-      # gcp: projects/my-project/secrets/my-secret/versions/latest
-      aws: arn:aws:secretsmanager:us-west-2:1234567890:secret:compose-secret
-  logs:
-    provider: signoz
-    endpoint: signoz.endpoint.test
-    secretLocators:
-      # gcp: projects/my-project/secrets/my-secret/versions/latest
-      aws: arn:aws:secretsmanager:us-west-2:1234567890:secret:compose-secret
 services:
   writer:
     image: docker.io/bitnami/mysql:8.1.0
+    labels:
+      - "name=writer"
+      - "description=default description"
+    command:
+      - /cloud
+      - exec
+      - --command
+      - server
     configs:
       - source: my_config
         target: /etc/config/conf.yaml
@@ -33,7 +28,7 @@ services:
       - source: my_secret
         target: /etc/config/secret.yaml
     ports:
-      - '3306'
+      - "3306"
     volumes:
       - source: mysql_master_data
         target: /var/lib/postgresql/data
@@ -47,6 +42,12 @@ services:
           gcp:
             instanceStorageType: GCP::PD_BALANCED
             instanceStorageSizeGi: 100
+      - source: file_system_data
+        target: /var/lib/postgresql/data1
+        type: volume
+        x-omnistrate-storage:
+          aws:
+            clusterStorageType: AWS::EFS
     x-omnistrate-compute:
       rootVolumeSizeGi: 10
       instanceTypes:
@@ -113,9 +114,20 @@ services:
   reader:
     image: docker.io/bitnami/mysql:8.1.0
     ports:
-      - '3306'
+      - "3306"
     volumes:
-      - 'mysql_slave_data:/bitnami/mysql/data'
+      - source: mysql_slave_data
+        target: /bitnami/mysql/data1
+        type: volume
+        x-omnistrate-storage:
+          aws:
+            instanceStorageType: AWS::EBS_GP3
+            instanceStorageSizeGi: 100
+            instanceStorageIOPS: 3000
+            instanceStorageThroughputMiBps: 400
+          gcp:
+            instanceStorageType: GCP::PD_BALANCED
+            instanceStorageSizeGi: 100
     x-omnistrate-compute:
       replicaCountAPIParam: numReadReplicas
       instanceTypes:
@@ -144,8 +156,13 @@ services:
         name: Reader Instance Type
         type: String
         modifiable: true
-        required: true
+        required: false
+        defaultValue: t4g.small
         export: true
+        options:
+          - t4g.small
+          - t4g.medium
+          - t4g.large
       - key: database
         description: Default DB Name
         name: Default Database
@@ -187,9 +204,13 @@ services:
         name: Instance Type
         type: String
         modifiable: true
-        required: true
+        required: false
         export: true
         defaultValue: t4g.small
+        options:
+          - t4g.small
+          - t4g.medium
+          - t4g.large
         parameterDependencyMap:
           reader: readerInstanceType
       - key: password
@@ -239,14 +260,19 @@ services:
 
 configs:
   my_config:
-    file: configfiles/conf.yaml
+    file: ../configfiles/conf.yaml
 
 secrets:
   my_secret:
-    file: configfiles/secret.yaml
+    file: ../configfiles/secret.yaml
 
 volumes:
   mysql_master_data:
     driver: local
   mysql_slave_data:
     driver: local
+  file_system_data:
+    driver: sharedFileSystem
+    driver_opts:
+      efsThroughputMode: elastic
+      efsPerformanceMode: generalPurpose

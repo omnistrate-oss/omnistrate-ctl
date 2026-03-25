@@ -1,0 +1,58 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: postgres-deployment
+  annotations:
+    omnistrate.com/external-scaling-controller: "true"
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: postgres
+  template:
+    metadata:
+      labels:
+        app: postgres
+    spec:
+      containers:
+        - name: postgres
+          image: postgres:13
+          ports:
+            - containerPort: 5432
+          env:
+            - name: POSTGRES_DB
+              value: exampledb
+            - name: POSTGRES_USER
+              valueFrom:
+                configMapKeyRef:
+                  name: pg-config
+                  key: pgDefaultUsername
+                  optional: false
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                configMapKeyRef:
+                  name: pg-config
+                  key: pgDefaultPassword
+                  optional: false
+          volumeMounts:
+            - mountPath: /var/lib/postgresql/data
+              name: postgres-storage
+              subPath: postgres
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+              - matchExpressions:
+                  - key: omnistrate.com/resource
+                    operator: In
+                    values:
+                      - "{{ $sys.deployment.resourceID }}"
+      tolerations:
+        - key: "example-toleration"
+          operator: "Equal"
+          value: "enabled"
+          effect: "NoSchedule"
+      volumes:
+        - name: postgres-storage
+          persistentVolumeClaim:
+            claimName: "{{ $sys.id }}-pvc"

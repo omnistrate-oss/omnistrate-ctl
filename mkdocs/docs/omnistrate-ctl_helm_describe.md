@@ -13,16 +13,21 @@ omnistrate-ctl helm describe chart --version=[version] [flags]
 ### Examples
 
 ```
-  # Describe the Redis Operator Helm Chart
-  omctl helm describe redis --version=20.0.1
+# Describe the Redis Operator Helm Chart
+omnistrate-ctl helm describe redis --version=20.0.1
 ```
 
 ### Options
 
 ```
   -h, --help             help for describe
-  -o, --output string    Output format (text|table|json) (default "text")
       --version string   Helm Chart version
+```
+
+### Options inherited from parent commands
+
+```
+  -o, --output string   Output format (text|table|json) (default "table")
 ```
 
 ### SEE ALSO

@@ -4,76 +4,71 @@ import (
 	"context"
 	"encoding/base64"
 	"fmt"
-	"github.com/chelnak/ysmrr"
-	"github.com/compose-spec/compose-go/loader"
-	"github.com/compose-spec/compose-go/types"
-	"github.com/omnistrate/api-design/pkg/httpclientwrapper"
-	composegenapi "github.com/omnistrate/api-design/v1/pkg/registration/gen/compose_gen_api"
-	serviceapi "github.com/omnistrate/api-design/v1/pkg/registration/gen/service_api"
-	serviceenvironmentapi "github.com/omnistrate/api-design/v1/pkg/registration/gen/service_environment_api"
-	commonutils "github.com/omnistrate/commons/pkg/utils"
-	"github.com/omnistrate/ctl/dataaccess"
-	"github.com/omnistrate/ctl/utils"
-	"github.com/pkg/errors"
-	"github.com/spf13/cobra"
-	goa "goa.design/goa/v3/pkg"
 	"os"
 	"path/filepath"
 	"strings"
+
+	"gopkg.in/yaml.v3"
+
+	"github.com/omnistrate-oss/omnistrate-ctl/cmd/common"
+	"github.com/omnistrate-oss/omnistrate-ctl/internal/model"
+
+	"github.com/compose-spec/compose-go/loader"
+	"github.com/compose-spec/compose-go/types"
+	"github.com/omnistrate-oss/omnistrate-ctl/internal/config"
+	"github.com/omnistrate-oss/omnistrate-ctl/internal/dataaccess"
+	"github.com/omnistrate-oss/omnistrate-ctl/internal/utils"
+	openapiclient "github.com/omnistrate-oss/omnistrate-sdk-go/v1"
+	"github.com/pkg/errors"
+	"github.com/spf13/cobra"
 )
 
 var (
-	ServiceID          string
-	EnvironmentID      string
-	ProductTierID      string
-	file               string
-	specType           string
-	name               string
-	description        string
-	serviceLogoURL     string
-	environment        string
-	environmentType    string
-	release            bool
-	releaseAsPreferred bool
-	releaseName        string
-	releaseDescription string
-	interactive        bool
-
-	imageUrl                  string
-	envVars                   []string
-	imageRegistryAuthUsername string
-	imageRegistryAuthPassword string
-
-	validSpecType = []string{DockerComposeSpecType, ServicePlanSpecType}
+	ServiceID     string
+	EnvironmentID string
+	ProductTierID string
 )
 
 const (
-	DockerComposeSpecType = "DockerCompose"
-	ServicePlanSpecType   = "ServicePlanSpec"
+	buildExample = `
+# Build service in dev environment
+omnistrate-ctl build --product-name "My Service"
 
-	buildExample = `  # Build service with image in dev environment
-  omctl build --image docker.io/mysql:5.7 --name MySQL --env-var "MYSQL_ROOT_PASSWORD=password" --env-var "MYSQL_DATABASE=mydb""
+# Build service with compose spec in dev environment
+omnistrate-ctl build --file omnistrate-compose.yaml --product-name "My Service"
 
-  # Build service with private image in dev environment
-  omctl build --image docker.io/namespace/my-image:v1.2 --name "My Service" --image-registry-auth-username username --image-registry-auth-password password --env-var KEY1:VALUE1 --env-var KEY2:VALUE2
+# Build service with compose spec in prod environment
+omnistrate-ctl build --file omnistrate-compose.yaml --product-name "My Service" --environment prod --environment-type prod
 
-  # Build service with compose spec in dev environment
-  omctl build --file docker-compose.yml --name "My Service"
+# Build service with compose spec and release the service with a release description
+omnistrate-ctl build --file omnistrate-compose.yaml --product-name "My Service" --release --release-description "v1.0.0-alpha"
 
-  # Build service with compose spec in prod environment
-  omctl build --file docker-compose.yml --name "My Service" --environment prod --environment-type prod
+# Build service with compose spec and release the service as preferred with a release description
+omnistrate-ctl build --file omnistrate-compose.yaml --product-name "My Service" --release-as-preferred --release-description "v1.0.0-alpha"
 
-  # Build service with compose spec and release the service with a specific release version name
-  omctl build --file docker-compose.yml --name "My Service" --release --release-name "v1.0.0-alpha"
+# Build service with compose spec interactively
+omnistrate-ctl build --file omnistrate-compose.yaml --product-name "My Service" --interactive
 
-  # Build service with compose spec and release the service as preferred with a specific release version name
-  omctl build --file docker-compose.yml --name "My Service" --release-as-preferred --release-name "v1.0.0-alpha"
+# Build service with compose spec with service description and service logo
+omnistrate-ctl build --file omnistrate-compose.yaml --product-name "My Service" --description "My Service Description" --service-logo-url "https://example.com/logo.png"
 
-  # Build service with compose spec interactively
-  omctl build --file docker-compose.yml --name "My Service" --interactive
+# Build service with service specification for Helm, Operator or Kustomize in dev environment
+omnistrate-ctl build --spec-type ServicePlanSpec --file spec.yaml --product-name "My Service"
 
-  # Build service with compose spec with service description and service logo
-  omctl build --file docker-compose.yml --name "My Service" --description "My Service Description" --service-logo-url "https://example.com/logo.png"
+# Build service with service specification for Helm, Operator or Kustomize in prod environment
+omnistrate-ctl build --spec-type ServicePlanSpec --file spec.yaml --product-name "My Service" --environment prod --environment-type prod
+
+# Build service with service specification for Helm, Operator or Kustomize as preferred
+omnistrate-ctl build --spec-type ServicePlanSpec --file spec.yaml --product-name "My Service" --release-as-preferred --release-description "v1.0.0-alpha"
+
+# Build service with service specification for Helm, Operator or Kustomize and explicitly do not release as preferred
+omnistrate-ctl build --spec-type ServicePlanSpec --file spec.yaml --product-name "My Service" --no-release-as-preferred --release-description "v1.0.0-alpha"
+
+# Build service from image in dev environment
+omnistrate-ctl build --image docker.io/mysql:5.7 --product-name MySQL --env-var "MYSQL_ROOT_PASSWORD=password" --env-var "MYSQL_DATABASE=mydb"
+
+# Build service with private image in dev environment
+omnistrate-ctl build --image docker.io/namespace/my-image:v1.2 --product-name "My Service" --image-registry-auth-username username --image-registry-auth-password password --env-var KEY1:VALUE1 --env-var KEY2:VALUE2
 `
 
 	buildLong = `Build command can be used to build a service from image, docker compose, and service plan spec. 
@@ -82,7 +77,7 @@ It has two main modes of operation:
   - Update an existing service plan
 
 Below info served as service plan identifiers:
-  - service name (--name, required)
+  - service name (--product-name, required)
   - environment name (--environment, optional, default: Dev)
   - environment type (--environment-type, optional, default: dev)
   - service plan name (the name field of x-omnistrate-service-plan tag in compose spec file, required)
@@ -93,8 +88,8 @@ This command has an interactive mode. In this mode, you can choose to promote th
 
 // BuildCmd represents the build command
 var BuildCmd = &cobra.Command{
-	Use:          "build [--file=file] [--spec-type=spec-type][--name=name] [--environment=environment] [--environment-type=environment-type] [--release] [--release-as-preferred][--interactive][--description=description] [--service-logo-url=service-logo-url] [--image=image-url] [--image-registry-auth-username=username] [--image-registry-auth-password=password] [--env-var=\"key=var\"]",
-	Short:        "Build Services from image, compose spec and service plan specs",
+	Use:          "build [--file=file] [--spec-type=spec-type] [--product-name=service-name] [--description=service-description] [--service-logo-url=service-logo-url] [--environment=environment-name] [--environment-type=environment-type] [--release] [--release-as-preferred] [--no-release-as-preferred] [--release-description=release-description][--interactive] [--image=image-url] [--image-registry-auth-username=username] [--image-registry-auth-password=password] [--env-var=\"key=var\"]",
+	Short:        "Build Services from image, compose spec or service plan spec",
 	Long:         buildLong,
 	Example:      buildExample,
 	RunE:         runBuild,
@@ -102,59 +97,301 @@ var BuildCmd = &cobra.Command{
 }
 
 func init() {
-	BuildCmd.Flags().StringVarP(&file, "file", "f", "", "Path to the docker compose file")
-	BuildCmd.Flags().StringVarP(&name, "name", "n", "", "Name of the service")
-	BuildCmd.Flags().StringVarP(&description, "description", "", "", "Description of the service")
-	BuildCmd.Flags().StringVarP(&serviceLogoURL, "service-logo-url", "", "", "URL to the service logo")
-	BuildCmd.Flags().StringVarP(&environment, "environment", "", "Dev", "Name of the environment to build the service in")
-	BuildCmd.Flags().StringVarP(&environmentType, "environment-type", "", "dev", "Type of environment. Valid options include: 'dev', 'prod', 'qa', 'canary', 'staging', 'private')")
-	BuildCmd.Flags().BoolVarP(&release, "release", "", false, "Release the service after building it")
-	BuildCmd.Flags().BoolVarP(&releaseAsPreferred, "release-as-preferred", "", false, "Release the service as preferred after building it")
-	BuildCmd.Flags().StringVarP(&releaseName, "release-name", "", "", "Custom description of the release version. Deprecated: use --release-description instead")
-	BuildCmd.Flags().StringVarP(&releaseDescription, "release-description", "", "", "Custom description of the release version")
-	BuildCmd.Flags().BoolVarP(&interactive, "interactive", "i", false, "Interactive mode")
-	BuildCmd.Flags().StringVarP(&specType, "spec-type", "s", DockerComposeSpecType, "Spec type")
+	BuildCmd.Flags().StringP("file", "f", "", "Path to the docker compose file (defaults to omnistrate-compose.yaml, docker-compose.yaml or spec.yaml in that order).If docker-compose.yaml is found, it is detected but not supported; please convert it to omnistrate-compose.yaml")
+	BuildCmd.Flags().StringP("spec-type", "s", "", "Spec type (will infer from file if not provided). Valid options include: 'DockerCompose', 'ServicePlanSpec'")
+	BuildCmd.Flags().BoolP("dry-run", "d", false, "Simulate building the service without actually creating resources")
+	BuildCmd.Flags().StringP("product-name", "", "", "Name of the service. A service can have multiple service plans. The build command will build a new or existing service plan inside the specified service.")
+	BuildCmd.Flags().StringP("description", "", "", "A short description for the whole service. A service can have multiple service plans.")
+	BuildCmd.Flags().StringP("service-logo-url", "", "", "URL to the service logo")
+	BuildCmd.Flags().StringP("environment", "", "Dev", "Name of the environment to build the service in")
+	BuildCmd.Flags().StringP("environment-type", "", "dev", "Type of environment. Valid options include: 'dev', 'prod', 'qa', 'canary', 'staging', 'private')")
+	BuildCmd.Flags().BoolP("release", "", false, "Release the service after building it")
+	BuildCmd.Flags().BoolP("release-as-preferred", "", false, "Release the service as preferred after building it")
+	BuildCmd.Flags().BoolP("no-release-as-preferred", "", false, "Do not release the service as preferred (overrides --release-as-preferred)")
+	BuildCmd.Flags().StringP("release-name", "", "", "Custom description of the release version. Deprecated: use --release-description instead")
+	BuildCmd.Flags().StringP("release-description", "", "", "Used together with --release or --release-as-preferred flag. Provide a description for the release version")
+	BuildCmd.Flags().BoolP("force-create-service-plan-version", "", false, "Force create a new service plan version on release.")
+	BuildCmd.Flags().BoolP("interactive", "i", false, "Interactive mode")
 
-	BuildCmd.Flags().StringVarP(&imageUrl, "image", "", "", "Provide the complete image repository URL with the image name and tag (e.g., docker.io/namespace/my-image:v1.2)")
-	BuildCmd.Flags().StringArrayVarP(&envVars, "env-var", "", nil, "Used together with --image flag. Provide environment variables in the format --env-var key1=var1 --env-var key2=var2")
-	BuildCmd.Flags().StringVarP(&imageRegistryAuthUsername, "image-registry-auth-username", "", "", "Used together with --image flag. Provide the username to authenticate with the image registry if it's a private registry")
-	BuildCmd.Flags().StringVarP(&imageRegistryAuthPassword, "image-registry-auth-password", "", "", "Used together with --image flag. Provide the password to authenticate with the image registry if it's a private registry")
+	// Deprecated flags
+	BuildCmd.Flags().StringP("name", "n", "", "Name of the service. A service can have multiple service plans. The build command will build a new or existing service plan inside the specified service. Deprecated: use --product-name instead")
+	BuildCmd.Flags().StringP("image", "", "", "Provide the complete image repository URL with the image name and tag (e.g., docker.io/namespace/my-image:v1.2). Deprecated: build from a docker compose file instead")
+	BuildCmd.Flags().StringArrayP("env-var", "", nil, "Used together with --image flag. Provide environment variables in the format --env-var key1=var1 --env-var key2=var2. Deprecated: build from a docker compose file instead")
+	BuildCmd.Flags().StringP("image-registry-auth-username", "", "", "Used together with --image flag. Provide the username to authenticate with the image registry if it's a private registry. Deprecated: build from a docker compose file instead")
+	BuildCmd.Flags().StringP("image-registry-auth-password", "", "", "Used together with --image flag. Provide the password to authenticate with the image registry if it's a private registry. Deprecated: build from a docker compose file instead")
 
 	BuildCmd.MarkFlagsRequiredTogether("image-registry-auth-username", "image-registry-auth-password")
+	// Mark one of them as required
+	BuildCmd.MarkFlagsOneRequired("name", "product-name")
+	// Deprecate the old --name flag
+	if err := BuildCmd.Flags().MarkDeprecated("name", "use --product-name instead"); err != nil {
+		utils.PrintError(err)
+		return
+	}
+	// Hide the deprecated flag from help
+	if err := BuildCmd.Flags().MarkHidden("name"); err != nil {
+		utils.PrintError(err)
+		return
+	}
+	// Deprecate the old --image flag, including --env-var and image-registry-auth-username, image-registry-auth-password
+	if err := BuildCmd.Flags().MarkDeprecated("image", "build from a docker compose file instead"); err != nil {
+		utils.PrintError(err)
+		return
+	}
+	if err := BuildCmd.Flags().MarkDeprecated("env-var", "build from a docker compose file instead"); err != nil {
+		utils.PrintError(err)
+		return
+	}
+	if err := BuildCmd.Flags().MarkDeprecated("image-registry-auth-username", "build from a docker compose file instead"); err != nil {
+		utils.PrintError(err)
+		return
+	}
+	if err := BuildCmd.Flags().MarkDeprecated("image-registry-auth-password", "build from a docker compose file instead"); err != nil {
+		utils.PrintError(err)
+		return
+	}
+	// Hide the deprecated flag from help
+	if err := BuildCmd.Flags().MarkHidden("image"); err != nil {
+		utils.PrintError(err)
+		return
+	}
+	if err := BuildCmd.Flags().MarkHidden("env-var"); err != nil {
+		utils.PrintError(err)
+		return
+	}
+	if err := BuildCmd.Flags().MarkHidden("image-registry-auth-username"); err != nil {
+		utils.PrintError(err)
+		return
+	}
+	if err := BuildCmd.Flags().MarkHidden("image-registry-auth-password"); err != nil {
+		utils.PrintError(err)
+		return
+	}
+
 	err := BuildCmd.MarkFlagFilename("file")
 	if err != nil {
 		return
 	}
-	err = BuildCmd.MarkFlagRequired("name")
+	err = BuildCmd.Flags().MarkHidden("release-name")
 	if err != nil {
 		return
 	}
-
 	BuildCmd.MarkFlagsRequiredTogether("environment", "environment-type")
 }
 
 func runBuild(cmd *cobra.Command, args []string) error {
-	defer utils.CleanupArgsAndFlags(cmd, &args)
+	defer config.CleanupArgsAndFlags(cmd, &args)
 
-	// Validate input arguments
-	if file == "" && imageUrl == "" {
-		err := errors.New("either file or image is required")
+	// Retrieve flags
+	file, err := cmd.Flags().GetString("file")
+	if err != nil {
+		return err
+	}
+
+	specType, err := cmd.Flags().GetString("spec-type")
+	if err != nil {
+		return err
+	}
+
+	name, err := cmd.Flags().GetString("name")
+	if err != nil {
+		return err
+	}
+	productName, err := cmd.Flags().GetString("product-name")
+	if err != nil {
+		return err
+	}
+
+	if name != "" && productName != "" {
+		err = errors.New("only one of name or product-name can be provided")
 		utils.PrintError(err)
 		return err
 	}
 
+	// Use product-name if provided, otherwise use name
+	// Since flags are mutually exclusive, only one will be set
+	if productName != "" {
+		name = productName
+	}
+	description, err := cmd.Flags().GetString("description")
+	if err != nil {
+		return err
+	}
+	serviceLogoURL, err := cmd.Flags().GetString("service-logo-url")
+	if err != nil {
+		return err
+	}
+	environment, err := cmd.Flags().GetString("environment")
+	if err != nil {
+		return err
+	}
+	environmentType, err := cmd.Flags().GetString("environment-type")
+	if err != nil {
+		return err
+	}
+	release, err := cmd.Flags().GetBool("release")
+	if err != nil {
+		return err
+	}
+	releaseAsPreferred, err := cmd.Flags().GetBool("release-as-preferred")
+	if err != nil {
+		return err
+	}
+	noReleaseAsPreferred, err := cmd.Flags().GetBool("no-release-as-preferred")
+	if err != nil {
+		return err
+	}
+	// If --no-release-as-preferred is set, it overrides --release-as-preferred
+	if noReleaseAsPreferred {
+		releaseAsPreferred = false
+	}
+	releaseName, err := cmd.Flags().GetString("release-name")
+	if err != nil {
+		return err
+	}
+	releaseDescription, err := cmd.Flags().GetString("release-description")
+	if err != nil {
+		return err
+	}
+	interactive, err := cmd.Flags().GetBool("interactive")
+	if err != nil {
+		return err
+	}
+	imageUrl, err := cmd.Flags().GetString("image")
+	if err != nil {
+		return err
+	}
+	envVars, err := cmd.Flags().GetStringArray("env-var")
+	if err != nil {
+		return err
+	}
+	imageRegistryAuthUsername, err := cmd.Flags().GetString("image-registry-auth-username")
+	if err != nil {
+		return err
+	}
+	imageRegistryAuthPassword, err := cmd.Flags().GetString("image-registry-auth-password")
+	if err != nil {
+		return err
+	}
+	output, err := cmd.Flags().GetString("output")
+	if err != nil {
+		return err
+	}
+	dryRun, err := cmd.Flags().GetBool("dry-run")
+	if err != nil {
+		return err
+	}
+	forceCreateServicePlanVersion, err := cmd.Flags().GetBool("force-create-service-plan-version")
+	if err != nil {
+		return err
+	}
+
+	// Dynamic spec type detection for file-based builds
+	if imageUrl == "" && specType == "" {
+		// Determine file to read
+		fileToRead := file
+		if fileToRead == "" {
+			// check for compose file
+			fileToRead = ComposeFileName
+			if _, err := os.Stat(fileToRead); os.IsNotExist(err) {
+				// If the file doesn't exist, check if there is a spec file
+				fileToRead = PlanSpecFileName
+				if _, err := os.Stat(fileToRead); os.IsNotExist(err) {
+					// Will be handled later in file loading logic
+					fileToRead = ""
+				}
+			}
+		}
+
+		// Read and analyze file content for spec type detection
+		if fileToRead != "" {
+			// Update file variable if auto-detected
+			if fileToRead != file {
+				file = fileToRead
+			}
+
+			if _, err := os.Stat(fileToRead); err == nil {
+				tempFileData, err := os.ReadFile(filepath.Clean(fileToRead))
+				if err == nil {
+					var planCheck map[string]interface{}
+					if err := yaml.Unmarshal(tempFileData, &planCheck); err == nil {
+						// Use the common function to detect spec type
+						specType = DetectSpecType(planCheck)
+					} else {
+						// Fallback to file extension based detection
+						if fileToRead == PlanSpecFileName {
+							specType = ServicePlanSpecType
+						} else {
+							specType = DockerComposeSpecType
+						}
+					}
+				}
+			}
+		}
+
+		// Final fallback if still not determined
+		if specType == "" {
+			specType = DockerComposeSpecType
+		}
+	} else if imageUrl != "" {
+		// For image-based builds, always use DockerComposeSpecType
+		specType = DockerComposeSpecType
+	} else if specType == "" {
+		// Fallback for any other case
+		specType = DockerComposeSpecType
+	}
+
+	// Validate input arguments
 	if file != "" && imageUrl != "" {
 		err := errors.New("only one of file or image can be provided")
 		utils.PrintError(err)
 		return err
 	}
 
+	if interactive && output == "json" {
+		err := errors.New("interactive mode is not supported with json output")
+		utils.PrintError(err)
+		return err
+	}
+
 	// Load the compose file
 	var fileData []byte
-	if file != "" {
-		if _, err := os.Stat(file); os.IsNotExist(err) {
-			utils.PrintError(err)
-			return err
+	if imageUrl == "" {
+		if file != "" {
+			if _, err := os.Stat(file); os.IsNotExist(err) {
+				err = fmt.Errorf("file %s does not exist", file)
+				utils.PrintError(err)
+				return err
+			}
+		} else {
+			// Check for omnistrate-compose.yaml first (preferred)
+			file = OmnistrateComposeFileName
+			specType = DockerComposeSpecType
+			if _, err := os.Stat(file); os.IsNotExist(err) {
+
+				// If omnistrate-compose.yaml not found, check for docker-compose.yaml and error out
+				if _, err := os.Stat(DockerComposeFileName); err == nil {
+					errMsg := fmt.Sprintf("Deployment failed: Required file missing — %s\n\n→ Found: %s\n→ Expected: %s\n\nTip: You can convert your docker-compose.yaml into Omnistrate's native format using the omnistrate-fde skill via the Omnistrate MCP Server\nYou may even invoke it through AI agents like Claude, Gemini or others.\n\nLearn more: https://docs.omnistrate.com/getting-started/mcp-server/#using-skills",
+						OmnistrateComposeFileName, DockerComposeFileName, OmnistrateComposeFileName)
+					utils.PrintError(errors.New(errMsg))
+					return err
+				}
+
+				// Check for spec.yaml
+				file = PlanSpecFileName
+				specType = ServicePlanSpecType
+				if _, err := os.Stat(file); os.IsNotExist(err) {
+					// Check if Dockerfile exists to suggest build-from-repo
+					if _, err := os.Stat("Dockerfile"); err == nil {
+						err = fmt.Errorf("no omnistrate-compose.yaml found, but Dockerfile exists. Please use 'omnistrate-ctl build-from-repo' command to build from your Dockerfile, or create an omnistrate-compose.yaml file")
+						utils.PrintError(err)
+						return err
+					}
+					err = fmt.Errorf("no omnistrate-compose.yaml or spec.yaml found in current directory. Please provide a valid file using --file flag, or use 'omnistrate-ctl build-from-repo' if you have a Dockerfile")
+					utils.PrintError(err)
+					return err
+				}
+			}
 		}
 
 		var err error
@@ -165,7 +402,7 @@ func runBuild(cmd *cobra.Command, args []string) error {
 	}
 
 	// Validate user is currently logged in
-	token, err := utils.GetToken()
+	token, err := common.GetTokenWithLogin()
 	if err != nil {
 		utils.PrintError(err)
 		return err
@@ -188,18 +425,11 @@ func runBuild(cmd *cobra.Command, args []string) error {
 		// Check if the image is accessible
 		var userNamePtr, passwordPtr *string
 		if imageRegistryAuthUsername != "" && imageRegistryAuthPassword != "" {
-			userNamePtr = &imageRegistryAuthUsername
-			passwordPtr = &imageRegistryAuthPassword
+			userNamePtr = utils.ToPtr(imageRegistryAuthUsername)
+			passwordPtr = utils.ToPtr(imageRegistryAuthPassword)
 		}
 
-		checkImageRequest := composegenapi.CheckIfContainerImageAccessibleRequest{
-			ImageRegistry: imageRegistry,
-			Image:         image,
-			Username:      userNamePtr,
-			Password:      passwordPtr,
-		}
-
-		checkImageRes, err := dataaccess.CheckIfContainerImageAccessible(token, &checkImageRequest)
+		checkImageRes, err := dataaccess.CheckIfContainerImageAccessible(cmd.Context(), token, imageRegistry, image, userNamePtr, passwordPtr)
 		if err != nil {
 			utils.PrintError(err)
 			return err
@@ -216,7 +446,7 @@ func runBuild(cmd *cobra.Command, args []string) error {
 		}
 
 		// Parse the environment variables
-		var formattedEnvVars []*composegenapi.EnvironmentVariable
+		var formattedEnvVars []openapiclient.EnvironmentVariable
 		for _, envVar := range envVars {
 			if envVar == "[]" {
 				continue
@@ -227,14 +457,14 @@ func runBuild(cmd *cobra.Command, args []string) error {
 				utils.PrintError(err)
 				return err
 			}
-			formattedEnvVars = append(formattedEnvVars, &composegenapi.EnvironmentVariable{
+			formattedEnvVars = append(formattedEnvVars, openapiclient.EnvironmentVariable{
 				Key:   envVarParts[0],
 				Value: envVarParts[1],
 			})
 		}
 
 		// Generate compose spec from image
-		generateComposeSpecRequest := composegenapi.GenerateComposeSpecFromContainerImageRequest{
+		generateComposeSpecRequest := openapiclient.GenerateComposeSpecFromContainerImageRequest2{
 			ImageRegistry:        imageRegistry,
 			Image:                image,
 			EnvironmentVariables: formattedEnvVars,
@@ -242,7 +472,7 @@ func runBuild(cmd *cobra.Command, args []string) error {
 			Password:             passwordPtr,
 		}
 
-		generateComposeSpecRes, err := dataaccess.GenerateComposeSpecFromContainerImage(token, &generateComposeSpecRequest)
+		generateComposeSpecRes, err := dataaccess.GenerateComposeSpecFromContainerImage(cmd.Context(), token, generateComposeSpecRequest)
 		if err != nil {
 			utils.PrintError(err)
 			return err
@@ -268,7 +498,7 @@ func runBuild(cmd *cobra.Command, args []string) error {
 	}
 
 	if !isValidSpecType(specType) {
-		err = errors.New(fmt.Sprintf("invalid spec type, valid options are: %s", strings.Join(validSpecType, ", ")))
+		err = errors.New(fmt.Sprintf("invalid spec type %s, valid options are: %s", specType, strings.Join(validSpecType, ", ")))
 		utils.PrintError(err)
 		return err
 	}
@@ -278,7 +508,7 @@ func runBuild(cmd *cobra.Command, args []string) error {
 		environmentPtr = nil
 	}
 
-	environmentTypePtr := commonutils.ToPtr(strings.ToUpper(environmentType))
+	environmentTypePtr := utils.ToPtr(strings.ToUpper(environmentType))
 	if environmentType == "" {
 		environmentTypePtr = nil
 	}
@@ -291,27 +521,311 @@ func runBuild(cmd *cobra.Command, args []string) error {
 		releaseNamePtr = &releaseDescription
 	}
 
-	sm1 := ysmrr.NewSpinnerManager()
-	building := sm1.AddSpinner("Building service...")
-	sm1.Start()
+	var sm1 utils.SpinnerManager
+	var spinner1 *utils.Spinner
+	if output != "json" {
+		sm1 = utils.NewSpinnerManager()
+		spinner1 = sm1.AddSpinner("Building service...")
+		sm1.Start()
+	}
 
-	ServiceID, EnvironmentID, ProductTierID, err = buildService(fileData, token, name, specType, descriptionPtr, serviceLogoURLPtr,
-		environmentPtr, environmentTypePtr, release, releaseAsPreferred, releaseNamePtr)
+	var cwd string
+	cwd, err = os.Getwd()
 	if err != nil {
-		building.Error()
-		sm1.Stop()
+		utils.HandleSpinnerError(spinner1, sm1, err)
+		return err
+	}
+
+	// Render files
+	fileData, err = RenderFile(fileData, cwd, file, sm1, spinner1)
+	if err != nil {
+		utils.HandleSpinnerError(spinner1, sm1, err)
+		return err
+	}
+
+	if specType == ServicePlanSpecType {
+		// Extract plan name from YAML for display purposes
+		if spinner1 != nil {
+			var yamlContent map[string]interface{}
+			if parseErr := yaml.Unmarshal(fileData, &yamlContent); parseErr == nil {
+				if planName, ok := yamlContent["name"].(string); ok && planName != "" {
+					spinner1.UpdateMessage(fmt.Sprintf("Building service '%s' with plan '%s'...", name, planName))
+				}
+			}
+		}
+
+		// Step 1: Prepare service build - find or create service hierarchy and get upload tasks
+		if spinner1 != nil {
+			spinner1.UpdateMessage("Preparing service build...")
+		}
+
+		hierarchyResult, hierarchyErr := FindOrCreateServiceHierarchy(
+			cmd.Context(),
+			token,
+			name,
+			fileData,
+			environmentPtr,
+			environmentTypePtr,
+		)
+		if hierarchyErr != nil {
+			utils.HandleSpinnerError(spinner1, sm1, hierarchyErr)
+			return hierarchyErr
+		}
+
+		// Store the hierarchy IDs
+		ServiceID = hierarchyResult.ServiceID
+		EnvironmentID = hierarchyResult.EnvironmentID
+		ProductTierID = hierarchyResult.ProductTierID
+
+		if hierarchyResult.IsNewProductTier {
+			release = true
+		}
+
+		if spinner1 != nil {
+			spinner1.UpdateMessage("Service build prepared successfully")
+		}
+
+		// Step 2: Upload artifacts using tasks from prepare response
+		if len(hierarchyResult.ArtifactUploadingTasks) > 0 && !dryRun {
+			uniquePaths := UniqueArtifactPathsFromTasks(hierarchyResult.ArtifactUploadingTasks)
+
+			// Complete the prepare spinner before warnings and per-task spinners
+			if spinner1 != nil {
+				spinner1.UpdateMessage("Service build prepared successfully")
+				spinner1.Complete()
+			}
+
+			// Warn if any artifact path refers to the current working directory
+			if output != "json" {
+				for _, p := range uniquePaths {
+					if isCurrentDirPath(p) {
+						utils.PrintWarning(fmt.Sprintf("Warning: artifact path '%s' will upload the entire current directory (%s)", p, cwd))
+					}
+				}
+			}
+
+			// Archive all unique artifact paths (gzip + tar + base64 encode)
+			artifactArchives, archiveErr := ArchiveArtifactPaths(cwd, uniquePaths)
+			if archiveErr != nil {
+				if sm1 != nil {
+					sm1.Stop()
+				}
+				utils.EnsureCursorRestoration()
+				utils.PrintError(archiveErr)
+				return archiveErr
+			}
+
+			// Create per-task spinners for each upload task
+			type artifactSpinnerInfo struct {
+				spinner    *utils.Spinner
+				artifactID string
+			}
+			taskSpinners := make([]artifactSpinnerInfo, 0, len(hierarchyResult.ArtifactUploadingTasks))
+
+			for i, task := range hierarchyResult.ArtifactUploadingTasks {
+				taskLabel := fmt.Sprintf("[%d/%d] %s -> %s: Uploading...",
+					i+1, len(hierarchyResult.ArtifactUploadingTasks),
+					task.ArtifactPath, task.AccountConfigID)
+				var taskSpinner *utils.Spinner
+				if sm1 != nil {
+					taskSpinner = sm1.AddSpinner(taskLabel)
+				}
+				taskSpinners = append(taskSpinners, artifactSpinnerInfo{spinner: taskSpinner})
+			}
+
+			// Upload each artifact and track per-task progress
+			for i, task := range hierarchyResult.ArtifactUploadingTasks {
+				base64Content, exists := artifactArchives[task.ArtifactPath]
+				if !exists {
+					uploadErr := fmt.Errorf("artifact archive not found for path '%s'", task.ArtifactPath)
+					if taskSpinners[i].spinner != nil {
+						taskSpinners[i].spinner.Error()
+						utils.PrintError(errors.Errorf("[%d/%d] %s -> %s: %v",
+							i+1, len(hierarchyResult.ArtifactUploadingTasks), task.ArtifactPath, task.AccountConfigID, uploadErr))
+					}
+					if sm1 != nil {
+						sm1.Stop()
+					}
+					utils.EnsureCursorRestoration()
+					utils.PrintError(uploadErr)
+					return uploadErr
+				}
+
+				if taskSpinners[i].spinner != nil {
+					taskSpinners[i].spinner.UpdateMessage(fmt.Sprintf("[%d/%d] %s -> %s: Uploading...",
+						i+1, len(hierarchyResult.ArtifactUploadingTasks),
+						task.ArtifactPath, task.AccountConfigID))
+				}
+
+				uploadResult, uploadErr := dataaccess.UploadArtifact(
+					cmd.Context(),
+					token,
+					base64Content,
+					task.ArtifactPath,
+					task.ServiceName,
+					task.ProductTierName,
+					task.AccountConfigID,
+					task.EnvironmentType,
+				)
+				if uploadErr != nil {
+					if taskSpinners[i].spinner != nil {
+						taskSpinners[i].spinner.Error()
+						utils.PrintError(errors.Errorf("[%d/%d] %s -> %s: Failed to upload",
+							i+1, len(hierarchyResult.ArtifactUploadingTasks),
+							task.ArtifactPath, task.AccountConfigID))
+					}
+					if sm1 != nil {
+						sm1.Stop()
+					}
+					utils.EnsureCursorRestoration()
+					utils.PrintError(fmt.Errorf("failed to upload artifact '%s': %w", task.ArtifactPath, uploadErr))
+					return uploadErr
+				}
+
+				taskSpinners[i].artifactID = uploadResult.ArtifactID
+				if taskSpinners[i].spinner != nil {
+					taskSpinners[i].spinner.UpdateMessage(fmt.Sprintf("[%d/%d] %s -> %s: Uploaded, processing...",
+						i+1, len(hierarchyResult.ArtifactUploadingTasks),
+						task.ArtifactPath, task.AccountConfigID))
+				}
+			}
+
+			// Build artifact ID to spinner index map for the polling callback
+			artifactIDToIdx := make(map[string]int)
+			var uploadedArtifactIDs []string
+			for i, info := range taskSpinners {
+				if info.artifactID != "" {
+					artifactIDToIdx[info.artifactID] = i
+					uploadedArtifactIDs = append(uploadedArtifactIDs, info.artifactID)
+				}
+			}
+
+			// Wait for all artifacts to be in READY status with per-spinner updates
+			if len(uploadedArtifactIDs) > 0 {
+				waitErr := waitForArtifactsReady(cmd.Context(), token, uploadedArtifactIDs,
+					func(artifactID string, status string) {
+						idx, ok := artifactIDToIdx[artifactID]
+						if !ok || taskSpinners[idx].spinner == nil {
+							return
+						}
+						task := hierarchyResult.ArtifactUploadingTasks[idx]
+						switch status {
+						case StatusReady:
+							taskSpinners[idx].spinner.Complete()
+							utils.PrintInfo(fmt.Sprintf("[%d/%d] %s -> %s: Ready",
+								idx+1, len(hierarchyResult.ArtifactUploadingTasks),
+								task.ArtifactPath, task.AccountConfigID))
+						case StatusFailed:
+							taskSpinners[idx].spinner.Error()
+							utils.PrintError(errors.Errorf("[%d/%d] %s -> %s: Failed",
+								idx+1, len(hierarchyResult.ArtifactUploadingTasks),
+								task.ArtifactPath, task.AccountConfigID))
+						default:
+							taskSpinners[idx].spinner.UpdateMessage(fmt.Sprintf("[%d/%d] %s -> %s: %s",
+								idx+1, len(hierarchyResult.ArtifactUploadingTasks),
+								task.ArtifactPath, task.AccountConfigID, status))
+						}
+					})
+				if waitErr != nil {
+					// Mark any remaining spinners as errored
+					for _, info := range taskSpinners {
+						if info.spinner != nil {
+							info.spinner.Error()
+						}
+					}
+					if sm1 != nil {
+						sm1.Stop()
+					}
+					utils.EnsureCursorRestoration()
+					utils.PrintError(waitErr)
+					return waitErr
+				}
+			}
+		}
+	}
+
+	var undefinedResources map[string]string
+	var isNewVersionCreated bool
+	ServiceID, EnvironmentID, ProductTierID, undefinedResources, isNewVersionCreated, err = BuildService(
+		cmd.Context(),
+		fileData,
+		token,
+		name,
+		specType,
+		descriptionPtr,
+		serviceLogoURLPtr,
+		environmentPtr,
+		environmentTypePtr,
+		release,
+		releaseAsPreferred,
+		releaseNamePtr,
+		dryRun,
+		forceCreateServicePlanVersion,
+	)
+	if err != nil {
+		utils.HandleSpinnerError(spinner1, sm1, err)
+		return err
+	}
+	header := "Successfully built service"
+	if dryRun {
+		header = "Simulated service build completed successfully (dry run)"
+	}
+	utils.HandleSpinnerSuccess(spinner1, sm1, header)
+
+	// Get product tier name
+	productTier, err := dataaccess.DescribeProductTier(cmd.Context(), token, ServiceID, ProductTierID)
+	if err != nil {
 		utils.PrintError(err)
 		return err
 	}
 
-	building.Complete()
-	sm1.Stop()
-	utils.PrintURL("Check the service plan result at", fmt.Sprintf("https://%s/product-tier?serviceId=%s&environmentId=%s", utils.GetRootDomain(), ServiceID, EnvironmentID))
+	// Print the service plan details
+	servicePlanDetails := model.ServicePlanVersion{
+		PlanID:                         ProductTierID,
+		PlanName:                       productTier.Name,
+		ServiceID:                      ServiceID,
+		ServiceName:                    name,
+		Environment:                    environment,
+		IsNewServicePlanVersionCreated: isNewVersionCreated,
+	}
+
+	if !dryRun && (release || releaseAsPreferred) {
+		versionDetails, err := dataaccess.DescribeLatestVersion(cmd.Context(), token, ServiceID, ProductTierID)
+		if err != nil {
+			err = errors.Wrap(err, "failed to get the latest version")
+			return err
+		}
+		servicePlanDetails.Version = versionDetails.Version
+		if versionDetails.Name != nil {
+			servicePlanDetails.ReleaseDescription = *versionDetails.Name
+		}
+		servicePlanDetails.VersionSetStatus = versionDetails.Status
+	}
+
+	if err = utils.PrintTextTableJsonOutput(output, servicePlanDetails); err != nil {
+		return err
+	}
+
+	// Return early if output is json
+	if output == "json" {
+		return nil
+	}
+
+	// Print warning if there are any undefined resources
+	if len(undefinedResources) > 0 {
+		utils.PrintWarning("The following resources appear in the service plan but were not defined in the spec:")
+		for resourceName, resourceID := range undefinedResources {
+			utils.PrintWarning(fmt.Sprintf("  %s: %s", resourceName, resourceID))
+		}
+		utils.PrintWarning("These resources were not processed during the build. If you no longer need them, please deprecate and remove them from the service plan manually in UI or using the API.")
+	}
+
+	utils.PrintURL("Check the service plan result at", fmt.Sprintf("https://%s/product-tier?serviceId=%s&environmentId=%s", config.GetRootDomain(), ServiceID, EnvironmentID))
 
 	// Ask user to verify account if there are any unverified accounts
-	dataaccess.AskVerifyAccountIfAny()
+	dataaccess.AskVerifyAccountIfAny(cmd.Context())
 
-	serviceEnvironment, err := dataaccess.DescribeServiceEnvironment(token, ServiceID, EnvironmentID)
+	serviceEnvironment, err := dataaccess.DescribeServiceEnvironment(cmd.Context(), token, ServiceID, EnvironmentID)
 	if err != nil {
 		utils.PrintError(err)
 		return err
@@ -322,7 +836,7 @@ func runBuild(cmd *cobra.Command, args []string) error {
 		utils.PrintURL("Access your SaaS offer at", getSaaSPortalURL(serviceEnvironment, ServiceID, EnvironmentID))
 	} else if interactive {
 		// Ask the user if they want to wait for the SaaS portal URL
-		fmt.Print("Do you want to wait to acccess the SaaS portal? [Y/n] It may take a few minutes: ")
+		fmt.Print("Do you want to wait to access the SaaS portal? [Y/n] It may take a few minutes: ")
 		var userInput string
 		_, err = fmt.Scanln(&userInput)
 		if err != nil {
@@ -333,12 +847,12 @@ func runBuild(cmd *cobra.Command, args []string) error {
 		userInput = strings.TrimSpace(strings.ToUpper(userInput))
 
 		if strings.ToLower(userInput) == "y" {
-			sm2 := ysmrr.NewSpinnerManager()
+			sm2 := utils.NewSpinnerManager()
 			loading := sm2.AddSpinner("Loading SaaS portal...")
 			sm2.Start()
 
 			for {
-				serviceEnvironment, err = dataaccess.DescribeServiceEnvironment(token, ServiceID, EnvironmentID)
+				serviceEnvironment, err = dataaccess.DescribeServiceEnvironment(cmd.Context(), token, ServiceID, EnvironmentID)
 				if err != nil {
 					utils.PrintError(err)
 					return err
@@ -356,7 +870,7 @@ func runBuild(cmd *cobra.Command, args []string) error {
 
 	// Step 3: Launch service to production if the service is in dev environment
 	if interactive {
-		if strings.ToLower(string(serviceEnvironment.Type)) == "dev" {
+		if strings.ToLower(serviceEnvironment.Type) == "dev" {
 			// Ask the user if they want to launch the service to production
 			fmt.Print("Do you want to launch it to production? [Y/n] You can always promote it later: ")
 			var userInput string
@@ -368,47 +882,46 @@ func runBuild(cmd *cobra.Command, args []string) error {
 			userInput = strings.TrimSpace(strings.ToUpper(userInput))
 
 			if strings.ToLower(userInput) == "y" {
-				sm2 := ysmrr.NewSpinnerManager()
+				sm2 := utils.NewSpinnerManager()
 				launching := sm2.AddSpinner("Launching service to production...")
 				sm2.Start()
 
-				prodEnvironment, err := dataaccess.FindEnvironment(token, ServiceID, "prod")
+				prodEnvironment, err := dataaccess.FindEnvironment(cmd.Context(), token, ServiceID, "prod")
 				if err != nil && !errors.As(err, &dataaccess.ErrEnvironmentNotFound) {
 					utils.PrintError(err)
 					return err
 				}
 
-				var prodEnvironmentID serviceenvironmentapi.ServiceEnvironmentID
+				var prodEnvironmentID string
 				if errors.As(err, &dataaccess.ErrEnvironmentNotFound) {
 					// Get default deployment config ID
-					defaultDeploymentConfigID, err := dataaccess.GetDefaultDeploymentConfigID(token)
+					defaultDeploymentConfigID, err := dataaccess.GetDefaultDeploymentConfigID(cmd.Context(), token)
 					if err != nil {
 						utils.PrintError(err)
 						return err
 					}
-
-					prod := serviceenvironmentapi.CreateServiceEnvironmentRequest{
-						Name:                    "Production",
-						Description:             "Production environment",
-						ServiceID:               serviceenvironmentapi.ServiceID(ServiceID),
-						Visibility:              serviceenvironmentapi.ServiceVisibility("PUBLIC"),
-						Type:                    (*serviceenvironmentapi.EnvironmentType)(commonutils.ToPtr("PROD")),
-						SourceEnvironmentID:     commonutils.ToPtr(serviceenvironmentapi.ServiceEnvironmentID(EnvironmentID)),
-						DeploymentConfigID:      serviceenvironmentapi.DeploymentConfigID(defaultDeploymentConfigID),
-						AutoApproveSubscription: commonutils.ToPtr(true),
-					}
-
-					prodEnvironmentID, err = dataaccess.CreateServiceEnvironment(token, prod)
+					prodEnvironmentID, err = dataaccess.CreateServiceEnvironment(
+						cmd.Context(),
+						token,
+						"Production",
+						"Production environment",
+						ServiceID,
+						"PUBLIC",
+						"PROD",
+						utils.ToPtr(EnvironmentID),
+						defaultDeploymentConfigID,
+						true,
+						nil)
 					if err != nil {
 						utils.PrintError(err)
 						return err
 					}
 				} else {
-					prodEnvironmentID = prodEnvironment.ID
+					prodEnvironmentID = prodEnvironment.Id
 				}
 
 				// Promote the service to production
-				err = dataaccess.PromoteServiceEnvironment(token, ServiceID, EnvironmentID)
+				err = dataaccess.PromoteServiceEnvironment(cmd.Context(), token, ServiceID, EnvironmentID)
 				if err != nil {
 					utils.PrintError(err)
 					return err
@@ -418,14 +931,14 @@ func runBuild(cmd *cobra.Command, args []string) error {
 				sm2.Stop()
 
 				// Retrieve the prod SaaS portal URL
-				prodEnvironment, err = dataaccess.DescribeServiceEnvironment(token, ServiceID, string(prodEnvironmentID))
+				prodEnvironment, err = dataaccess.DescribeServiceEnvironment(cmd.Context(), token, ServiceID, prodEnvironmentID)
 				if err != nil {
 					utils.PrintError(err)
 					return err
 				}
 
 				if checkIfSaaSPortalReady(prodEnvironment) {
-					utils.PrintURL("Your SaaS portal is ready at", getSaaSPortalURL(prodEnvironment, ServiceID, string(prodEnvironmentID)))
+					utils.PrintURL("Your SaaS portal is ready at", getSaaSPortalURL(prodEnvironment, ServiceID, prodEnvironmentID))
 				} else if interactive {
 					// Ask the user if they want to wait for the SaaS portal URL
 					fmt.Print("Do you want to wait to access the prod SaaS offer? [Y/n] It may take a few minutes: ")
@@ -437,12 +950,12 @@ func runBuild(cmd *cobra.Command, args []string) error {
 					userInput = strings.TrimSpace(strings.ToUpper(userInput))
 
 					if strings.ToLower(userInput) == "y" {
-						sm3 := ysmrr.NewSpinnerManager()
+						sm3 := utils.NewSpinnerManager()
 						loading := sm3.AddSpinner("Preparing SaaS offer...")
 						sm3.Start()
 
 						for {
-							serviceEnvironment, err = dataaccess.DescribeServiceEnvironment(token, ServiceID, string(prodEnvironmentID))
+							serviceEnvironment, err = dataaccess.DescribeServiceEnvironment(cmd.Context(), token, ServiceID, prodEnvironmentID)
 							if err != nil {
 								utils.PrintError(err)
 								return err
@@ -451,7 +964,7 @@ func runBuild(cmd *cobra.Command, args []string) error {
 							if checkIfSaaSPortalReady(serviceEnvironment) {
 								loading.Complete()
 								sm3.Stop()
-								utils.PrintURL("Your SaaS offer is ready at", getSaaSPortalURL(serviceEnvironment, ServiceID, string(prodEnvironmentID)))
+								utils.PrintURL("Your SaaS offer is ready at", getSaaSPortalURL(serviceEnvironment, ServiceID, prodEnvironmentID))
 								break
 							}
 						}
@@ -469,60 +982,43 @@ func runBuild(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
-func buildService(fileData []byte, token, name, specType string, description, serviceLogoURL, environment, environmentType *string, release,
-	releaseAsPreferred bool, releaseName *string) (serviceID string, environmentID string, productTierID string, err error) {
+func BuildService(ctx context.Context, fileData []byte, token, name, specType string, description, serviceLogoURL, environment, environmentType *string, release,
+	releaseAsPreferred bool, releaseName *string, dryRun bool, forceCreateNewServicePlanVersion bool) (serviceID string, environmentID string, productTierID string, undefinedResources map[string]string, isNewVersionCreated bool, err error) {
 	if name == "" {
-		return "", "", "", errors.New("name is required")
-	}
-
-	service, err := httpclientwrapper.NewService(utils.GetHostScheme(), utils.GetHost())
-	if err != nil {
-		return "", "", "", err
+		return "", "", "", make(map[string]string), false, errors.New("name is required")
 	}
 
 	if specType == "" {
-		return "", "", "", errors.New("specType is required")
+		return "", "", "", make(map[string]string), false, errors.New("specType is required")
 	}
 
 	switch specType {
 	case ServicePlanSpecType:
-		request := serviceapi.BuildServiceFromServicePlanSpecRequest{
-			Token:           token,
-			Name:            name,
-			Description:     description,
-			ServiceLogoURL:  serviceLogoURL,
-			Environment:     environment,
-			EnvironmentType: (*serviceapi.EnvironmentType)(environmentType),
-			FileContent:     base64.StdEncoding.EncodeToString(fileData),
+		request := openapiclient.BuildServiceFromServicePlanSpecRequest2{
+			Name:                             name,
+			Description:                      description,
+			ServiceLogoURL:                   serviceLogoURL,
+			Environment:                      environment,
+			EnvironmentType:                  environmentType,
+			FileContent:                      base64.StdEncoding.EncodeToString(fileData),
+			Release:                          utils.ToPtr(release),
+			ReleaseAsPreferred:               utils.ToPtr(releaseAsPreferred),
+			ReleaseVersionName:               releaseName,
+			Dryrun:                           utils.ToPtr(dryRun),
+			ForceCreateNewServicePlanVersion: utils.ToPtr(forceCreateNewServicePlanVersion),
 		}
 
-		var buildRes *serviceapi.BuildServiceFromServicePlanSpecResult
-		buildRes, err = service.BuildServiceFromServicePlanSpec(context.Background(), &request)
+		buildRes, err := dataaccess.BuildServiceFromServicePlanSpec(ctx, token, request)
 		if err != nil {
-			var serviceError *goa.ServiceError
-			if errors.As(err, &serviceError) {
-				return "", "", "", fmt.Errorf("%s\nDetail: %s", serviceError.Name, serviceError.Message)
-			}
-			return
+			return "", "", "", make(map[string]string), false, err
 		}
 		if buildRes == nil {
-			return "", "", "", errors.New("empty response from server")
-		}
-		return string(buildRes.ServiceID), string(buildRes.ServiceEnvironmentID), string(buildRes.ProductTierID), nil
-	case DockerComposeSpecType:
-		request := serviceapi.BuildServiceFromComposeSpecRequest{
-			Token:              token,
-			Name:               name,
-			Description:        description,
-			ServiceLogoURL:     serviceLogoURL,
-			Environment:        environment,
-			EnvironmentType:    (*serviceapi.EnvironmentType)(environmentType),
-			FileContent:        base64.StdEncoding.EncodeToString(fileData),
-			Release:            &release,
-			ReleaseAsPreferred: &releaseAsPreferred,
-			ReleaseVersionName: releaseName,
+			return "", "", "", make(map[string]string), false, errors.New("empty response from server")
 		}
 
+		return buildRes.GetServiceID(), buildRes.GetServiceEnvironmentID(), buildRes.GetProductTierID(), buildRes.GetUndefinedResources(), buildRes.GetIsNewServicePlanVersionCreated(), nil
+
+	case DockerComposeSpecType:
 		// Load the YAML content
 		var parsedYaml map[string]interface{}
 		parsedYaml, err = loader.ParseYAML(fileData)
@@ -533,7 +1029,7 @@ func buildService(fileData []byte, token, name, specType string, description, se
 
 		// Decode spec YAML into a compose project
 		var project *types.Project
-		if project, err = loader.LoadWithContext(context.Background(), types.ConfigDetails{
+		if project, err = loader.LoadWithContext(ctx, types.ConfigDetails{
 			ConfigFiles: []types.ConfigFile{
 				{
 					Config: parsedYaml,
@@ -547,7 +1043,7 @@ func buildService(fileData []byte, token, name, specType string, description, se
 		// Convert config volumes to configs
 		var modified bool
 		if project, modified, err = convertVolumesToConfigs(project); err != nil {
-			return "", "", "", err
+			return "", "", "", make(map[string]string), false, err
 		}
 
 		// Convert the project back to YAML, in case it was modified
@@ -557,67 +1053,82 @@ func buildService(fileData []byte, token, name, specType string, description, se
 				err = errors.Wrap(err, "failed to marshal project to YAML")
 				return
 			}
-			request.FileContent = base64.StdEncoding.EncodeToString(parsedYamlContent)
+			fileData = parsedYamlContent
 		}
 
 		// Get the configs from the project
+		var configs *map[string]string
 		if project.Configs != nil {
-			request.Configs = make(map[string]string)
+			configsTemp := make(map[string]string)
 			for configName, config := range project.Configs {
-				var fileContent []byte
-				fileContent, err = os.ReadFile(filepath.Clean(config.File))
+				var configFileContent []byte
+				configFileContent, err = os.ReadFile(filepath.Clean(config.File))
 				if err != nil {
-					return "", "", "", err
+					return "", "", "", make(map[string]string), false, err
 				}
 
-				request.Configs[configName] = base64.StdEncoding.EncodeToString(fileContent)
+				configsTemp[configName] = base64.StdEncoding.EncodeToString(configFileContent)
 			}
+			configs = &configsTemp
 		}
 
 		// Get the secrets from the project
+		var secrets *map[string]string
 		if project.Secrets != nil {
-			request.Secrets = make(map[string]string)
+			secretsTemp := make(map[string]string)
 			for secretName, secret := range project.Secrets {
 				var fileContent []byte
 				fileContent, err = os.ReadFile(filepath.Clean(secret.File))
 				if err != nil {
-					return "", "", "", err
+					return "", "", "", make(map[string]string), false, err
 				}
-
-				request.Secrets[secretName] = base64.StdEncoding.EncodeToString(fileContent)
+				secretsTemp[secretName] = base64.StdEncoding.EncodeToString(fileContent)
 			}
+			secrets = &secretsTemp
 		}
 
-		var buildRes *serviceapi.BuildServiceFromComposeSpecResult
-		buildRes, err = service.BuildServiceFromComposeSpec(context.Background(), &request)
+		request := openapiclient.BuildServiceFromComposeSpecRequest2{
+			Name:                             name,
+			Description:                      description,
+			ServiceLogoURL:                   serviceLogoURL,
+			Environment:                      environment,
+			EnvironmentType:                  environmentType,
+			FileContent:                      base64.StdEncoding.EncodeToString(fileData),
+			Release:                          utils.ToPtr(release),
+			ReleaseAsPreferred:               utils.ToPtr(releaseAsPreferred),
+			ReleaseVersionName:               releaseName,
+			Configs:                          configs,
+			Secrets:                          secrets,
+			Dryrun:                           utils.ToPtr(dryRun),
+			ForceCreateNewServicePlanVersion: utils.ToPtr(forceCreateNewServicePlanVersion),
+		}
+
+		buildRes, err := dataaccess.BuildServiceFromComposeSpec(ctx, token, request)
 		if err != nil {
-			var serviceError *goa.ServiceError
-			if errors.As(err, &serviceError) {
-				return "", "", "", fmt.Errorf("%s\nDetail: %s", serviceError.Name, serviceError.Message)
-			}
-			return
+			return "", "", "", make(map[string]string), false, err
 		}
 		if buildRes == nil {
-			return "", "", "", errors.New("empty response from server")
+			return "", "", "", make(map[string]string), false, errors.New("empty response from server")
 		}
-		return string(buildRes.ServiceID), string(buildRes.ServiceEnvironmentID), string(buildRes.ProductTierID), nil
+
+		return buildRes.GetServiceID(), buildRes.GetServiceEnvironmentID(), buildRes.GetProductTierID(), buildRes.GetUndefinedResources(), buildRes.GetIsNewServicePlanVersionCreated(), nil
 
 	default:
-		return "", "", "", errors.New("invalid spec type")
+		return "", "", "", make(map[string]string), false, errors.New("invalid spec type")
 	}
 }
 
-func checkIfSaaSPortalReady(serviceEnvironment *serviceenvironmentapi.DescribeServiceEnvironmentResult) bool {
-	if serviceEnvironment.SaasPortalURL != nil && serviceEnvironment.SaasPortalStatus != nil && *serviceEnvironment.SaasPortalStatus == "RUNNING" {
+func checkIfSaaSPortalReady(serviceEnvironment *openapiclient.DescribeServiceEnvironmentResult) bool {
+	if serviceEnvironment.SaasPortalUrl != nil && serviceEnvironment.SaasPortalStatus != nil && *serviceEnvironment.SaasPortalStatus == "RUNNING" {
 		return true
 	}
 
 	return false
 }
 
-func getSaaSPortalURL(serviceEnvironment *serviceenvironmentapi.DescribeServiceEnvironmentResult, serviceID, environmentID string) string {
-	if serviceEnvironment.SaasPortalURL != nil {
-		return fmt.Sprintf("https://"+*serviceEnvironment.SaasPortalURL+"/service-plans?serviceId=%s&environmentId=%s", serviceID, environmentID)
+func getSaaSPortalURL(serviceEnvironment *openapiclient.DescribeServiceEnvironmentResult, serviceID, environmentID string) string {
+	if serviceEnvironment.SaasPortalUrl != nil {
+		return fmt.Sprintf("https://"+*serviceEnvironment.SaasPortalUrl+"/service-plans?serviceId=%s&environmentId=%s", serviceID, environmentID)
 	}
 
 	return ""
@@ -635,7 +1146,7 @@ func isValidSpecType(s string) bool {
 // Most compose files mount the configs directly as volumes. This function converts the volumes to configs.
 func convertVolumesToConfigs(project *types.Project) (converted *types.Project, modified bool, err error) {
 	modified = false
-	volumesToBeRemoved := make(map[int]int) // map of volume index to service index
+	volumesToBeRemoved := make(map[int]map[int]struct{}) // map of service index to list of volume indexes to be removed
 	for svcIdx, service := range project.Services {
 		for volIdx, volume := range service.Volumes {
 			// Check if the volume source exists. If so, it needs to be a directory with files or the source is itself a file
@@ -669,7 +1180,7 @@ func convertVolumesToConfigs(project *types.Project) (converted *types.Project, 
 
 					// Create a config for each file
 					for _, fileInDir := range files {
-						sourceFileNameSHA := commonutils.HashPasswordSha256(fileInDir)
+						sourceFileNameSHA := utils.HashSha256(fileInDir)
 						config := types.ConfigObjConfig{
 							Name: sourceFileNameSHA,
 							File: fileInDir,
@@ -695,7 +1206,7 @@ func convertVolumesToConfigs(project *types.Project) (converted *types.Project, 
 						})
 					}
 				} else {
-					sourceFileNameSHA := commonutils.HashPasswordSha256(source)
+					sourceFileNameSHA := utils.HashSha256(source)
 					config := types.ConfigObjConfig{
 						Name: sourceFileNameSHA,
 						File: source,
@@ -710,7 +1221,10 @@ func convertVolumesToConfigs(project *types.Project) (converted *types.Project, 
 				}
 
 				// Remove the volume from the service
-				volumesToBeRemoved[svcIdx] = volIdx
+				if volumesToBeRemoved[svcIdx] == nil {
+					volumesToBeRemoved[svcIdx] = make(map[int]struct{})
+				}
+				volumesToBeRemoved[svcIdx][volIdx] = struct{}{}
 			}
 		}
 
@@ -719,8 +1233,16 @@ func convertVolumesToConfigs(project *types.Project) (converted *types.Project, 
 	}
 
 	// Remove the volumes from the services
-	for svcIdx, volIdx := range volumesToBeRemoved {
-		project.Services[svcIdx].Volumes = append(project.Services[svcIdx].Volumes[:volIdx], project.Services[svcIdx].Volumes[volIdx+1:]...)
+	for svcIdx, volumes := range volumesToBeRemoved {
+		volumesBefore := make([]types.ServiceVolumeConfig, len(project.Services[svcIdx].Volumes))
+		copy(volumesBefore, project.Services[svcIdx].Volumes)
+
+		project.Services[svcIdx].Volumes = nil
+		for volIdx := range volumesBefore {
+			if _, ok := volumes[volIdx]; !ok {
+				project.Services[svcIdx].Volumes = append(project.Services[svcIdx].Volumes, volumesBefore[volIdx])
+			}
+		}
 	}
 
 	converted = project

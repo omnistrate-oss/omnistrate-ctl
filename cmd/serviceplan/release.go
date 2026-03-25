@@ -1,28 +1,30 @@
 package serviceplan
 
 import (
-	"encoding/json"
 	"fmt"
-	"github.com/chelnak/ysmrr"
-	inventoryapi "github.com/omnistrate/api-design/v1/pkg/fleet/gen/inventory_api"
-	"github.com/omnistrate/ctl/dataaccess"
-	"github.com/omnistrate/ctl/utils"
-	"github.com/spf13/cobra"
 	"strings"
+
+	"github.com/omnistrate-oss/omnistrate-ctl/cmd/common"
+
+	"github.com/omnistrate-oss/omnistrate-ctl/internal/config"
+	"github.com/omnistrate-oss/omnistrate-ctl/internal/dataaccess"
+	"github.com/omnistrate-oss/omnistrate-ctl/internal/utils"
+	openapiclientfleet "github.com/omnistrate-oss/omnistrate-sdk-go/fleet"
+	"github.com/spf13/cobra"
 )
 
 const (
-	releaseExample = `  # Release service plan
-  omctl service-plan release [service-name] [plan-name]
+	releaseExample = `# Release service plan by name
+omnistrate-ctl service-plan release [service-name] [plan-name]
 
-  # Release service plan by ID instead of name
-  omctl service-plan release --service-id [service-id] --plan-id [plan-id]`
+# Release service plan by ID
+omnistrate-ctl service-plan release --service-id=[service-id] --plan-id=[plan-id]`
 )
 
 var releaseCmd = &cobra.Command{
 	Use:          "release [service-name] [plan-name] [flags]",
-	Short:        "Release a service plan",
-	Long:         `This command helps you release a service plan from your service.`,
+	Short:        "Release a Service Plan",
+	Long:         `This command helps you release a Service Plan for your service. You can specify a custom release description and set the service plan as preferred if needed.`,
 	Example:      releaseExample,
 	RunE:         runRelease,
 	SilenceUsage: true,
@@ -31,23 +33,27 @@ var releaseCmd = &cobra.Command{
 func init() {
 	releaseCmd.Flags().String("release-description", "", "Set custom release description for this release version")
 	releaseCmd.Flags().Bool("release-as-preferred", false, "Release the service plan as preferred")
-	releaseCmd.Flags().StringP("output", "o", "text", "Output format (text|table|json)")
+	releaseCmd.Flags().Bool("dryrun", false, "Perform a dry run without making any changes")
+	releaseCmd.Flags().StringP("environment", "", "", "Environment name. Use this flag with service name and plan name to release the service plan in a specific environment")
+
 	releaseCmd.Flags().StringP("service-id", "", "", "Service ID. Required if service name is not provided")
 	releaseCmd.Flags().StringP("plan-id", "", "", "Plan ID. Required if plan name is not provided")
 }
 
 func runRelease(cmd *cobra.Command, args []string) error {
-	defer utils.CleanupArgsAndFlags(cmd, &args)
+	defer config.CleanupArgsAndFlags(cmd, &args)
 
 	// Retrieve flags
 	releaseDescription, _ := cmd.Flags().GetString("release-description")
 	releaseAsPreferred, _ := cmd.Flags().GetBool("release-as-preferred")
+	dryRun, _ := cmd.Flags().GetBool("dryrun")
 	output, _ := cmd.Flags().GetString("output")
-	serviceId, _ := cmd.Flags().GetString("service-id")
-	planId, _ := cmd.Flags().GetString("plan-id")
+	serviceID, _ := cmd.Flags().GetString("service-id")
+	planID, _ := cmd.Flags().GetString("plan-id")
+	environment, _ := cmd.Flags().GetString("environment")
 
 	// Validate input arguments
-	if err := validateReleaseArguments(args, serviceId, planId); err != nil {
+	if err := validateReleaseArguments(args, serviceID, planID); err != nil {
 		utils.PrintError(err)
 		return err
 	}
@@ -59,46 +65,46 @@ func runRelease(cmd *cobra.Command, args []string) error {
 	}
 
 	// Validate user login
-	token, err := utils.GetToken()
+	token, err := common.GetTokenWithLogin()
 	if err != nil {
 		utils.PrintError(err)
 		return err
 	}
 
 	// Initialize spinner if output is not JSON
-	var sm ysmrr.SpinnerManager
-	var spinner *ysmrr.Spinner
+	var sm utils.SpinnerManager
+	var spinner *utils.Spinner
 	if output != "json" {
-		sm = ysmrr.NewSpinnerManager()
+		sm = utils.NewSpinnerManager()
 		msg := "Releasing service plan..."
 		spinner = sm.AddSpinner(msg)
 		sm.Start()
 	}
 
-	// Check if service plan exist
-	serviceId, _, planId, _, _, err = getServicePlan(token, serviceId, serviceName, planId, planName)
+	// Check if service plan exists
+	serviceID, _, planID, _, err = getServicePlan(cmd.Context(), token, serviceID, serviceName, planID, planName, environment)
 	if err != nil {
 		utils.HandleSpinnerError(spinner, sm, err)
 		return err
 	}
 
 	// Get service api id
-	productTier, err := dataaccess.DescribeProductTier(token, serviceId, planId)
+	productTier, err := dataaccess.DescribeProductTier(cmd.Context(), token, serviceID, planID)
 	if err != nil {
 		utils.PrintError(err)
 		return err
 	}
 
-	serviceModel, err := dataaccess.DescribeServiceModel(token, serviceId, string(productTier.ServiceModelID))
+	serviceModel, err := dataaccess.DescribeServiceModel(cmd.Context(), token, serviceID, productTier.ServiceModelId)
 	if err != nil {
 		utils.PrintError(err)
 		return err
 	}
 
-	serviceApiId := string(serviceModel.ServiceAPIID)
+	serviceAPIID := serviceModel.ServiceApiId
 
 	// Release service plan
-	err = dataaccess.ReleaseServicePlan(token, serviceId, serviceApiId, planId, getReleaseDescription(releaseDescription), releaseAsPreferred)
+	err = dataaccess.ReleaseServicePlan(cmd.Context(), token, serviceID, serviceAPIID, planID, getReleaseDescription(releaseDescription), releaseAsPreferred, dryRun)
 	if err != nil {
 		spinner.Error()
 		sm.Stop()
@@ -106,52 +112,45 @@ func runRelease(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	utils.HandleSpinnerSuccess(spinner, sm, "Successfully released service plan")
-
+	if !dryRun {
+		utils.HandleSpinnerSuccess(spinner, sm, "Successfully released service plan")
+	} else {
+		utils.HandleSpinnerSuccess(spinner, sm, "Successfully performed dry run for service plan release")
+	}
 	// Get the service plan details
-	searchRes, err := dataaccess.SearchInventory(token, fmt.Sprintf("serviceplan:%s", planId))
+	searchRes, err := dataaccess.SearchInventory(cmd.Context(), token, fmt.Sprintf("serviceplan:%s", planID))
 	if err != nil {
 		utils.PrintError(err)
 		return err
 	}
 
-	targetVersion, err := dataaccess.FindLatestVersion(token, serviceId, planId)
+	targetVersion, err := dataaccess.FindLatestVersion(cmd.Context(), token, serviceID, planID)
 	if err != nil {
 		utils.PrintError(err)
 		return err
 	}
 
-	var targetServicePlan *inventoryapi.ServicePlanSearchRecord
+	var targetServicePlan openapiclientfleet.ServicePlanSearchRecord
 	for _, servicePlan := range searchRes.ServicePlanResults {
-		if string(servicePlan.ServiceID) != serviceId && servicePlan.ID != planId && servicePlan.Version != targetVersion {
+		if servicePlan.ServiceId != serviceID || servicePlan.Id != planID || servicePlan.Version != targetVersion {
 			continue
 		}
 		targetServicePlan = servicePlan
 	}
 
 	// Format output
-	formattedServicePlan, err := formatServicePlanVersion(targetServicePlan, false)
-	if err != nil {
-		return err
-	}
-
-	// Marshal data
-	data, err := json.MarshalIndent(formattedServicePlan, "", "    ")
-	if err != nil {
-		utils.PrintError(err)
-		return err
-	}
+	formattedServicePlan := formatServicePlanVersion(targetServicePlan, false)
 
 	// Print output
-	if err = utils.PrintTextTableJsonOutput(output, string(data)); err != nil {
+	if err = utils.PrintTextTableJsonOutput(output, formattedServicePlan); err != nil {
 		return err
 	}
 
 	return nil
 }
 
-func validateReleaseArguments(args []string, serviceId, planId string) error {
-	if len(args) == 0 && (serviceId == "" || planId == "") {
+func validateReleaseArguments(args []string, serviceID, planID string) error {
+	if len(args) == 0 && (serviceID == "" || planID == "") {
 		return fmt.Errorf("please provide the service name and service plan name or the service ID and service plan ID")
 	}
 	if len(args) > 0 && len(args) != 2 {

@@ -1,0 +1,48 @@
+version: "3.9"
+services:
+  MySQL:
+    image: mysql:latest
+    x-omnistrate-api-params:
+      - key: rootPassword
+        description: Default root password
+        name: Password
+        type: String
+        modifiable: true
+        required: true
+        export: false
+        defaultValue: a_secure_root_password
+      - key: password
+        description: Default database password
+        name: Password
+        type: String
+        modifiable: true
+        required: true
+        export: false
+        defaultValue: a_secure_password
+      - key: username
+        description: Default database username
+        name: Username
+        type: String
+        modifiable: true
+        required: true
+        export: true
+        defaultValue: user
+      - key: databaseName
+        description: Default database name
+        name: Database Name
+        type: String
+        modifiable: true
+        required: true
+        export: true
+        defaultValue: default
+    environment:
+      MYSQL_ROOT_PASSWORD: $var.rootPassword
+      MYSQL_DATABASE: $var.databaseName
+      MYSQL_USER: $var.username
+      MYSQL_PASSWORD: $var.password
+    volumes:
+      - source: ./data
+        target: /var/lib/mysql
+        type: bind
+    ports:
+      - "3306:3306"

@@ -2,26 +2,29 @@ package domain
 
 import (
 	"fmt"
-	saasportalapi "github.com/omnistrate/api-design/v1/pkg/registration/gen/saas_portal_api"
-	"github.com/omnistrate/ctl/dataaccess"
-	"github.com/omnistrate/ctl/utils"
+	"strings"
+
+	"github.com/omnistrate-oss/omnistrate-ctl/cmd/common"
+	openapiclientv1 "github.com/omnistrate-oss/omnistrate-sdk-go/v1"
+
+	"github.com/omnistrate-oss/omnistrate-ctl/internal/dataaccess"
+	"github.com/omnistrate-oss/omnistrate-ctl/internal/utils"
 	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
-	"strings"
 )
 
 const (
-	createExample = `  # Create a custom domain for dev environment
-  omctl domain create dev --domain abc.dev --environment-type dev
+	createExample = `# Create a custom domain for dev environment
+omnistrate-ctl domain create dev --domain=abc.dev --environment-type=dev
 
-  # Create a custom domain for prod environment
-  omctl domain create abc.cloud --domain abc.cloud --environment-type prod`
+# Create a custom domain for prod environment
+omnistrate-ctl domain create abc.cloud --domain=abc.cloud --environment-type=prod`
 )
 
 var createCmd = &cobra.Command{
 	Use:          "create [flags]",
-	Short:        "Create a domain",
-	Long:         `Create a domain with the specified name and custom domain. The domain will be created for the specified environment type.`,
+	Short:        "Create a Custom Domain",
+	Long:         `This command helps you create a Custom Domain.`,
 	Example:      createExample,
 	RunE:         runCreate,
 	SilenceUsage: true,
@@ -47,15 +50,16 @@ func runCreate(cmd *cobra.Command, args []string) error {
 	// Get flags
 	domain, _ := cmd.Flags().GetString("domain")
 	environmentType, _ := cmd.Flags().GetString("environment-type")
+	output, _ := cmd.Flags().GetString("output")
 
 	// Validate user is currently logged in
-	token, err := utils.GetToken()
+	token, err := common.GetTokenWithLogin()
 	if err != nil {
 		utils.PrintError(err)
 		return err
 	}
 
-	domains, err := dataaccess.ListDomains(token)
+	domains, err := dataaccess.ListDomains(cmd.Context(), token)
 	if err != nil {
 		utils.PrintError(err)
 		return err
@@ -77,7 +81,7 @@ func runCreate(cmd *cobra.Command, args []string) error {
 		}
 
 		// Check if domain of the same environment type already exists
-		if d.EnvironmentType == saasportalapi.EnvironmentType(strings.ToUpper(environmentType)) {
+		if d.EnvironmentType == strings.ToUpper(environmentType) {
 			err = errors.New("domain with the same environment type already exists, please choose a different environment type. You can use 'omnistrate-ctl get domain' to list all existing domains.")
 			utils.PrintError(err)
 			return err
@@ -85,28 +89,22 @@ func runCreate(cmd *cobra.Command, args []string) error {
 	}
 
 	// Create domain
-	request := &saasportalapi.CreateSaaSPortalCustomDomainRequest{
-		Token:           token,
-		Name:            args[0],
-		Description:     "Custom domain for " + environmentType + " environment",
-		EnvironmentType: saasportalapi.EnvironmentType(strings.ToUpper(environmentType)),
-		CustomDomain:    domain,
-	}
-
-	err = dataaccess.CreateDomain(request)
+	err = dataaccess.CreateDomain(cmd.Context(), token, args[0], "Custom domain for "+environmentType+" environment", strings.ToUpper(environmentType), domain)
 	if err != nil {
 		utils.PrintError(err)
 		return err
 	}
-	utils.PrintSuccess("Domain created successfully")
+	if output != "json" {
+		utils.PrintSuccess("Domain created successfully")
+	}
 
-	domains, err = dataaccess.ListDomains(token)
+	domains, err = dataaccess.ListDomains(cmd.Context(), token)
 	if err != nil {
 		utils.PrintError(err)
 		return err
 	}
 
-	var customDomain *saasportalapi.CustomDomain
+	var customDomain openapiclientv1.CustomDomain
 	for _, d := range domains.CustomDomains {
 		if d.Name == args[0] {
 			customDomain = d
@@ -114,7 +112,14 @@ func runCreate(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	dataaccess.PrintNextStepVerifyDomainMsg(customDomain.ClusterEndpoint)
+	err = utils.PrintTextTableJsonOutput(output, customDomain)
+	if err != nil {
+		return err
+	}
+
+	if output != "json" {
+		dataaccess.PrintNextStepVerifyDomainMsg(customDomain.ClusterEndpoint)
+	}
 
 	return nil
 }

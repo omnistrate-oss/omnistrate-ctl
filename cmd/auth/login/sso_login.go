@@ -5,16 +5,17 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/atotto/clipboard"
-	"github.com/omnistrate/ctl/config"
-	"github.com/omnistrate/ctl/dataaccess"
-	"github.com/omnistrate/ctl/utils"
-	"github.com/pkg/browser"
-	"github.com/pkg/errors"
 	"io"
 	"net/http"
 	"strings"
 	"time"
+
+	"github.com/atotto/clipboard"
+	"github.com/omnistrate-oss/omnistrate-ctl/internal/config"
+	"github.com/omnistrate-oss/omnistrate-ctl/internal/dataaccess"
+	"github.com/omnistrate-oss/omnistrate-ctl/internal/utils"
+	"github.com/pkg/browser"
+	"github.com/pkg/errors"
 )
 
 // DeviceCodeResponse represents the response from the device code request
@@ -42,13 +43,13 @@ const (
 	gitHubDeviceCodeURL    = "https://github.com/login/device/code"
 	googleVerificationURI  = "https://www.google.com/device"
 	gitHubVerificationURI  = "https://github.com/login/device"
-	gitHubScope            = "user:email"
-	googleScope            = "email"
+	gitHubScope            = "read:user user:email"
+	googleScope            = "email profile"
 )
 
-func SSOLogin(identityProviderName string) error {
+func ssoLogin(ctx context.Context, identityProviderName string) error {
 	// Step 1: Request device and user verification codes
-	deviceCodeResponse, err := requestDeviceCode(identityProviderName)
+	deviceCodeResponse, err := requestDeviceCode(ctx, identityProviderName)
 	if err != nil {
 		err = errors.New(fmt.Sprintf("Error requesting device code: %v\n", err))
 		utils.PrintError(err)
@@ -57,11 +58,11 @@ func SSOLogin(identityProviderName string) error {
 
 	// Step 2: Prompt the user to enter the user code in a browser
 	// Copy the user code to the clipboard
+	clipboardSuccess := true
 	err = clipboard.WriteAll(deviceCodeResponse.UserCode)
 	if err != nil {
-		err = errors.New(fmt.Sprintf("Error copying user code to clipboard: %v\n", err))
-		utils.PrintError(err)
-		return err
+		clipboardSuccess = false
+		utils.PrintWarning(fmt.Sprintf("Warning: Could not copy user code to clipboard: %v", err))
 	}
 
 	// Automatically open the verification URI in the default browser
@@ -74,12 +75,16 @@ func SSOLogin(identityProviderName string) error {
 	}
 	fmt.Print("If the browser does not open or you wish to use a different device to authorize this request, open the following URL:\n\n")
 	fmt.Printf("%s\n\n", getVerificationURI(identityProviderName))
-	fmt.Print("The code has been copied to your clipboard. Paste it in the browser when prompted.\n")
+	if clipboardSuccess {
+		fmt.Print("The code has been copied to your clipboard. Paste it in the browser when prompted.\n")
+	} else {
+		fmt.Print("Please copy the code below and paste it in the browser when prompted.\n")
+	}
 	fmt.Print("You can also manually type in the code:\n\n")
 	fmt.Printf("%s\n\n", deviceCodeResponse.UserCode)
 
 	// Step 3: Poll identity provider server to check if the user authorized the device via backend API
-	jwtTokenResponse, err := pollForAccessTokenAndLogin(identityProviderName, deviceCodeResponse.DeviceCode, deviceCodeResponse.Interval)
+	jwtTokenResponse, err := pollForAccessTokenAndLogin(ctx, identityProviderName, deviceCodeResponse.DeviceCode, deviceCodeResponse.Interval)
 	if err != nil {
 		utils.PrintError(err)
 		return err
@@ -101,7 +106,7 @@ func SSOLogin(identityProviderName string) error {
 }
 
 // requestDeviceCode requests a device and user verification code from the identity provider
-func requestDeviceCode(identityProviderName string) (*DeviceCodeResponse, error) {
+func requestDeviceCode(ctx context.Context, identityProviderName string) (*DeviceCodeResponse, error) {
 	data := map[string]string{
 		"client_id": getClientID(identityProviderName),
 		"scope":     getScope(identityProviderName),
@@ -112,7 +117,7 @@ func requestDeviceCode(identityProviderName string) (*DeviceCodeResponse, error)
 		return nil, err
 	}
 
-	req, err := http.NewRequestWithContext(context.Background(), "POST", getDeviceCodeURL(identityProviderName), bytes.NewBuffer(dataBytes))
+	req, err := http.NewRequestWithContext(ctx, "POST", getDeviceCodeURL(identityProviderName), bytes.NewBuffer(dataBytes))
 	if err != nil {
 		return nil, err
 	}
@@ -145,11 +150,11 @@ func requestDeviceCode(identityProviderName string) (*DeviceCodeResponse, error)
 }
 
 // pollForAccessTokenAndLogin polls identity provider server for an access token and uses it to log user into the platform
-func pollForAccessTokenAndLogin(identityProviderName, deviceCode string, interval int) (*AccessTokenResponse, error) {
+func pollForAccessTokenAndLogin(ctx context.Context, identityProviderName, deviceCode string, interval int) (*AccessTokenResponse, error) {
 	for {
 		time.Sleep(time.Duration(interval) * time.Second)
 
-		resp, err := dataaccess.LoginWithIdentityProvider(deviceCode, identityProviderName)
+		jwtToken, err := dataaccess.LoginWithIdentityProvider(ctx, deviceCode, identityProviderName)
 		if err != nil {
 			if strings.Contains(err.Error(), "Failed to get access token with status code: 428 Precondition Required") { // authorization_pending
 				continue
@@ -165,7 +170,7 @@ func pollForAccessTokenAndLogin(identityProviderName, deviceCode string, interva
 		}
 
 		return &AccessTokenResponse{
-			JWTToken: resp.JWTToken,
+			JWTToken: jwtToken,
 		}, nil
 	}
 }
@@ -173,13 +178,13 @@ func pollForAccessTokenAndLogin(identityProviderName, deviceCode string, interva
 func getClientID(identityProviderName string) string {
 	switch identityProviderName {
 	case identityProviderGitHub:
-		if utils.IsProd() {
+		if config.IsProd() {
 			return gitHubProdClientID
 		} else {
 			return gitHubDevClientID
 		}
 	case identityProviderGoogle:
-		if utils.IsProd() {
+		if config.IsProd() {
 			return googleProdClientID
 		} else {
 			return googleDevClientID

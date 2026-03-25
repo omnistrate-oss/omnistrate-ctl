@@ -1,14 +1,15 @@
 package helm
 
 import (
-	"github.com/omnistrate/ctl/dataaccess"
-	"github.com/omnistrate/ctl/utils"
+	"github.com/omnistrate-oss/omnistrate-ctl/cmd/common"
+	"github.com/omnistrate-oss/omnistrate-ctl/internal/dataaccess"
+	"github.com/omnistrate-oss/omnistrate-ctl/internal/utils"
 	"github.com/spf13/cobra"
 )
 
 const (
-	deleteExample = `  # Delete a Helm package
-  omctl helm delete redis --version=20.0.1`
+	deleteExample = `# Delete a Helm package
+omnistrate-ctl helm delete redis --version=20.0.1`
 )
 
 var deleteCmd = &cobra.Command{
@@ -34,21 +35,33 @@ func init() {
 func runDelete(cmd *cobra.Command, args []string) error {
 	chart := args[0]
 	version, _ := cmd.Flags().GetString("version")
+	output, _ := cmd.Flags().GetString("output")
 
 	// Validate user is currently logged in
-	token, err := utils.GetToken()
+	token, err := common.GetTokenWithLogin()
 	if err != nil {
 		utils.PrintError(err)
 		return err
 	}
 
-	err = dataaccess.DeleteHelmChart(token, chart, version)
+	// Initialize spinner if output is not JSON
+	var sm utils.SpinnerManager
+	var spinner *utils.Spinner
+	if output != "json" {
+		sm = utils.NewSpinnerManager()
+		msg := "Deleting Helm package..."
+		spinner = sm.AddSpinner(msg)
+		sm.Start()
+	}
+
+	// Delete Helm package
+	err = dataaccess.DeleteHelmChart(cmd.Context(), token, chart, version)
 	if err != nil {
-		utils.PrintError(err)
+		utils.HandleSpinnerError(spinner, sm, err)
 		return err
 	}
 
-	utils.PrintSuccess("Helm package deleted successfully")
+	utils.HandleSpinnerSuccess(spinner, sm, "Successfully deleted Helm package")
 
 	return nil
 }

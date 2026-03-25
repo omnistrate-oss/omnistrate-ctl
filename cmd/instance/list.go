@@ -3,16 +3,25 @@ package instance
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/omnistrate/ctl/dataaccess"
-	"github.com/omnistrate/ctl/model"
-	"github.com/omnistrate/ctl/utils"
-	"github.com/spf13/cobra"
 	"strings"
+
+	"github.com/omnistrate-oss/omnistrate-ctl/cmd/common"
+	"github.com/omnistrate-oss/omnistrate-ctl/internal/config"
+	"github.com/omnistrate-oss/omnistrate-ctl/internal/dataaccess"
+	"github.com/omnistrate-oss/omnistrate-ctl/internal/model"
+	"github.com/omnistrate-oss/omnistrate-ctl/internal/utils"
+	"github.com/spf13/cobra"
 )
 
 const (
-	listExample = `  # List instance deployments of the service postgres in the prod and dev environments
-  omctl instance list -o=table -f="service:postgres,environment:Production" -f="service:postgres,environment:Dev"`
+	listExample = `# List instance deployments of the service postgres in the prod and dev environments
+omnistrate-ctl instance list -f="service:postgres,environment:Production" -f="service:postgres,environment:Dev"
+
+# List instances with specific tags
+omnistrate-ctl instance list --tag env=prod --tag team=backend
+
+# Combine regular filters with tag filters
+omnistrate-ctl instance list -f="service:postgres" --tag env=prod`
 	defaultMaxNameLength = 30 // Maximum length of the name column in the table
 )
 
@@ -27,13 +36,16 @@ You can filter for specific instances by using the filter flag.`,
 }
 
 func init() {
-	listCmd.Flags().StringP("output", "o", "text", "Output format (text|table|json)")
 	listCmd.Flags().StringArrayP("filter", "f", []string{}, "Filter to apply to the list of instances. E.g.: key1:value1,key2:value2, which filters instances where key1 equals value1 and key2 equals value2. Allow use of multiple filters to form the logical OR operation. Supported keys: "+strings.Join(utils.GetSupportedFilterKeys(model.Instance{}), ",")+". Check the examples for more details.")
+	listCmd.Flags().StringArray("tag", []string{}, "Filter instances by tags. Specify tags as key=value pairs. Multiple --tag flags can be used to filter by multiple tags (all tags must match).")
 	listCmd.Flags().Bool("truncate", false, "Truncate long names in the output")
+	listCmd.Flags().BoolP("interactive", "i", false, "Launch interactive list with fuzzy search and selection")
 }
 
 func runList(cmd *cobra.Command, args []string) error {
-	// Get flags
+	defer config.CleanupArgsAndFlags(cmd, &args)
+
+	// Retrieve flags
 	output, err := cmd.Flags().GetString("output")
 	if err != nil {
 		utils.PrintError(err)
@@ -44,7 +56,17 @@ func runList(cmd *cobra.Command, args []string) error {
 		utils.PrintError(err)
 		return err
 	}
+	tagFilters, err := cmd.Flags().GetStringArray("tag")
+	if err != nil {
+		utils.PrintError(err)
+		return err
+	}
 	truncateNames, err := cmd.Flags().GetBool("truncate")
+	if err != nil {
+		utils.PrintError(err)
+		return err
+	}
+	interactive, err := cmd.Flags().GetBool("interactive")
 	if err != nil {
 		utils.PrintError(err)
 		return err
@@ -57,99 +79,115 @@ func runList(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	// Validate user is currently logged in
-	token, err := utils.GetToken()
+	// Parse tag filters
+	parsedTagFilters, err := parseTagFilters(tagFilters)
 	if err != nil {
 		utils.PrintError(err)
 		return err
+	}
+
+	// Validate user is currently logged in
+	token, err := common.GetTokenWithLogin()
+	if err != nil {
+		utils.PrintError(err)
+		return err
+	}
+
+	// Initialize spinner if output is not JSON and not interactive
+	var sm utils.SpinnerManager
+	var spinner *utils.Spinner
+	if output != common.OutputTypeJson && !interactive {
+		sm = utils.NewSpinnerManager()
+		spinner = sm.AddSpinner("Listing instance deployments...")
+		sm.Start()
 	}
 
 	// Get all instances
-	searchRes, err := dataaccess.SearchInventory(token, "resourceinstance:i")
+	searchRes, err := dataaccess.SearchInventory(cmd.Context(), token, "resourceinstance:i")
 	if err != nil {
-		utils.PrintError(err)
+		utils.HandleSpinnerError(spinner, sm, err)
 		return err
 	}
 
-	instances := make([]model.Instance, 0)
-	for _, instance := range searchRes.ResourceInstanceResults {
-		if instance == nil {
+	formattedInstances := make([]model.Instance, 0)
+	for i := range searchRes.ResourceInstanceResults {
+		instance := searchRes.ResourceInstanceResults[i]
+		if instance.Id == "" {
 			continue
 		}
-		planName := ""
-		if instance.ProductTierName != nil {
-			planName = *instance.ProductTierName
-		}
-		planVersion := ""
-		if instance.ProductTierVersion != nil {
-			planVersion = *instance.ProductTierVersion
-		}
-		serviceName := instance.ServiceName
-		if truncateNames {
-			serviceName = utils.TruncateString(serviceName, defaultMaxNameLength)
-			planName = utils.TruncateString(planName, defaultMaxNameLength)
-		}
-		subscriptionID := ""
-		if instance.SubscriptionID != nil {
-			subscriptionID = string(*instance.SubscriptionID)
-		}
-		formattedInstance := model.Instance{
-			InstanceID:     instance.ID,
-			Service:        serviceName,
-			Environment:    instance.ServiceEnvironmentName,
-			Plan:           planName,
-			Version:        planVersion,
-			Resource:       instance.ResourceName,
-			CloudProvider:  string(instance.CloudProvider),
-			Region:         instance.RegionCode,
-			Status:         string(instance.Status),
-			SubscriptionID: subscriptionID,
-		}
+
+		// Format instance
+		formattedInstance := formatInstance(&instance, truncateNames)
 
 		// Check if the instance matches the filters
 		ok, err := utils.MatchesFilters(formattedInstance, filterMaps)
 		if err != nil {
-			utils.PrintError(err)
+			utils.HandleSpinnerError(spinner, sm, err)
 			return err
 		}
-		if ok {
-			instances = append(instances, formattedInstance)
+		if !ok {
+			continue
 		}
+
+		// Check if the instance matches the tag filters
+		if !matchesTagFilters(formattedInstance.Tags, parsedTagFilters) {
+			continue
+		}
+
+		formattedInstances = append(formattedInstances, formattedInstance)
 	}
 
-	var jsonData []string
-	for _, instance := range instances {
-		data, err := json.MarshalIndent(instance, "", "    ")
-		if err != nil {
-			utils.PrintError(err)
-			return err
-		}
-
-		jsonData = append(jsonData, string(data))
+	if len(formattedInstances) == 0 {
+		utils.HandleSpinnerSuccess(spinner, sm, "No instances found.")
+	} else {
+		utils.HandleSpinnerSuccess(spinner, sm, fmt.Sprintf("Found %d instance(s).", len(formattedInstances)))
 	}
 
-	if len(jsonData) == 0 {
-		utils.PrintInfo("No instances found.")
-		return nil
+	// Interactive mode: launch TUI list
+	if interactive {
+		return runInteractiveInstanceList(formattedInstances)
 	}
 
-	switch output {
-	case "text":
-		err = utils.PrintText(jsonData)
-		if err != nil {
-			return err
-		}
-	case "table":
-		err = utils.PrintTable(jsonData)
-		if err != nil {
-			return err
-		}
-	case "json":
-		fmt.Printf("%+v\n", jsonData)
-	default:
-		err = fmt.Errorf("unsupported output format: %s", output)
-		utils.PrintError(err)
+	// Print output
+	err = utils.PrintTextTableJsonArrayOutput(output, formattedInstances)
+	if err != nil {
 		return err
+	}
+
+	return nil
+}
+
+func runInteractiveInstanceList(instances []model.Instance) error {
+	items := make([]utils.InteractiveListItem, len(instances))
+	for i, inst := range instances {
+		rawJSON, _ := json.Marshal(inst)
+		desc := fmt.Sprintf("%s · %s · %s/%s · %s",
+			inst.Service, inst.Plan, inst.CloudProvider, inst.Region, inst.InstanceID)
+		items[i] = utils.NewInteractiveListItem(
+			inst.InstanceID,
+			desc,
+			inst.InstanceID,
+			inst.Status,
+			rawJSON,
+		)
+	}
+
+	selected, err := utils.RunInteractiveList(utils.InteractiveListConfig{
+		Title:    "Instance Deployments",
+		Items:    items,
+		ShowJSON: true,
+	})
+	if err != nil {
+		return err
+	}
+
+	if selected != nil {
+		// Print the selected instance's JSON detail
+		var prettyJSON json.RawMessage
+		if err := json.Unmarshal([]byte(selected.JSONData()), &prettyJSON); err == nil {
+			data, _ := json.MarshalIndent(prettyJSON, "", "    ")
+			fmt.Println(string(data))
+		}
 	}
 
 	return nil

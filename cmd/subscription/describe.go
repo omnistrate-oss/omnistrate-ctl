@@ -1,23 +1,29 @@
 package subscription
 
 import (
-	"encoding/json"
+	"context"
 	"fmt"
-	"github.com/omnistrate/ctl/dataaccess"
-	"github.com/omnistrate/ctl/model"
-	"github.com/omnistrate/ctl/utils"
+
+	"github.com/omnistrate-oss/omnistrate-ctl/cmd/common"
+
+	"github.com/omnistrate-oss/omnistrate-ctl/internal/config"
+	"github.com/omnistrate-oss/omnistrate-ctl/internal/dataaccess"
+	"github.com/omnistrate-oss/omnistrate-ctl/internal/model"
+	"github.com/omnistrate-oss/omnistrate-ctl/internal/utils"
+	openapiclientfleet "github.com/omnistrate-oss/omnistrate-sdk-go/fleet"
+	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
 )
 
 const (
-	describeExample = `  # Describe subscription
-  omctl subscription describe subscription-abcd1234`
+	describeExample = `# Describe subscription
+omnistrate-ctl subscription describe [subscription-id]`
 )
 
 var describeCmd = &cobra.Command{
 	Use:          "describe [subscription-id]",
-	Short:        "Describe a customer subscription to your service",
-	Long:         `This command helps you describe a customer subscription to your service.`,
+	Short:        "Describe a Customer Subscription to your service",
+	Long:         `This command helps you get detailed information about a Customer Subscription.`,
 	Example:      describeExample,
 	RunE:         runDescribe,
 	SilenceUsage: true,
@@ -28,55 +34,101 @@ func init() {
 }
 
 func runDescribe(cmd *cobra.Command, args []string) error {
-	// Get flags
-	subscriptionId := args[0]
+	defer config.CleanupArgsAndFlags(cmd, &args)
 
-	// Validate user is currently logged in
-	token, err := utils.GetToken()
+	// Retrieve args
+	subscriptionID := args[0]
+
+	// Retrieve flags
+	output, err := cmd.Flags().GetString("output")
 	if err != nil {
 		utils.PrintError(err)
 		return err
+	}
+
+	// Validate output flag
+	if output != "json" {
+		err = errors.New("only json output is supported")
+		utils.PrintError(err)
+		return err
+	}
+
+	// Validate user login
+	token, err := common.GetTokenWithLogin()
+	if err != nil {
+		utils.PrintError(err)
+		return err
+	}
+
+	// Initialize spinner if output is not JSON
+	var sm utils.SpinnerManager
+	var spinner *utils.Spinner
+	if output != "json" {
+		sm = utils.NewSpinnerManager()
+		msg := "Describing subscription..."
+		spinner = sm.AddSpinner(msg)
+		sm.Start()
 	}
 
 	// Check if the subscription exists
-	searchRes, err := dataaccess.SearchInventory(token, fmt.Sprintf("subscription:%s", subscriptionId))
+	subscription, err := getSubscription(cmd.Context(), token, subscriptionID)
+	if err != nil {
+		utils.HandleSpinnerError(spinner, sm, err)
+		return err
+	}
+
+	utils.HandleSpinnerSuccess(spinner, sm, "Successfully retrieved subscription details")
+
+	// Format subscription
+	formattedSubscription := formatSubscription(subscription, false)
+
+	// Print output
+	err = utils.PrintTextTableJsonOutput(output, formattedSubscription)
 	if err != nil {
 		utils.PrintError(err)
 		return err
 	}
 
-	var found bool
-	for _, subscription := range searchRes.SubscriptionResults {
-		if subscription.ID == subscriptionId {
-			found = true
-			break
-		}
-	}
-	if !found {
-		err = fmt.Errorf("%s not found. Please check the subscription ID and try again", subscriptionId)
-		utils.PrintError(err)
-		return nil
+	return nil
+}
+
+// Helper functions
+
+func getSubscription(ctx context.Context, token, subscriptionID string) (*openapiclientfleet.SubscriptionSearchRecord, error) {
+	searchRes, err := dataaccess.SearchInventory(ctx, token, fmt.Sprintf("subscription:%s", subscriptionID))
+	if err != nil {
+		return nil, err
 	}
 
-	subscription := searchRes.SubscriptionResults[0]
+	for _, subscription := range searchRes.SubscriptionResults {
+		if subscription.Id == subscriptionID {
+			return &subscription, nil
+		}
+	}
+
+	err = fmt.Errorf("%s not found. Please check the subscription ID and try again", subscriptionID)
+	return nil, err
+}
+
+func formatSubscription(subscription *openapiclientfleet.SubscriptionSearchRecord, truncateNames bool) model.Subscription {
+	serviceName := subscription.ServiceName
+	planName := subscription.ServicePlanName
+	if truncateNames {
+		serviceName = utils.TruncateString(serviceName, defaultMaxNameLength)
+		planName = utils.TruncateString(planName, defaultMaxNameLength)
+	}
+
 	formattedSubscription := model.Subscription{
-		SubscriptionID:         subscription.ID,
-		ServiceID:              string(subscription.ServiceID),
-		ServiceName:            subscription.ServiceName,
-		PlanID:                 string(subscription.ProductTierID),
-		PlanName:               subscription.ServicePlanName,
+		SubscriptionID:         subscription.Id,
+		ServiceID:              subscription.ServiceID,
+		ServiceName:            serviceName,
+		PlanID:                 subscription.ProductTierID,
+		PlanName:               planName,
 		Environment:            subscription.ServiceEnvironmentName,
 		SubscriptionOwnerName:  subscription.RootUserName,
 		SubscriptionOwnerEmail: subscription.RootUserEmail,
-		Status:                 string(subscription.Status),
+		Status:                 subscription.Status,
 	}
 
-	data, err := json.MarshalIndent(formattedSubscription, "", "    ")
-	if err != nil {
-		utils.PrintError(err)
-		return err
-	}
-	fmt.Println(string(data))
-
-	return nil
+	return formattedSubscription
 }

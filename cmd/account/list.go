@@ -1,19 +1,22 @@
 package account
 
 import (
-	"encoding/json"
 	"fmt"
-	accountconfigapi "github.com/omnistrate/api-design/v1/pkg/registration/gen/account_config_api"
-	"github.com/omnistrate/ctl/dataaccess"
-	"github.com/omnistrate/ctl/model"
-	"github.com/omnistrate/ctl/utils"
-	"github.com/spf13/cobra"
 	"strings"
+
+	"github.com/omnistrate-oss/omnistrate-ctl/cmd/common"
+
+	"github.com/omnistrate-oss/omnistrate-ctl/internal/config"
+	"github.com/omnistrate-oss/omnistrate-ctl/internal/dataaccess"
+	"github.com/omnistrate-oss/omnistrate-ctl/internal/model"
+	"github.com/omnistrate-oss/omnistrate-ctl/internal/utils"
+	openapiclient "github.com/omnistrate-oss/omnistrate-sdk-go/v1"
+	"github.com/spf13/cobra"
 )
 
 const (
-	listExample = `  # List accounts
-  omctl account list -o=table`
+	listExample = `# List accounts
+omnistrate-ctl account list`
 )
 
 var listCmd = &cobra.Command{
@@ -27,12 +30,11 @@ You can filter for specific accounts by using the filter flag.`,
 }
 
 func init() {
-	listCmd.Flags().StringP("output", "o", "text", "Output format (text|table|json)")
 	listCmd.Flags().StringArrayP("filter", "f", []string{}, "Filter to apply to the list of accounts. E.g.: key1:value1,key2:value2, which filters accounts where key1 equals value1 and key2 equals value2. Allow use of multiple filters to form the logical OR operation. Supported keys: "+strings.Join(utils.GetSupportedFilterKeys(model.Account{}), ",")+". Check the examples for more details.")
 }
 
 func runList(cmd *cobra.Command, args []string) error {
-	defer utils.CleanupArgsAndFlags(cmd, &args)
+	defer config.CleanupArgsAndFlags(cmd, &args)
 
 	// Retrieve command-line flags
 	output, _ := cmd.Flags().GetString("output")
@@ -45,57 +47,68 @@ func runList(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	// Ensure user is logged in
-	token, err := utils.GetToken()
+	// Validate user login
+	token, err := common.GetTokenWithLogin()
 	if err != nil {
 		utils.PrintError(err)
 		return err
+	}
+
+	// Initialize spinner if output is not JSON
+	var sm utils.SpinnerManager
+	var spinner *utils.Spinner
+	if output != "json" {
+		sm = utils.NewSpinnerManager()
+		msg := "Retrieving accounts..."
+		spinner = sm.AddSpinner(msg)
+		sm.Start()
 	}
 
 	// Retrieve accounts and accounts
-	listRes, err := dataaccess.ListAccounts(token, "all")
+	listRes, err := dataaccess.ListAccounts(cmd.Context(), token, "all")
 	if err != nil {
-		utils.PrintError(err)
+		utils.HandleSpinnerError(spinner, sm, err)
 		return err
 	}
 
-	var accountsData []string
+	var formattedAccounts []model.Account
 
 	// Process and filter accounts
 	for _, account := range listRes.AccountConfigs {
-		formattedAccount, err := formatAccount(account)
+		formattedAccount, err := formatAccount(&account)
 		if err != nil {
-			utils.PrintError(err)
+			utils.HandleSpinnerError(spinner, sm, err)
 			return err
 		}
 
 		match, err := utils.MatchesFilters(formattedAccount, filterMaps)
 		if err != nil {
-			utils.PrintError(err)
-			return err
-		}
-
-		data, err := json.MarshalIndent(formattedAccount, "", "    ")
-		if err != nil {
-			utils.PrintError(err)
+			utils.HandleSpinnerError(spinner, sm, err)
 			return err
 		}
 
 		if match {
-			accountsData = append(accountsData, string(data))
+			formattedAccounts = append(formattedAccounts, formattedAccount)
 		}
 	}
 
 	// Handle case when no accounts match
-	if len(accountsData) == 0 {
-		utils.PrintInfo("No accounts found.")
-		return nil
+	if len(formattedAccounts) == 0 {
+		utils.HandleSpinnerSuccess(spinner, sm, "No accounts found")
+	} else {
+		utils.HandleSpinnerSuccess(spinner, sm, "Successfully retrieved accounts")
 	}
 
 	// Format output as requested
-	err = utils.PrintTextTableJsonArrayOutput(output, accountsData)
+	err = utils.PrintTextTableJsonArrayOutput(output, formattedAccounts)
 	if err != nil {
+		utils.PrintError(err)
 		return err
+	}
+
+	// Ask user to verify account if output is not JSON
+	if output != "json" {
+		dataaccess.AskVerifyAccountIfAny(cmd.Context())
 	}
 
 	return nil
@@ -103,20 +116,35 @@ func runList(cmd *cobra.Command, args []string) error {
 
 // Helper functions
 
-func formatAccount(account *accountconfigapi.DescribeAccountConfigResult) (model.Account, error) {
+func formatAccount(account *openapiclient.DescribeAccountConfigResult) (model.Account, error) {
+	if account == nil {
+		return model.Account{}, fmt.Errorf("account is nil")
+	}
+
 	var targetAccountID, cloudProvider string
+
+	// Handle AWS account
 	if account.AwsAccountID != nil {
 		targetAccountID = *account.AwsAccountID
 		cloudProvider = "AWS"
-	} else {
+	} else if account.GcpProjectID != nil && account.GcpProjectNumber != nil {
+		// Handle GCP account
 		targetAccountID = fmt.Sprintf("%s(ProjectID: %s)", *account.GcpProjectID, *account.GcpProjectNumber)
 		cloudProvider = "GCP"
+	} else if account.AzureSubscriptionID != nil {
+		// Handle Azure account
+		targetAccountID = *account.AzureSubscriptionID
+		cloudProvider = "Azure"
+	} else {
+		// Handle unknown account type
+		targetAccountID = "unknown"
+		cloudProvider = "unknown"
 	}
 
 	return model.Account{
-		ID:              string(account.ID),
+		ID:              account.Id,
 		Name:            account.Name,
-		Status:          string(account.Status),
+		Status:          account.Status,
 		CloudProvider:   cloudProvider,
 		TargetAccountID: targetAccountID,
 	}, nil

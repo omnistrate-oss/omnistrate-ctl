@@ -1,17 +1,16 @@
 package helm
 
 import (
-	"encoding/json"
-	"fmt"
-	helmpackageapi "github.com/omnistrate/api-design/v1/pkg/fleet/gen/helm_package_api"
-	"github.com/omnistrate/ctl/dataaccess"
-	"github.com/omnistrate/ctl/utils"
+	"github.com/omnistrate-oss/omnistrate-ctl/cmd/common"
+	"github.com/omnistrate-oss/omnistrate-ctl/internal/dataaccess"
+	"github.com/omnistrate-oss/omnistrate-ctl/internal/utils"
+	openapiclient "github.com/omnistrate-oss/omnistrate-sdk-go/v1"
 	"github.com/spf13/cobra"
 )
 
 const (
-	describeExample = `  # Describe the Redis Operator Helm Chart
-  omctl helm describe redis --version=20.0.1`
+	describeExample = `# Describe the Redis Operator Helm Chart
+omnistrate-ctl helm describe redis --version=20.0.1`
 )
 
 var describeCmd = &cobra.Command{
@@ -27,7 +26,6 @@ func init() {
 	describeCmd.Args = cobra.ExactArgs(1) // Require exactly one argument
 
 	describeCmd.Flags().String("version", "", "Helm Chart version")
-	describeCmd.Flags().StringP("output", "o", "text", "Output format (text|table|json)")
 
 	err := describeCmd.MarkFlagRequired("version")
 	if err != nil {
@@ -42,43 +40,35 @@ func runDescribe(cmd *cobra.Command, args []string) error {
 	output, _ := cmd.Flags().GetString("output")
 
 	// Validate user is currently logged in
-	token, err := utils.GetToken()
+	token, err := common.GetTokenWithLogin()
 	if err != nil {
 		utils.PrintError(err)
 		return err
 	}
 
-	var helmPackage *helmpackageapi.HelmPackage
-	helmPackage, err = dataaccess.DescribeHelmChart(token, chart, version)
+	// Initialize spinner if output is not JSON
+	var sm utils.SpinnerManager
+	var spinner *utils.Spinner
+	if output != "json" {
+		sm = utils.NewSpinnerManager()
+		msg := "Describing Helm Chart..."
+		spinner = sm.AddSpinner(msg)
+		sm.Start()
+	}
+
+	// Retrieve Helm Chart
+	var helmPackage *openapiclient.HelmPackage
+	helmPackage, err = dataaccess.DescribeHelmChart(cmd.Context(), token, chart, version)
 	if err != nil {
-		utils.PrintError(err)
+		utils.HandleSpinnerError(spinner, sm, err)
 		return err
 	}
 
-	var jsonData []string
-	data, err := json.MarshalIndent(helmPackage, "", "    ")
+	utils.HandleSpinnerSuccess(spinner, sm, "Successfully retrieved Helm Chart")
+
+	// Print output
+	err = utils.PrintTextTableJsonOutput(output, helmPackage)
 	if err != nil {
-		utils.PrintError(err)
-		return err
-	}
-	jsonData = append(jsonData, string(data))
-
-	switch output {
-	case "text":
-		err = utils.PrintText(jsonData)
-		if err != nil {
-			return err
-		}
-	case "table":
-		err = utils.PrintTable(jsonData)
-		if err != nil {
-			return err
-		}
-	case "json":
-		fmt.Println(string(data))
-
-	default:
-		err = fmt.Errorf("unsupported output format: %s", output)
 		utils.PrintError(err)
 		return err
 	}

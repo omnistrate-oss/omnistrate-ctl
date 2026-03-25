@@ -1,37 +1,47 @@
 package domain
 
 import (
-	"github.com/omnistrate/ctl/dataaccess"
-	"github.com/omnistrate/ctl/utils"
-	"github.com/pkg/errors"
-	"github.com/spf13/cobra"
 	"slices"
 	"strings"
+
+	"github.com/omnistrate-oss/omnistrate-ctl/cmd/common"
+
+	"github.com/omnistrate-oss/omnistrate-ctl/internal/config"
+	"github.com/omnistrate-oss/omnistrate-ctl/internal/dataaccess"
+	"github.com/omnistrate-oss/omnistrate-ctl/internal/utils"
+	"github.com/pkg/errors"
+	"github.com/spf13/cobra"
 )
 
 var (
-	deleteExample = `  # Delete domain with name
-  omctl delete domain <name>
-
-  # Delete multiple domains with names
-  omctl delete domain <name1> <name2> <name3>`
+	deleteExample = `# Delete domain with name
+omnistrate-ctl delete domain [domain-name]`
 )
 
 var deleteCmd = &cobra.Command{
 	Use:          "delete [name]",
-	Short:        "Delete one or more domains",
-	Long:         `Delete domain by specifying name.`,
+	Short:        "Delete a Custom Domain",
+	Long:         `This command helps you delete a Custom Domain.`,
 	Example:      deleteExample,
 	RunE:         runDelete,
 	SilenceUsage: true,
 }
 
 func init() {
-	deleteCmd.Args = cobra.MinimumNArgs(1) // Require at least one argument
+	deleteCmd.Args = cobra.ExactArgs(1) // Require exactly one argument
 }
 
 func runDelete(cmd *cobra.Command, args []string) error {
-	token, err := utils.GetToken()
+	defer config.CleanupArgsAndFlags(cmd, &args)
+
+	// Retrieve flags
+	output, err := cmd.Flags().GetString("output")
+	if err != nil {
+		utils.PrintError(err)
+		return err
+	}
+
+	token, err := common.GetTokenWithLogin()
 	if err != nil {
 		utils.PrintError(err)
 		return err
@@ -40,7 +50,7 @@ func runDelete(cmd *cobra.Command, args []string) error {
 	environmentTypes := make([]string, 0)
 
 	// List domains
-	listRes, err := dataaccess.ListDomains(token)
+	listRes, err := dataaccess.ListDomains(cmd.Context(), token)
 	if err != nil {
 		utils.PrintError(err)
 		return err
@@ -54,7 +64,7 @@ func runDelete(cmd *cobra.Command, args []string) error {
 
 	for _, d := range listRes.CustomDomains {
 		if slices.Contains(args, d.Name) {
-			environmentTypes = append(environmentTypes, string(d.EnvironmentType))
+			environmentTypes = append(environmentTypes, d.EnvironmentType)
 			found[d.Name] += 1
 		}
 	}
@@ -67,7 +77,7 @@ func runDelete(cmd *cobra.Command, args []string) error {
 	}
 
 	if len(domainsNotFound) > 0 {
-		err = errors.New("domain(s) not found: " + strings.Join(domainsNotFound, ", "))
+		err = errors.New("domain not found: " + strings.Join(domainsNotFound, ", "))
 		utils.PrintError(err)
 		return err
 	}
@@ -80,14 +90,16 @@ func runDelete(cmd *cobra.Command, args []string) error {
 
 	// Delete domain
 	for _, environmentType := range environmentTypes {
-		err = dataaccess.DeleteDomain(token, environmentType)
+		err = dataaccess.DeleteDomain(cmd.Context(), token, environmentType)
 		if err != nil {
 			utils.PrintError(err)
 			return err
 		}
 	}
 
-	utils.PrintSuccess("Domain(s) deleted successfully")
+	if output != "json" {
+		utils.PrintSuccess("Domain deleted successfully")
+	}
 
 	return nil
 }

@@ -1,31 +1,21 @@
 # Logo: https://assets.stickpng.com/images/62debc4fff3c6e4b8b5de8d3.png
 version: "3"
 x-omnistrate-service-plan:
-  name: 'Hosted MySQL Cluster'
-  tenancyType: 'OMNISTRATE_DEDICATED_TENANCY'
+  name: "Hosted MySQL Cluster"
+  tenancyType: "OMNISTRATE_DEDICATED_TENANCY"
   deployment:
     hostedDeployment:
-      AwsAccountId: '339713121445'
-      AwsBootstrapRoleAccountArn: 'arn:aws:iam::339713121445:role/omnistrate-bootstrap-role'
+      AwsAccountId: "339713121445"
+      AwsBootstrapRoleAccountArn: "arn:aws:iam::339713121445:role/omnistrate-bootstrap-role"
 x-omnistrate-integrations:
   - omnistrateLogging
 x-internal-integrations:
-  metrics:
-    prometheusEndpoint: ':9090'
-    provider: signoz
-    endpoint: signoz.endpoint.test
-    secretLocators:
-      # gcp: projects/my-project/secrets/my-secret/versions/latest
-      aws: arn:aws:secretsmanager:us-west-2:1234567890:secret:compose-secret
-  logs:
-    provider: signoz
-    endpoint: signoz.endpoint.test
-    secretLocators:
-      # gcp: projects/my-project/secrets/my-secret/versions/latest
-      aws: arn:aws:secretsmanager:us-west-2:1234567890:secret:compose-secret
 services:
   writer:
     image: docker.io/bitnami/mysql:8.1.1
+    labels:
+      - "name=updated writer name"
+      - "description=updated description"
     configs:
       - source: my_config
         target: /etc/config/conf.yaml
@@ -33,22 +23,14 @@ services:
       - source: my_secret
         target: /etc/config/secret_updated.yaml
     ports:
-      - '3306'
+      - "3306"
     volumes:
-      - source: mysql_master_data
-        target: /var/lib/postgresql/data
+      - source: file_system_data_1
+        target: /var/lib/postgresql/data2
         type: volume
         x-omnistrate-storage:
           aws:
-            instanceStorageType: AWS::EBS_GP2
-            instanceStorageSizeGi: 200
-            instanceStorageIOPS: 6000
-            instanceStorageThroughputMiBps: 800
-            disableBackup: true
-          gcp:
-            instanceStorageType: GCP::PD_SSD
-            instanceStorageSizeGi: 200
-            disableBackup: true
+            clusterStorageType: AWS::EFS
       - type: cluster
         x-omnistrate-storage:
           aws:
@@ -72,6 +54,10 @@ services:
         targetPort: 3306
         enableAutoStop: true
         minimumNodesInPool: 10
+      serviceAccountPolicies:
+        aws:
+          - SECRETS_MANAGER
+          - LAMBDA
     environment:
       - MYSQL_REPLICATION_MODE=master
       - MYSQL_REPLICATION_USER=repl_user
@@ -110,11 +96,19 @@ services:
     x-omnistrate-mode-internal: true
   reader:
     image: docker.io/bitnami/mysql:8.1.1
-    ports:
-      - '3306'
-      - '3307'
     volumes:
-      - 'mysql_slave_data:/bitnami/mysql/data'
+      - source: mysql_slave_data
+        target: /bitnami/mysql/data2
+        type: volume
+        x-omnistrate-storage:
+          aws:
+            instanceStorageType: AWS::EBS_GP3
+            instanceStorageSizeGi: 100
+            instanceStorageIOPS: 3000
+            instanceStorageThroughputMiBps: 400
+          gcp:
+            instanceStorageType: GCP::PD_BALANCED
+            instanceStorageSizeGi: 100
     x-omnistrate-compute:
       replicaCountAPIParam: numReadReplicas
       instanceTypes:
@@ -124,8 +118,6 @@ services:
           apiParam: readerInstanceType2
     x-omnistrate-capabilities:
       enableMultiZone: true
-      httpReverseProxy:
-        targetPort: 3307
     environment:
       - MYSQL_REPLICATION_MODE=slave
       - MYSQL_REPLICATION_USER=repl_user
@@ -142,8 +134,13 @@ services:
         name: Reader Instance Type2
         type: String
         modifiable: true
-        required: true
+        required: false
+        defaultValue: small
         export: true
+        labeledOptions:
+          small: t4g.small
+          medium: t4g.medium
+          large: t4g.large
       - key: database
         description: Default DB Name
         name: Default Database
@@ -184,7 +181,7 @@ services:
     image: omnistrate/noop
     x-omnistrate-capabilities:
       backupConfiguration:
-        backupRetentionInDays: 1
+        backupRetentionInDays: 18
         backupPeriodInHours: 6
     x-omnistrate-api-params:
       - key: instanceType2
@@ -192,9 +189,13 @@ services:
         name: Instance Type2
         type: String
         modifiable: true
-        required: true
+        required: false
         export: true
-        defaultValue: t4g.small
+        defaultValue: small
+        labeledOptions:
+          small: t4g.small
+          medium: t4g.medium
+          large: t4g.large
         parameterDependencyMap:
           reader: readerInstanceType2
       - key: password
@@ -205,7 +206,6 @@ services:
         required: true
         export: false
         parameterDependencyMap:
-          writer: password
           reader: password
       - key: username
         description: Username
@@ -215,7 +215,6 @@ services:
         required: true
         export: true
         parameterDependencyMap:
-          writer: username2
           reader: username
       - key: dbName
         description: Default Database Name
@@ -246,20 +245,24 @@ services:
         parameterDependencyMap:
           reader: newAPIParam
     depends_on:
-      - writer
       - reader
     x-omnistrate-mode-internal: false
 
 configs:
   my_config:
-    file: configfiles/conf_updated.yaml
+    file: ../configfiles/conf_updated.yaml
 
 secrets:
   my_secret:
-    file: configfiles/secret_updated.yaml
+    file: ../configfiles/secret_updated.yaml
 
 volumes:
   mysql_master_data:
     driver: local
   mysql_slave_data:
     driver: local
+  file_system_data_1:
+    driver: sharedFileSystem
+    driver_opts:
+      efsThroughputMode: elastic
+      efsPerformanceMode: generalPurpose

@@ -1,7 +1,6 @@
 package instance
 
 import (
-	"github.com/omnistrate/ctl/utils"
 	"github.com/spf13/cobra"
 )
 
@@ -18,8 +17,29 @@ func init() {
 	Cmd.AddCommand(describeCmd)
 	Cmd.AddCommand(deleteCmd)
 	Cmd.AddCommand(listCmd)
-
-	Cmd.Example = utils.CombineSubCmdExamples(Cmd)
+	Cmd.AddCommand(listEndpointsCmd)
+	Cmd.AddCommand(startCmd)
+	Cmd.AddCommand(stopCmd)
+	Cmd.AddCommand(restartCmd)
+	Cmd.AddCommand(updateCmd) // Hidden (deprecated)
+	Cmd.AddCommand(modifyCmd)
+	Cmd.AddCommand(enableDebugModeCmd)
+	Cmd.AddCommand(disableDebugModeCmd)
+	Cmd.AddCommand(getDeploymentCmd)
+	Cmd.AddCommand(continueDeploymentCmd)
+	Cmd.AddCommand(patchDeploymentCmd)
+	Cmd.AddCommand(triggerBackupCmd)
+	Cmd.AddCommand(listSnapshotsCmd)
+	Cmd.AddCommand(describeSnapshotCmd)
+	Cmd.AddCommand(copySnapshotCmd)
+	Cmd.AddCommand(restoreCmd)
+	Cmd.AddCommand(adoptCmd)
+	Cmd.AddCommand(versionUpgradeCmd)
+	Cmd.AddCommand(debugCmd)
+	Cmd.AddCommand(breakpointCmd)
+	Cmd.AddCommand(evaluateCmd)
+	Cmd.AddCommand(getInstallerCmd)
+	Cmd.AddCommand(deploymentParametersCmd)
 }
 
 func run(cmd *cobra.Command, args []string) {

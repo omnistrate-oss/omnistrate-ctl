@@ -1,0 +1,4 @@
+resources:
+  - config.yaml
+
+namespace: "{{ $sys.id }}"

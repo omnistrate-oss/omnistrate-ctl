@@ -1,15 +1,15 @@
 # Logo: https://cdn.icon-icons.com/icons2/2699/PNG/512/mariadb_logo_icon_168996.png
 version: "3"
 x-omnistrate-service-plan:
-  name: 'Hosted MariaDB Cluster'
-  tenancyType: 'OMNISTRATE_DEDICATED_TENANCY'
+  name: "Hosted MariaDB Cluster"
+  tenancyType: "OMNISTRATE_DEDICATED_TENANCY"
   deployment:
     hostedDeployment:
-      AwsAccountId: '339713121445'
-      AwsBootstrapRoleAccountArn: 'arn:aws:iam::339713121445:role/omnistrate-bootstrap-role'
-      GcpProjectId: 'omnistrate-dataplane-host-dev'
-      GcpProjectNumber: '61114262792'
-      GcpServiceAccountEmail: 'bootstrap.getservice@gcp.test.iam'
+      AwsAccountId: "339713121445"
+      AwsBootstrapRoleAccountArn: "arn:aws:iam::339713121445:role/omnistrate-bootstrap-role"
+      GcpProjectId: "omnistrate-dataplane-host-dev"
+      GcpProjectNumber: "61114262792"
+      GcpServiceAccountEmail: "bootstrap.getservice@gcp.test.iam"
 x-omnistrate-integrations:
   - omnistrateLogging
   - omnistrateMetrics
@@ -17,9 +17,9 @@ services:
   writer:
     image: docker.io/bitnami/mariadb:10.10.6
     ports:
-      - '3306'
+      - "3306"
     volumes:
-      - 'mariadb_master_data:/bitnami/mariadb'
+      - "mariadb_master_data:/bitnami/mariadb"
     x-omnistrate-compute:
       instanceTypes:
         - cloudProvider: aws
@@ -73,7 +73,7 @@ services:
   reader:
     image: docker.io/bitnami/mariadb:10.10.6
     ports:
-      - '3306'
+      - "3306"
     volumes:
       - source: mariadb_slave_data
         target: /bitnami/mariadb

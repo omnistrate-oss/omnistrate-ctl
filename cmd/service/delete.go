@@ -1,108 +1,109 @@
 package service
 
 import (
-	"github.com/omnistrate/ctl/dataaccess"
+	"github.com/omnistrate-oss/omnistrate-ctl/cmd/common"
+	"github.com/omnistrate-oss/omnistrate-ctl/internal/config"
+	"github.com/omnistrate-oss/omnistrate-ctl/internal/dataaccess"
+	"github.com/omnistrate-oss/omnistrate-ctl/internal/utils"
 	"github.com/pkg/errors"
-	"slices"
-	"strings"
-
-	"github.com/omnistrate/ctl/utils"
 	"github.com/spf13/cobra"
 )
 
 var (
-	deleteExample = `  # Delete service with name
-  omctl service delete <name>
+	deleteExample = `# Delete service with name
+omnistrate-ctl service delete [service-name]
 
-  # Delete service with ID
-  omctl service delete <ID> --id
-
-  # Delete multiple services with names
-  omctl service delete <name1> <name2> <name3>
-
-  # Delete multiple services with IDs
-  omctl service delete <ID1> <ID2> <ID3> --id`
+# Delete service with ID
+omnistrate-ctl service delete --id=[service-ID]`
 )
 
 var deleteCmd = &cobra.Command{
 	Use:          "delete [service-name] [flags]",
-	Short:        "Delete one or more services",
-	Long:         `Delete service with name or ID. Use --id to specify ID. If not specified, name is assumed.`,
+	Short:        "Delete a service",
+	Long:         `This command helps you delete a service using its name or ID.`,
 	Example:      deleteExample,
 	RunE:         runDelete,
 	SilenceUsage: true,
 }
 
 func init() {
-	deleteCmd.Args = cobra.MinimumNArgs(1) // Require at least one argument
+	deleteCmd.Args = cobra.MaximumNArgs(1) // Require at most one argument
 
-	deleteCmd.Flags().Bool("id", false, "Specify service ID instead of name")
+	deleteCmd.Flags().String("id", "", "Service ID")
 }
 
 func runDelete(cmd *cobra.Command, args []string) error {
-	token, err := utils.GetToken()
+	defer config.CleanupArgsAndFlags(cmd, &args)
+
+	// Retrieve args
+	var name string
+	if len(args) > 0 {
+		name = args[0]
+	}
+
+	// Retrieve flags
+	id, err := cmd.Flags().GetString("id")
+	if err != nil {
+		utils.PrintError(err)
+		return err
+	}
+	output, err := cmd.Flags().GetString("output")
 	if err != nil {
 		utils.PrintError(err)
 		return err
 	}
 
-	var ID bool
-	ID, err = cmd.Flags().GetBool("id")
+	// Validate input args
+	err = validateDeleteArguments(args, id)
 	if err != nil {
 		utils.PrintError(err)
 		return err
 	}
 
-	var serviceIDs []string
-	if ID {
-		serviceIDs = args
-	} else {
-		// List services
-		listRes, err := dataaccess.ListServices(token)
-		if err != nil {
-			utils.PrintError(err)
-			return err
-		}
+	// Validate user login
+	token, err := common.GetTokenWithLogin()
+	if err != nil {
+		utils.PrintError(err)
+		return err
+	}
 
-		found := make(map[string]bool)
-		for _, name := range args {
-			found[name] = false
-		}
+	// Initialize spinner if output is not JSON
+	var sm utils.SpinnerManager
+	var spinner *utils.Spinner
+	if output != "json" {
+		sm = utils.NewSpinnerManager()
+		msg := "Deleting service..."
+		spinner = sm.AddSpinner(msg)
+		sm.Start()
+	}
 
-		// Filter services by name
-		for _, s := range listRes.Services {
-			if slices.Contains(args, s.Name) {
-				serviceIDs = append(serviceIDs, string(s.ID))
-				found[s.Name] = true
-			}
-		}
-
-		// Check if all services were found
-		servicesNotFound := make([]string, 0)
-		for name, ok := range found {
-			if !ok {
-				servicesNotFound = append(servicesNotFound, name)
-			}
-		}
-
-		if len(servicesNotFound) > 0 {
-			err = errors.New("services not found: " + strings.Join(servicesNotFound, ", "))
-			utils.PrintError(err)
-			return err
-		}
+	// Check if service exists
+	id, err = getService(cmd.Context(), token, name, id)
+	if err != nil {
+		utils.HandleSpinnerError(spinner, sm, err)
+		return err
 	}
 
 	// Delete service
-	for _, serviceID := range serviceIDs {
-		err = dataaccess.DeleteService(token, serviceID)
-		if err != nil {
-			err = errors.Wrapf(err, "failed to delete service %s", serviceID)
-			utils.PrintError(err)
-			return err
-		}
+	err = dataaccess.DeleteService(cmd.Context(), token, id)
+	if err != nil {
+		utils.HandleSpinnerError(spinner, sm, err)
+		return err
 	}
 
-	utils.PrintSuccess("Service(s) deleted successfully")
+	utils.HandleSpinnerSuccess(spinner, sm, "Successfully deleted service")
+
+	return nil
+}
+
+func validateDeleteArguments(args []string, serviceIDArg string) error {
+	if len(args) == 0 && serviceIDArg == "" {
+		return errors.New("service name or ID must be provided")
+	}
+
+	if len(args) != 0 && serviceIDArg != "" {
+		return errors.New("only one of service name or ID can be provided")
+	}
 
 	return nil
 }

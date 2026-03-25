@@ -1,38 +1,45 @@
 ## omnistrate-ctl account create
 
-Create an account
+Create a Cloud Provider Account
 
 ### Synopsis
 
-Create an account with the specified name and cloud provider details.
+This command helps you create a Cloud Provider Account in your account list.
 
 ```
-omnistrate-ctl account create --name=[name] [--aws-account-id=account-id] [--gcp-project-id=project-id] [--gcp-project-number=project-number] [flags]
+omnistrate-ctl account create [account-name] [--aws-account-id=account-id] [--gcp-project-id=project-id] [--gcp-project-number=project-number] [--azure-subscription-id=subscription-id] [--azure-tenant-id=tenant-id] [flags]
 ```
 
 ### Examples
 
 ```
-  # Create aws account
-  omctl account create <name> --aws-account-id <aws-account-id>
+# Create aws account
+omnistrate-ctl account create [account-name] --aws-account-id=[account-id]
 
-  # Create gcp account
-  omctl account create <name> --gcp-project-id <gcp-project-id> --gcp-project-number <gcp-project-number>
+# Create gcp account
+omnistrate-ctl account create [account-name] --gcp-project-id=[project-id] --gcp-project-number=[project-number]
+
+# Create azure account
+omnistrate-ctl account create [account-name] --azure-subscription-id=[subscription-id] --azure-tenant-id=[tenant-id]
 ```
 
 ### Options
 
 ```
-      --aws-account-id string       AWS account ID
-      --gcp-project-id string       GCP project ID
-      --gcp-project-number string   GCP project number
-  -h, --help                        help for create
+      --aws-account-id string          AWS account ID
+      --azure-subscription-id string   Azure subscription ID
+      --azure-tenant-id string         Azure tenant ID
+      --gcp-project-id string          GCP project ID
+      --gcp-project-number string      GCP project number
+  -h, --help                           help for create
+      --skip-wait                      Skip waiting for account to become READY
 ```
 
 ### Options inherited from parent commands
 
 ```
-  -v, --version   Print the version number of omnistrate-ctl
+  -o, --output string   Output format (text|table|json) (default "table")
+  -v, --version         Print the version number of omnistrate-ctl
 ```
 
 ### SEE ALSO

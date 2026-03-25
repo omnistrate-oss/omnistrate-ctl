@@ -1,7 +1,6 @@
 package environment
 
 import (
-	"github.com/omnistrate/ctl/utils"
 	"github.com/spf13/cobra"
 )
 
@@ -20,7 +19,6 @@ func init() {
 	Cmd.AddCommand(deleteCmd)
 	Cmd.AddCommand(promoteCmd)
 
-	Cmd.Example = utils.CombineSubCmdExamples(Cmd)
 }
 
 func run(cmd *cobra.Command, args []string) {

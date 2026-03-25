@@ -1,117 +1,176 @@
 package service
 
 import (
-	"encoding/json"
+	"context"
 	"fmt"
-	serviceapi "github.com/omnistrate/api-design/v1/pkg/registration/gen/service_api"
-	"github.com/omnistrate/ctl/dataaccess"
-	"github.com/omnistrate/ctl/utils"
-	"github.com/spf13/cobra"
-	"slices"
+	"os"
 	"strings"
+
+	"github.com/omnistrate-oss/omnistrate-ctl/cmd/common"
+	"github.com/omnistrate-oss/omnistrate-ctl/internal/config"
+	"github.com/omnistrate-oss/omnistrate-ctl/internal/dataaccess"
+	"github.com/omnistrate-oss/omnistrate-ctl/internal/utils"
+	openapiclientfleet "github.com/omnistrate-oss/omnistrate-sdk-go/fleet"
+	openapiclient "github.com/omnistrate-oss/omnistrate-sdk-go/v1"
+	"github.com/pkg/errors"
+	"github.com/spf13/cobra"
 )
 
 const (
-	describeExample = `  # Describe service with name
-  omctl service describe <name>
+	describeExample = `# Describe service with name
+omnistrate-ctl service describe [service-name]
 
-  # Describe service with ID
-  omctl service describe <id> --id
-
-  # Describe multiple services with names
-  omctl service describe <name1> <name2> <name3>
-
-  # Describe multiple services with IDs
-  omctl service describe <id1> <id2> <id3> --id`
+# Describe service with ID
+omnistrate-ctl service describe --id=[service-ID]`
 )
 
 var describeCmd = &cobra.Command{
 	Use:          "describe [flags]",
-	Short:        "Display details for one or more services",
-	Long:         "Display detailed information about the service by specifying the service name or ID",
+	Short:        "Describe a service",
+	Long:         "This command helps you describe a service using its name or ID.",
 	Example:      describeExample,
 	RunE:         runDescribe,
 	SilenceUsage: true,
 }
 
 func init() {
-	describeCmd.Args = cobra.MinimumNArgs(1) // Require at least one argument
+	describeCmd.Args = cobra.MaximumNArgs(1) // Require at most one argument
 
-	describeCmd.Flags().Bool("id", false, "Specify service ID instead of name")
+	describeCmd.Flags().String("id", "", "Service ID")
+	describeCmd.Flags().StringP("output", "o", "json", "Output format. Only json is supported.") // Override inherited flag
 }
 
 func runDescribe(cmd *cobra.Command, args []string) error {
-	token, err := utils.GetToken()
+	defer config.CleanupArgsAndFlags(cmd, &args)
+
+	// Retrieve args
+	var name string
+	if len(args) > 0 {
+		name = args[0]
+	}
+
+	// Retrieve flags
+	id, err := cmd.Flags().GetString("id")
+	if err != nil {
+		utils.PrintError(err)
+		return err
+	}
+	output, err := cmd.Flags().GetString("output")
 	if err != nil {
 		utils.PrintError(err)
 		return err
 	}
 
-	var ID bool
-	ID, err = cmd.Flags().GetBool("id")
+	// Validate input args
+	err = validateDescribeArguments(name, id)
 	if err != nil {
 		utils.PrintError(err)
 		return err
 	}
 
-	var services []*serviceapi.DescribeServiceResult
-	if ID {
-		for _, name := range args {
-			service, err := dataaccess.DescribeService(token, name)
-			if err != nil {
-				utils.PrintError(err)
-				return err
+	// Validate user login
+	token, err := common.GetTokenWithLogin()
+	if err != nil {
+		utils.PrintError(err)
+		return err
+	}
+
+	// Initialize spinner if output is not JSON
+	var sm utils.SpinnerManager
+	var spinner *utils.Spinner
+	if output != "json" {
+		sm = utils.NewSpinnerManager()
+		msg := "Describing service..."
+		spinner = sm.AddSpinner(msg)
+		sm.Start()
+	}
+
+	// Check if service exists
+	id, err = getService(cmd.Context(), token, name, id)
+	if err != nil {
+		utils.HandleSpinnerError(spinner, sm, err)
+		return err
+	}
+
+	// Describe service
+	var service *openapiclient.DescribeServiceResult
+	service, err = dataaccess.DescribeService(cmd.Context(), token, id)
+	if err != nil {
+		utils.HandleSpinnerError(spinner, sm, err)
+		return err
+	}
+
+	// Enhance service plans with detailed account information
+	err = dataaccess.EnhanceServicePlansWithAccountInfo(cmd.Context(), token, service)
+	if err != nil {
+		// Don't fail the entire command if account info enhancement fails
+		// Just log a warning and continue
+		fmt.Fprintf(os.Stderr, "Warning: Could not enhance service plans with account information: %v\n", err)
+	}
+
+	utils.HandleSpinnerSuccess(spinner, sm, "Successfully described service")
+
+	// Print output
+	err = utils.PrintTextTableJsonOutput("json", service)
+	if err != nil {
+		utils.PrintError(err)
+		return err
+	}
+
+	return nil
+}
+
+// Helper functions
+
+func getService(ctx context.Context, token, serviceNameArg, serviceIDArg string) (serviceID string, err error) {
+	count := 0
+	if serviceNameArg != "" {
+		var searchRes *openapiclientfleet.SearchInventoryResult
+		searchRes, err = dataaccess.SearchInventory(ctx, token, fmt.Sprintf("service:%s", serviceNameArg))
+		if err != nil {
+			return
+		}
+
+		for _, service := range searchRes.ServiceResults {
+			if strings.EqualFold(service.Name, serviceNameArg) {
+				serviceID = service.Id
+				count++
 			}
-			services = append(services, service)
 		}
 	} else {
-		// List services
-		listRes, err := dataaccess.ListServices(token)
+		var searchRes *openapiclientfleet.SearchInventoryResult
+		searchRes, err = dataaccess.SearchInventory(ctx, token, fmt.Sprintf("service:%s", serviceIDArg))
 		if err != nil {
-			utils.PrintError(err)
-			return err
+			return
 		}
 
-		found := make(map[string]bool)
-		for _, name := range args {
-			found[name] = false
-		}
-
-		// Filter services by name
-		for _, s := range listRes.Services {
-			if slices.Contains(args, s.Name) {
-				service, err := dataaccess.DescribeService(token, string(s.ID))
-				if err != nil {
-					utils.PrintError(err)
-					return err
-				}
-				services = append(services, service)
-				found[s.Name] = true
+		for _, service := range searchRes.ServiceResults {
+			if strings.EqualFold(service.Id, serviceIDArg) {
+				serviceID = service.Id
+				count++
 			}
-		}
-
-		namesNotFound := make([]string, 0)
-		for name, ok := range found {
-			if !ok {
-				namesNotFound = append(namesNotFound, name)
-			}
-		}
-
-		if len(namesNotFound) > 0 {
-			err = fmt.Errorf("service(s) not found: %s", strings.Join(namesNotFound, ", "))
-			utils.PrintError(err)
-			return err
 		}
 	}
 
-	// Print service details
-	for _, service := range services {
-		data, err := json.MarshalIndent(service, "", "    ")
-		if err != nil {
-			utils.PrintError(err)
-			return err
-		}
-		fmt.Println(string(data))
+	if count == 0 {
+		err = errors.New("service not found")
+		return
+	}
+
+	if count > 1 {
+		err = errors.New("multiple services found with the same name. Please provide the service ID")
+	}
+
+	return
+}
+
+func validateDescribeArguments(serviceNameArg, serviceIDArg string) error {
+	if serviceNameArg == "" && serviceIDArg == "" {
+		return errors.New("service name or ID must be provided")
+	}
+
+	if serviceNameArg != "" && serviceIDArg != "" {
+		return errors.New("only one of service name or ID can be provided")
 	}
 
 	return nil

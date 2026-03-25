@@ -2,46 +2,50 @@ package serviceplan
 
 import (
 	"fmt"
-	"github.com/chelnak/ysmrr"
-	"github.com/omnistrate/ctl/dataaccess"
-	"github.com/omnistrate/ctl/utils"
-	"github.com/spf13/cobra"
 	"strings"
+
+	"github.com/omnistrate-oss/omnistrate-ctl/cmd/common"
+
+	"github.com/omnistrate-oss/omnistrate-ctl/internal/config"
+	"github.com/omnistrate-oss/omnistrate-ctl/internal/dataaccess"
+	"github.com/omnistrate-oss/omnistrate-ctl/internal/utils"
+	"github.com/spf13/cobra"
 )
 
 const (
-	deleteExample = `  # Delete service plan
-  omctl service-plan delete [service-name] [plan-name]
+	deleteExample = `# Delete service plan
+omnistrate-ctl service-plan delete [service-name] [plan-name]
 
-  # Delete service plan by ID instead of name
-  omctl service-plan delete --service-id [service-id] --plan-id [plan-id]`
+# Delete service plan by ID instead of name
+omnistrate-ctl service-plan delete --service-id=[service-id] --plan-id=[plan-id]`
 )
 
 var deleteCmd = &cobra.Command{
 	Use:          "delete [service-name] [plan-name] [flags]",
-	Short:        "Delete a service plan",
-	Long:         `This command helps you delete a service plan from your service.`,
+	Short:        "Delete a Service Plan",
+	Long:         `This command helps you delete a Service Plan from your service.`,
 	Example:      deleteExample,
 	RunE:         runDelete,
 	SilenceUsage: true,
 }
 
 func init() {
-	deleteCmd.Flags().StringP("output", "o", "text", "Output format (text|table|json)")
+	deleteCmd.Flags().StringP("environment", "", "", "Environment name. Use this flag with service name and plan name to delete the service plan in a specific environment")
 	deleteCmd.Flags().StringP("service-id", "", "", "Service ID. Required if service name is not provided")
 	deleteCmd.Flags().StringP("plan-id", "", "", "Plan ID. Required if plan name is not provided")
 }
 
 func runDelete(cmd *cobra.Command, args []string) error {
-	defer utils.CleanupArgsAndFlags(cmd, &args)
+	defer config.CleanupArgsAndFlags(cmd, &args)
 
 	// Retrieve flags
 	output, _ := cmd.Flags().GetString("output")
-	serviceId, _ := cmd.Flags().GetString("service-id")
-	planId, _ := cmd.Flags().GetString("plan-id")
+	serviceID, _ := cmd.Flags().GetString("service-id")
+	planID, _ := cmd.Flags().GetString("plan-id")
+	environment, _ := cmd.Flags().GetString("environment")
 
 	// Validate input arguments
-	if err := validateDeleteArguments(args, serviceId, planId); err != nil {
+	if err := validateDeleteArguments(args, serviceID, planID); err != nil {
 		utils.PrintError(err)
 		return err
 	}
@@ -53,31 +57,31 @@ func runDelete(cmd *cobra.Command, args []string) error {
 	}
 
 	// Validate user login
-	token, err := utils.GetToken()
+	token, err := common.GetTokenWithLogin()
 	if err != nil {
 		utils.PrintError(err)
 		return err
 	}
 
 	// Initialize spinner if output is not JSON
-	var sm ysmrr.SpinnerManager
-	var spinner *ysmrr.Spinner
+	var sm utils.SpinnerManager
+	var spinner *utils.Spinner
 	if output != "json" {
-		sm = ysmrr.NewSpinnerManager()
+		sm = utils.NewSpinnerManager()
 		msg := "Deleting service plan..."
 		spinner = sm.AddSpinner(msg)
 		sm.Start()
 	}
 
 	// Check if the service plan exists
-	serviceId, _, planId, _, _, err = getServicePlan(token, serviceId, serviceName, planId, planName)
+	serviceID, _, planID, _, err = getServicePlan(cmd.Context(), token, serviceID, serviceName, planID, planName, environment)
 	if err != nil {
 		utils.HandleSpinnerError(spinner, sm, err)
 		return err
 	}
 
 	// Delete service plan
-	err = dataaccess.DeleteProductTier(token, serviceId, planId)
+	err = dataaccess.DeleteProductTier(cmd.Context(), token, serviceID, planID)
 	if err != nil {
 		utils.HandleSpinnerError(spinner, sm, err)
 		return err
@@ -88,8 +92,8 @@ func runDelete(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
-func validateDeleteArguments(args []string, serviceId, planId string) error {
-	if len(args) == 0 && (serviceId == "" || planId == "") {
+func validateDeleteArguments(args []string, serviceID, planID string) error {
+	if len(args) == 0 && (serviceID == "" || planID == "") {
 		return fmt.Errorf("please provide the service name and plan name or the service ID and plan ID")
 	}
 	if len(args) > 0 && len(args) != 2 {

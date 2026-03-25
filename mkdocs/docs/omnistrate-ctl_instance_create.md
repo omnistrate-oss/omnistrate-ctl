@@ -7,23 +7,35 @@ Create an instance deployment
 This command helps you create an instance deployment for your service.
 
 ```
-omnistrate-ctl instance create --service=[service] --environment=[environment] --plan=[plan] --version=[version] --resource=[resource] --cloud-provider=[aws|gcp] --region=[region] [--param=param] [--param-file=file-path] [flags]
+omnistrate-ctl instance create --service=[service] --environment=[environment] --plan=[plan] --version=[version] --resource=[resource] --cloud-provider=[aws|gcp] --region=[region] [--param=param] [--param-file=file-path] [--tags key=value,key2=value2] [--breakpoints id-or-key,id-or-key] [flags]
 ```
 
 ### Examples
 
 ```
-  # Create an instance deployment
-  omctl instance create --service=mysql --environment=dev --plan=mysql --version=latest --resource=mySQL --cloud-provider=aws --region=ca-central-1 --param '{"databaseName":"default","password":"a_secure_password","rootPassword":"a_secure_root_password","username":"user"}'
+# Create an instance deployment
+omnistrate-ctl instance create --service=mysql --environment=dev --plan=mysql --version=latest --resource=mySQL --cloud-provider=aws --region=ca-central-1 --param '{"databaseName":"default","password":"a_secure_password","rootPassword":"a_secure_root_password","username":"user"}'
+
+# Create an instance deployment with parameters from a file
+omnistrate-ctl instance create --service=mysql --environment=dev --plan=mysql --version=latest --resource=mySQL --cloud-provider=aws --region=ca-central-1 --param-file /path/to/params.json
+
+# Create an instance deployment with custom tags
+omnistrate-ctl instance create --service=mysql --environment=dev --plan=mysql --version=latest --resource=mySQL --cloud-provider=aws --region=ca-central-1 --param-file /path/to/params.json --tags environment=dev,owner=team
+
+# Create an instance deployment and wait for completion with progress tracking
+omnistrate-ctl instance create --service=mysql --environment=dev --plan=mysql --version=latest --resource=mySQL --cloud-provider=aws --region=ca-central-1 --param-file /path/to/params.json --wait
+
+# Create an instance deployment with workflow breakpoints
+omnistrate-ctl instance create --service=mysql --environment=dev --plan=mysql --version=latest --resource=mySQL --cloud-provider=aws --region=ca-central-1 --param-file /path/to/params.json --breakpoints writer,reader
 ```
 
 ### Options
 
 ```
+      --breakpoints string       Workflow breakpoint resource IDs or resource keys (comma-separated)
       --cloud-provider string    Cloud provider (aws|gcp)
       --environment string       Environment name
   -h, --help                     help for create
-  -o, --output string            Output format (text|table|json) (default "text")
       --param string             Parameters for the instance deployment
       --param-file string        Json file containing parameters for the instance deployment
       --plan string              Service plan name
@@ -31,7 +43,15 @@ omnistrate-ctl instance create --service=[service] --environment=[environment] -
       --resource string          Resource name
       --service string           Service name
       --subscription-id string   Subscription ID to use for the instance deployment. If not provided, instance deployment will be created in your own subscription.
+      --tags string              Custom tags to add to the instance deployment (format: key=value,key2=value2)
       --version string           Service plan version (latest|preferred|1.0 etc.) (default "preferred")
+      --wait                     Wait for deployment to complete and show progress
+```
+
+### Options inherited from parent commands
+
+```
+  -o, --output string   Output format (text|table|json) (default "table")
 ```
 
 ### SEE ALSO

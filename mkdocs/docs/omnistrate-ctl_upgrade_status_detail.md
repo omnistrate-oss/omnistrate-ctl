@@ -1,6 +1,6 @@
 ## omnistrate-ctl upgrade status detail
 
-Get upgrade status detail
+Get Upgrade status detail
 
 ```
 omnistrate-ctl upgrade status detail [upgrade-id] [flags]
@@ -9,24 +9,24 @@ omnistrate-ctl upgrade status detail [upgrade-id] [flags]
 ### Examples
 
 ```
-  # Get upgrade status detail
-  omctl upgrade status detail <upgrade>
+# Get upgrade status detail
+omnistrate-ctl upgrade status detail [upgrade-id]
 ```
 
 ### Options
 
 ```
-  -h, --help            help for detail
-  -o, --output string   Output format (text|table|json) (default "text")
+  -h, --help   help for detail
 ```
 
 ### Options inherited from parent commands
 
 ```
-  -v, --version   Print the version number of omnistrate-ctl
+  -o, --output string   Output format (text|table|json) (default "table")
+  -v, --version         Print the version number of omnistrate-ctl
 ```
 
 ### SEE ALSO
 
-* [omnistrate-ctl upgrade status](omnistrate-ctl_upgrade_status.md)	 - Get upgrade status
+* [omnistrate-ctl upgrade status](omnistrate-ctl_upgrade_status.md)	 - Get Upgrade status
 

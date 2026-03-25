@@ -1,10 +1,10 @@
 ## omnistrate-ctl subscription describe
 
-Describe a customer subscription to your service
+Describe a Customer Subscription to your service
 
 ### Synopsis
 
-This command helps you describe a customer subscription to your service.
+This command helps you get detailed information about a Customer Subscription.
 
 ```
 omnistrate-ctl subscription describe [subscription-id] [flags]
@@ -13,8 +13,8 @@ omnistrate-ctl subscription describe [subscription-id] [flags]
 ### Examples
 
 ```
-  # Describe subscription
-  omctl subscription describe subscription-abcd1234
+# Describe subscription
+omnistrate-ctl subscription describe [subscription-id]
 ```
 
 ### Options
@@ -26,7 +26,8 @@ omnistrate-ctl subscription describe [subscription-id] [flags]
 ### Options inherited from parent commands
 
 ```
-  -v, --version   Print the version number of omnistrate-ctl
+  -o, --output string   Output format (text|table|json) (default "table")
+  -v, --version         Print the version number of omnistrate-ctl
 ```
 
 ### SEE ALSO

@@ -1,0 +1,11 @@
+{
+  "policies": {
+    "aws": "{\"Statement\":[{\"Action\": [\"*\"],\"Effect\": \"Allow\",\"Resource\": \"*\"}]}"
+  },
+  "roles": {
+    "gcp": [
+      { "name": "roles/pubsub.admin" },
+      { "name": "roles/cloudsql.admin" }
+    ]
+  }
+}

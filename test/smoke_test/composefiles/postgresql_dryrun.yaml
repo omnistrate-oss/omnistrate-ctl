@@ -1,0 +1,18 @@
+version: "3.9"
+x-omnistrate-service-plan:
+  name: postgresql
+services:
+  postgres:
+    image: postgresdry
+    ports:
+      - "2135:54222"
+    environment:
+      - SECURITY_CONTEXT_USER_ID=92992
+      - SECURITY_CONTEXT_GROUP_ID=999334
+      - POSTGRES_USER=username3
+      - POSTGRES_PASSWORD=passw3ord2344
+      - PGDATA=/var/lib/postgresql/data/dbdata2334
+    x-omnistrate-compute:
+      rootVolumeSizeGi: 44
+    volumes:
+      - ./data:/var/lib/postgresql/data233

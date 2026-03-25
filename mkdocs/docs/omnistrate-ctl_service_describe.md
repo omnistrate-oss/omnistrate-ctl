@@ -1,10 +1,10 @@
 ## omnistrate-ctl service describe
 
-Display details for one or more services
+Describe a service
 
 ### Synopsis
 
-Display detailed information about the service by specifying the service name or ID
+This command helps you describe a service using its name or ID.
 
 ```
 omnistrate-ctl service describe [flags]
@@ -13,24 +13,19 @@ omnistrate-ctl service describe [flags]
 ### Examples
 
 ```
-  # Describe service with name
-  omctl service describe <name>
+# Describe service with name
+omnistrate-ctl service describe [service-name]
 
-  # Describe service with ID
-  omctl service describe <id> --id
-
-  # Describe multiple services with names
-  omctl service describe <name1> <name2> <name3>
-
-  # Describe multiple services with IDs
-  omctl service describe <id1> <id2> <id3> --id
+# Describe service with ID
+omnistrate-ctl service describe --id=[service-ID]
 ```
 
 ### Options
 
 ```
-  -h, --help   help for describe
-      --id     Specify service ID instead of name
+  -h, --help            help for describe
+      --id string       Service ID
+  -o, --output string   Output format. Only json is supported. (default "json")
 ```
 
 ### Options inherited from parent commands

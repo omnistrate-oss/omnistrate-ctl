@@ -1,11 +1,11 @@
-version: '3.9'
+version: "3.9"
 x-omnistrate-service-plan:
   name: postgresql
 services:
   postgres:
     image: postgres
     ports:
-      - '5432:5432'
+      - "5432:5432"
     environment:
       - SECURITY_CONTEXT_USER_ID=999
       - SECURITY_CONTEXT_GROUP_ID=999

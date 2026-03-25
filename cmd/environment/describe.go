@@ -1,31 +1,32 @@
 package environment
 
 import (
-	"encoding/json"
+	"context"
 	"fmt"
-	"github.com/chelnak/ysmrr"
-	serviceenvironmentapi "github.com/omnistrate/api-design/v1/pkg/registration/gen/service_environment_api"
-	"github.com/omnistrate/ctl/dataaccess"
-	"github.com/omnistrate/ctl/model"
-	"github.com/omnistrate/ctl/utils"
-	"github.com/spf13/cobra"
 	"strings"
+
+	"github.com/omnistrate-oss/omnistrate-ctl/cmd/common"
+
+	"github.com/omnistrate-oss/omnistrate-ctl/internal/config"
+	"github.com/omnistrate-oss/omnistrate-ctl/internal/dataaccess"
+	"github.com/omnistrate-oss/omnistrate-ctl/internal/model"
+	"github.com/omnistrate-oss/omnistrate-ctl/internal/utils"
+	openapiclientv1 "github.com/omnistrate-oss/omnistrate-sdk-go/v1"
+	"github.com/spf13/cobra"
 )
 
 const (
-	describeExample = `  # Describe environment
-  omctl environment describe [service-name] [environment-name]
+	describeExample = `# Describe environment
+omnistrate-ctl environment describe [service-name] [environment-name]
 
-  # Describe environment by ID instead of name
-  omctl environment describe --service-id [service-id] --environment-id [environment-id]`
-
-	defaultDescribeOutput = "json"
+# Describe environment by ID instead of name
+omnistrate-ctl environment describe --service-id=[service-id] --environment-id=[environment-id]`
 )
 
 var describeCmd = &cobra.Command{
 	Use:          "describe [service-name] [environment-name] [flags]",
-	Short:        "Describe a environment",
-	Long:         `This command helps you describe a environment in your service.`,
+	Short:        "Describe a Service Environment",
+	Long:         `This command helps you get details of a service environment from your service. You can find details like SaaS portal status, SaaS portal URL, and promote status, etc.`,
 	Example:      describeExample,
 	RunE:         runDescribe,
 	SilenceUsage: true,
@@ -34,18 +35,19 @@ var describeCmd = &cobra.Command{
 func init() {
 	describeCmd.Flags().StringP("service-id", "", "", "Service ID. Required if service name is not provided")
 	describeCmd.Flags().StringP("environment-id", "", "", "Environment ID. Required if environment name is not provided")
+	describeCmd.Flags().StringP("output", "o", "json", "Output format. Only json is supported.") // Override inherited flag
 }
 
 func runDescribe(cmd *cobra.Command, args []string) error {
-	defer utils.CleanupArgsAndFlags(cmd, &args)
+	defer config.CleanupArgsAndFlags(cmd, &args)
 
 	// Retrieve flags
-	serviceId, _ := cmd.Flags().GetString("service-id")
-	environmentId, _ := cmd.Flags().GetString("environment-id")
-	output := defaultDescribeOutput
+	serviceID, _ := cmd.Flags().GetString("service-id")
+	environmentID, _ := cmd.Flags().GetString("environment-id")
+	output, _ := cmd.Flags().GetString("output")
 
 	// Validate input arguments
-	if err := validateDescribeArguments(args, serviceId, environmentId); err != nil {
+	if err := validateDescribeArguments(args, serviceID, environmentID, output); err != nil {
 		utils.PrintError(err)
 		return err
 	}
@@ -57,45 +59,52 @@ func runDescribe(cmd *cobra.Command, args []string) error {
 	}
 
 	// Validate user login
-	token, err := utils.GetToken()
+	token, err := common.GetTokenWithLogin()
 	if err != nil {
 		utils.PrintError(err)
 		return err
 	}
 
 	// Initialize spinner if output is not JSON
-	var sm ysmrr.SpinnerManager
-	var spinner *ysmrr.Spinner
+	var sm utils.SpinnerManager
+	var spinner *utils.Spinner
 	if output != "json" {
-		sm = ysmrr.NewSpinnerManager()
+		sm = utils.NewSpinnerManager()
 		spinner = sm.AddSpinner("Describing environment...")
 		sm.Start()
 	}
 
 	// Retrieve service and environment details
-	serviceId, serviceName, environmentId, _, err = getServiceEnvironment(token, serviceId, serviceName, environmentId, environmentName)
+	serviceID, serviceName, environmentID, err = getServiceEnvironment(cmd.Context(), token, serviceID, serviceName, environmentID, environmentName)
 	if err != nil {
 		utils.HandleSpinnerError(spinner, sm, err)
 		return err
 	}
 
 	// Describe the environment
-	environment, err := dataaccess.DescribeServiceEnvironment(token, serviceId, environmentId)
+	environment, err := dataaccess.DescribeServiceEnvironment(cmd.Context(), token, serviceID, environmentID)
 	if err != nil {
 		utils.HandleSpinnerError(spinner, sm, err)
 		return err
+	}
+
+	// Get the source environment name
+	sourceEnvName := ""
+	if environment.SourceEnvironmentId != nil {
+		sourceEnv, err := dataaccess.DescribeServiceEnvironment(cmd.Context(), token, serviceID, *environment.SourceEnvironmentId)
+		if err != nil {
+			utils.HandleSpinnerError(spinner, sm, err)
+			return err
+		}
+		sourceEnvName = sourceEnv.Name
 	}
 
 	// Format the environment details
-	formattedEnvironment, err := formatEnvironmentDetails(token, serviceId, serviceName, environment)
-	if err != nil {
-		utils.HandleSpinnerError(spinner, sm, err)
-		return err
-	}
+	formattedEnvironment := formatEnvironmentDetails(cmd.Context(), token, serviceID, serviceName, sourceEnvName, environment)
 
 	// Handle output based on format
 	if spinner != nil {
-		spinner.UpdateMessage("Environment description retrieved successfully")
+		spinner.UpdateMessage("Successfully retrieved environment details")
 		spinner.Complete()
 		sm.Stop()
 	}
@@ -109,47 +118,45 @@ func runDescribe(cmd *cobra.Command, args []string) error {
 
 // Helper functions
 
-func validateDescribeArguments(args []string, serviceId, environmentId string) error {
-	if len(args) == 0 && (serviceId == "" || environmentId == "") {
+func validateDescribeArguments(args []string, serviceID, environmentID, output string) error {
+	if len(args) == 0 && (serviceID == "" || environmentID == "") {
 		return fmt.Errorf("please provide the service name and environment name or the service ID and environment ID")
 	}
 	if len(args) > 0 && len(args) != 2 {
 		return fmt.Errorf("invalid arguments: %s. Need 2 arguments: [service-name] [environment-name]", strings.Join(args, " "))
 	}
+	if output != "json" {
+		return fmt.Errorf("only json output is supported")
+	}
 	return nil
 }
 
-func formatEnvironmentDetails(token, serviceId, serviceName string, environment *serviceenvironmentapi.DescribeServiceEnvironmentResult) (string, error) {
-	// Example of formatting environment details
+func formatEnvironmentDetails(ctx context.Context, token, serviceID, serviceName, sourceEnvName string, environment *openapiclientv1.DescribeServiceEnvironmentResult) model.DetailedEnvironment {
 	formattedEnvironment := model.DetailedEnvironment{
-		EnvironmentID:    string(environment.ID),
+		EnvironmentID:    environment.Id,
 		EnvironmentName:  environment.Name,
-		EnvironmentType:  string(environment.Type),
-		ServiceID:        string(environment.ServiceID),
+		EnvironmentType:  environment.Type,
+		ServiceID:        environment.ServiceId,
+		SourceEnvName:    sourceEnvName,
 		ServiceName:      serviceName,
 		SaaSPortalStatus: getSaaSPortalStatus(environment),
 		SaaSPortalURL:    getSaaSPortalURL(environment),
-		PromoteStatus:    getPromoteStatus(token, serviceId, environment),
+		PromoteStatus:    getPromoteStatus(ctx, token, serviceID, environment),
 	}
 
-	data, err := json.MarshalIndent(formattedEnvironment, "", "    ")
-	if err != nil {
-		return "", err
-	}
-
-	return string(data), nil
+	return formattedEnvironment
 }
 
-func getSaaSPortalStatus(environment *serviceenvironmentapi.DescribeServiceEnvironmentResult) string {
+func getSaaSPortalStatus(environment *openapiclientv1.DescribeServiceEnvironmentResult) string {
 	if environment.SaasPortalStatus != nil {
-		return string(*environment.SaasPortalStatus)
+		return *environment.SaasPortalStatus
 	}
 	return ""
 }
 
-func getSaaSPortalURL(environment *serviceenvironmentapi.DescribeServiceEnvironmentResult) string {
-	if environment.SaasPortalURL != nil {
-		return *environment.SaasPortalURL
+func getSaaSPortalURL(environment *openapiclientv1.DescribeServiceEnvironmentResult) string {
+	if environment.SaasPortalUrl != nil {
+		return *environment.SaasPortalUrl
 	}
 	return ""
 }

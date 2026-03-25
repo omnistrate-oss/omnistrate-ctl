@@ -1,0 +1,22 @@
+# Binaries for programs and plugins
+*.dll
+*.so
+*.dylib
+dist/
+
+# Output of the go coverage tool, specifically when used with LiteIDE
+*.out
+
+# Dependency directories (remove the comment below to include it)
+vendor/
+
+# Idea files
+*.idea
+*.DS_Store
+
+*.omnistrate
+omnistrate-ctl
+
+__debug_bin*
+**/.claude/settings.local.json
+mcp-tools.json

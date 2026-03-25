@@ -1,52 +1,56 @@
 package serviceplan
 
 import (
-	"encoding/json"
+	"context"
+	"errors"
 	"fmt"
-	"github.com/chelnak/ysmrr"
-	producttierapi "github.com/omnistrate/api-design/v1/pkg/registration/gen/product_tier_api"
-	commonutils "github.com/omnistrate/commons/pkg/utils"
-	"github.com/omnistrate/ctl/dataaccess"
-	"github.com/omnistrate/ctl/model"
-	"github.com/omnistrate/ctl/utils"
-	"github.com/spf13/cobra"
 	"strings"
+
+	"github.com/omnistrate-oss/omnistrate-ctl/cmd/common"
+
+	"github.com/omnistrate-oss/omnistrate-ctl/internal/config"
+	"github.com/omnistrate-oss/omnistrate-ctl/internal/dataaccess"
+	"github.com/omnistrate-oss/omnistrate-ctl/internal/model"
+	"github.com/omnistrate-oss/omnistrate-ctl/internal/utils"
+	openapiclient "github.com/omnistrate-oss/omnistrate-sdk-go/v1"
+	"github.com/spf13/cobra"
 )
 
 const (
-	describeExample = `  # Describe service plan
-  omctl service-plan describe [service-name] [plan-name]
+	describeExample = `# Describe service plan
+omnistrate-ctl service-plan describe [service-name] [plan-name]
 
-  # Describe service plan by ID instead of name
-  omctl service-plan describe --service-id [service-id] --plan-id [plan-id]`
-
-	defaultDescribeOutput = "json"
+# Describe service plan by ID instead of name
+omnistrate-ctl service-plan describe --service-id [service-id] --plan-id [plan-id]`
 )
 
 var describeCmd = &cobra.Command{
 	Use:          "describe [service-name] [plan-name] [flags]",
-	Short:        "Describe a service plan",
-	Long:         `This command helps you describe a service plan in your service.`,
+	Short:        "Describe a Service Plan",
+	Long:         `This command helps you get details of a Service Plan for your service.`,
 	Example:      describeExample,
 	RunE:         runDescribe,
 	SilenceUsage: true,
 }
 
 func init() {
+	describeCmd.Flags().StringP("environment", "", "", "Environment name. Use this flag with service name and plan name to describe the service plan in a specific environment")
+	describeCmd.Flags().StringP("output", "o", "json", "Output format. Only json is supported")
 	describeCmd.Flags().StringP("service-id", "", "", "Service ID. Required if service name is not provided")
-	describeCmd.Flags().StringP("plan-id", "", "", "Environment ID. Required if plan name is not provided")
+	describeCmd.Flags().StringP("plan-id", "", "", "Plan ID. Required if plan name is not provided")
 }
 
 func runDescribe(cmd *cobra.Command, args []string) error {
-	defer utils.CleanupArgsAndFlags(cmd, &args)
+	defer config.CleanupArgsAndFlags(cmd, &args)
 
 	// Retrieve flags
-	serviceId, _ := cmd.Flags().GetString("service-id")
-	planId, _ := cmd.Flags().GetString("plan-id")
-	output := defaultDescribeOutput
+	serviceID, _ := cmd.Flags().GetString("service-id")
+	planID, _ := cmd.Flags().GetString("plan-id")
+	output, _ := cmd.Flags().GetString("output")
+	environment, _ := cmd.Flags().GetString("environment")
 
 	// Validate input arguments
-	if err := validateDescribeArguments(args, serviceId, planId); err != nil {
+	if err := validateDescribeArguments(args, serviceID, planID, output); err != nil {
 		utils.PrintError(err)
 		return err
 	}
@@ -58,37 +62,37 @@ func runDescribe(cmd *cobra.Command, args []string) error {
 	}
 
 	// Validate user login
-	token, err := utils.GetToken()
+	token, err := common.GetTokenWithLogin()
 	if err != nil {
 		utils.PrintError(err)
 		return err
 	}
 
 	// Initialize spinner if output is not JSON
-	var sm ysmrr.SpinnerManager
-	var spinner *ysmrr.Spinner
+	var sm utils.SpinnerManager
+	var spinner *utils.Spinner
 	if output != "json" {
-		sm = ysmrr.NewSpinnerManager()
+		sm = utils.NewSpinnerManager()
 		spinner = sm.AddSpinner("Describing service plan...")
 		sm.Start()
 	}
 
 	// Check if the service plan exists
-	serviceId, serviceName, planId, _, environment, err := getServicePlan(token, serviceId, serviceName, planId, planName)
+	serviceID, serviceName, planID, environment, err = getServicePlan(cmd.Context(), token, serviceID, serviceName, planID, planName, environment)
 	if err != nil {
 		utils.HandleSpinnerError(spinner, sm, err)
 		return err
 	}
 
 	// Describe the service plan
-	servicePlan, err := dataaccess.DescribeProductTier(token, serviceId, planId)
+	servicePlan, err := dataaccess.DescribeProductTier(cmd.Context(), token, serviceID, planID)
 	if err != nil {
 		utils.HandleSpinnerError(spinner, sm, err)
 		return err
 	}
 
 	// Format the service plan details
-	formattedServicePlan, err := formatServicePlanDetails(token, serviceName, planName, environment, servicePlan)
+	formattedServicePlan, err := formatServicePlanDetails(cmd.Context(), token, serviceName, planName, environment, servicePlan)
 	if err != nil {
 		utils.HandleSpinnerError(spinner, sm, err)
 		return err
@@ -97,14 +101,7 @@ func runDescribe(cmd *cobra.Command, args []string) error {
 	// Handle output based on format
 	utils.HandleSpinnerSuccess(spinner, sm, "Service plan details retrieved successfully")
 
-	// Marshal data
-	data, err := json.MarshalIndent(formattedServicePlan, "", "    ")
-	if err != nil {
-		utils.PrintError(err)
-		return err
-	}
-
-	if err = utils.PrintTextTableJsonOutput(output, string(data)); err != nil {
+	if err = utils.PrintTextTableJsonOutput(output, formattedServicePlan); err != nil {
 		return err
 	}
 
@@ -113,35 +110,43 @@ func runDescribe(cmd *cobra.Command, args []string) error {
 
 // Helper functions
 
-func validateDescribeArguments(args []string, serviceId, planId string) error {
-	if len(args) == 0 && (serviceId == "" || planId == "") {
+func validateDescribeArguments(args []string, serviceID, planID, output string) error {
+	if len(args) == 0 && (serviceID == "" || planID == "") {
 		return fmt.Errorf("please provide the service name and service plan name or the service ID and service plan ID")
 	}
 	if len(args) > 0 && len(args) != 2 {
 		return fmt.Errorf("invalid arguments: %s. Need 2 arguments: [service-name] [plan-name]", strings.Join(args, " "))
 	}
+	if output != "json" {
+		return errors.New("only json output is supported")
+	}
 	return nil
 }
 
-func formatServicePlanDetails(token, serviceName, planName, environment string, productTier *producttierapi.DescribeProductTierResult) (model.ServicePlanDetails, error) {
+func formatServicePlanDetails(ctx context.Context, token, serviceName, planName, environment string, productTier *openapiclient.DescribeProductTierResult) (model.ServicePlanDetails, error) {
 	// Get service model
-	serviceModel, err := dataaccess.DescribeServiceModel(token, string(productTier.ServiceID), string(productTier.ServiceModelID))
+	serviceModel, err := dataaccess.DescribeServiceModel(ctx, token, productTier.ServiceId, productTier.ServiceModelId)
 	if err != nil {
 		return model.ServicePlanDetails{}, err
 	}
 
+	if productTier.ApiGroups == nil || len(*productTier.ApiGroups) == 0 {
+		return model.ServicePlanDetails{}, fmt.Errorf("no resources found in the service plan")
+	}
+
 	// Get resource details
 	var resources []model.Resource
-	for resourceID := range productTier.APIGroups {
+	for resourceID := range *productTier.ApiGroups {
 		// Get resource details
-		desRes, err := dataaccess.DescribeResource(token, string(productTier.ServiceID), string(resourceID), commonutils.ToPtr(string(productTier.ID)), nil)
+		desRes, err := dataaccess.DescribeResource(ctx, token, productTier.ServiceId, resourceID, nil, nil)
 		if err != nil {
 			return model.ServicePlanDetails{}, err
 		}
 		resource := model.Resource{
-			ResourceID:   string(desRes.ID),
-			ResourceName: desRes.Name,
-			ResourceType: string(desRes.ResourceType),
+			ResourceID:          desRes.Id,
+			ResourceName:        desRes.Name,
+			ResourceDescription: desRes.Description,
+			ResourceType:        desRes.ResourceType,
 		}
 
 		if desRes.ActionHooks != nil {
@@ -193,16 +198,37 @@ func formatServicePlanDetails(token, serviceName, planName, environment string, 
 		resources = append(resources, resource)
 	}
 
+	// Describe pending changes
+	pendingChanges, err := dataaccess.DescribePendingChanges(ctx, token, productTier.ServiceId, serviceModel.ServiceApiId, productTier.Id)
+	if err != nil {
+		return model.ServicePlanDetails{}, err
+	}
+
+	formattedPendingChanges := make(map[string]model.ResourceChangeSet)
+	for resourceID, cs := range pendingChanges.ResourceChangeSets {
+		formattedChangeSet := model.ResourceChangeSet{
+			ResourceChanges:           cs.ResourceChanges,
+			ProductTierFeatureChanges: cs.ProductTierFeatureChanges,
+			ImageConfigChanges:        cs.ImageConfigChanges,
+			InfraConfigChanges:        cs.InfraConfigChanges,
+		}
+		if cs.ResourceName != nil {
+			formattedChangeSet.ResourceName = *cs.ResourceName
+		}
+		formattedPendingChanges[resourceID] = formattedChangeSet
+	}
+
 	formattedServicePlan := model.ServicePlanDetails{
-		PlanID:          string(productTier.ID),
+		PlanID:          productTier.Id,
 		PlanName:        planName,
-		ServiceID:       string(productTier.ServiceID),
+		ServiceID:       productTier.ServiceId,
 		ServiceName:     serviceName,
 		Environment:     environment,
-		DeploymentType:  string(productTier.TierType),
-		TenancyType:     string(serviceModel.ModelType),
+		DeploymentType:  productTier.TierType,
+		TenancyType:     serviceModel.ModelType,
 		EnabledFeatures: productTier.EnabledFeatures,
 		Resources:       resources,
+		PendingChanges:  formattedPendingChanges,
 	}
 
 	return formattedServicePlan, nil

@@ -1,10 +1,10 @@
 ## omnistrate-ctl domain delete
 
-Delete one or more domains
+Delete a Custom Domain
 
 ### Synopsis
 
-Delete domain by specifying name.
+This command helps you delete a Custom Domain.
 
 ```
 omnistrate-ctl domain delete [name] [flags]
@@ -13,11 +13,8 @@ omnistrate-ctl domain delete [name] [flags]
 ### Examples
 
 ```
-  # Delete domain with name
-  omctl delete domain <name>
-
-  # Delete multiple domains with names
-  omctl delete domain <name1> <name2> <name3>
+# Delete domain with name
+omnistrate-ctl delete domain [domain-name]
 ```
 
 ### Options
@@ -29,7 +26,8 @@ omnistrate-ctl domain delete [name] [flags]
 ### Options inherited from parent commands
 
 ```
-  -v, --version   Print the version number of omnistrate-ctl
+  -o, --output string   Output format (text|table|json) (default "table")
+  -v, --version         Print the version number of omnistrate-ctl
 ```
 
 ### SEE ALSO

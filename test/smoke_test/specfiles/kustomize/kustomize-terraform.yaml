@@ -1,0 +1,77 @@
+name: Multiple Resources
+deployment:
+  hostedDeployment:
+    AwsAccountId: "339713121445"
+    AwsBootstrapRoleAccountArn: "arn:aws:iam::339713121445:role/omnistrate-bootstrap-role"
+    GcpProjectId: "omnistrate-dataplane-host-dev"
+    GcpProjectNumber: "61114262792"
+    GcpServiceAccountEmail: "bootstrap@omnistrate-dataplane-host-dev.iam.gserviceaccount.com"
+services:
+  - name: terraformChild
+    internal: true
+    terraformConfigurations:
+      configurationPerCloudProvider:
+        aws:
+          terraformPath: /test/resources/aws/terraform
+          variablesValuesFileOverride: |
+            instance_type = t4g.small 
+          gitConfiguration:
+            reference: refs/heads/main
+            repositoryUrl: https://github.com/omnistrate-oss/omnistrate-ctl.git
+          terraformExecutionIdentity: "arn:aws:iam::339713121445:role/omnistrate-custom-terraform-execution-role"
+        gcp:
+          terraformPath: /test/resources/gcp/terraform
+          gitConfiguration:
+            reference: refs/heads/main
+            repositoryUrl: https://github.com/omnistrate-oss/omnistrate-ctl.git
+  - name: terraformChild2
+    internal: true
+    terraformConfigurations:
+      configurationPerCloudProvider:
+        aws:
+          terraformPath: /test/resources/aws/terraform2
+          gitConfiguration:
+            reference: refs/heads/main
+            repositoryUrl: https://github.com/omnistrate-oss/omnistrate-ctl.git
+          terraformExecutionIdentity: "arn:aws:iam::339713121445:role/omnistrate-custom-terraform-execution-role"
+        gcp:
+          terraformPath: /test/resources/gcp/terraform2
+          gitConfiguration:
+            reference: refs/heads/main
+            repositoryUrl: https://github.com/omnistrate-oss/omnistrate-ctl.git
+  - name: kustomizeRoot
+    type: kustomize
+    dependsOn:
+      - terraformChild
+      - terraformChild2
+    compute:
+      instanceTypes:
+        - name: t4g.small
+          cloudProvider: aws
+        - name: e2-medium
+          cloudProvider: gcp
+    network:
+      ports:
+        - 3306
+    kustomizeConfiguration:
+      kustomizePath: /test/resources/kustomize
+      gitConfiguration:
+        reference: refs/heads/main
+        repositoryUrl: https://github.com/omnistrate-oss/omnistrate-ctl.git
+    apiParameters:
+      - key: username
+        description: Username
+        name: Username
+        type: String
+        modifiable: true
+        required: false
+        export: true
+        defaultValue: username
+      - key: password
+        description: Default DB Password
+        name: Password
+        type: String
+        modifiable: false
+        required: false
+        export: false
+        defaultValue: postgres

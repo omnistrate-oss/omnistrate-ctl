@@ -1,105 +1,153 @@
 package account
 
 import (
-	"encoding/json"
-	"fmt"
-	accountconfigapi "github.com/omnistrate/api-design/v1/pkg/registration/gen/account_config_api"
-	"github.com/omnistrate/ctl/dataaccess"
-	"github.com/omnistrate/ctl/utils"
+	"context"
+	"strings"
+
+	"github.com/omnistrate-oss/omnistrate-ctl/cmd/common"
+
+	"github.com/omnistrate-oss/omnistrate-ctl/internal/config"
+	"github.com/omnistrate-oss/omnistrate-ctl/internal/dataaccess"
+	"github.com/omnistrate-oss/omnistrate-ctl/internal/utils"
 	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
-	"slices"
 )
 
 const (
-	describeExample = `  # Describe account with name
-  omctl account describe <name>
-
-  # Describe account with ID
-  omctl account describe <id> --id
-  
-  # Describe multiple accounts with names
-  omctl account describe <name1> <name2> <name3>
-
-  # Describe multiple accounts with IDs
-  omctl account describe <id1> <id2> <id3> --id`
+	describeExample = `# Describe account with name or id
+omnistrate-ctl account describe [account-name or account-id]`
 )
 
 var describeCmd = &cobra.Command{
-	Use:     "describe [account-name] [flags]",
-	Short:   "Display details for one or more accounts",
-	Long:    "Display detailed information about the account by specifying the account name or ID",
-	Example: describeExample,
-	RunE:    runDescribe,
-	PostRun: func(cmd *cobra.Command, args []string) {
-		dataaccess.AskVerifyAccountIfAny()
-	},
+	Use:          "describe [account-name or account-id] [flags]",
+	Short:        "Describe a Cloud Provider Account",
+	Long:         "This command helps you get details of a cloud provider account.",
+	Example:      describeExample,
+	RunE:         runDescribe,
 	SilenceUsage: true,
 }
 
 func init() {
-	describeCmd.Args = cobra.MinimumNArgs(1) // Require at least one argument
+	describeCmd.Args = cobra.MaximumNArgs(1) // Require at most 1 argument
 
-	describeCmd.Flags().Bool("id", false, "Specify account ID instead of name")
+	describeCmd.Flags().StringP("output", "o", "json", "Output format. Only json is supported.") // Override inherited flag
 }
 
 func runDescribe(cmd *cobra.Command, args []string) error {
-	token, err := utils.GetToken()
+	defer config.CleanupArgsAndFlags(cmd, &args)
+
+	// Retrieve args
+	var nameOrID string
+	if len(args) > 0 {
+		nameOrID = args[0]
+	}
+
+	// Retrieve flags
+	output, err := cmd.Flags().GetString("output")
 	if err != nil {
 		utils.PrintError(err)
 		return err
 	}
 
-	var ID bool
-	ID, err = cmd.Flags().GetBool("id")
+	// Validate input args
+	err = validateDescribeArguments(args, output)
 	if err != nil {
 		utils.PrintError(err)
 		return err
 	}
 
-	var accounts []*accountconfigapi.DescribeAccountConfigResult
-	for _, name := range args {
-		if ID {
-			account, err := dataaccess.DescribeAccount(token, name)
-			if err != nil {
-				utils.PrintError(err)
-				return err
-			}
-			accounts = append(accounts, account)
-		} else {
-			// List all accounts
-			listRes, err := dataaccess.ListAccounts(token, "all")
-			if err != nil {
-				utils.PrintError(err)
-				return err
-			}
-
-			// Filter accounts by name
-			var found bool
-			for _, a := range listRes.AccountConfigs {
-				if slices.Contains(args, a.Name) {
-					accounts = append(accounts, a)
-					found = true
-					break
-				}
-			}
-
-			if !found {
-				utils.PrintError(errors.New("account not found: " + name))
-				return nil
-			}
-		}
+	// Validate user login
+	token, err := common.GetTokenWithLogin()
+	if err != nil {
+		utils.PrintError(err)
+		return err
 	}
 
-	// Print account details
-	for _, account := range accounts {
-		data, err := json.MarshalIndent(account, "", "    ")
-		if err != nil {
-			utils.PrintError(err)
-			return err
-		}
-		fmt.Println(string(data))
+	// Initialize spinner if output is not JSON
+	var sm utils.SpinnerManager
+	var spinner *utils.Spinner
+	if output != "json" {
+		sm = utils.NewSpinnerManager()
+		msg := "Deleting account..."
+		spinner = sm.AddSpinner(msg)
+		sm.Start()
+	}
+
+	// Check if account exists
+	var id string
+	id, err = getAccountID(cmd.Context(), token, nameOrID)
+	if err != nil {
+		utils.HandleSpinnerError(spinner, sm, err)
+		return err
+	}
+
+	// Describe account
+	account, err := dataaccess.DescribeAccount(cmd.Context(), token, id)
+	if err != nil {
+		utils.HandleSpinnerError(spinner, sm, err)
+		return err
+	}
+
+	utils.HandleSpinnerSuccess(spinner, sm, "Successfully retrieved account details")
+
+	// Print output
+	err = utils.PrintTextTableJsonOutput(output, account)
+	if err != nil {
+		utils.PrintError(err)
+		return err
+	}
+
+	// Ask user to verify account if output is not JSON
+	if output != "json" {
+		dataaccess.AskVerifyAccountIfAny(cmd.Context())
 	}
 
 	return nil
+}
+
+// Helper functions
+
+func validateDescribeArguments(args []string, output string) error {
+	if len(args) == 0 {
+		return errors.New("account name or ID must be provided")
+	}
+
+	if output != "json" {
+		return errors.New("only json output is supported")
+	}
+
+	return nil
+}
+
+func getAccountID(ctx context.Context, token, accountNameOrIDArg string) (accountID string, err error) {
+	// List accounts
+	listRes, err := dataaccess.ListAccounts(ctx, token, "all")
+	if err != nil {
+		return
+	}
+
+	count := 0
+	for _, account := range listRes.AccountConfigs {
+		// Check for exact match (case-insensitive) with name or ID
+		if strings.EqualFold(account.Name, accountNameOrIDArg) {
+			accountID = account.Id
+			count++
+		}
+		if strings.EqualFold(account.Id, accountNameOrIDArg) {
+			accountID = account.Id
+			count++
+		}
+	}
+
+	if count == 0 {
+		err = errors.New("account not found")
+		return
+	}
+
+	if count > 1 {
+		err = errors.New("multiple accounts found with the same name. Please specify account ID")
+		return
+	}
+
+	return
 }

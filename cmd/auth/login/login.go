@@ -1,33 +1,29 @@
 package login
 
 import (
-	"github.com/cqroot/prompt"
-	"github.com/cqroot/prompt/choose"
-	"github.com/cqroot/prompt/input"
-	"github.com/omnistrate/ctl/utils"
+	"github.com/omnistrate-oss/omnistrate-ctl/internal/utils"
 	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
-	"regexp"
 )
 
 type loginMethod string
 
 const (
-	loginExample = `  # Login interactively with a single sign-on provider or using email and password
-  omctl login
+	loginExample = `# Select login method with a prompt
+omnistrate-ctl login
 
-  # Login with email and password
-  omctl login --email email --password password
+# Login with email and password
+omnistrate-ctl login --email email --password password
 
-  # Login with environment variables
+# Login with environment variables
   export OMNISTRATE_USER_NAME=YOUR_EMAIL
   export OMNISTRATE_PASSWORD=YOUR_PASSWORD
   ./omnistrate-ctl-darwin-arm64 login --email "$OMNISTRATE_USER_NAME" --password "$OMNISTRATE_PASSWORD"
 
-  # Login with email and password from stdin. Save the password in a file and use cat to read it
+# Login with email and password from stdin. Save the password in a file and use cat to read it
   cat ~/omnistrate_pass.txt | omnistrate-ctl login --email email --password-stdin
 
-  # Login with email and password from stdin. Save the password in an environment variable and use echo to read it
+# Login with email and password from stdin. Save the password in an environment variable and use echo to read it
   echo $OMNISTRATE_PASSWORD | omnistrate-ctl login --email email --password-stdin`
 
 	loginWithEmailAndPassword loginMethod = "Login with email and password"
@@ -49,7 +45,7 @@ var LoginCmd = &cobra.Command{
 	Short:        "Log in to the Omnistrate platform",
 	Long:         `The login command is used to authenticate and log in to the Omnistrate platform.`,
 	Example:      loginExample,
-	RunE:         runLogin,
+	RunE:         RunLogin,
 	SilenceUsage: true,
 }
 
@@ -66,29 +62,28 @@ func init() {
 	LoginCmd.Args = cobra.NoArgs
 }
 
-func runLogin(cmd *cobra.Command, args []string) error {
+func RunLogin(cmd *cobra.Command, args []string) error {
 	defer resetLogin()
 
 	// Login with email and password if any of the flags are set
 	if len(email) > 0 || len(password) > 0 || passwordStdin {
-		return PasswordLogin(cmd, args, false)
+		return passwordLogin(cmd, false)
 	}
 
 	if gh {
-		return SSOLogin(identityProviderGitHub)
+		return ssoLogin(cmd.Context(), identityProviderGitHub)
 	}
 
 	if google {
-		return SSOLogin(identityProviderGoogle)
+		return ssoLogin(cmd.Context(), identityProviderGoogle)
 	}
 
 	// Login interactively
-	choice, err := prompt.New().Ask("How would you like to log in?").
-		Choose([]string{
-			string(loginWithEmailAndPassword),
-			string(loginWithGoogle),
-			string(loginWithGitHub),
-		}, choose.WithTheme(choose.ThemeArrow))
+	choice, err := utils.PromptSelect("How would you like to log in?", []string{
+		string(loginWithEmailAndPassword),
+		string(loginWithGoogle),
+		string(loginWithGitHub),
+	})
 	if err != nil {
 		utils.PrintError(err)
 		return err
@@ -96,33 +91,23 @@ func runLogin(cmd *cobra.Command, args []string) error {
 
 	switch choice {
 	case string(loginWithEmailAndPassword):
-		email, err = prompt.New().Ask("Please enter your email:").
-			Input("", input.WithValidateFunc(
-				func(input string) error {
-					emailRegex := regexp.MustCompile(`^[a-z0-9._%+\-]+@[a-z0-9.\-]+\.[a-z]{2,4}$`)
-					if emailRegex.MatchString(input) {
-						return nil
-					} else {
-						return errors.New("invalid email address")
-					}
-				}))
+		email, err = utils.PromptInput("Please enter your email:", "Email", utils.ValidateEmail)
 		if err != nil {
 			utils.PrintError(err)
 			return err
 		}
 
-		password, err = prompt.New().Ask("Please enter your password:").
-			Input("", input.WithEchoMode(input.EchoPassword))
+		password, err = utils.PromptPassword("Please enter your password:", "Password")
 		if err != nil {
 			utils.PrintError(err)
 			return err
 		}
 
-		return PasswordLogin(cmd, args, true)
+		return passwordLogin(cmd, true)
 	case string(loginWithGoogle):
-		return SSOLogin(identityProviderGoogle)
+		return ssoLogin(cmd.Context(), identityProviderGoogle)
 	case string(loginWithGitHub):
-		return SSOLogin(identityProviderGitHub)
+		return ssoLogin(cmd.Context(), identityProviderGitHub)
 
 	default:
 		err := errors.New("Invalid selection")

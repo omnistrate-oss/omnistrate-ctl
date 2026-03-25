@@ -1,14 +1,14 @@
 version: "3"
 x-omnistrate-service-plan:
-  name: 'Hosted Postgres Serverless'
-  tenancyType: 'OMNISTRATE_DEDICATED_TENANCY'
+  name: "Hosted Postgres Serverless"
+  tenancyType: "OMNISTRATE_DEDICATED_TENANCY"
   deployment:
     hostedDeployment:
-      AwsAccountId: '339713121445'
-      AwsBootstrapRoleAccountArn: 'arn:aws:iam::339713121445:role/omnistrate-bootstrap-role'
-      GcpProjectId: 'omnistrate-dataplane-host-dev'
-      GcpProjectNumber: '61114262792'
-      GcpServiceAccountEmail: 'bootstrap.getservice@gcp.test.iam'
+      AwsAccountId: "339713121445"
+      AwsBootstrapRoleAccountArn: "arn:aws:iam::339713121445:role/omnistrate-bootstrap-role"
+      GcpProjectId: "omnistrate-dataplane-host-dev"
+      GcpProjectNumber: "61114262792"
+      GcpServiceAccountEmail: "bootstrap.getservice@gcp.test.iam"
 x-omnistrate-integrations:
   - omnistrateLogging
   - omnistrateMetrics

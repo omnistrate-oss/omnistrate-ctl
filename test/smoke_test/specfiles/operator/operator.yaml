@@ -1,0 +1,32 @@
+name: Cloud Native Postgres # Service Plan Name
+deployment:
+
+services:
+  - name: CNPG
+    operatorCRDConfiguration:
+      template: |
+        apiVersion: postgresql.cnpg.io/v1
+        kind: Cluster
+        metadata:
+          name: cluster-example
+          namespace: default # Should ignore this namespace
+        spec:
+          instances: 3
+          storage:
+            size: 1Gi
+
+      readinessConditions:
+        "$var._crd.status.phase": "Cluster in healthy state"
+        "$var._crd.status.readyInstances": 3
+        '$var._crd.status.conditions[?(@.type=="Ready")].status': "True"
+
+      outputParameters:
+        "Postgres Container Image": "$var._crd.status.image"
+        "Status": "$var._crd.status.phase"
+        "Topology": "$var._crd.status.topology"
+
+      helmChartDependencies:
+        - chartName: cloudnative-pg
+          chartVersion: 0.22.1
+          chartRepoName: cnpg
+          chartRepoURL: https://cloudnative-pg.github.io/charts
