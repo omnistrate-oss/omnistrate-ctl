@@ -644,10 +644,7 @@ func renderTimelineView(steps *ResourceWorkflowSteps, contentWidth int, items []
 			msg := extractEventMessage(evt.Message)
 
 			firstLine := strings.Split(msg, "\n")[0]
-			runes := []rune(firstLine)
-			if len(runes) > maxMsgWidth {
-				firstLine = string(runes[:maxMsgWidth-1]) + "…"
-			}
+			wrappedMsg := softWrapLine(firstLine, maxMsgWidth)
 
 			evtLineIdx := len(lines)
 			if itemIdx == cursorItem {
@@ -658,8 +655,15 @@ func renderTimelineView(steps *ResourceWorkflowSteps, contentWidth int, items []
 			lines = append(lines, fmt.Sprintf("    %s %s %s",
 				evtStyle.Render(evtIcon),
 				dimStyle.Render(ts),
-				msgStyle.Render(firstLine),
+				msgStyle.Render(wrappedMsg[0]),
 			))
+			// Continuation lines aligned under message text
+			if len(wrappedMsg) > 1 {
+				contPad := "      " + strings.Repeat(" ", len(ts)) + " "
+				for _, wl := range wrappedMsg[1:] {
+					lines = append(lines, fmt.Sprintf("%s%s", contPad, msgStyle.Render(wl)))
+				}
+			}
 		}
 
 		if i < len(steps.Steps)-1 {
@@ -801,10 +805,7 @@ func renderFlatStepRows(steps *ResourceWorkflowSteps, contentWidth int, _ []wfEv
 			msg := extractEventMessage(evt.Message)
 
 			firstLine := strings.Split(msg, "\n")[0]
-			runes := []rune(firstLine)
-			if len(runes) > maxMsgWidth {
-				firstLine = string(runes[:maxMsgWidth-1]) + "…"
-			}
+			wrappedMsg := softWrapLine(firstLine, maxMsgWidth)
 
 			evtLineIdx := len(lines)
 			if itemIdx == cursor {
@@ -815,8 +816,15 @@ func renderFlatStepRows(steps *ResourceWorkflowSteps, contentWidth int, _ []wfEv
 			lines = append(lines, fmt.Sprintf("    %s %s %s",
 				evtStyle.Render(evtIcon),
 				dimStyle.Render(ts),
-				msgStyle.Render(firstLine),
+				msgStyle.Render(wrappedMsg[0]),
 			))
+			// Continuation lines aligned under message text
+			if len(wrappedMsg) > 1 {
+				contPad := "      " + strings.Repeat(" ", len(ts)) + " "
+				for _, wl := range wrappedMsg[1:] {
+					lines = append(lines, fmt.Sprintf("%s%s", contPad, msgStyle.Render(wl)))
+				}
+			}
 		}
 
 		if i < len(steps.Steps)-1 {
@@ -948,7 +956,10 @@ func renderWfEventModal(state *workflowErrorsState, width, height int) string {
 	}
 
 	lines := strings.Split(state.modalText, "\n")
-	totalLines := len(lines)
+
+	// Expand source lines into visual lines with wrapping
+	vlines := expandLinesToVisual(lines, maxCodeWidth)
+	totalLines := len(vlines)
 
 	scroll := state.modalScroll
 	maxScroll := totalLines - bodyH
@@ -968,13 +979,13 @@ func renderWfEventModal(state *workflowErrorsState, width, height int) string {
 	textStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("252"))
 	var b strings.Builder
 	for i := scroll; i < end; i++ {
-		line := lines[i]
-		runes := []rune(line)
-		if len(runes) > maxCodeWidth {
-			line = string(runes[:maxCodeWidth-1]) + "…"
+		vl := vlines[i]
+		if vl.sourceNum > 0 {
+			lineNum := lineNumStyle.Render(fmt.Sprintf("%4d", vl.sourceNum))
+			b.WriteString(fmt.Sprintf("  %s │ %s\n", lineNum, textStyle.Render(vl.text)))
+		} else {
+			b.WriteString(fmt.Sprintf("  %s   %s\n", "    ", textStyle.Render(vl.text)))
 		}
-		lineNum := lineNumStyle.Render(fmt.Sprintf("%4d", i+1))
-		b.WriteString(fmt.Sprintf("  %s │ %s\n", lineNum, textStyle.Render(line)))
 	}
 	for i := end - scroll; i < bodyH; i++ {
 		b.WriteString("\n")
@@ -998,13 +1009,18 @@ func renderWfEventModal(state *workflowErrorsState, width, height int) string {
 }
 
 // wfEventModalMaxScroll returns the max scroll for the event detail modal.
-func wfEventModalMaxScroll(state *workflowErrorsState, height int) int {
+func wfEventModalMaxScroll(state *workflowErrorsState, width, height int) int {
 	bodyH := height - 4
 	if bodyH < 1 {
 		bodyH = 1
 	}
+	maxCodeWidth := width - 10
+	if maxCodeWidth < 20 {
+		maxCodeWidth = 20
+	}
 	lines := strings.Split(state.modalText, "\n")
-	maxScroll := len(lines) - bodyH
+	vlines := expandLinesToVisual(lines, maxCodeWidth)
+	maxScroll := len(vlines) - bodyH
 	if maxScroll < 0 {
 		maxScroll = 0
 	}

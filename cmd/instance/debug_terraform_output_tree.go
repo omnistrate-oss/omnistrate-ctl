@@ -266,10 +266,6 @@ func (m terraformDetailModel) renderTerraformOutputTab() string {
 	braceStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("245")) // dim
 	selectedBg := lipgloss.NewStyle().Background(lipgloss.Color("236")) // subtle highlight
 
-	maxValWidth := m.contentWidth() - 20
-	if maxValWidth < 20 {
-		maxValWidth = 20
-	}
 
 	for idx := scrollOffset; idx < end; idx++ {
 		node := visibleNodes[idx]
@@ -298,10 +294,6 @@ func (m terraformDetailModel) renderTerraformOutputTab() string {
 			switch node.nodeType {
 			case "string":
 				val := node.value
-				runes := []rune(val)
-				if len(runes) > maxValWidth {
-					val = string(runes[:maxValWidth-1]) + "…"
-				}
 				styledVal = strStyle.Render(fmt.Sprintf("%q", val))
 			case "number":
 				styledVal = numStyle.Render(node.value)
