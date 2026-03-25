@@ -301,7 +301,15 @@ func (m terraformDetailModel) renderLogsTab() string {
 		bodyH = 1
 	}
 
-	totalLines := len(m.logLines)
+	lineNumStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("241"))
+	maxCodeWidth := m.contentWidth() - 9
+	if maxCodeWidth < 20 {
+		maxCodeWidth = 20
+	}
+
+	// Expand all source lines into visual lines with wrapping
+	vlines := expandLinesToVisual(m.logLines, maxCodeWidth)
+	totalLines := len(vlines)
 
 	// Scroll position is managed in Update()
 	scroll := m.logScroll
@@ -322,21 +330,15 @@ func (m terraformDetailModel) renderLogsTab() string {
 		end = totalLines
 	}
 
-	lineNumStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("241"))
-	maxCodeWidth := m.contentWidth() - 9
-	if maxCodeWidth < 20 {
-		maxCodeWidth = 20
-	}
-
 	for i := scroll; i < end; i++ {
-		line := m.logLines[i]
-		runes := []rune(line)
-		if len(runes) > maxCodeWidth {
-			line = string(runes[:maxCodeWidth-1]) + "…"
+		vl := vlines[i]
+		styled := highlightLogLine(vl.text)
+		if vl.sourceNum > 0 {
+			lineNum := lineNumStyle.Render(fmt.Sprintf("%4d", vl.sourceNum))
+			b.WriteString(fmt.Sprintf("  %s │ %s\n", lineNum, styled))
+		} else {
+			b.WriteString(fmt.Sprintf("  %s   %s\n", "    ", styled))
 		}
-		lineNum := lineNumStyle.Render(fmt.Sprintf("%4d", i+1))
-		styled := highlightLogLine(line)
-		b.WriteString(fmt.Sprintf("  %s │ %s\n", lineNum, styled))
 	}
 
 	// Pad remaining lines
