@@ -56,6 +56,17 @@ func fetchTerraformProgress(ctx context.Context, token string, instanceData *ope
 		return nil, nil, nil, fmt.Errorf("failed to load terraform configmap index: %w", err)
 	}
 
+	progress, history := extractTerraformProgressFromIndex(index, instanceID, resourceID)
+	return progress, history, conn, nil
+}
+
+// extractTerraformProgressFromIndex extracts terraform progress and history for a given
+// resource from a pre-loaded configmap index, without making additional k8s calls.
+func extractTerraformProgressFromIndex(index *terraformConfigMapIndex, instanceID, resourceID string) (*TerraformProgressData, []TerraformHistoryEntry) {
+	if index == nil {
+		return nil, nil
+	}
+
 	// Find the tf-state configmap for this resource, trying multiple key formats
 	var stateConfigMap *corev1.ConfigMap
 	var ok bool
@@ -66,18 +77,20 @@ func fetchTerraformProgress(ctx context.Context, token string, instanceData *ope
 		}
 	}
 	if !ok {
-		return nil, nil, nil, nil
+		return nil, nil
 	}
 
 	// Parse history from the configmap
 	historyJSON, ok := stateConfigMap.Data["history"]
 	if !ok {
-		return nil, nil, nil, nil
+		return nil, nil
 	}
 
 	var history []TerraformHistoryEntry
 	if err := json.Unmarshal([]byte(historyJSON), &history); err != nil {
-		return nil, nil, nil, fmt.Errorf("failed to parse history: %w", err)
+		// Surface history parse problems so that "no data" states are diagnosable.
+		fmt.Printf("warning: failed to parse terraform history for instance %s, resource %s: %v\n", instanceID, resourceID, err)
+		return nil, nil
 	}
 
 	// Find the latest progress configmap that matches this resource/instance
@@ -120,11 +133,7 @@ func fetchTerraformProgress(ctx context.Context, token string, instanceData *ope
 		}
 	}
 
-	if progressData == nil {
-		return nil, history, conn, nil
-	}
-
-	return progressData, history, conn, nil
+	return progressData, history
 }
 
 func normalizeResourceIDForConfigMap(resourceID string) string {
