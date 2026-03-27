@@ -211,7 +211,7 @@ func TestFlattenTimeline_IncludesAttemptRows(t *testing.T) {
 		}
 	}
 
-	rows := flattenTimeline(sections)
+	rows := flattenTimeline(sections, nil, nil)
 	dateHeaders := 0
 	groupHeaders := 0
 	attemptHeaders := 0
@@ -245,5 +245,179 @@ func TestFlattenTimeline_IncludesAttemptRows(t *testing.T) {
 	}
 	if entryRows != 7 {
 		t.Fatalf("expected 7 entry rows, got %d", entryRows)
+	}
+}
+
+func TestFlattenTimeline_PlanPreviewRowBeforeApply(t *testing.T) {
+	history := []TerraformHistoryEntry{
+		{
+			Operation:   "init",
+			Status:      "completed",
+			StartedAt:   "2026-03-03T10:00:00Z",
+			CompletedAt: "2026-03-03T10:00:10Z",
+			OperationID: "genA.nonceA1",
+		},
+		{
+			Operation:   "apply",
+			Status:      "completed",
+			StartedAt:   "2026-03-03T10:00:11Z",
+			CompletedAt: "2026-03-03T10:00:30Z",
+			OperationID: "genA.nonceA1",
+		},
+		{
+			Operation:   "output",
+			Status:      "completed",
+			StartedAt:   "2026-03-03T10:00:31Z",
+			CompletedAt: "2026-03-03T10:00:35Z",
+			OperationID: "genA.nonceA1",
+		},
+	}
+
+	sections := buildTimelineSections(history)
+	sections[0].expanded = true
+	sections[0].groups[0].expanded = true
+	sections[0].groups[0].attempts[0].expanded = true
+
+	previews := map[string]string{
+		"genA.nonceA1": `{"planned_values":{}}`,
+	}
+
+	rows := flattenTimeline(sections, previews, nil)
+	var previewRows int
+	var previewBeforeApply bool
+	for i, row := range rows {
+		if row.isPlanPreviewRow {
+			previewRows++
+			if row.planPreviewOpID != "genA.nonceA1" {
+				t.Fatalf("expected plan preview opID genA.nonceA1, got %q", row.planPreviewOpID)
+			}
+			// Next row should be the "apply" entry
+			if i+1 < len(rows) && rows[i+1].entry != nil && rows[i+1].entry.Operation == "apply" {
+				previewBeforeApply = true
+			}
+		}
+	}
+	if previewRows != 1 {
+		t.Fatalf("expected 1 plan preview row, got %d", previewRows)
+	}
+	if !previewBeforeApply {
+		t.Fatal("expected plan preview row to appear before 'apply' entry")
+	}
+}
+
+func TestFlattenTimeline_NoPlanPreviewWithoutData(t *testing.T) {
+	history := []TerraformHistoryEntry{
+		{
+			Operation:   "init",
+			Status:      "completed",
+			StartedAt:   "2026-03-03T10:00:00Z",
+			CompletedAt: "2026-03-03T10:00:10Z",
+			OperationID: "genA.nonceA1",
+		},
+		{
+			Operation:   "apply",
+			Status:      "completed",
+			StartedAt:   "2026-03-03T10:00:11Z",
+			CompletedAt: "2026-03-03T10:00:30Z",
+			OperationID: "genA.nonceA1",
+		},
+	}
+
+	sections := buildTimelineSections(history)
+	sections[0].expanded = true
+	sections[0].groups[0].expanded = true
+	sections[0].groups[0].attempts[0].expanded = true
+
+	rows := flattenTimeline(sections, nil, nil)
+	for _, row := range rows {
+		if row.isPlanPreviewRow {
+			t.Fatal("expected no plan preview row when no preview data exists")
+		}
+	}
+}
+
+func TestFlattenTimeline_PlanPreviewErrorRow(t *testing.T) {
+	history := []TerraformHistoryEntry{
+		{
+			Operation:   "init",
+			Status:      "completed",
+			StartedAt:   "2026-03-03T10:00:00Z",
+			CompletedAt: "2026-03-03T10:00:10Z",
+			OperationID: "genA.nonceA1",
+		},
+		{
+			Operation:   "apply",
+			Status:      "failed",
+			StartedAt:   "2026-03-03T10:00:11Z",
+			CompletedAt: "2026-03-03T10:00:30Z",
+			OperationID: "genA.nonceA1",
+		},
+	}
+
+	sections := buildTimelineSections(history)
+	sections[0].expanded = true
+	sections[0].groups[0].expanded = true
+	sections[0].groups[0].attempts[0].expanded = true
+
+	previewErrors := map[string]string{
+		"genA.nonceA1": "Error: Failed to refresh state",
+	}
+
+	rows := flattenTimeline(sections, nil, previewErrors)
+	var previewRows int
+	for _, row := range rows {
+		if row.isPlanPreviewRow {
+			previewRows++
+		}
+	}
+	if previewRows != 1 {
+		t.Fatalf("expected 1 plan preview row for error, got %d", previewRows)
+	}
+}
+
+func TestFlattenTimeline_PlanPreviewAtEndWithoutApply(t *testing.T) {
+	history := []TerraformHistoryEntry{
+		{
+			Operation:   "init",
+			Status:      "completed",
+			StartedAt:   "2026-03-03T10:00:00Z",
+			CompletedAt: "2026-03-03T10:00:10Z",
+			OperationID: "genA.nonceA1",
+		},
+		{
+			Operation:   "output",
+			Status:      "completed",
+			StartedAt:   "2026-03-03T10:00:11Z",
+			CompletedAt: "2026-03-03T10:00:20Z",
+			OperationID: "genA.nonceA1",
+		},
+	}
+
+	sections := buildTimelineSections(history)
+	sections[0].expanded = true
+	sections[0].groups[0].expanded = true
+	sections[0].groups[0].attempts[0].expanded = true
+
+	previews := map[string]string{
+		"genA.nonceA1": `{"planned_values":{}}`,
+	}
+
+	rows := flattenTimeline(sections, previews, nil)
+	var previewRows int
+	for i, row := range rows {
+		if row.isPlanPreviewRow {
+			previewRows++
+			// Should be the last child row
+			if !row.isLastChild {
+				t.Fatal("expected plan preview row to be last child when no apply entry exists")
+			}
+			// Should be the last non-header row (at the end)
+			if i != len(rows)-1 {
+				t.Fatalf("expected plan preview to be last row, but it's at index %d of %d", i, len(rows))
+			}
+		}
+	}
+	if previewRows != 1 {
+		t.Fatalf("expected 1 plan preview row, got %d", previewRows)
 	}
 }

@@ -44,8 +44,8 @@ type terraformDataMsg struct {
 	k8sConn              *k8sConnections
 	fileTree             *TerraformFileTree
 	tfOutputJSON         string            // latest terraform output JSON from configmap
-	planPreviewByOpID    map[string]string  // plan preview JSON keyed by operation ID
-	planPreviewErrByOpID map[string]string  // plan preview errors keyed by operation ID
+	planPreviewByOpID    map[string]string // plan preview JSON keyed by operation ID
+	planPreviewErrByOpID map[string]string // plan preview errors keyed by operation ID
 	err                  error
 }
 
@@ -274,14 +274,14 @@ func (m terraformDetailModel) fetchData() tea.Cmd {
 		}
 
 		return terraformDataMsg{
-			progress:         progress,
-			history:          history,
-			k8sConn:          conn,
-			fileTree:         fileTree,
-			tfOutputJSON:     tfOutputJSON,
+			progress:             progress,
+			history:              history,
+			k8sConn:              conn,
+			fileTree:             fileTree,
+			tfOutputJSON:         tfOutputJSON,
 			planPreviewByOpID:    planPreviewByOpID,
 			planPreviewErrByOpID: planPreviewErrByOpID,
-			err:              err,
+			err:                  err,
 		}
 	}
 }
@@ -379,7 +379,7 @@ func (m terraformDetailModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.outputCursor--
 				}
 			} else if m.activeTab == tabOpHistory && len(m.historyDates) > 0 {
-				rows := flattenTimeline(m.historyDates)
+				rows := flattenTimeline(m.historyDates, m.planPreviewByOpID, m.planPreviewErrByOpID)
 				if m.historyCursor > 0 {
 					m.historyCursor--
 				}
@@ -441,7 +441,7 @@ func (m terraformDetailModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.outputCursor++
 				}
 			} else if m.activeTab == tabOpHistory && len(m.historyDates) > 0 {
-				rows := flattenTimeline(m.historyDates)
+				rows := flattenTimeline(m.historyDates, m.planPreviewByOpID, m.planPreviewErrByOpID)
 				if m.historyCursor < len(rows)-1 {
 					m.historyCursor++
 				}
@@ -490,7 +490,7 @@ func (m terraformDetailModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					toggleOutputNode(visibleNodes[m.outputCursor])
 				}
 			} else if m.activeTab == tabOpHistory && len(m.historyDates) > 0 {
-				rows := flattenTimeline(m.historyDates)
+				rows := flattenTimeline(m.historyDates, m.planPreviewByOpID, m.planPreviewErrByOpID)
 				if m.historyCursor >= 0 && m.historyCursor < len(rows) {
 					row := rows[m.historyCursor]
 					if row.isDateHeader {
@@ -499,19 +499,20 @@ func (m terraformDetailModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 						row.group.expanded = !row.group.expanded
 					} else if row.isAttemptHeader {
 						row.attempt.expanded = !row.attempt.expanded
+					} else if row.isPlanPreviewRow {
+						// Open plan preview modal from the dedicated preview row
+						if content, _, found := m.planPreviewForOpID(row.planPreviewOpID); found {
+							m.previewModalText = content
+							m.previewModalOpID = row.planPreviewOpID
+							m.previewModalScroll = 0
+						}
 					} else if row.entry != nil && row.entry.Error != "" {
 						// Open error modal
 						m.errorModalText = strings.ReplaceAll(row.entry.Error, "\\n", "\n")
 						m.errorModalOp = row.entry.Operation
 						m.errorModalScroll = 0
-					} else if row.entry != nil {
-						if content, _, found := m.planPreviewForOpID(row.entry.OperationID); found {
-							m.previewModalText = content
-							m.previewModalOpID = row.entry.OperationID
-							m.previewModalScroll = 0
-						}
 					}
-					newRows := flattenTimeline(m.historyDates)
+					newRows := flattenTimeline(m.historyDates, m.planPreviewByOpID, m.planPreviewErrByOpID)
 					if m.historyCursor >= len(newRows) {
 						m.historyCursor = len(newRows) - 1
 					}
@@ -1311,14 +1312,16 @@ type operationAttempt struct {
 
 // timelineRow is a single renderable row in the flattened timeline
 type timelineRow struct {
-	isDateHeader    bool
-	isGroupHeader   bool
-	isAttemptHeader bool
-	date            *dateSection
-	group           *operationGroup
-	attempt         *operationAttempt
-	entry           *TerraformHistoryEntry
-	isLastChild     bool
+	isDateHeader     bool
+	isGroupHeader    bool
+	isAttemptHeader  bool
+	isPlanPreviewRow bool   // dedicated plan preview row inserted before "apply"
+	planPreviewOpID  string // operation ID for the plan preview (set when isPlanPreviewRow)
+	date             *dateSection
+	group            *operationGroup
+	attempt          *operationAttempt
+	entry            *TerraformHistoryEntry
+	isLastChild      bool
 }
 
 func dateFromTimestamp(ts string) string {
@@ -1459,7 +1462,22 @@ func buildTimelineSections(history []TerraformHistoryEntry) []dateSection {
 	return sections
 }
 
-func flattenTimeline(dates []dateSection) []timelineRow {
+// hasPlanPreview reports whether the given operation ID has a plan preview or plan preview error.
+func hasPlanPreview(opID string, previews, previewErrors map[string]string) bool {
+	if previews != nil {
+		if v, ok := previews[opID]; ok && v != "" {
+			return true
+		}
+	}
+	if previewErrors != nil {
+		if v, ok := previewErrors[opID]; ok && v != "" {
+			return true
+		}
+	}
+	return false
+}
+
+func flattenTimeline(dates []dateSection, previews, previewErrors map[string]string) []timelineRow {
 	var rows []timelineRow
 	for i := range dates {
 		d := &dates[i]
@@ -1485,13 +1503,39 @@ func flattenTimeline(dates []dateSection) []timelineRow {
 							date:            d,
 						})
 						if attempt.expanded {
+							hasPreview := hasPlanPreview(attempt.operationID, previews, previewErrors)
+							previewInserted := false
+							entryCount := len(attempt.entries)
 							for k := range attempt.entries {
+								e := &attempt.entries[k]
+								// Insert plan preview row before the first "apply" entry
+								if hasPreview && !previewInserted && e.Operation == "apply" {
+									rows = append(rows, timelineRow{
+										isPlanPreviewRow: true,
+										planPreviewOpID:  attempt.operationID,
+										group:            g,
+										attempt:          attempt,
+										date:             d,
+									})
+									previewInserted = true
+								}
 								rows = append(rows, timelineRow{
 									group:       g,
 									attempt:     attempt,
-									entry:       &attempt.entries[k],
-									isLastChild: k == len(attempt.entries)-1,
+									entry:       e,
+									isLastChild: k == entryCount-1 && (previewInserted || !hasPreview),
 									date:        d,
+								})
+							}
+							// If there was no "apply" entry, append the preview row at the end
+							if hasPreview && !previewInserted {
+								rows = append(rows, timelineRow{
+									isPlanPreviewRow: true,
+									planPreviewOpID:  attempt.operationID,
+									group:            g,
+									attempt:          attempt,
+									isLastChild:      true,
+									date:             d,
 								})
 							}
 						}
@@ -1532,7 +1576,7 @@ func (m terraformDetailModel) renderOperationHistoryTab() string {
 		fmt.Sprintf("Operation History (%d days, %d generations, %d attempts, %d entries)",
 			len(m.historyDates), totalGenerations, totalAttempts, len(m.history)))))
 
-	rows := flattenTimeline(m.historyDates)
+	rows := flattenTimeline(m.historyDates, m.planPreviewByOpID, m.planPreviewErrByOpID)
 
 	// Simple row-based viewport clipping (each row = 1 line, no inline expansion)
 	totalRows := len(rows)
@@ -1657,6 +1701,21 @@ func (m terraformDetailModel) renderOperationHistoryTab() string {
 			}
 
 			b.WriteString(fmt.Sprintf("  %s%s\n", cursor, line))
+		} else if row.isPlanPreviewRow {
+			// Dedicated plan preview row inserted before "apply"
+			connector := "│   │   ├─"
+			if row.isLastChild {
+				connector = "│   │   └─"
+			}
+			previewStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("117"))
+			line := fmt.Sprintf("  %s %s",
+				dimStyle.Render(connector),
+				previewStyle.Render("📋 plan preview (enter to view)"),
+			)
+			if selected {
+				line = selectedBg.Render(line)
+			}
+			b.WriteString(fmt.Sprintf("  %s%s\n", cursor, line))
 		} else {
 			// Child entry row
 			e := row.entry
@@ -1677,8 +1736,6 @@ func (m terraformDetailModel) renderOperationHistoryTab() string {
 			errorHint := ""
 			if e.Error != "" {
 				errorHint = lipgloss.NewStyle().Foreground(lipgloss.Color("203")).Render("  ▸ error (enter to view)")
-			} else if _, _, hasPP := m.planPreviewForOpID(e.OperationID); hasPP {
-				errorHint = lipgloss.NewStyle().Foreground(lipgloss.Color("117")).Render("  📋 preview (enter to view)")
 			}
 
 			line := fmt.Sprintf("  %s %s %s  %s  %s%s",
