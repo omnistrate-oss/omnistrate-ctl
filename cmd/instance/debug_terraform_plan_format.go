@@ -223,8 +223,20 @@ func writeResourceChange(b *strings.Builder, rc *tfResourceChange) {
 	b.WriteString(fmt.Sprintf("  %s resource %q %q {\n", prefix, rc.Type, rc.Name))
 
 	// Collect after-sensitive map for masking
-	afterSensitive := toStringBoolMap(rc.Change.AfterSensitive)
-	afterUnknown := toStringBoolMap(rc.Change.AfterUnknown)
+	afterSensitive, allSensitive := toStringBoolMap(rc.Change.AfterSensitive)
+	afterUnknown, allUnknown := toStringBoolMap(rc.Change.AfterUnknown)
+
+	// When the entire resource is flagged, mark every key in "after" as sensitive/unknown
+	if allSensitive && rc.Change.After != nil {
+		for k := range rc.Change.After {
+			afterSensitive[k] = true
+		}
+	}
+	if allUnknown && rc.Change.After != nil {
+		for k := range rc.Change.After {
+			afterUnknown[k] = true
+		}
+	}
 
 	switch action {
 	case actionCreate:
@@ -395,15 +407,19 @@ func formatValue(v interface{}) string {
 	}
 }
 
-// toStringBoolMap converts an interface{} to a map[string]bool.
+// toStringBoolMap converts an interface{} to a map[string]bool and an "all" flag.
 // Terraform plan JSON uses this for after_sensitive and after_unknown.
 // The value can be a bool (applies to whole resource) or a map of field→bool.
-func toStringBoolMap(v interface{}) map[string]bool {
-	result := make(map[string]bool)
+// When the value is bool(true), allFlagged is returned as true, meaning every
+// attribute should be treated as sensitive/unknown.
+func toStringBoolMap(v interface{}) (result map[string]bool, allFlagged bool) {
+	result = make(map[string]bool)
 	if v == nil {
-		return result
+		return result, false
 	}
 	switch val := v.(type) {
+	case bool:
+		return result, val
 	case map[string]interface{}:
 		for k, sv := range val {
 			if b, ok := sv.(bool); ok && b {
@@ -411,7 +427,7 @@ func toStringBoolMap(v interface{}) map[string]bool {
 			}
 		}
 	}
-	return result
+	return result, false
 }
 
 func sortedKeys(m map[string]interface{}) []string {

@@ -1710,7 +1710,7 @@ func (m terraformDetailModel) renderOperationHistoryTab() string {
 			previewStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("117"))
 			line := fmt.Sprintf("  %s %s",
 				dimStyle.Render(connector),
-				previewStyle.Render("📋 plan preview (enter to view)"),
+				previewStyle.Render("▸ plan preview (enter to view)"),
 			)
 			if selected {
 				line = selectedBg.Render(line)

@@ -293,19 +293,27 @@ func TestFormatValue(t *testing.T) {
 
 func TestToStringBoolMap(t *testing.T) {
 	// nil input
-	result := toStringBoolMap(nil)
+	result, allFlagged := toStringBoolMap(nil)
 	require.Empty(t, result)
+	require.False(t, allFlagged)
 
-	// bool input (whole-resource sensitivity)
-	result = toStringBoolMap(true)
-	require.Empty(t, result) // not a map, returns empty
+	// bool(true) input — whole-resource flag
+	result, allFlagged = toStringBoolMap(true)
+	require.Empty(t, result)
+	require.True(t, allFlagged)
+
+	// bool(false) input
+	result, allFlagged = toStringBoolMap(false)
+	require.Empty(t, result)
+	require.False(t, allFlagged)
 
 	// map input
-	result = toStringBoolMap(map[string]interface{}{
+	result, allFlagged = toStringBoolMap(map[string]interface{}{
 		"password": true,
 		"username": false,
 		"tags":     map[string]interface{}{}, // not a bool
 	})
+	require.False(t, allFlagged)
 	require.True(t, result["password"])
 	require.False(t, result["username"])
 	require.False(t, result["tags"])
@@ -334,4 +342,92 @@ func TestFormatTerraformPlan_RealWorldExample(t *testing.T) {
 	// Verify it's multi-line and readable
 	lines := strings.Split(result, "\n")
 	require.Greater(t, len(lines), 10, "formatted plan should have multiple lines")
+}
+
+func TestFormatTerraformPlan_AllSensitive(t *testing.T) {
+	raw := `{
+		"format_version": "1.2",
+		"terraform_version": "1.11.5",
+		"resource_changes": [{
+			"address": "aws_db_instance.secret",
+			"type": "aws_db_instance",
+			"name": "secret",
+			"change": {
+				"actions": ["create"],
+				"before": null,
+				"after": {
+					"password": "super-secret",
+					"username": "admin"
+				},
+				"after_unknown": {},
+				"after_sensitive": true
+			}
+		}]
+	}`
+
+	result := formatTerraformPlan(raw)
+
+	require.Contains(t, result, "(sensitive value)")
+	require.NotContains(t, result, "super-secret")
+	require.NotContains(t, result, `"admin"`)
+	require.Contains(t, result, "Plan: 1 to add, 0 to change, 0 to destroy.")
+}
+
+func TestFormatTerraformPlan_AllUnknown(t *testing.T) {
+	raw := `{
+		"format_version": "1.2",
+		"terraform_version": "1.11.5",
+		"resource_changes": [{
+			"address": "aws_instance.web",
+			"type": "aws_instance",
+			"name": "web",
+			"change": {
+				"actions": ["create"],
+				"before": null,
+				"after": {
+					"ami": "ami-123",
+					"id": "placeholder"
+				},
+				"after_unknown": true,
+				"after_sensitive": {}
+			}
+		}]
+	}`
+
+	result := formatTerraformPlan(raw)
+
+	require.Contains(t, result, "(known after apply)")
+	require.NotContains(t, result, `"ami-123"`)
+	require.NotContains(t, result, `"placeholder"`)
+}
+
+func TestFormatTerraformPlan_AllSensitiveUpdate(t *testing.T) {
+	raw := `{
+		"format_version": "1.2",
+		"terraform_version": "1.11.5",
+		"resource_changes": [{
+			"address": "aws_db_instance.secret",
+			"type": "aws_db_instance",
+			"name": "secret",
+			"change": {
+				"actions": ["update"],
+				"before": {
+					"password": "old-secret",
+					"username": "admin"
+				},
+				"after": {
+					"password": "new-secret",
+					"username": "admin"
+				},
+				"after_unknown": {},
+				"after_sensitive": true
+			}
+		}]
+	}`
+
+	result := formatTerraformPlan(raw)
+
+	require.Contains(t, result, "(sensitive value)")
+	require.NotContains(t, result, "new-secret")
+	require.Contains(t, result, "Plan: 0 to add, 1 to change, 0 to destroy.")
 }
