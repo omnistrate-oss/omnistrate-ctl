@@ -33,7 +33,7 @@ func formatTerraformPlan(rawJSON string) string {
 
 	// Header
 	if plan.TerraformVersion != "" {
-		b.WriteString(fmt.Sprintf("Terraform v%s\n", plan.TerraformVersion))
+		fmt.Fprintf(&b, "Terraform v%s\n", plan.TerraformVersion)
 	}
 
 	// Count changes by action
@@ -83,13 +83,13 @@ func formatTerraformPlan(rawJSON string) string {
 			if out.Sensitive {
 				sensitiveTag = " (sensitive)"
 			}
-			b.WriteString(fmt.Sprintf("  + %s%s\n", k, sensitiveTag))
+			fmt.Fprintf(&b, "  + %s%s\n", k, sensitiveTag)
 		}
 	}
 
 	// Summary line
-	b.WriteString(fmt.Sprintf("\nPlan: %d to add, %d to change, %d to destroy.\n",
-		toCreate+toReplace, toUpdate, toDelete+toReplace))
+	fmt.Fprintf(&b, "\nPlan: %d to add, %d to change, %d to destroy.\n",
+		toCreate+toReplace, toUpdate, toDelete+toReplace)
 
 	return b.String()
 }
@@ -219,8 +219,8 @@ func writeResourceChange(b *strings.Builder, rc *tfResourceChange) {
 	}
 
 	// Header: # aws_db_instance.example1 will be created
-	b.WriteString(fmt.Sprintf("  # %s %s\n", rc.Address, verb))
-	b.WriteString(fmt.Sprintf("  %s resource %q %q {\n", prefix, rc.Type, rc.Name))
+	fmt.Fprintf(b, "  # %s %s\n", rc.Address, verb)
+	fmt.Fprintf(b, "  %s resource %q %q {\n", prefix, rc.Type, rc.Name)
 
 	// Collect after-sensitive map for masking
 	afterSensitive, allSensitive := toStringBoolMap(rc.Change.AfterSensitive)
@@ -285,11 +285,11 @@ func writeCreateAttributes(b *strings.Builder, after map[string]interface{}, sen
 
 		padding := strings.Repeat(" ", maxKeyLen-len(k))
 		if sensitive[k] {
-			b.WriteString(fmt.Sprintf("      %s %-s%s = (sensitive value)\n", prefix, k, padding))
+			fmt.Fprintf(b, "      %s %-s%s = (sensitive value)\n", prefix, k, padding)
 		} else if unknown[k] {
-			b.WriteString(fmt.Sprintf("      %s %-s%s = (known after apply)\n", prefix, k, padding))
+			fmt.Fprintf(b, "      %s %-s%s = (known after apply)\n", prefix, k, padding)
 		} else if inAfter {
-			b.WriteString(fmt.Sprintf("      %s %-s%s = %s\n", prefix, k, padding, formatValue(v)))
+			fmt.Fprintf(b, "      %s %-s%s = %s\n", prefix, k, padding, formatValue(v))
 		}
 	}
 }
@@ -311,7 +311,7 @@ func writeDeleteAttributes(b *strings.Builder, before map[string]interface{}, pr
 			continue
 		}
 		padding := strings.Repeat(" ", maxKeyLen-len(k))
-		b.WriteString(fmt.Sprintf("      %s %-s%s = %s\n", prefix, k, padding, formatValue(v)))
+		fmt.Fprintf(b, "      %s %-s%s = %s\n", prefix, k, padding, formatValue(v))
 	}
 }
 
@@ -340,15 +340,15 @@ func writeUpdateAttributes(b *strings.Builder, before, after map[string]interfac
 		if !hadBefore && hasAfter {
 			// Added
 			if sensitive[k] {
-				b.WriteString(fmt.Sprintf("      + %-s%s = (sensitive value)\n", k, padding))
+				fmt.Fprintf(b, "      + %-s%s = (sensitive value)\n", k, padding)
 			} else if unknown[k] {
-				b.WriteString(fmt.Sprintf("      + %-s%s = (known after apply)\n", k, padding))
+				fmt.Fprintf(b, "      + %-s%s = (known after apply)\n", k, padding)
 			} else {
-				b.WriteString(fmt.Sprintf("      + %-s%s = %s\n", k, padding, formatValue(afterVal)))
+				fmt.Fprintf(b, "      + %-s%s = %s\n", k, padding, formatValue(afterVal))
 			}
 		} else if hadBefore && !hasAfter {
 			// Removed
-			b.WriteString(fmt.Sprintf("      - %-s%s = %s\n", k, padding, formatValue(beforeVal)))
+			fmt.Fprintf(b, "      - %-s%s = %s\n", k, padding, formatValue(beforeVal))
 		} else {
 			// Check if changed
 			beforeStr := formatValue(beforeVal)
@@ -359,7 +359,7 @@ func writeUpdateAttributes(b *strings.Builder, before, after map[string]interfac
 				afterStr = "(known after apply)"
 			}
 			if beforeStr != afterStr {
-				b.WriteString(fmt.Sprintf("      ~ %-s%s = %s -> %s\n", k, padding, beforeStr, afterStr))
+				fmt.Fprintf(b, "      ~ %-s%s = %s -> %s\n", k, padding, beforeStr, afterStr)
 			}
 		}
 	}
@@ -440,13 +440,13 @@ func sortedKeys(m map[string]interface{}) []string {
 }
 
 func maxKeyLength(keys []string) int {
-	max := 0
+	maxLen := 0
 	for _, k := range keys {
-		if len(k) > max {
-			max = len(k)
+		if len(k) > maxLen {
+			maxLen = len(k)
 		}
 	}
-	return max
+	return maxLen
 }
 
 // isComplexEmpty returns true if the value is an empty slice or empty map.
