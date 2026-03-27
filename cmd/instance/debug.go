@@ -338,14 +338,14 @@ func collectTerraformDebugInfo(ctx context.Context, token string, instanceData *
 			info.TerraformHistory = history
 		}
 
-		// Get plan preview or plan preview error from configmap files
+		// Get plan previews keyed by operation ID from configmap files (optional, never fails)
 		if tfData != nil && len(tfData.Files) > 0 {
-			preview, previewErr := findLatestPlanPreview(tfData.Files, history)
-			if preview != "" {
-				info.TerraformPlanPreview = preview
+			previews, previewErrors := findAllPlanPreviews(tfData.Files)
+			if len(previews) > 0 {
+				info.TerraformPlanPreview = previews
 			}
-			if previewErr != "" {
-				info.TerraformPlanPreviewError = previewErr
+			if len(previewErrors) > 0 {
+				info.TerraformPlanPreviewError = previewErrors
 			}
 		}
 	}

@@ -14,17 +14,16 @@ import (
 )
 
 const (
-	tabProgress    = 0
-	tabTfFiles     = 1
-	tabTfOutput    = 2
-	tabLogs        = 3
-	tabOpHistory   = 4
-	tabWfErrors    = 5
-	tabPlanPreview = 6
-	numTabs        = 7
+	tabProgress  = 0
+	tabTfFiles   = 1
+	tabTfOutput  = 2
+	tabLogs      = 3
+	tabOpHistory = 4
+	tabWfErrors  = 5
+	numTabs      = 6
 )
 
-var tabNames = []string{"Progress", "Terraform Files", "Terraform Output", "Logs", "Operation History", "Workflow Events", "Plan Preview"}
+var tabNames = []string{"Progress", "Terraform Files", "Terraform Output", "Logs", "Operation History", "Workflow Events"}
 
 func init() {
 	if len(tabNames) != numTabs {
@@ -40,14 +39,14 @@ type fileContentMsg struct {
 
 // Messages
 type terraformDataMsg struct {
-	progress         *TerraformProgressData
-	history          []TerraformHistoryEntry
-	k8sConn          *k8sConnections
-	fileTree         *TerraformFileTree
-	tfOutputJSON     string // latest terraform output JSON from configmap
-	planPreviewJSON  string // latest plan preview JSON from configmap
-	planPreviewError string // latest plan preview error from configmap
-	err              error
+	progress             *TerraformProgressData
+	history              []TerraformHistoryEntry
+	k8sConn              *k8sConnections
+	fileTree             *TerraformFileTree
+	tfOutputJSON         string            // latest terraform output JSON from configmap
+	planPreviewByOpID    map[string]string  // plan preview JSON keyed by operation ID
+	planPreviewErrByOpID map[string]string  // plan preview errors keyed by operation ID
+	err                  error
 }
 
 // progressRefreshMsg is sent when auto-refresh fetches updated progress data
@@ -99,12 +98,14 @@ type terraformDetailModel struct {
 	outputTree   []outputNode
 	outputCursor int
 
-	// Plan Preview tab data
-	planPreviewJSON   string       // raw JSON plan preview from configmap
-	planPreviewError  string       // plan preview error text from configmap
-	planPreviewTree   []outputNode // parsed tree for interactive view (only if JSON)
-	planPreviewCursor int
-	planPreviewScroll int
+	// Plan preview data keyed by operation ID (shown in operation history)
+	planPreviewByOpID    map[string]string
+	planPreviewErrByOpID map[string]string
+
+	// Plan preview modal (shown over operation history)
+	previewModalText   string // non-empty means modal is open
+	previewModalScroll int
+	previewModalOpID   string // operation ID for the modal title
 
 	// Logs tab data
 	logLines     []string
@@ -220,7 +221,7 @@ func (m terraformDetailModel) fetchData() tea.Cmd {
 		// Fetch terraform output JSON and plan preview from configmap Files (tf-state).
 		// Try both dataplane and control-plane clusters.
 		var tfOutputJSON string
-		var planPreviewJSON, planPreviewError string
+		var planPreviewByOpID, planPreviewErrByOpID map[string]string
 		if conn == nil {
 			return terraformDataMsg{
 				progress: progress,
@@ -245,7 +246,7 @@ func (m terraformDetailModel) fetchData() tea.Cmd {
 			}
 			if tfData != nil {
 				tfOutputJSON = findLatestOutputLog(tfData.Files, history)
-				planPreviewJSON, planPreviewError = findLatestPlanPreview(tfData.Files, history)
+				planPreviewByOpID, planPreviewErrByOpID = findAllPlanPreviews(tfData.Files)
 				break
 			}
 		}
@@ -278,8 +279,8 @@ func (m terraformDetailModel) fetchData() tea.Cmd {
 			k8sConn:          conn,
 			fileTree:         fileTree,
 			tfOutputJSON:     tfOutputJSON,
-			planPreviewJSON:  planPreviewJSON,
-			planPreviewError: planPreviewError,
+			planPreviewByOpID:    planPreviewByOpID,
+			planPreviewErrByOpID: planPreviewErrByOpID,
 			err:              err,
 		}
 	}
@@ -315,6 +316,12 @@ func (m terraformDetailModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.errorModalOp = ""
 				return m, nil
 			}
+			if m.previewModalText != "" {
+				m.previewModalText = ""
+				m.previewModalOpID = ""
+				m.previewModalScroll = 0
+				return m, nil
+			}
 			if m.viewingFile {
 				m.viewingFile = false
 				m.fileContent = ""
@@ -329,7 +336,7 @@ func (m terraformDetailModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// Signal back to DAG view
 			return m, func() tea.Msg { return backToDagMsg{} }
 		case "tab", "right":
-			if m.wfErrors.modalText != "" || m.errorModalText != "" {
+			if m.wfErrors.modalText != "" || m.errorModalText != "" || m.previewModalText != "" {
 				return m, nil // block tab switching while modal is open
 			}
 			if !m.viewingFile {
@@ -337,7 +344,7 @@ func (m terraformDetailModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.scrollY = 0
 			}
 		case "shift+tab", "left":
-			if m.wfErrors.modalText != "" || m.errorModalText != "" {
+			if m.wfErrors.modalText != "" || m.errorModalText != "" || m.previewModalText != "" {
 				return m, nil
 			}
 			if !m.viewingFile {
@@ -357,6 +364,12 @@ func (m terraformDetailModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 				return m, nil
 			}
+			if m.previewModalText != "" {
+				if m.previewModalScroll > 0 {
+					m.previewModalScroll--
+				}
+				return m, nil
+			}
 			if m.activeTab == tabTfFiles && !m.viewingFile && m.fileTree != nil {
 				if m.fileCursor > 0 {
 					m.fileCursor--
@@ -364,14 +377,6 @@ func (m terraformDetailModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			} else if m.activeTab == tabTfOutput && len(m.outputTree) > 0 {
 				if m.outputCursor > 0 {
 					m.outputCursor--
-				}
-			} else if m.activeTab == tabPlanPreview && len(m.planPreviewTree) > 0 {
-				if m.planPreviewCursor > 0 {
-					m.planPreviewCursor--
-				}
-			} else if m.activeTab == tabPlanPreview && m.planPreviewError != "" {
-				if m.planPreviewScroll > 0 {
-					m.planPreviewScroll--
 				}
 			} else if m.activeTab == tabOpHistory && len(m.historyDates) > 0 {
 				rows := flattenTimeline(m.historyDates)
@@ -418,6 +423,14 @@ func (m terraformDetailModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 				return m, nil
 			}
+			if m.previewModalText != "" {
+				m.previewModalScroll++
+				maxScroll := m.previewModalMaxScroll()
+				if m.previewModalScroll > maxScroll {
+					m.previewModalScroll = maxScroll
+				}
+				return m, nil
+			}
 			if m.activeTab == tabTfFiles && !m.viewingFile && m.fileTree != nil {
 				if m.fileCursor < len(m.fileTree.Flat)-1 {
 					m.fileCursor++
@@ -426,16 +439,6 @@ func (m terraformDetailModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				visibleNodes := flattenOutputTree(m.outputTree)
 				if m.outputCursor < len(visibleNodes)-1 {
 					m.outputCursor++
-				}
-			} else if m.activeTab == tabPlanPreview && len(m.planPreviewTree) > 0 {
-				visibleNodes := flattenOutputTree(m.planPreviewTree)
-				if m.planPreviewCursor < len(visibleNodes)-1 {
-					m.planPreviewCursor++
-				}
-			} else if m.activeTab == tabPlanPreview && m.planPreviewError != "" {
-				m.planPreviewScroll++
-				if m.planPreviewScroll > m.planPreviewMaxScroll() {
-					m.planPreviewScroll = m.planPreviewMaxScroll()
 				}
 			} else if m.activeTab == tabOpHistory && len(m.historyDates) > 0 {
 				rows := flattenTimeline(m.historyDates)
@@ -486,11 +489,6 @@ func (m terraformDetailModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				if m.outputCursor >= 0 && m.outputCursor < len(visibleNodes) {
 					toggleOutputNode(visibleNodes[m.outputCursor])
 				}
-			} else if m.activeTab == tabPlanPreview && len(m.planPreviewTree) > 0 {
-				visibleNodes := flattenOutputTree(m.planPreviewTree)
-				if m.planPreviewCursor >= 0 && m.planPreviewCursor < len(visibleNodes) {
-					toggleOutputNode(visibleNodes[m.planPreviewCursor])
-				}
 			} else if m.activeTab == tabOpHistory && len(m.historyDates) > 0 {
 				rows := flattenTimeline(m.historyDates)
 				if m.historyCursor >= 0 && m.historyCursor < len(rows) {
@@ -506,6 +504,12 @@ func (m terraformDetailModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 						m.errorModalText = strings.ReplaceAll(row.entry.Error, "\\n", "\n")
 						m.errorModalOp = row.entry.Operation
 						m.errorModalScroll = 0
+					} else if row.entry != nil {
+						if content, _, found := m.planPreviewForOpID(row.entry.OperationID); found {
+							m.previewModalText = content
+							m.previewModalOpID = row.entry.OperationID
+							m.previewModalScroll = 0
+						}
 					}
 					newRows := flattenTimeline(m.historyDates)
 					if m.historyCursor >= len(newRows) {
@@ -538,25 +542,18 @@ func (m terraformDetailModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 				return m, nil
 			}
+			if m.previewModalText != "" {
+				m.previewModalScroll -= m.bodyHeight()
+				if m.previewModalScroll < 0 {
+					m.previewModalScroll = 0
+				}
+				return m, nil
+			}
 			if m.activeTab == tabLogs {
 				m.logFollow = false
 				m.logScroll -= m.bodyHeight()
 				if m.logScroll < 0 {
 					m.logScroll = 0
-				}
-			} else if m.activeTab == tabPlanPreview && m.planPreviewError != "" {
-				m.planPreviewScroll -= m.bodyHeight()
-				if m.planPreviewScroll < 0 {
-					m.planPreviewScroll = 0
-				}
-			} else if m.activeTab == tabPlanPreview && len(m.planPreviewTree) > 0 {
-				pageItems := m.bodyHeight() / 2
-				if pageItems < 1 {
-					pageItems = 1
-				}
-				m.planPreviewCursor -= pageItems
-				if m.planPreviewCursor < 0 {
-					m.planPreviewCursor = 0
 				}
 			} else if m.activeTab == tabWfErrors {
 				items := flattenWfEventItems(m.getTfWfEvents())
@@ -597,29 +594,19 @@ func (m terraformDetailModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 				return m, nil
 			}
+			if m.previewModalText != "" {
+				m.previewModalScroll += m.bodyHeight()
+				maxScroll := m.previewModalMaxScroll()
+				if m.previewModalScroll > maxScroll {
+					m.previewModalScroll = maxScroll
+				}
+				return m, nil
+			}
 			if m.activeTab == tabLogs {
 				m.logFollow = false
 				m.logScroll += m.bodyHeight()
 				if m.logScroll > m.logMaxScroll() {
 					m.logScroll = m.logMaxScroll()
-				}
-			} else if m.activeTab == tabPlanPreview && m.planPreviewError != "" {
-				m.planPreviewScroll += m.bodyHeight()
-				if m.planPreviewScroll > m.planPreviewMaxScroll() {
-					m.planPreviewScroll = m.planPreviewMaxScroll()
-				}
-			} else if m.activeTab == tabPlanPreview && len(m.planPreviewTree) > 0 {
-				visibleNodes := flattenOutputTree(m.planPreviewTree)
-				pageItems := m.bodyHeight() / 2
-				if pageItems < 1 {
-					pageItems = 1
-				}
-				m.planPreviewCursor += pageItems
-				if m.planPreviewCursor >= len(visibleNodes) {
-					m.planPreviewCursor = len(visibleNodes) - 1
-				}
-				if m.planPreviewCursor < 0 {
-					m.planPreviewCursor = 0
 				}
 			} else if m.activeTab == tabWfErrors {
 				items := flattenWfEventItems(m.getTfWfEvents())
@@ -689,11 +676,8 @@ func (m terraformDetailModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.tfOutputJSON != "" {
 			m.outputTree = buildOutputTreeFromJSON(msg.tfOutputJSON)
 		}
-		m.planPreviewJSON = msg.planPreviewJSON
-		m.planPreviewError = msg.planPreviewError
-		if msg.planPreviewJSON != "" {
-			m.planPreviewTree = buildOutputTreeFromJSON(msg.planPreviewJSON)
-		}
+		m.planPreviewByOpID = msg.planPreviewByOpID
+		m.planPreviewErrByOpID = msg.planPreviewErrByOpID
 		// Start log watcher for apply/destroy logs from configmap.
 		// Try both dataplane and control-plane clusters to find which has the logs.
 		var cmds []tea.Cmd
@@ -1001,6 +985,9 @@ func (m terraformDetailModel) copyableContent() string {
 	if m.errorModalText != "" {
 		return m.errorModalText
 	}
+	if m.previewModalText != "" {
+		return m.previewModalText
+	}
 	if m.viewingFile && m.fileContent != "" {
 		return m.fileContent
 	}
@@ -1012,13 +999,6 @@ func (m terraformDetailModel) copyableContent() string {
 	case tabTfOutput:
 		if m.tfOutputJSON != "" {
 			return m.tfOutputJSON
-		}
-	case tabPlanPreview:
-		if m.planPreviewJSON != "" {
-			return m.planPreviewJSON
-		}
-		if m.planPreviewError != "" {
-			return m.planPreviewError
 		}
 	case tabWfErrors:
 		return workflowEventsCopyText(m.getTfWfEvents())
@@ -1037,6 +1017,10 @@ func (m terraformDetailModel) View() string {
 
 	if m.errorModalText != "" {
 		return m.renderErrorModal()
+	}
+
+	if m.previewModalText != "" {
+		return m.renderPreviewModal()
 	}
 
 	header := m.renderHeader()
@@ -1153,8 +1137,6 @@ func (m terraformDetailModel) getTabContent() string {
 		return m.renderOperationHistoryTab()
 	case tabWfErrors:
 		return m.renderTfWfErrorsTab()
-	case tabPlanPreview:
-		return m.renderPlanPreviewTab()
 	}
 
 	lines := strings.Split(content, "\n")
@@ -1198,8 +1180,6 @@ func (m terraformDetailModel) renderFooter() string {
 		text = "↑↓: navigate  enter: expand/collapse  tab/shift+tab: switch tabs  esc: back  q: quit"
 	} else if m.activeTab == tabWfErrors {
 		text = "↑↓/pgup/pgdn: scroll  y: copy  tab/shift+tab: switch tabs  esc: back  q: quit"
-	} else if m.activeTab == tabPlanPreview && (len(m.planPreviewTree) > 0 || m.planPreviewError != "") {
-		text = "↑↓/pgup/pgdn: scroll  enter: expand/collapse  y: copy  tab/shift+tab: switch tabs  esc: back  q: quit"
 	} else {
 		text = "tab/shift+tab: switch tabs  ↑↓: scroll  esc: back  q: quit"
 	}
@@ -1697,6 +1677,8 @@ func (m terraformDetailModel) renderOperationHistoryTab() string {
 			errorHint := ""
 			if e.Error != "" {
 				errorHint = lipgloss.NewStyle().Foreground(lipgloss.Color("203")).Render("  ▸ error (enter to view)")
+			} else if _, _, hasPP := m.planPreviewForOpID(e.OperationID); hasPP {
+				errorHint = lipgloss.NewStyle().Foreground(lipgloss.Color("117")).Render("  📋 preview (enter to view)")
 			}
 
 			line := fmt.Sprintf("  %s %s %s  %s  %s%s",
@@ -2064,20 +2046,32 @@ func (m terraformDetailModel) renderTfWfErrorsTab() string {
 	return renderWorkflowEventsTab(steps, m.wfErrors, m.bodyHeight(), m.contentWidth(), loading, m.spinner.View(), isLive)
 }
 
-// planPreviewMaxScroll returns the maximum scroll position for the plan preview error text.
-func (m terraformDetailModel) planPreviewMaxScroll() int {
-	if m.planPreviewError == "" {
-		return 0
+// planPreviewForOpID returns the plan preview content and whether it's an error for the given operation ID.
+// Returns ("", false, false) if no plan preview exists.
+func (m terraformDetailModel) planPreviewForOpID(opID string) (content string, isError bool, found bool) {
+	if m.planPreviewByOpID != nil {
+		if preview, ok := m.planPreviewByOpID[opID]; ok && preview != "" {
+			return preview, false, true
+		}
 	}
-	lines := strings.Split(m.planPreviewError, "\n")
-	bodyH := m.bodyHeight() - 4
+	if m.planPreviewErrByOpID != nil {
+		if errText, ok := m.planPreviewErrByOpID[opID]; ok && errText != "" {
+			return errText, true, true
+		}
+	}
+	return "", false, false
+}
+
+func (m terraformDetailModel) previewModalMaxScroll() int {
+	bodyH := m.height - 6
 	if bodyH < 1 {
 		bodyH = 1
 	}
-	maxCodeWidth := m.contentWidth() - 9
+	maxCodeWidth := m.width - 10
 	if maxCodeWidth < 20 {
 		maxCodeWidth = 20
 	}
+	lines := strings.Split(m.previewModalText, "\n")
 	vlines := expandLinesToVisual(lines, maxCodeWidth)
 	maxScroll := len(vlines) - bodyH
 	if maxScroll < 0 {
@@ -2086,60 +2080,35 @@ func (m terraformDetailModel) planPreviewMaxScroll() int {
 	return maxScroll
 }
 
-// renderPlanPreviewTab renders the plan preview or plan preview error tab.
-func (m terraformDetailModel) renderPlanPreviewTab() string {
-	if m.loading {
-		return fmt.Sprintf("\n  %s Fetching plan preview...", m.spinner.View())
+func (m terraformDetailModel) renderPreviewModal() string {
+	lineStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("252"))
+	lineNumStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("241"))
+
+	titleStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("230")).Background(lipgloss.Color("62")).Padding(0, 1)
+	shortOpID := m.previewModalOpID
+	if len(shortOpID) > 20 {
+		shortOpID = shortOpID[:20] + "…"
 	}
-	if m.loadErr != nil {
-		errStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("203"))
-		return fmt.Sprintf("\n  %s\n", errStyle.Render(fmt.Sprintf("Error: %v", m.loadErr)))
-	}
+	title := fmt.Sprintf("Plan Preview · %s", shortOpID)
+	header := lipgloss.Place(m.width, 1, lipgloss.Left, lipgloss.Top, titleStyle.Render(title))
 
-	// Show plan preview error if present
-	if m.planPreviewError != "" {
-		return m.renderPlanPreviewError()
-	}
-
-	// Show plan preview tree if JSON is available
-	if len(m.planPreviewTree) > 0 {
-		return m.renderPlanPreviewTree()
-	}
-
-	subtleStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("245"))
-	return fmt.Sprintf("\n  %s\n", subtleStyle.Render("No plan preview available for this resource."))
-}
-
-// renderPlanPreviewError renders the plan preview error as scrollable text.
-func (m terraformDetailModel) renderPlanPreviewError() string {
-	var b strings.Builder
-
-	headerStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("203"))
-	b.WriteString(fmt.Sprintf("  %s\n\n", headerStyle.Render("Plan Preview Error")))
-
-	bodyH := m.bodyHeight() - 4
+	bodyH := m.height - 4
 	if bodyH < 1 {
 		bodyH = 1
 	}
-
-	lineNumStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("241"))
-	errStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("203"))
-	maxCodeWidth := m.contentWidth() - 9
+	maxCodeWidth := m.width - 10
 	if maxCodeWidth < 20 {
 		maxCodeWidth = 20
 	}
 
-	lines := strings.Split(m.planPreviewError, "\n")
+	lines := strings.Split(m.previewModalText, "\n")
 	vlines := expandLinesToVisual(lines, maxCodeWidth)
 	totalLines := len(vlines)
 
-	scroll := m.planPreviewScroll
-	maxScroll := m.planPreviewMaxScroll()
+	scroll := m.previewModalScroll
+	maxScroll := m.previewModalMaxScroll()
 	if scroll > maxScroll {
 		scroll = maxScroll
-	}
-	if scroll < 0 {
-		scroll = 0
 	}
 
 	end := scroll + bodyH
@@ -2147,145 +2116,37 @@ func (m terraformDetailModel) renderPlanPreviewError() string {
 		end = totalLines
 	}
 
+	var b strings.Builder
 	for i := scroll; i < end; i++ {
 		vl := vlines[i]
 		if vl.sourceNum > 0 {
 			lineNum := lineNumStyle.Render(fmt.Sprintf("%4d", vl.sourceNum))
-			b.WriteString(fmt.Sprintf("  %s │ %s\n", lineNum, errStyle.Render(vl.text)))
+			b.WriteString(fmt.Sprintf("  %s │ %s\n", lineNum, lineStyle.Render(vl.text)))
 		} else {
-			b.WriteString(fmt.Sprintf("  %s   %s\n", "    ", errStyle.Render(vl.text)))
+			b.WriteString(fmt.Sprintf("  %s   %s\n", "    ", lineStyle.Render(vl.text)))
 		}
 	}
-
-	// Pad remaining lines
 	for i := end - scroll; i < bodyH; i++ {
 		b.WriteString("\n")
 	}
 
-	// Scroll indicator
-	if totalLines > bodyH {
-		dimStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("241"))
-		pos := ""
-		if scroll == 0 {
-			pos = "top"
-		} else if end >= totalLines {
-			pos = "end"
-		} else if maxScroll > 0 {
-			pct := (scroll * 100) / maxScroll
-			pos = fmt.Sprintf("%d%%", pct)
-		}
-		b.WriteString(fmt.Sprintf("  %s\n", dimStyle.Render(
-			fmt.Sprintf("↑↓/pgup/pgdn: scroll  y: copy  [%d/%d %s]", scroll+bodyH, totalLines, pos))))
+	footerStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("241")).Padding(0, 1)
+	pos := ""
+	if totalLines <= bodyH {
+		pos = "all"
+	} else if scroll == 0 {
+		pos = "top"
+	} else if end >= totalLines {
+		pos = "end"
+	} else if maxScroll > 0 {
+		pos = fmt.Sprintf("%d%%", (scroll*100)/maxScroll)
 	}
-
-	return b.String()
-}
-
-// renderPlanPreviewTree renders the plan preview JSON as an interactive tree view.
-func (m terraformDetailModel) renderPlanPreviewTree() string {
-	var b strings.Builder
-
-	headerStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("255"))
-	b.WriteString(fmt.Sprintf("  %s\n\n", headerStyle.Render("Plan Preview")))
-
-	visibleNodes := flattenOutputTree(m.planPreviewTree)
-
-	// Viewport clipping
-	visibleRows := m.bodyHeight() - 4
-	if visibleRows < 1 {
-		visibleRows = 1
+	footerText := fmt.Sprintf("↑↓/pgup/pgdn: scroll  y: copy  esc: close  [%d/%d %s]", scroll+bodyH, totalLines, pos)
+	if m.clipboardMsg != "" {
+		clipStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("82"))
+		footerText = clipStyle.Render(m.clipboardMsg) + "  " + footerText
 	}
+	footer := lipgloss.Place(m.width, 1, lipgloss.Left, lipgloss.Top, footerStyle.Render(footerText))
 
-	totalEntries := len(visibleNodes)
-
-	// Auto-scroll to keep cursor visible
-	scrollOffset := 0
-	if m.planPreviewCursor >= visibleRows {
-		scrollOffset = m.planPreviewCursor - visibleRows + 1
-	}
-	if scrollOffset > totalEntries-visibleRows {
-		scrollOffset = totalEntries - visibleRows
-	}
-	if scrollOffset < 0 {
-		scrollOffset = 0
-	}
-
-	end := scrollOffset + visibleRows
-	if end > totalEntries {
-		end = totalEntries
-	}
-
-	keyStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("117"))   // blue
-	strStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("114"))   // green
-	numStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("178"))   // yellow
-	boolStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("178"))  // yellow
-	nullStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("241"))  // dim
-	braceStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("245")) // dim
-	selectedBg := lipgloss.NewStyle().Background(lipgloss.Color("236")) // subtle highlight
-
-	for idx := scrollOffset; idx < end; idx++ {
-		node := visibleNodes[idx]
-		indent := strings.Repeat("  ", node.depth)
-
-		cursor := "  "
-		if idx == m.planPreviewCursor {
-			cursor = "▶ "
-		}
-
-		var line string
-		if node.expandable {
-			arrow := "▸"
-			if node.expanded {
-				arrow = "▾"
-			}
-			childCount := len(node.children)
-			typeMark := braceStyle.Render("{}")
-			if node.nodeType == "array" {
-				typeMark = braceStyle.Render("[]")
-			}
-			countStr := lipgloss.NewStyle().Foreground(lipgloss.Color("241")).Render(fmt.Sprintf("  %d items", childCount))
-			line = fmt.Sprintf("%s%s %s %s%s", indent, arrow, keyStyle.Render(node.key), typeMark, countStr)
-		} else {
-			var styledVal string
-			switch node.nodeType {
-			case "string":
-				val := node.value
-				styledVal = strStyle.Render(fmt.Sprintf("%q", val))
-			case "number":
-				styledVal = numStyle.Render(node.value)
-			case "bool":
-				styledVal = boolStyle.Render(node.value)
-			case "null":
-				styledVal = nullStyle.Render("null")
-			default:
-				styledVal = lipgloss.NewStyle().Foreground(lipgloss.Color("252")).Render(node.value)
-			}
-			line = fmt.Sprintf("%s  %s: %s", indent, keyStyle.Render(node.key), styledVal)
-		}
-
-		if idx == m.planPreviewCursor {
-			line = selectedBg.Render(line)
-		}
-
-		b.WriteString(fmt.Sprintf("  %s%s\n", cursor, line))
-	}
-
-	// Scroll indicator
-	if totalEntries > visibleRows {
-		dimStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("241"))
-		pos := ""
-		if scrollOffset == 0 {
-			pos = "top"
-		} else if end >= totalEntries {
-			pos = "end"
-		} else {
-			pct := (scrollOffset * 100) / (totalEntries - visibleRows)
-			pos = fmt.Sprintf("%d%%", pct)
-		}
-		b.WriteString(fmt.Sprintf("\n  %s\n", dimStyle.Render(fmt.Sprintf("↑↓: navigate  enter: expand/collapse  [%d/%d %s]", m.planPreviewCursor+1, totalEntries, pos))))
-	} else {
-		b.WriteString(fmt.Sprintf("\n  %s\n", lipgloss.NewStyle().Foreground(lipgloss.Color("241")).Render("↑↓: navigate  enter: expand/collapse")))
-	}
-
-	return b.String()
+	return lipgloss.JoinVertical(lipgloss.Left, header, b.String(), footer)
 }

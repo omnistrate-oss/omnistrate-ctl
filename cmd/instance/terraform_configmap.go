@@ -280,9 +280,12 @@ func (index *terraformConfigMapIndex) terraformDataForResource(resourceID string
 		return terraformData
 	}
 
-	if stateConfigMap, ok := index.stateByResource[resourceID]; ok {
-		for key, value := range stateConfigMap.Data {
-			terraformData.Files[normalizeTerraformFileKey(key)] = value
+	for _, cmKey := range resourceConfigMapKeys(resourceID) {
+		if stateConfigMap, ok := index.stateByResource[cmKey]; ok {
+			for key, value := range stateConfigMap.Data {
+				terraformData.Files[normalizeTerraformFileKey(key)] = value
+			}
+			break
 		}
 	}
 

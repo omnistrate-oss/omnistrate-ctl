@@ -114,56 +114,32 @@ func findLatestOutputLog(files map[string]string, history []TerraformHistoryEntr
 	return files[outputKeys[len(outputKeys)-1]]
 }
 
-// findLatestPlanPreview finds the latest plan preview or plan preview error from the Files map.
-// It returns (preview, previewError) where:
-//   - preview contains the plan preview JSON content
-//   - previewError contains the plan preview error text
-//
-// Only one of preview or previewError will be non-empty for a given operation ID.
-// The function searches history entries from newest to oldest, looking for files matching
-// "{operationID}-plan-preview" or "{operationID}-plan-preview-error". If no history entries
-// match (or history is nil/empty), it falls back to picking the last alphabetically sorted
-// "*-plan-preview" or "*-plan-preview-error" key from the files map.
-func findLatestPlanPreview(files map[string]string, history []TerraformHistoryEntry) (string, string) {
+// findAllPlanPreviews collects all plan previews and plan preview errors from the Files map,
+// keyed by operation ID. Each operation ID may have either a plan preview or a plan preview error.
+// Returns (previews, previewErrors) maps. Both are always non-nil (may be empty).
+// This function never returns an error — missing or unparseable data is silently ignored.
+func findAllPlanPreviews(files map[string]string) (map[string]string, map[string]string) {
+	previews := make(map[string]string)
+	previewErrors := make(map[string]string)
 	if len(files) == 0 {
-		return "", ""
+		return previews, previewErrors
 	}
 
-	// Try to find by latest history entry that has a plan preview or error
-	for i := len(history) - 1; i >= 0; i-- {
-		opID := history[i].OperationID
-		if opID == "" {
-			continue
-		}
-		previewKey := opID + "-plan-preview"
-		errorKey := opID + "-plan-preview-error"
-		if content, ok := files[previewKey]; ok {
-			return content, ""
-		}
-		if content, ok := files[errorKey]; ok {
-			return "", content
+	for k, v := range files {
+		if strings.HasSuffix(k, "-plan-preview-error") {
+			opID := strings.TrimSuffix(k, "-plan-preview-error")
+			if opID != "" && v != "" {
+				previewErrors[opID] = v
+			}
+		} else if strings.HasSuffix(k, "-plan-preview") {
+			opID := strings.TrimSuffix(k, "-plan-preview")
+			if opID != "" && v != "" {
+				previews[opID] = v
+			}
 		}
 	}
 
-	// Fallback: find any *-plan-preview or *-plan-preview-error key, pick the last one alphabetically
-	var previewKeys []string
-	var errorKeys []string
-	for k := range files {
-		if strings.HasSuffix(k, "-plan-preview") {
-			previewKeys = append(previewKeys, k)
-		} else if strings.HasSuffix(k, "-plan-preview-error") {
-			errorKeys = append(errorKeys, k)
-		}
-	}
-	if len(previewKeys) > 0 {
-		sort.Strings(previewKeys)
-		return files[previewKeys[len(previewKeys)-1]], ""
-	}
-	if len(errorKeys) > 0 {
-		sort.Strings(errorKeys)
-		return "", files[errorKeys[len(errorKeys)-1]]
-	}
-	return "", ""
+	return previews, previewErrors
 }
 
 func buildJSONNode(key string, value interface{}, depth int) *outputNode {

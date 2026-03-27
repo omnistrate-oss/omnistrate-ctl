@@ -511,10 +511,12 @@ func TestResourceDebugInfoPlanPreviewJSON(t *testing.T) {
 	require := require.New(t)
 
 	info := ResourceDebugInfo{
-		ResourceID:           "tf-r-1",
-		ResourceKey:          "database",
-		ResourceType:         "terraform",
-		TerraformPlanPreview: `{"format_version":"1.2","planned_values":{"outputs":{"db_endpoints":{"sensitive":false}}}}`,
+		ResourceID:   "tf-r-1",
+		ResourceKey:  "database",
+		ResourceType: "terraform",
+		TerraformPlanPreview: map[string]string{
+			"op-1": `{"format_version":"1.2","planned_values":{"outputs":{"db_endpoints":{"sensitive":false}}}}`,
+		},
 	}
 
 	jsonBytes, err := json.Marshal(info)
@@ -533,10 +535,12 @@ func TestResourceDebugInfoPlanPreviewErrorJSON(t *testing.T) {
 	require := require.New(t)
 
 	info := ResourceDebugInfo{
-		ResourceID:                "tf-r-1",
-		ResourceKey:               "database",
-		ResourceType:              "terraform",
-		TerraformPlanPreviewError: "Error: Failed to refresh state",
+		ResourceID:   "tf-r-1",
+		ResourceKey:  "database",
+		ResourceType: "terraform",
+		TerraformPlanPreviewError: map[string]string{
+			"op-1": "Error: Failed to refresh state",
+		},
 	}
 
 	jsonBytes, err := json.Marshal(info)
@@ -549,7 +553,10 @@ func TestResourceDebugInfoPlanPreviewErrorJSON(t *testing.T) {
 	require.Equal("tf-r-1", decoded["resourceId"])
 	require.NotContains(decoded, "terraformPlanPreview")
 	require.Contains(decoded, "terraformPlanPreviewError")
-	require.Equal("Error: Failed to refresh state", decoded["terraformPlanPreviewError"])
+
+	previewErr, ok := decoded["terraformPlanPreviewError"].(map[string]interface{})
+	require.True(ok)
+	require.Equal("Error: Failed to refresh state", previewErr["op-1"])
 }
 
 func TestResourceDebugInfoOmitsEmptyPlanPreview(t *testing.T) {
@@ -577,19 +584,23 @@ func TestResourceDebugInfoHasDataWithPlanPreview(t *testing.T) {
 
 	// Plan preview makes hasData() return true
 	info := ResourceDebugInfo{
-		ResourceID:           "r-1",
-		ResourceKey:          "db",
-		ResourceType:         "terraform",
-		TerraformPlanPreview: `{"planned_values":{}}`,
+		ResourceID:   "r-1",
+		ResourceKey:  "db",
+		ResourceType: "terraform",
+		TerraformPlanPreview: map[string]string{
+			"op-1": `{"planned_values":{}}`,
+		},
 	}
 	require.True(info.hasData())
 
 	// Plan preview error also makes hasData() return true
 	info2 := ResourceDebugInfo{
-		ResourceID:                "r-1",
-		ResourceKey:               "db",
-		ResourceType:              "terraform",
-		TerraformPlanPreviewError: "Error: timeout",
+		ResourceID:   "r-1",
+		ResourceKey:  "db",
+		ResourceType: "terraform",
+		TerraformPlanPreviewError: map[string]string{
+			"op-1": "Error: timeout",
+		},
 	}
 	require.True(info2.hasData())
 
@@ -602,7 +613,7 @@ func TestResourceDebugInfoHasDataWithPlanPreview(t *testing.T) {
 	require.False(info3.hasData())
 }
 
-func TestFindLatestPlanPreviewFromHistory(t *testing.T) {
+func TestFindAllPlanPreviewsBasic(t *testing.T) {
 	require := require.New(t)
 
 	files := map[string]string{
@@ -613,19 +624,15 @@ func TestFindLatestPlanPreviewFromHistory(t *testing.T) {
 		"op-3-plan-preview-error": "Error: Failed to refresh state",
 	}
 
-	history := []TerraformHistoryEntry{
-		{OperationID: "op-1", Operation: "diff"},
-		{OperationID: "op-1", Operation: "apply"},
-		{OperationID: "op-2", Operation: "diff"},
-		{OperationID: "op-2", Operation: "apply"},
-	}
-
-	preview, previewErr := findLatestPlanPreview(files, history)
-	require.Equal(`{"format_version":"1.2","planned_values":{"outputs":{}}}`, preview)
-	require.Empty(previewErr)
+	previews, previewErrors := findAllPlanPreviews(files)
+	require.Len(previews, 2)
+	require.Equal(`{"format_version":"1.0","planned_values":{}}`, previews["op-1"])
+	require.Equal(`{"format_version":"1.2","planned_values":{"outputs":{}}}`, previews["op-2"])
+	require.Len(previewErrors, 1)
+	require.Equal("Error: Failed to refresh state", previewErrors["op-3"])
 }
 
-func TestFindLatestPlanPreviewErrorFromHistory(t *testing.T) {
+func TestFindAllPlanPreviewsErrorOnly(t *testing.T) {
 	require := require.New(t)
 
 	files := map[string]string{
@@ -633,50 +640,40 @@ func TestFindLatestPlanPreviewErrorFromHistory(t *testing.T) {
 		"op-2-plan-preview-error": "Error: Failed to refresh state",
 	}
 
-	history := []TerraformHistoryEntry{
-		{OperationID: "op-1", Operation: "diff"},
-		{OperationID: "op-2", Operation: "diff"},
-	}
-
-	preview, previewErr := findLatestPlanPreview(files, history)
-	require.Empty(preview)
-	require.Equal("Error: Failed to refresh state", previewErr)
+	previews, previewErrors := findAllPlanPreviews(files)
+	require.Len(previews, 1)
+	require.Equal(`{"format_version":"1.0"}`, previews["op-1"])
+	require.Len(previewErrors, 1)
+	require.Equal("Error: Failed to refresh state", previewErrors["op-2"])
 }
 
-func TestFindLatestPlanPreviewFallback(t *testing.T) {
+func TestFindAllPlanPreviewsFallbackNoHistory(t *testing.T) {
 	require := require.New(t)
 
-	// No history entries match, but there are plan preview files
 	files := map[string]string{
 		"abc123-plan-preview": `{"planned_values":{}}`,
 	}
 
-	history := []TerraformHistoryEntry{
-		{OperationID: "op-unknown", Operation: "diff"},
-	}
-
-	preview, previewErr := findLatestPlanPreview(files, history)
-	require.Equal(`{"planned_values":{}}`, preview)
-	require.Empty(previewErr)
+	previews, previewErrors := findAllPlanPreviews(files)
+	require.Len(previews, 1)
+	require.Equal(`{"planned_values":{}}`, previews["abc123"])
+	require.Empty(previewErrors)
 }
 
-func TestFindLatestPlanPreviewFallbackError(t *testing.T) {
+func TestFindAllPlanPreviewsFallbackErrorOnly(t *testing.T) {
 	require := require.New(t)
 
 	files := map[string]string{
 		"abc123-plan-preview-error": "Error: something failed",
 	}
 
-	history := []TerraformHistoryEntry{
-		{OperationID: "op-unknown", Operation: "diff"},
-	}
-
-	preview, previewErr := findLatestPlanPreview(files, history)
-	require.Empty(preview)
-	require.Equal("Error: something failed", previewErr)
+	previews, previewErrors := findAllPlanPreviews(files)
+	require.Empty(previews)
+	require.Len(previewErrors, 1)
+	require.Equal("Error: something failed", previewErrors["abc123"])
 }
 
-func TestFindLatestPlanPreviewEmpty(t *testing.T) {
+func TestFindAllPlanPreviewsEmpty(t *testing.T) {
 	require := require.New(t)
 
 	// No plan preview data at all
@@ -684,19 +681,30 @@ func TestFindLatestPlanPreviewEmpty(t *testing.T) {
 		"op-1-output.log": `{"db_endpoints":{}}`,
 	}
 
-	history := []TerraformHistoryEntry{
-		{OperationID: "op-1", Operation: "apply"},
-	}
-
-	preview, previewErr := findLatestPlanPreview(files, history)
-	require.Empty(preview)
-	require.Empty(previewErr)
+	previews, previewErrors := findAllPlanPreviews(files)
+	require.Empty(previews)
+	require.Empty(previewErrors)
 }
 
-func TestFindLatestPlanPreviewNilFiles(t *testing.T) {
-	preview, previewErr := findLatestPlanPreview(nil, nil)
-	require.Empty(t, preview)
-	require.Empty(t, previewErr)
+func TestFindAllPlanPreviewsNilFiles(t *testing.T) {
+	previews, previewErrors := findAllPlanPreviews(nil)
+	require.Empty(t, previews)
+	require.Empty(t, previewErrors)
+}
+
+func TestFindAllPlanPreviewsSkipsEmptyValues(t *testing.T) {
+	require := require.New(t)
+
+	files := map[string]string{
+		"op-1-plan-preview":       "",
+		"op-2-plan-preview-error": "",
+		"op-3-plan-preview":       `{"value":"real"}`,
+	}
+
+	previews, previewErrors := findAllPlanPreviews(files)
+	require.Len(previews, 1)
+	require.Equal(`{"value":"real"}`, previews["op-3"])
+	require.Empty(previewErrors)
 }
 
 func TestDebugDataJSONRoundTripWithPlanPreview(t *testing.T) {
@@ -708,16 +716,20 @@ func TestDebugDataJSONRoundTripWithPlanPreview(t *testing.T) {
 		EnvironmentID: "env-789",
 		ResourceDebugInfo: map[string]*ResourceDebugInfo{
 			"db": {
-				ResourceID:           "r-1",
-				ResourceKey:          "db",
-				ResourceType:         "terraform",
-				TerraformPlanPreview: `{"format_version":"1.2","planned_values":{"outputs":{"db_endpoints":{"sensitive":false}}}}`,
+				ResourceID:   "r-1",
+				ResourceKey:  "db",
+				ResourceType: "terraform",
+				TerraformPlanPreview: map[string]string{
+					"op-1": `{"format_version":"1.2","planned_values":{"outputs":{"db_endpoints":{"sensitive":false}}}}`,
+				},
 			},
 			"cache": {
-				ResourceID:                "r-2",
-				ResourceKey:               "cache",
-				ResourceType:              "terraform",
-				TerraformPlanPreviewError: "Error: Failed to refresh state for resource",
+				ResourceID:   "r-2",
+				ResourceKey:  "cache",
+				ResourceType: "terraform",
+				TerraformPlanPreviewError: map[string]string{
+					"op-2": "Error: Failed to refresh state for resource",
+				},
 			},
 		},
 	}
@@ -731,11 +743,13 @@ func TestDebugDataJSONRoundTripWithPlanPreview(t *testing.T) {
 
 	require.Contains(roundTripped.ResourceDebugInfo, "db")
 	dbInfo := roundTripped.ResourceDebugInfo["db"]
-	require.Equal(`{"format_version":"1.2","planned_values":{"outputs":{"db_endpoints":{"sensitive":false}}}}`, dbInfo.TerraformPlanPreview)
+	require.Len(dbInfo.TerraformPlanPreview, 1)
+	require.Equal(`{"format_version":"1.2","planned_values":{"outputs":{"db_endpoints":{"sensitive":false}}}}`, dbInfo.TerraformPlanPreview["op-1"])
 	require.Empty(dbInfo.TerraformPlanPreviewError)
 
 	require.Contains(roundTripped.ResourceDebugInfo, "cache")
 	cacheInfo := roundTripped.ResourceDebugInfo["cache"]
 	require.Empty(cacheInfo.TerraformPlanPreview)
-	require.Equal("Error: Failed to refresh state for resource", cacheInfo.TerraformPlanPreviewError)
+	require.Len(cacheInfo.TerraformPlanPreviewError, 1)
+	require.Equal("Error: Failed to refresh state for resource", cacheInfo.TerraformPlanPreviewError["op-2"])
 }

@@ -31,15 +31,15 @@ type ResourceDebugInfo struct {
 	TerraformHistory          []TerraformHistoryEntry `json:"terraformHistory,omitempty"`
 	TerraformFiles            map[string]string       `json:"terraformFiles,omitempty"`
 	TerraformLogs             map[string]string       `json:"terraformLogs,omitempty"`
-	TerraformPlanPreview      string                  `json:"terraformPlanPreview,omitempty"`
-	TerraformPlanPreviewError string                  `json:"terraformPlanPreviewError,omitempty"`
+	TerraformPlanPreview      map[string]string       `json:"terraformPlanPreview,omitempty"`
+	TerraformPlanPreviewError map[string]string       `json:"terraformPlanPreviewError,omitempty"`
 }
 
 // hasData returns true if any debug data has been populated for this resource.
 func (r *ResourceDebugInfo) hasData() bool {
 	return r.Helm != nil || r.TerraformProgress != nil ||
 		len(r.TerraformHistory) > 0 || len(r.TerraformFiles) > 0 || len(r.TerraformLogs) > 0 ||
-		r.TerraformPlanPreview != "" || r.TerraformPlanPreviewError != ""
+		len(r.TerraformPlanPreview) > 0 || len(r.TerraformPlanPreviewError) > 0
 }
 
 func parseHelmData(debugData map[string]interface{}) *HelmData {
