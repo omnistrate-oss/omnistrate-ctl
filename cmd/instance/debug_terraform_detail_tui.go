@@ -14,14 +14,14 @@ import (
 )
 
 const (
-	tabProgress     = 0
-	tabTfFiles      = 1
-	tabTfOutput     = 2
-	tabLogs         = 3
-	tabOpHistory    = 4
-	tabWfErrors     = 5
-	tabPlanPreview  = 6
-	numTabs         = 7
+	tabProgress    = 0
+	tabTfFiles     = 1
+	tabTfOutput    = 2
+	tabLogs        = 3
+	tabOpHistory   = 4
+	tabWfErrors    = 5
+	tabPlanPreview = 6
+	numTabs        = 7
 )
 
 var tabNames = []string{"Progress", "Terraform Files", "Terraform Output", "Logs", "Operation History", "Workflow Events", "Plan Preview"}
@@ -100,9 +100,9 @@ type terraformDetailModel struct {
 	outputCursor int
 
 	// Plan Preview tab data
-	planPreviewJSON  string       // raw JSON plan preview from configmap
-	planPreviewError string       // plan preview error text from configmap
-	planPreviewTree  []outputNode // parsed tree for interactive view (only if JSON)
+	planPreviewJSON   string       // raw JSON plan preview from configmap
+	planPreviewError  string       // plan preview error text from configmap
+	planPreviewTree   []outputNode // parsed tree for interactive view (only if JSON)
 	planPreviewCursor int
 	planPreviewScroll int
 
