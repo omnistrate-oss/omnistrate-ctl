@@ -2127,7 +2127,7 @@ func (m terraformDetailModel) previewModalFormattedText() string {
 }
 
 func (m terraformDetailModel) previewModalMaxScroll() int {
-	bodyH := m.height - 6
+	bodyH := m.height - 4
 	if bodyH < 1 {
 		bodyH = 1
 	}
