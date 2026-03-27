@@ -987,7 +987,7 @@ func (m terraformDetailModel) copyableContent() string {
 		return m.errorModalText
 	}
 	if m.previewModalText != "" {
-		return m.previewModalText
+		return m.previewModalFormattedText()
 	}
 	if m.viewingFile && m.fileContent != "" {
 		return m.fileContent
