@@ -2119,6 +2119,13 @@ func (m terraformDetailModel) planPreviewForOpID(opID string) (content string, i
 	return "", false, false
 }
 
+// previewModalFormattedText returns the plan preview text formatted for display.
+// If the raw text is valid terraform plan JSON, it is rendered as a human-readable diff.
+// Otherwise, the raw text is returned unchanged.
+func (m terraformDetailModel) previewModalFormattedText() string {
+	return formatTerraformPlan(m.previewModalText)
+}
+
 func (m terraformDetailModel) previewModalMaxScroll() int {
 	bodyH := m.height - 6
 	if bodyH < 1 {
@@ -2128,7 +2135,8 @@ func (m terraformDetailModel) previewModalMaxScroll() int {
 	if maxCodeWidth < 20 {
 		maxCodeWidth = 20
 	}
-	lines := strings.Split(m.previewModalText, "\n")
+	formatted := m.previewModalFormattedText()
+	lines := strings.Split(formatted, "\n")
 	vlines := expandLinesToVisual(lines, maxCodeWidth)
 	maxScroll := len(vlines) - bodyH
 	if maxScroll < 0 {
@@ -2138,9 +2146,6 @@ func (m terraformDetailModel) previewModalMaxScroll() int {
 }
 
 func (m terraformDetailModel) renderPreviewModal() string {
-	lineStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("252"))
-	lineNumStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("241"))
-
 	titleStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("230")).Background(lipgloss.Color("62")).Padding(0, 1)
 	shortOpID := m.previewModalOpID
 	if len(shortOpID) > 20 {
@@ -2158,7 +2163,8 @@ func (m terraformDetailModel) renderPreviewModal() string {
 		maxCodeWidth = 20
 	}
 
-	lines := strings.Split(m.previewModalText, "\n")
+	formatted := m.previewModalFormattedText()
+	lines := strings.Split(formatted, "\n")
 	vlines := expandLinesToVisual(lines, maxCodeWidth)
 	totalLines := len(vlines)
 
@@ -2173,15 +2179,35 @@ func (m terraformDetailModel) renderPreviewModal() string {
 		end = totalLines
 	}
 
+	// Diff-aware styles
+	addStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("114"))        // green for additions
+	removeStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("203"))     // red for removals
+	changeStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("178"))     // yellow for changes
+	commentStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("117"))    // blue for comments (#)
+	headerLineStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("245")) // dim for separators
+	defaultStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("252"))
+
 	var b strings.Builder
 	for i := scroll; i < end; i++ {
 		vl := vlines[i]
-		if vl.sourceNum > 0 {
-			lineNum := lineNumStyle.Render(fmt.Sprintf("%4d", vl.sourceNum))
-			b.WriteString(fmt.Sprintf("  %s │ %s\n", lineNum, lineStyle.Render(vl.text)))
-		} else {
-			b.WriteString(fmt.Sprintf("  %s   %s\n", "    ", lineStyle.Render(vl.text)))
+		text := vl.text
+
+		// Pick style based on line prefix (diff-like coloring)
+		style := defaultStyle
+		trimmed := strings.TrimSpace(text)
+		if strings.HasPrefix(trimmed, "# ") {
+			style = commentStyle
+		} else if strings.HasPrefix(trimmed, "+ ") || strings.HasPrefix(trimmed, "+") && strings.HasPrefix(text, "  +") {
+			style = addStyle
+		} else if strings.HasPrefix(trimmed, "- ") || strings.HasPrefix(trimmed, "-/+") {
+			style = removeStyle
+		} else if strings.HasPrefix(trimmed, "~ ") {
+			style = changeStyle
+		} else if strings.HasPrefix(trimmed, "───") || strings.HasPrefix(trimmed, "Plan:") {
+			style = headerLineStyle
 		}
+
+		b.WriteString(fmt.Sprintf("  %s\n", style.Render(text)))
 	}
 	for i := end - scroll; i < bodyH; i++ {
 		b.WriteString("\n")
