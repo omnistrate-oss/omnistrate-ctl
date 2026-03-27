@@ -115,8 +115,15 @@ func findLatestOutputLog(files map[string]string, history []TerraformHistoryEntr
 }
 
 // findLatestPlanPreview finds the latest plan preview or plan preview error from the Files map.
-// It returns (preview, previewError). Only one of them will be non-empty for a given operation:
-// if a plan-preview exists, there is no plan-preview-error, and vice versa.
+// It returns (preview, previewError) where:
+//   - preview contains the plan preview JSON content
+//   - previewError contains the plan preview error text
+//
+// Only one of preview or previewError will be non-empty for a given operation ID.
+// The function searches history entries from newest to oldest, looking for files matching
+// "{operationID}-plan-preview" or "{operationID}-plan-preview-error". If no history entries
+// match (or history is nil/empty), it falls back to picking the last alphabetically sorted
+// "*-plan-preview" or "*-plan-preview-error" key from the files map.
 func findLatestPlanPreview(files map[string]string, history []TerraformHistoryEntry) (string, string) {
 	if len(files) == 0 {
 		return "", ""
@@ -252,6 +259,20 @@ func flattenOutputNode(node *outputNode, flat *[]*outputNode) {
 	if node.expandable && node.expanded {
 		for _, child := range node.children {
 			flattenOutputNode(child, flat)
+		}
+	}
+}
+
+// toggleOutputNode expands/collapses an expandable node, or reveals/hides a sensitive value.
+func toggleOutputNode(node *outputNode) {
+	if node.expandable {
+		node.expanded = !node.expanded
+	} else if node.sensitive {
+		node.sensitiveShown = !node.sensitiveShown
+		if node.sensitiveShown {
+			node.value = node.realValue
+		} else {
+			node.value = "••••••••  (sensitive, press enter to reveal)"
 		}
 	}
 }

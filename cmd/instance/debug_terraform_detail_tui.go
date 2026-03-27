@@ -26,6 +26,12 @@ const (
 
 var tabNames = []string{"Progress", "Terraform Files", "Terraform Output", "Logs", "Operation History", "Workflow Events", "Plan Preview"}
 
+func init() {
+	if len(tabNames) != numTabs {
+		panic(fmt.Sprintf("tabNames length %d does not match numTabs %d", len(tabNames), numTabs))
+	}
+}
+
 // fileContentMsg is sent when file content has been fetched from the pod
 type fileContentMsg struct {
 	content string
@@ -478,32 +484,12 @@ func (m terraformDetailModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			} else if m.activeTab == tabTfOutput && len(m.outputTree) > 0 {
 				visibleNodes := flattenOutputTree(m.outputTree)
 				if m.outputCursor >= 0 && m.outputCursor < len(visibleNodes) {
-					node := visibleNodes[m.outputCursor]
-					if node.expandable {
-						node.expanded = !node.expanded
-					} else if node.sensitive {
-						node.sensitiveShown = !node.sensitiveShown
-						if node.sensitiveShown {
-							node.value = node.realValue
-						} else {
-							node.value = "••••••••  (sensitive, press enter to reveal)"
-						}
-					}
+					toggleOutputNode(visibleNodes[m.outputCursor])
 				}
 			} else if m.activeTab == tabPlanPreview && len(m.planPreviewTree) > 0 {
 				visibleNodes := flattenOutputTree(m.planPreviewTree)
 				if m.planPreviewCursor >= 0 && m.planPreviewCursor < len(visibleNodes) {
-					node := visibleNodes[m.planPreviewCursor]
-					if node.expandable {
-						node.expanded = !node.expanded
-					} else if node.sensitive {
-						node.sensitiveShown = !node.sensitiveShown
-						if node.sensitiveShown {
-							node.value = node.realValue
-						} else {
-							node.value = "••••••••  (sensitive, press enter to reveal)"
-						}
-					}
+					toggleOutputNode(visibleNodes[m.planPreviewCursor])
 				}
 			} else if m.activeTab == tabOpHistory && len(m.historyDates) > 0 {
 				rows := flattenTimeline(m.historyDates)
