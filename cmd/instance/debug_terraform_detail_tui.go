@@ -2224,7 +2224,7 @@ func (m terraformDetailModel) renderPreviewModal() string {
 	} else if maxScroll > 0 {
 		pos = fmt.Sprintf("%d%%", (scroll*100)/maxScroll)
 	}
-	footerText := fmt.Sprintf("↑↓/pgup/pgdn: scroll  y: copy  esc: close  [%d/%d %s]", scroll+bodyH, totalLines, pos)
+	footerText := fmt.Sprintf("↑↓/pgup/pgdn: scroll  y: copy  esc: close  [%d/%d %s]", end, totalLines, pos)
 	if m.clipboardMsg != "" {
 		clipStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("82"))
 		footerText = clipStyle.Render(m.clipboardMsg) + "  " + footerText
