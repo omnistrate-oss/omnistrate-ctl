@@ -25,6 +25,12 @@ const (
 
 var tabNames = []string{"Progress", "Terraform Files", "Terraform Output", "Logs", "Operation History", "Workflow Events"}
 
+func init() {
+	if len(tabNames) != numTabs {
+		panic(fmt.Sprintf("tabNames length %d does not match numTabs %d", len(tabNames), numTabs))
+	}
+}
+
 // fileContentMsg is sent when file content has been fetched from the pod
 type fileContentMsg struct {
 	content string
@@ -33,12 +39,14 @@ type fileContentMsg struct {
 
 // Messages
 type terraformDataMsg struct {
-	progress     *TerraformProgressData
-	history      []TerraformHistoryEntry
-	k8sConn      *k8sConnections
-	fileTree     *TerraformFileTree
-	tfOutputJSON string // latest terraform output JSON from configmap
-	err          error
+	progress             *TerraformProgressData
+	history              []TerraformHistoryEntry
+	k8sConn              *k8sConnections
+	fileTree             *TerraformFileTree
+	tfOutputJSON         string            // latest terraform output JSON from configmap
+	planPreviewByOpID    map[string]string // plan preview JSON keyed by operation ID
+	planPreviewErrByOpID map[string]string // plan preview errors keyed by operation ID
+	err                  error
 }
 
 // progressRefreshMsg is sent when auto-refresh fetches updated progress data
@@ -89,6 +97,15 @@ type terraformDetailModel struct {
 	tfOutputJSON string // raw JSON from the latest output.log
 	outputTree   []outputNode
 	outputCursor int
+
+	// Plan preview data keyed by operation ID (shown in operation history)
+	planPreviewByOpID    map[string]string
+	planPreviewErrByOpID map[string]string
+
+	// Plan preview modal (shown over operation history)
+	previewModalText   string // non-empty means modal is open
+	previewModalScroll int
+	previewModalOpID   string // operation ID for the modal title
 
 	// Logs tab data
 	logLines     []string
@@ -201,9 +218,10 @@ func (m terraformDetailModel) fetchData() tea.Cmd {
 			return terraformDataMsg{err: err}
 		}
 
-		// Fetch terraform output JSON from configmap Files (tf-state).
+		// Fetch terraform output JSON and plan preview from configmap Files (tf-state).
 		// Try both dataplane and control-plane clusters.
 		var tfOutputJSON string
+		var planPreviewByOpID, planPreviewErrByOpID map[string]string
 		if conn == nil {
 			return terraformDataMsg{
 				progress: progress,
@@ -228,6 +246,7 @@ func (m terraformDetailModel) fetchData() tea.Cmd {
 			}
 			if tfData != nil {
 				tfOutputJSON = findLatestOutputLog(tfData.Files, history)
+				planPreviewByOpID, planPreviewErrByOpID = findAllPlanPreviews(tfData.Files)
 				break
 			}
 		}
@@ -255,12 +274,14 @@ func (m terraformDetailModel) fetchData() tea.Cmd {
 		}
 
 		return terraformDataMsg{
-			progress:     progress,
-			history:      history,
-			k8sConn:      conn,
-			fileTree:     fileTree,
-			tfOutputJSON: tfOutputJSON,
-			err:          err,
+			progress:             progress,
+			history:              history,
+			k8sConn:              conn,
+			fileTree:             fileTree,
+			tfOutputJSON:         tfOutputJSON,
+			planPreviewByOpID:    planPreviewByOpID,
+			planPreviewErrByOpID: planPreviewErrByOpID,
+			err:                  err,
 		}
 	}
 }
@@ -295,6 +316,12 @@ func (m terraformDetailModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.errorModalOp = ""
 				return m, nil
 			}
+			if m.previewModalText != "" {
+				m.previewModalText = ""
+				m.previewModalOpID = ""
+				m.previewModalScroll = 0
+				return m, nil
+			}
 			if m.viewingFile {
 				m.viewingFile = false
 				m.fileContent = ""
@@ -309,7 +336,7 @@ func (m terraformDetailModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// Signal back to DAG view
 			return m, func() tea.Msg { return backToDagMsg{} }
 		case "tab", "right":
-			if m.wfErrors.modalText != "" || m.errorModalText != "" {
+			if m.wfErrors.modalText != "" || m.errorModalText != "" || m.previewModalText != "" {
 				return m, nil // block tab switching while modal is open
 			}
 			if !m.viewingFile {
@@ -317,7 +344,7 @@ func (m terraformDetailModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.scrollY = 0
 			}
 		case "shift+tab", "left":
-			if m.wfErrors.modalText != "" || m.errorModalText != "" {
+			if m.wfErrors.modalText != "" || m.errorModalText != "" || m.previewModalText != "" {
 				return m, nil
 			}
 			if !m.viewingFile {
@@ -337,6 +364,12 @@ func (m terraformDetailModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 				return m, nil
 			}
+			if m.previewModalText != "" {
+				if m.previewModalScroll > 0 {
+					m.previewModalScroll--
+				}
+				return m, nil
+			}
 			if m.activeTab == tabTfFiles && !m.viewingFile && m.fileTree != nil {
 				if m.fileCursor > 0 {
 					m.fileCursor--
@@ -346,7 +379,7 @@ func (m terraformDetailModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.outputCursor--
 				}
 			} else if m.activeTab == tabOpHistory && len(m.historyDates) > 0 {
-				rows := flattenTimeline(m.historyDates)
+				rows := flattenTimeline(m.historyDates, m.planPreviewByOpID, m.planPreviewErrByOpID)
 				if m.historyCursor > 0 {
 					m.historyCursor--
 				}
@@ -390,6 +423,14 @@ func (m terraformDetailModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 				return m, nil
 			}
+			if m.previewModalText != "" {
+				m.previewModalScroll++
+				maxScroll := m.previewModalMaxScroll()
+				if m.previewModalScroll > maxScroll {
+					m.previewModalScroll = maxScroll
+				}
+				return m, nil
+			}
 			if m.activeTab == tabTfFiles && !m.viewingFile && m.fileTree != nil {
 				if m.fileCursor < len(m.fileTree.Flat)-1 {
 					m.fileCursor++
@@ -400,7 +441,7 @@ func (m terraformDetailModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.outputCursor++
 				}
 			} else if m.activeTab == tabOpHistory && len(m.historyDates) > 0 {
-				rows := flattenTimeline(m.historyDates)
+				rows := flattenTimeline(m.historyDates, m.planPreviewByOpID, m.planPreviewErrByOpID)
 				if m.historyCursor < len(rows)-1 {
 					m.historyCursor++
 				}
@@ -446,20 +487,10 @@ func (m terraformDetailModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			} else if m.activeTab == tabTfOutput && len(m.outputTree) > 0 {
 				visibleNodes := flattenOutputTree(m.outputTree)
 				if m.outputCursor >= 0 && m.outputCursor < len(visibleNodes) {
-					node := visibleNodes[m.outputCursor]
-					if node.expandable {
-						node.expanded = !node.expanded
-					} else if node.sensitive {
-						node.sensitiveShown = !node.sensitiveShown
-						if node.sensitiveShown {
-							node.value = node.realValue
-						} else {
-							node.value = "••••••••  (sensitive, press enter to reveal)"
-						}
-					}
+					toggleOutputNode(visibleNodes[m.outputCursor])
 				}
 			} else if m.activeTab == tabOpHistory && len(m.historyDates) > 0 {
-				rows := flattenTimeline(m.historyDates)
+				rows := flattenTimeline(m.historyDates, m.planPreviewByOpID, m.planPreviewErrByOpID)
 				if m.historyCursor >= 0 && m.historyCursor < len(rows) {
 					row := rows[m.historyCursor]
 					if row.isDateHeader {
@@ -468,13 +499,20 @@ func (m terraformDetailModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 						row.group.expanded = !row.group.expanded
 					} else if row.isAttemptHeader {
 						row.attempt.expanded = !row.attempt.expanded
+					} else if row.isPlanPreviewRow {
+						// Open plan preview modal from the dedicated preview row
+						if content, _, found := m.planPreviewForOpID(row.planPreviewOpID); found {
+							m.previewModalText = content
+							m.previewModalOpID = row.planPreviewOpID
+							m.previewModalScroll = 0
+						}
 					} else if row.entry != nil && row.entry.Error != "" {
 						// Open error modal
 						m.errorModalText = strings.ReplaceAll(row.entry.Error, "\\n", "\n")
 						m.errorModalOp = row.entry.Operation
 						m.errorModalScroll = 0
 					}
-					newRows := flattenTimeline(m.historyDates)
+					newRows := flattenTimeline(m.historyDates, m.planPreviewByOpID, m.planPreviewErrByOpID)
 					if m.historyCursor >= len(newRows) {
 						m.historyCursor = len(newRows) - 1
 					}
@@ -502,6 +540,13 @@ func (m terraformDetailModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.errorModalScroll -= m.bodyHeight()
 				if m.errorModalScroll < 0 {
 					m.errorModalScroll = 0
+				}
+				return m, nil
+			}
+			if m.previewModalText != "" {
+				m.previewModalScroll -= m.bodyHeight()
+				if m.previewModalScroll < 0 {
+					m.previewModalScroll = 0
 				}
 				return m, nil
 			}
@@ -547,6 +592,14 @@ func (m terraformDetailModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				maxScroll := m.errorModalMaxScroll()
 				if m.errorModalScroll > maxScroll {
 					m.errorModalScroll = maxScroll
+				}
+				return m, nil
+			}
+			if m.previewModalText != "" {
+				m.previewModalScroll += m.bodyHeight()
+				maxScroll := m.previewModalMaxScroll()
+				if m.previewModalScroll > maxScroll {
+					m.previewModalScroll = maxScroll
 				}
 				return m, nil
 			}
@@ -624,6 +677,8 @@ func (m terraformDetailModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.tfOutputJSON != "" {
 			m.outputTree = buildOutputTreeFromJSON(msg.tfOutputJSON)
 		}
+		m.planPreviewByOpID = msg.planPreviewByOpID
+		m.planPreviewErrByOpID = msg.planPreviewErrByOpID
 		// Start log watcher for apply/destroy logs from configmap.
 		// Try both dataplane and control-plane clusters to find which has the logs.
 		var cmds []tea.Cmd
@@ -931,6 +986,9 @@ func (m terraformDetailModel) copyableContent() string {
 	if m.errorModalText != "" {
 		return m.errorModalText
 	}
+	if m.previewModalText != "" {
+		return m.previewModalText
+	}
 	if m.viewingFile && m.fileContent != "" {
 		return m.fileContent
 	}
@@ -960,6 +1018,10 @@ func (m terraformDetailModel) View() string {
 
 	if m.errorModalText != "" {
 		return m.renderErrorModal()
+	}
+
+	if m.previewModalText != "" {
+		return m.renderPreviewModal()
 	}
 
 	header := m.renderHeader()
@@ -1250,14 +1312,16 @@ type operationAttempt struct {
 
 // timelineRow is a single renderable row in the flattened timeline
 type timelineRow struct {
-	isDateHeader    bool
-	isGroupHeader   bool
-	isAttemptHeader bool
-	date            *dateSection
-	group           *operationGroup
-	attempt         *operationAttempt
-	entry           *TerraformHistoryEntry
-	isLastChild     bool
+	isDateHeader     bool
+	isGroupHeader    bool
+	isAttemptHeader  bool
+	isPlanPreviewRow bool   // dedicated plan preview row inserted before "apply"
+	planPreviewOpID  string // operation ID for the plan preview (set when isPlanPreviewRow)
+	date             *dateSection
+	group            *operationGroup
+	attempt          *operationAttempt
+	entry            *TerraformHistoryEntry
+	isLastChild      bool
 }
 
 func dateFromTimestamp(ts string) string {
@@ -1398,7 +1462,22 @@ func buildTimelineSections(history []TerraformHistoryEntry) []dateSection {
 	return sections
 }
 
-func flattenTimeline(dates []dateSection) []timelineRow {
+// hasPlanPreview reports whether the given operation ID has a plan preview or plan preview error.
+func hasPlanPreview(opID string, previews, previewErrors map[string]string) bool {
+	if previews != nil {
+		if v, ok := previews[opID]; ok && v != "" {
+			return true
+		}
+	}
+	if previewErrors != nil {
+		if v, ok := previewErrors[opID]; ok && v != "" {
+			return true
+		}
+	}
+	return false
+}
+
+func flattenTimeline(dates []dateSection, previews, previewErrors map[string]string) []timelineRow {
 	var rows []timelineRow
 	for i := range dates {
 		d := &dates[i]
@@ -1424,13 +1503,39 @@ func flattenTimeline(dates []dateSection) []timelineRow {
 							date:            d,
 						})
 						if attempt.expanded {
+							hasPreview := hasPlanPreview(attempt.operationID, previews, previewErrors)
+							previewInserted := false
+							entryCount := len(attempt.entries)
 							for k := range attempt.entries {
+								e := &attempt.entries[k]
+								// Insert plan preview row before the first "apply" entry
+								if hasPreview && !previewInserted && e.Operation == "apply" {
+									rows = append(rows, timelineRow{
+										isPlanPreviewRow: true,
+										planPreviewOpID:  attempt.operationID,
+										group:            g,
+										attempt:          attempt,
+										date:             d,
+									})
+									previewInserted = true
+								}
 								rows = append(rows, timelineRow{
 									group:       g,
 									attempt:     attempt,
-									entry:       &attempt.entries[k],
-									isLastChild: k == len(attempt.entries)-1,
+									entry:       e,
+									isLastChild: k == entryCount-1 && (previewInserted || !hasPreview),
 									date:        d,
+								})
+							}
+							// If there was no "apply" entry, append the preview row at the end
+							if hasPreview && !previewInserted {
+								rows = append(rows, timelineRow{
+									isPlanPreviewRow: true,
+									planPreviewOpID:  attempt.operationID,
+									group:            g,
+									attempt:          attempt,
+									isLastChild:      true,
+									date:             d,
 								})
 							}
 						}
@@ -1471,7 +1576,7 @@ func (m terraformDetailModel) renderOperationHistoryTab() string {
 		fmt.Sprintf("Operation History (%d days, %d generations, %d attempts, %d entries)",
 			len(m.historyDates), totalGenerations, totalAttempts, len(m.history)))))
 
-	rows := flattenTimeline(m.historyDates)
+	rows := flattenTimeline(m.historyDates, m.planPreviewByOpID, m.planPreviewErrByOpID)
 
 	// Simple row-based viewport clipping (each row = 1 line, no inline expansion)
 	totalRows := len(rows)
@@ -1595,6 +1700,21 @@ func (m terraformDetailModel) renderOperationHistoryTab() string {
 				line = selectedBg.Render(line)
 			}
 
+			b.WriteString(fmt.Sprintf("  %s%s\n", cursor, line))
+		} else if row.isPlanPreviewRow {
+			// Dedicated plan preview row inserted before "apply"
+			connector := "│   │   ├─"
+			if row.isLastChild {
+				connector = "│   │   └─"
+			}
+			previewStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("117"))
+			line := fmt.Sprintf("  %s %s",
+				dimStyle.Render(connector),
+				previewStyle.Render("📋 plan preview (enter to view)"),
+			)
+			if selected {
+				line = selectedBg.Render(line)
+			}
 			b.WriteString(fmt.Sprintf("  %s%s\n", cursor, line))
 		} else {
 			// Child entry row
@@ -1981,4 +2101,135 @@ func (m terraformDetailModel) renderTfWfErrorsTab() string {
 	enrichBootstrapSteps(steps, m.node.Key, m.debugData.PlanDAG)
 	isLive := isWorkflowInProgress(steps)
 	return renderWorkflowEventsTab(steps, m.wfErrors, m.bodyHeight(), m.contentWidth(), loading, m.spinner.View(), isLive)
+}
+
+// planPreviewForOpID returns the plan preview content and whether it's an error for the given operation ID.
+// Returns ("", false, false) if no plan preview exists.
+func (m terraformDetailModel) planPreviewForOpID(opID string) (content string, isError bool, found bool) {
+	if m.planPreviewByOpID != nil {
+		if preview, ok := m.planPreviewByOpID[opID]; ok && preview != "" {
+			return preview, false, true
+		}
+	}
+	if m.planPreviewErrByOpID != nil {
+		if errText, ok := m.planPreviewErrByOpID[opID]; ok && errText != "" {
+			return errText, true, true
+		}
+	}
+	return "", false, false
+}
+
+// previewModalFormattedText returns the plan preview text formatted for display.
+// If the raw text is valid terraform plan JSON, it is rendered as a human-readable diff.
+// Otherwise, the raw text is returned unchanged.
+func (m terraformDetailModel) previewModalFormattedText() string {
+	return formatTerraformPlan(m.previewModalText)
+}
+
+func (m terraformDetailModel) previewModalMaxScroll() int {
+	bodyH := m.height - 6
+	if bodyH < 1 {
+		bodyH = 1
+	}
+	maxCodeWidth := m.width - 10
+	if maxCodeWidth < 20 {
+		maxCodeWidth = 20
+	}
+	formatted := m.previewModalFormattedText()
+	lines := strings.Split(formatted, "\n")
+	vlines := expandLinesToVisual(lines, maxCodeWidth)
+	maxScroll := len(vlines) - bodyH
+	if maxScroll < 0 {
+		maxScroll = 0
+	}
+	return maxScroll
+}
+
+func (m terraformDetailModel) renderPreviewModal() string {
+	titleStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("230")).Background(lipgloss.Color("62")).Padding(0, 1)
+	shortOpID := m.previewModalOpID
+	if len(shortOpID) > 20 {
+		shortOpID = shortOpID[:20] + "…"
+	}
+	title := fmt.Sprintf("Plan Preview · %s", shortOpID)
+	header := lipgloss.Place(m.width, 1, lipgloss.Left, lipgloss.Top, titleStyle.Render(title))
+
+	bodyH := m.height - 4
+	if bodyH < 1 {
+		bodyH = 1
+	}
+	maxCodeWidth := m.width - 10
+	if maxCodeWidth < 20 {
+		maxCodeWidth = 20
+	}
+
+	formatted := m.previewModalFormattedText()
+	lines := strings.Split(formatted, "\n")
+	vlines := expandLinesToVisual(lines, maxCodeWidth)
+	totalLines := len(vlines)
+
+	scroll := m.previewModalScroll
+	maxScroll := m.previewModalMaxScroll()
+	if scroll > maxScroll {
+		scroll = maxScroll
+	}
+
+	end := scroll + bodyH
+	if end > totalLines {
+		end = totalLines
+	}
+
+	// Diff-aware styles
+	addStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("114"))        // green for additions
+	removeStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("203"))     // red for removals
+	changeStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("178"))     // yellow for changes
+	commentStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("117"))    // blue for comments (#)
+	headerLineStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("245")) // dim for separators
+	defaultStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("252"))
+
+	var b strings.Builder
+	for i := scroll; i < end; i++ {
+		vl := vlines[i]
+		text := vl.text
+
+		// Pick style based on line prefix (diff-like coloring)
+		style := defaultStyle
+		trimmed := strings.TrimSpace(text)
+		if strings.HasPrefix(trimmed, "# ") {
+			style = commentStyle
+		} else if strings.HasPrefix(trimmed, "+ ") || strings.HasPrefix(trimmed, "+") && strings.HasPrefix(text, "  +") {
+			style = addStyle
+		} else if strings.HasPrefix(trimmed, "- ") || strings.HasPrefix(trimmed, "-/+") {
+			style = removeStyle
+		} else if strings.HasPrefix(trimmed, "~ ") {
+			style = changeStyle
+		} else if strings.HasPrefix(trimmed, "───") || strings.HasPrefix(trimmed, "Plan:") {
+			style = headerLineStyle
+		}
+
+		b.WriteString(fmt.Sprintf("  %s\n", style.Render(text)))
+	}
+	for i := end - scroll; i < bodyH; i++ {
+		b.WriteString("\n")
+	}
+
+	footerStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("241")).Padding(0, 1)
+	pos := ""
+	if totalLines <= bodyH {
+		pos = "all"
+	} else if scroll == 0 {
+		pos = "top"
+	} else if end >= totalLines {
+		pos = "end"
+	} else if maxScroll > 0 {
+		pos = fmt.Sprintf("%d%%", (scroll*100)/maxScroll)
+	}
+	footerText := fmt.Sprintf("↑↓/pgup/pgdn: scroll  y: copy  esc: close  [%d/%d %s]", scroll+bodyH, totalLines, pos)
+	if m.clipboardMsg != "" {
+		clipStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("82"))
+		footerText = clipStyle.Render(m.clipboardMsg) + "  " + footerText
+	}
+	footer := lipgloss.Place(m.width, 1, lipgloss.Left, lipgloss.Top, footerStyle.Render(footerText))
+
+	return lipgloss.JoinVertical(lipgloss.Left, header, b.String(), footer)
 }
