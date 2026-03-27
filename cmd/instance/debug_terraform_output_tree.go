@@ -114,6 +114,34 @@ func findLatestOutputLog(files map[string]string, history []TerraformHistoryEntr
 	return files[outputKeys[len(outputKeys)-1]]
 }
 
+// findAllPlanPreviews collects all plan previews and plan preview errors from the Files map,
+// keyed by operation ID. Each operation ID may have either a plan preview or a plan preview error.
+// Returns (previews, previewErrors) maps. Both are always non-nil (may be empty).
+// This function never returns an error — missing or unparseable data is silently ignored.
+func findAllPlanPreviews(files map[string]string) (map[string]string, map[string]string) {
+	previews := make(map[string]string)
+	previewErrors := make(map[string]string)
+	if len(files) == 0 {
+		return previews, previewErrors
+	}
+
+	for k, v := range files {
+		if strings.HasSuffix(k, "-plan-preview-error") {
+			opID := strings.TrimSuffix(k, "-plan-preview-error")
+			if opID != "" && v != "" {
+				previewErrors[opID] = v
+			}
+		} else if strings.HasSuffix(k, "-plan-preview") {
+			opID := strings.TrimSuffix(k, "-plan-preview")
+			if opID != "" && v != "" {
+				previews[opID] = v
+			}
+		}
+	}
+
+	return previews, previewErrors
+}
+
 func buildJSONNode(key string, value interface{}, depth int) *outputNode {
 	switch v := value.(type) {
 	case map[string]interface{}:
@@ -207,6 +235,20 @@ func flattenOutputNode(node *outputNode, flat *[]*outputNode) {
 	if node.expandable && node.expanded {
 		for _, child := range node.children {
 			flattenOutputNode(child, flat)
+		}
+	}
+}
+
+// toggleOutputNode expands/collapses an expandable node, or reveals/hides a sensitive value.
+func toggleOutputNode(node *outputNode) {
+	if node.expandable {
+		node.expanded = !node.expanded
+	} else if node.sensitive {
+		node.sensitiveShown = !node.sensitiveShown
+		if node.sensitiveShown {
+			node.value = node.realValue
+		} else {
+			node.value = "••••••••  (sensitive, press enter to reveal)"
 		}
 	}
 }
