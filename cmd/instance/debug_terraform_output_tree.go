@@ -114,6 +114,51 @@ func findLatestOutputLog(files map[string]string, history []TerraformHistoryEntr
 	return files[outputKeys[len(outputKeys)-1]]
 }
 
+// findLatestPlanPreview finds the latest plan preview or plan preview error from the Files map.
+// It returns (preview, previewError). Only one of them will be non-empty for a given operation:
+// if a plan-preview exists, there is no plan-preview-error, and vice versa.
+func findLatestPlanPreview(files map[string]string, history []TerraformHistoryEntry) (string, string) {
+	if len(files) == 0 {
+		return "", ""
+	}
+
+	// Try to find by latest history entry that has a plan preview or error
+	for i := len(history) - 1; i >= 0; i-- {
+		opID := history[i].OperationID
+		if opID == "" {
+			continue
+		}
+		previewKey := opID + "-plan-preview"
+		errorKey := opID + "-plan-preview-error"
+		if content, ok := files[previewKey]; ok {
+			return content, ""
+		}
+		if content, ok := files[errorKey]; ok {
+			return "", content
+		}
+	}
+
+	// Fallback: find any *-plan-preview or *-plan-preview-error key, pick the last one alphabetically
+	var previewKeys []string
+	var errorKeys []string
+	for k := range files {
+		if strings.HasSuffix(k, "-plan-preview") {
+			previewKeys = append(previewKeys, k)
+		} else if strings.HasSuffix(k, "-plan-preview-error") {
+			errorKeys = append(errorKeys, k)
+		}
+	}
+	if len(previewKeys) > 0 {
+		sort.Strings(previewKeys)
+		return files[previewKeys[len(previewKeys)-1]], ""
+	}
+	if len(errorKeys) > 0 {
+		sort.Strings(errorKeys)
+		return "", files[errorKeys[len(errorKeys)-1]]
+	}
+	return "", ""
+}
+
 func buildJSONNode(key string, value interface{}, depth int) *outputNode {
 	switch v := value.(type) {
 	case map[string]interface{}:
