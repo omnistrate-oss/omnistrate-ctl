@@ -35,10 +35,10 @@ func TestGetVerificationURIForMicrosoftEntra(t *testing.T) {
 }
 
 func TestGetScopeForMicrosoftEntra(t *testing.T) {
-	require.Equal(t, "openid email profile offline_access", getScope(identityProviderMicrosoftEntra))
+	require.Equal(t, "openid email profile offline_access User.Read", getScope(identityProviderMicrosoftEntra))
 }
 
 func TestGetClientIDForMicrosoftEntraUnset(t *testing.T) {
 	_ = os.Unsetenv(entraClientIDEnv)
-	require.Equal(t, "214069e3-8166-4283-8d89-a8378fe914c8", getClientID(identityProviderMicrosoftEntra))
+	require.Equal(t, "3a09381f-919b-40d5-ac1e-3ad35297a438", getClientID(identityProviderMicrosoftEntra))
 }

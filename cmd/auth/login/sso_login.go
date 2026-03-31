@@ -49,8 +49,8 @@ const (
 	gitHubScope                    = "read:user user:email"
 	googleScope                    = "email profile"
 	microsoftScope                 = "openid email profile offline_access User.Read"
-	entraDevClientID               = "214069e3-8166-4283-8d89-a8378fe914c8"
-	entraProdClientID              = "214069e3-8166-4283-8d89-a8378fe914c8" // TODO : use a different client ID for prod
+	entraDevClientID               = "3a09381f-919b-40d5-ac1e-3ad35297a438"
+	entraProdClientID              = "3a09381f-919b-40d5-ac1e-3ad35297a438" // TODO : use a different client ID for prod
 	entraDefaultTenant             = "organizations"
 	entraDeviceCodeURLTemplate     = "https://login.microsoftonline.com/%s/oauth2/v2.0/devicecode"
 	entraVerificationURI           = "https://microsoft.com/devicelogin"

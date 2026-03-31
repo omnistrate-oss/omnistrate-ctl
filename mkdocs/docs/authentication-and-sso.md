@@ -49,7 +49,7 @@ The CLI will:
 By default, CTL uses the Omnistrate Entra client ID:
 
 ```text
-214069e3-8166-4283-8d89-a8378fe914c8
+3a09381f-919b-40d5-ac1e-3ad35297a438
 ```
 
 You can override it if needed:
