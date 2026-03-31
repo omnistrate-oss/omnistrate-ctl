@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
@@ -46,12 +47,11 @@ const (
 	gitHubVerificationURI          = "https://github.com/login/device"
 	gitHubScope                    = "read:user user:email"
 	googleScope                    = "email profile"
-	microsoftScope                 = "openid profile email offline_access"
-	entraDefaultClientID           = "214069e3-8166-4283-8d89-a8378fe914c8"
-	entraDeviceCodeURLTemplate     = "https://login.microsoftonline.com/%s/oauth2/v2.0/devicecode"
+	microsoftScope                 = "openid email profile offline_access"
+	entraDevClientID               = "214069e3-8166-4283-8d89-a8378fe914c8"
+	entraProdClientID              = "214069e3-8166-4283-8d89-a8378fe914c8" // TODO : use a different client ID for prod
+	entraDeviceCodeURL             = "https://login.microsoftonline.com/organizations/oauth2/v2.0/devicecode"
 	entraVerificationURI           = "https://microsoft.com/devicelogin"
-	entraTenantEnv                 = "OMNISTRATE_ENTRA_TENANT_ID"
-	entraClientIDEnv               = "OMNISTRATE_ENTRA_CLIENT_ID"
 )
 
 func ssoLogin(ctx context.Context, identityProviderName string) error {
@@ -114,29 +114,37 @@ func ssoLogin(ctx context.Context, identityProviderName string) error {
 
 // requestDeviceCode requests a device and user verification code from the identity provider
 func requestDeviceCode(ctx context.Context, identityProviderName string) (*DeviceCodeResponse, error) {
+	var reqBody io.Reader
+	var contentType string
+
 	clientID := getClientID(identityProviderName)
-	if clientID == "" {
-		if identityProviderName == identityProviderMicrosoftEntra {
-			return nil, fmt.Errorf("missing Microsoft Entra client ID; set %s", entraClientIDEnv)
+	scope := getScope(identityProviderName)
+
+	if identityProviderName == identityProviderMicrosoftEntra {
+		// Microsoft Entra requires application/x-www-form-urlencoded
+		form := url.Values{}
+		form.Set("client_id", clientID)
+		form.Set("scope", scope)
+		reqBody = strings.NewReader(form.Encode())
+		contentType = "application/x-www-form-urlencoded"
+	} else {
+		data := map[string]string{
+			"client_id": clientID,
+			"scope":     scope,
 		}
-		return nil, fmt.Errorf("missing client ID for identity provider %q", identityProviderName)
+		dataBytes, err := json.Marshal(data)
+		if err != nil {
+			return nil, err
+		}
+		reqBody = bytes.NewBuffer(dataBytes)
+		contentType = "application/json"
 	}
 
-	data := map[string]string{
-		"client_id": clientID,
-		"scope":     getScope(identityProviderName),
-	}
-
-	dataBytes, err := json.Marshal(data)
+	req, err := http.NewRequestWithContext(ctx, "POST", getDeviceCodeURL(identityProviderName), reqBody)
 	if err != nil {
 		return nil, err
 	}
-
-	req, err := http.NewRequestWithContext(ctx, "POST", getDeviceCodeURL(identityProviderName), bytes.NewBuffer(dataBytes))
-	if err != nil {
-		return nil, err
-	}
-	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Content-Type", contentType)
 	req.Header.Set("Accept", "application/json")
 
 	client := &http.Client{}
@@ -205,7 +213,11 @@ func getClientID(identityProviderName string) string {
 			return googleDevClientID
 		}
 	case identityProviderMicrosoftEntra:
-		return config.GetEnv(entraClientIDEnv, entraDefaultClientID)
+		if config.IsProd() {
+			return entraDevClientID
+		} else {
+			return entraProdClientID
+		}
 	default:
 		return ""
 	}
@@ -231,8 +243,7 @@ func getDeviceCodeURL(identityProviderName string) string {
 	case identityProviderGoogle:
 		return googleDeviceCodeURL
 	case identityProviderMicrosoftEntra:
-		tenantID := config.GetEnv(entraTenantEnv, "common")
-		return fmt.Sprintf(entraDeviceCodeURLTemplate, tenantID)
+		return entraDeviceCodeURL
 	default:
 		return ""
 	}
