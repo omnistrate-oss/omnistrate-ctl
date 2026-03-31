@@ -8,7 +8,6 @@ import (
 	"io"
 	"net/http"
 	"net/url"
-	"os"
 	"strings"
 	"time"
 
@@ -50,12 +49,9 @@ const (
 	googleScope                    = "email profile"
 	microsoftScope                 = "openid email profile offline_access User.Read"
 	entraDevClientID               = "3a09381f-919b-40d5-ac1e-3ad35297a438"
-	entraProdClientID              = "3a09381f-919b-40d5-ac1e-3ad35297a438" // TODO : use a different client ID for prod
-	entraDefaultTenant             = "organizations"
-	entraDeviceCodeURLTemplate     = "https://login.microsoftonline.com/%s/oauth2/v2.0/devicecode"
+	entraProdClientID              = "8ca18dc3-470b-44bd-995b-cb4f6f298514"
+	entraDeviceCodeURL             = "https://login.microsoftonline.com/organizations/oauth2/v2.0/devicecode"
 	entraVerificationURI           = "https://microsoft.com/devicelogin"
-	entraTenantEnv                 = "OMNISTRATE_ENTRA_TENANT_ID"
-	entraClientIDEnv               = "OMNISTRATE_ENTRA_CLIENT_ID"
 )
 
 func ssoLogin(ctx context.Context, identityProviderName string) error {
@@ -186,6 +182,9 @@ func pollForAccessTokenAndLogin(ctx context.Context, identityProviderName, devic
 			if strings.Contains(err.Error(), "Failed to get access token with status code: 428 Precondition Required") { // authorization_pending
 				continue
 			}
+			if strings.Contains(err.Error(), "authorization_pending") { // authorization_pending (e.g. Microsoft Entra returns 400)
+				continue
+			}
 			if strings.Contains(err.Error(), "Failed to get access token with status code: 403 Forbidden") { // access_denied
 				return nil, errors.New("Access denied. Please try again.")
 			}
@@ -217,9 +216,6 @@ func getClientID(identityProviderName string) string {
 			return googleDevClientID
 		}
 	case identityProviderMicrosoftEntra:
-		if v := os.Getenv(entraClientIDEnv); v != "" {
-			return v
-		}
 		if config.IsProd() {
 			return entraProdClientID
 		} else {
@@ -250,11 +246,7 @@ func getDeviceCodeURL(identityProviderName string) string {
 	case identityProviderGoogle:
 		return googleDeviceCodeURL
 	case identityProviderMicrosoftEntra:
-		tenant := entraDefaultTenant
-		if v := os.Getenv(entraTenantEnv); v != "" {
-			tenant = v
-		}
-		return fmt.Sprintf(entraDeviceCodeURLTemplate, tenant)
+		return entraDeviceCodeURL
 	default:
 		return ""
 	}
