@@ -32,7 +32,7 @@ type AccessTokenResponse struct {
 	JWTToken string `json:"jwt_token"`
 }
 
-// GitHub client credentials
+// SSO identity provider credentials and endpoints
 const (
 	identityProviderGitHub         = "GitHub for CTL"
 	identityProviderGoogle         = "Google for CTL"
@@ -114,6 +114,12 @@ func ssoLogin(ctx context.Context, identityProviderName string) error {
 
 // requestDeviceCode requests a device and user verification code from the identity provider
 func requestDeviceCode(ctx context.Context, identityProviderName string) (*DeviceCodeResponse, error) {
+	client := &http.Client{}
+	return requestDeviceCodeWithHttpClient(ctx, client, identityProviderName)
+}
+
+// requestDeviceCode requests a device and user verification code from the identity provider
+func requestDeviceCodeWithHttpClient(ctx context.Context, client *http.Client, identityProviderName string) (*DeviceCodeResponse, error) {
 	var reqBody io.Reader
 	var contentType string
 
@@ -147,7 +153,6 @@ func requestDeviceCode(ctx context.Context, identityProviderName string) (*Devic
 	req.Header.Set("Content-Type", contentType)
 	req.Header.Set("Accept", "application/json")
 
-	client := &http.Client{}
 	resp, err := client.Do(req)
 	if err != nil {
 		return nil, err
