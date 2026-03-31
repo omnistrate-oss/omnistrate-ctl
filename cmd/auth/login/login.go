@@ -12,9 +12,6 @@ const (
 	loginExample = `# Select login method with a prompt
 omnistrate-ctl login
 
-# Login with Microsoft Entra SSO
-omnistrate-ctl login --entra
-
 # Login with email and password
 omnistrate-ctl login --email email --password password
 
