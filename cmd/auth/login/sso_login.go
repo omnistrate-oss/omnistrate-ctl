@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"os"
 	"strings"
 	"time"
 
@@ -47,11 +48,14 @@ const (
 	gitHubVerificationURI          = "https://github.com/login/device"
 	gitHubScope                    = "read:user user:email"
 	googleScope                    = "email profile"
-	microsoftScope                 = "openid email profile offline_access"
+	microsoftScope                 = "openid email profile offline_access User.Read"
 	entraDevClientID               = "214069e3-8166-4283-8d89-a8378fe914c8"
 	entraProdClientID              = "214069e3-8166-4283-8d89-a8378fe914c8" // TODO : use a different client ID for prod
-	entraDeviceCodeURL             = "https://login.microsoftonline.com/organizations/oauth2/v2.0/devicecode"
+	entraDefaultTenant             = "organizations"
+	entraDeviceCodeURLTemplate     = "https://login.microsoftonline.com/%s/oauth2/v2.0/devicecode"
 	entraVerificationURI           = "https://microsoft.com/devicelogin"
+	entraTenantEnv                 = "OMNISTRATE_ENTRA_TENANT_ID"
+	entraClientIDEnv               = "OMNISTRATE_ENTRA_CLIENT_ID"
 )
 
 func ssoLogin(ctx context.Context, identityProviderName string) error {
@@ -213,10 +217,13 @@ func getClientID(identityProviderName string) string {
 			return googleDevClientID
 		}
 	case identityProviderMicrosoftEntra:
+		if v := os.Getenv(entraClientIDEnv); v != "" {
+			return v
+		}
 		if config.IsProd() {
-			return entraDevClientID
-		} else {
 			return entraProdClientID
+		} else {
+			return entraDevClientID
 		}
 	default:
 		return ""
@@ -243,7 +250,11 @@ func getDeviceCodeURL(identityProviderName string) string {
 	case identityProviderGoogle:
 		return googleDeviceCodeURL
 	case identityProviderMicrosoftEntra:
-		return entraDeviceCodeURL
+		tenant := entraDefaultTenant
+		if v := os.Getenv(entraTenantEnv); v != "" {
+			tenant = v
+		}
+		return fmt.Sprintf(entraDeviceCodeURLTemplate, tenant)
 	default:
 		return ""
 	}
