@@ -70,6 +70,8 @@ func init() {
 	LoginCmd.Flags().BoolVarP(&entra, "entra", "", false, "Login with Microsoft Entra")
 
 	LoginCmd.MarkFlagsMutuallyExclusive("gh", "google", "entra", "email")
+	LoginCmd.MarkFlagsMutuallyExclusive("gh", "google", "entra", "password")
+	LoginCmd.MarkFlagsMutuallyExclusive("gh", "google", "entra", "password-stdin")
 
 	LoginCmd.Args = cobra.NoArgs
 }
