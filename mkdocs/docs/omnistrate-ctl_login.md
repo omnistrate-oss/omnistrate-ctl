@@ -16,6 +16,9 @@ omnistrate-ctl login [flags]
 # Select login method with a prompt
 omnistrate-ctl login
 
+# Login with Microsoft Entra SSO
+omnistrate-ctl login --entra
+
 # Login with email and password
 omnistrate-ctl login --email email --password password
 
@@ -35,6 +38,7 @@ omnistrate-ctl login --email email --password password
 
 ```
       --email string      email
+      --entra             Login with Microsoft Entra
       --gh                Login with GitHub
       --google            Login with Google
   -h, --help              help for login

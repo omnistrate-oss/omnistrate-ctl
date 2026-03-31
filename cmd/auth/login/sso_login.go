@@ -33,18 +33,25 @@ type AccessTokenResponse struct {
 
 // GitHub client credentials
 const (
-	identityProviderGitHub = "GitHub for CTL"
-	identityProviderGoogle = "Google for CTL"
-	gitHubDevClientID      = "Ov23ctpQGrpGvsIIJxFv"
-	gitHubProdClientID     = "Ov23li2nyhdelepEtjcg"
-	googleDevClientID      = "635031719937-gqvm0qeelipdc812g9ie2v6ohk3j6gs6.apps.googleusercontent.com" // #nosec G101
-	googleProdClientID     = "421577562987-98lkfnu7e07rig5p6rt4p0dgqpktihhb.apps.googleusercontent.com" // #nosec G101
-	googleDeviceCodeURL    = "https://oauth2.googleapis.com/device/code"
-	gitHubDeviceCodeURL    = "https://github.com/login/device/code"
-	googleVerificationURI  = "https://www.google.com/device"
-	gitHubVerificationURI  = "https://github.com/login/device"
-	gitHubScope            = "read:user user:email"
-	googleScope            = "email profile"
+	identityProviderGitHub         = "GitHub for CTL"
+	identityProviderGoogle         = "Google for CTL"
+	identityProviderMicrosoftEntra = "Microsoft Entra for CTL"
+	gitHubDevClientID              = "Ov23ctpQGrpGvsIIJxFv"
+	gitHubProdClientID             = "Ov23li2nyhdelepEtjcg"
+	googleDevClientID              = "635031719937-gqvm0qeelipdc812g9ie2v6ohk3j6gs6.apps.googleusercontent.com" // #nosec G101
+	googleProdClientID             = "421577562987-98lkfnu7e07rig5p6rt4p0dgqpktihhb.apps.googleusercontent.com" // #nosec G101
+	googleDeviceCodeURL            = "https://oauth2.googleapis.com/device/code"
+	gitHubDeviceCodeURL            = "https://github.com/login/device/code"
+	googleVerificationURI          = "https://www.google.com/device"
+	gitHubVerificationURI          = "https://github.com/login/device"
+	gitHubScope                    = "read:user user:email"
+	googleScope                    = "email profile"
+	microsoftScope                 = "openid profile email offline_access"
+	entraDefaultClientID           = "214069e3-8166-4283-8d89-a8378fe914c8"
+	entraDeviceCodeURLTemplate     = "https://login.microsoftonline.com/%s/oauth2/v2.0/devicecode"
+	entraVerificationURI           = "https://microsoft.com/devicelogin"
+	entraTenantEnv                 = "OMNISTRATE_ENTRA_TENANT_ID"
+	entraClientIDEnv               = "OMNISTRATE_ENTRA_CLIENT_ID"
 )
 
 func ssoLogin(ctx context.Context, identityProviderName string) error {
@@ -107,8 +114,16 @@ func ssoLogin(ctx context.Context, identityProviderName string) error {
 
 // requestDeviceCode requests a device and user verification code from the identity provider
 func requestDeviceCode(ctx context.Context, identityProviderName string) (*DeviceCodeResponse, error) {
+	clientID := getClientID(identityProviderName)
+	if clientID == "" {
+		if identityProviderName == identityProviderMicrosoftEntra {
+			return nil, fmt.Errorf("missing Microsoft Entra client ID; set %s", entraClientIDEnv)
+		}
+		return nil, fmt.Errorf("missing client ID for identity provider %q", identityProviderName)
+	}
+
 	data := map[string]string{
-		"client_id": getClientID(identityProviderName),
+		"client_id": clientID,
 		"scope":     getScope(identityProviderName),
 	}
 
@@ -189,6 +204,8 @@ func getClientID(identityProviderName string) string {
 		} else {
 			return googleDevClientID
 		}
+	case identityProviderMicrosoftEntra:
+		return config.GetEnv(entraClientIDEnv, entraDefaultClientID)
 	default:
 		return ""
 	}
@@ -200,6 +217,8 @@ func getScope(identityProviderName string) string {
 		return gitHubScope
 	case identityProviderGoogle:
 		return googleScope
+	case identityProviderMicrosoftEntra:
+		return microsoftScope
 	default:
 		return ""
 	}
@@ -211,6 +230,9 @@ func getDeviceCodeURL(identityProviderName string) string {
 		return gitHubDeviceCodeURL
 	case identityProviderGoogle:
 		return googleDeviceCodeURL
+	case identityProviderMicrosoftEntra:
+		tenantID := config.GetEnv(entraTenantEnv, "common")
+		return fmt.Sprintf(entraDeviceCodeURLTemplate, tenantID)
 	default:
 		return ""
 	}
@@ -222,6 +244,8 @@ func getVerificationURI(identityProviderName string) string {
 		return gitHubVerificationURI
 	case identityProviderGoogle:
 		return googleVerificationURI
+	case identityProviderMicrosoftEntra:
+		return entraVerificationURI
 	default:
 		return ""
 	}
