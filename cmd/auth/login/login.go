@@ -27,13 +27,13 @@ omnistrate-ctl login --email email --password password
   echo $OMNISTRATE_PASSWORD | omnistrate-ctl login --email email --password-stdin
 
 # Login with GitHub SSO
-omnistrate-ctl login --gh
+  omnistrate-ctl login --gh
 
 # Login with Google SSO
-omnistrate-ctl login --google
+  omnistrate-ctl login --google
 
 # Login with Microsoft Entra SSO
-omnistrate-ctl login --entra`
+  omnistrate-ctl login --entra`
 
 	loginWithEmailAndPassword loginMethod = "Login with email and password"
 	loginWithGoogle           loginMethod = "Login with Google"
