@@ -16,9 +16,6 @@ omnistrate-ctl login [flags]
 # Select login method with a prompt
 omnistrate-ctl login
 
-# Login with Microsoft Entra SSO
-omnistrate-ctl login --entra
-
 # Login with email and password
 omnistrate-ctl login --email email --password password
 
@@ -32,6 +29,15 @@ omnistrate-ctl login --email email --password password
 
 # Login with email and password from stdin. Save the password in an environment variable and use echo to read it
   echo $OMNISTRATE_PASSWORD | omnistrate-ctl login --email email --password-stdin
+
+# Login with GitHub SSO
+  omnistrate-ctl login --gh
+
+# Login with Google SSO
+  omnistrate-ctl login --google
+
+# Login with Microsoft Entra SSO
+  omnistrate-ctl login --entra
 ```
 
 ### Options
