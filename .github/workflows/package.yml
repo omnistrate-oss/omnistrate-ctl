@@ -62,7 +62,7 @@ jobs:
             type=sha,format=long
 
       - name: Build on ${{ env.PR_PLATFORMS }} only
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: .
           file: ./build/Dockerfile
@@ -121,7 +121,7 @@ jobs:
         timeout-minutes: 60
         if: github.event_name != 'pull_request'
         id: build-and-push
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: .
           file: ./build/Dockerfile
