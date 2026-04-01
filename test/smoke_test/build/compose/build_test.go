@@ -398,6 +398,13 @@ func Test_build_dry_run(t *testing.T) {
 	require.NoError(err)
 	require.NotEmpty(build.ServiceID)
 
+	defer func() {
+		// Step 4: Cleanup - Delete the test service and associated resources
+		cmd.RootCmd.SetArgs([]string{"service", "delete", "--id", build.ServiceID})
+		err = cmd.RootCmd.ExecuteContext(ctx)
+		require.NoError(err)
+	}()
+
 	// Store initial state for comparison
 	initialServiceID := build.ServiceID
 	cmd.RootCmd.SetArgs([]string{
@@ -461,9 +468,4 @@ func Test_build_dry_run(t *testing.T) {
 	require.NotEmpty(build.ServiceID)
 	updatedOutput := utils.LastPrintedString
 	require.NotEqual(initialJsonOutput, updatedOutput, "Service configuration should change after actual release")
-
-	// Step 4: Cleanup - Delete the test service and associated resources
-	cmd.RootCmd.SetArgs([]string{"service", "delete", "--id", build.ServiceID})
-	err = cmd.RootCmd.ExecuteContext(ctx)
-	require.NoError(err)
 }
