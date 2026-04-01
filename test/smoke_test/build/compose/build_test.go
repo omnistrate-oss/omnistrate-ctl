@@ -385,7 +385,7 @@ func Test_build_dry_run(t *testing.T) {
 	require.NoError(err)
 
 	// Step 2: Create initial service with PostgreSQL configuration
-	serviceName := "build-dry-run-test" + uuid.NewString()
+	serviceName := "SMOKE-dry-run-test" + uuid.NewString()
 	cmd.RootCmd.SetArgs([]string{
 		"build",
 		"-f", "../../composefiles/postgresql.yaml",
