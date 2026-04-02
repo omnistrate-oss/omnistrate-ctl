@@ -2,6 +2,7 @@ package account
 
 import (
 	"context"
+	"fmt"
 	"strings"
 
 	"github.com/omnistrate-oss/omnistrate-ctl/cmd/common"
@@ -9,6 +10,7 @@ import (
 	"github.com/omnistrate-oss/omnistrate-ctl/internal/config"
 	"github.com/omnistrate-oss/omnistrate-ctl/internal/dataaccess"
 	"github.com/omnistrate-oss/omnistrate-ctl/internal/utils"
+	openapiclient "github.com/omnistrate-oss/omnistrate-sdk-go/v1"
 	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
 )
@@ -30,7 +32,7 @@ var describeCmd = &cobra.Command{
 func init() {
 	describeCmd.Args = cobra.MaximumNArgs(1) // Require at most 1 argument
 
-	describeCmd.Flags().StringP("output", "o", "json", "Output format. Only json is supported.") // Override inherited flag
+	describeCmd.Flags().StringP("output", "o", "table", "Output format (text|table|json).") // Override inherited flag
 }
 
 func runDescribe(cmd *cobra.Command, args []string) error {
@@ -68,7 +70,7 @@ func runDescribe(cmd *cobra.Command, args []string) error {
 	var spinner *utils.Spinner
 	if output != "json" {
 		sm = utils.NewSpinnerManager()
-		msg := "Deleting account..."
+		msg := "Fetching account details..."
 		spinner = sm.AddSpinner(msg)
 		sm.Start()
 	}
@@ -91,15 +93,10 @@ func runDescribe(cmd *cobra.Command, args []string) error {
 	utils.HandleSpinnerSuccess(spinner, sm, "Successfully retrieved account details")
 
 	// Print output
-	err = utils.PrintTextTableJsonOutput(output, account)
+	err = printDescribeOutput(output, account)
 	if err != nil {
 		utils.PrintError(err)
 		return err
-	}
-
-	// Ask user to verify account if output is not JSON
-	if output != "json" {
-		dataaccess.AskVerifyAccountIfAny(cmd.Context())
 	}
 
 	return nil
@@ -112,11 +109,24 @@ func validateDescribeArguments(args []string, output string) error {
 		return errors.New("account name or ID must be provided")
 	}
 
-	if output != "json" {
-		return errors.New("only json output is supported")
+	switch output {
+	case "json", "table", "text":
+		return nil
+	default:
+		return fmt.Errorf("unsupported output format: %s", output)
+	}
+}
+
+func printDescribeOutput(output string, account *openapiclient.DescribeAccountConfigResult) error {
+	if account == nil {
+		return errors.New("account details are required")
 	}
 
-	return nil
+	if output == "json" {
+		return utils.PrintTextTableJsonOutput(output, account)
+	}
+
+	return printAccountDescribeTUI(account)
 }
 
 func getAccountID(ctx context.Context, token, accountNameOrIDArg string) (accountID string, err error) {

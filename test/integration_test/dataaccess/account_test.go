@@ -101,6 +101,28 @@ func TestPrintNextStepVerifyAccountMsg(t *testing.T) {
 			},
 		},
 		{
+			name: "Nebius account",
+			account: &openapiclient.DescribeAccountConfigResult{
+				Id:             "ac-nebius",
+				Name:           "test-nebius",
+				NebiusTenantID: ptr("tenant-123"),
+				NebiusBindings: []openapiclient.NebiusAccountBindingResult{
+					{
+						ProjectID:        "project-1",
+						PublicKeyID:      "public-key-1",
+						Region:           "eu-north1",
+						ServiceAccountID: "service-account-1",
+					},
+				},
+			},
+			expected: []string{
+				"Next step:",
+				"Verify your Nebius account",
+				"omnistrate-ctl account describe ac-nebius",
+				"Every Nebius binding should become READY",
+			},
+		},
+		{
 			name: "Unknown provider",
 			account: &openapiclient.DescribeAccountConfigResult{
 				Name: "test-unknown",
@@ -188,6 +210,32 @@ func TestPrintAccountNotVerifiedWarning(t *testing.T) {
 			},
 			expected: []string{
 				"WARNING! Account Unnamed Account (ID: 123456789012)",
+			},
+		},
+		{
+			name: "Nebius account",
+			account: &openapiclient.DescribeAccountConfigResult{
+				Id:             "ac-nebius",
+				Name:           "test-nebius",
+				NebiusTenantID: ptr("tenant-123"),
+				NebiusBindings: []openapiclient.NebiusAccountBindingResult{
+					{
+						ProjectID:                  "project-1",
+						PublicKeyID:                "public-key-1",
+						Region:                     "eu-north1",
+						ServiceAccountID:           "service-account-1",
+						Status:                     ptr("ERROR"),
+						StatusMessage:              ptr("public key mismatch"),
+						PublicKeyIDMatches:         ptr(true),
+						ServiceAccountKeyValidated: ptr(true),
+					},
+				},
+			},
+			expected: []string{
+				"WARNING! Account test-nebius (Nebius Tenant ID: tenant-123) is not verified.",
+				"Per-region binding status:",
+				"region=eu-north1 project=project-1 serviceAccountID=service-account-1 publicKeyID=public-key-1 status=ERROR message=public key mismatch",
+				"omnistrate-ctl account describe ac-nebius",
 			},
 		},
 		{

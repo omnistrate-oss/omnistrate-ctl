@@ -41,6 +41,9 @@ Examples:
   # Update organization template for PROD environment and AWS
   omnistrate-ctl deployment-cell update-config-template --environment PROD --cloud aws -f template-aws.yaml
 
+  # Update organization template for GLOBAL environment and Nebius
+  omnistrate-ctl deployment-cell update-config-template --environment GLOBAL --cloud nebius -f template-nebius.yaml
+
   # Update specific deployment cell with configuration file using flag
   omnistrate-ctl deployment-cell update-config-template --id hc-12345 -f deployment-cell-config.yaml
 
@@ -52,7 +55,7 @@ Examples:
 
 func init() {
 	updateTemplateCmd.Flags().StringP("environment", "e", "", "Environment type (e.g., GLOBAL, PROD, STAGING) - optional for organization template update, defaults to GLOBAL")
-	updateTemplateCmd.Flags().StringP("cloud", "c", "", "Cloud provider (e.g., aws, azure, gcp) - required for organization template updates")
+	updateTemplateCmd.Flags().StringP("cloud", "c", "", "Cloud provider (e.g., aws, azure, gcp, nebius) - required for organization template updates")
 	updateTemplateCmd.Flags().StringP("file", "f", "", "Configuration file path (YAML format)")
 	updateTemplateCmd.Flags().StringP("id", "i", "", "Deployment cell ID")
 	updateTemplateCmd.Flags().Bool("sync-with-template", false, "Sync deployment cell with organization template")

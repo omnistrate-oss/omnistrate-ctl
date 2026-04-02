@@ -16,6 +16,9 @@ Examples:
   # Describe organization template for all environments and AWS
   omnistrate-ctl deployment-cell describe-config-template --cloud aws
 
+  # Describe organization template for GLOBAL and Nebius
+  omnistrate-ctl deployment-cell describe-config-template --environment GLOBAL --cloud nebius
+
   # Describe organization template for all environments and AWS
   omnistrate-ctl deployment-cell describe-config-template --cloud aws
 
@@ -41,7 +44,7 @@ omnistrate-ctl deployment-cell describe-config-template [flags]
 ### Options
 
 ```
-  -c, --cloud string         Cloud provider (e.g., aws, azure, gcp) - required for organization template updates
+  -c, --cloud string         Cloud provider (e.g., aws, azure, gcp, nebius) - required for organization template updates
   -e, --environment string   Environment type (e.g., GLOBAL, PROD, STAGING) - optional for organization template update, defaults to GLOBAL
   -h, --help                 help for describe-config-template
   -i, --id string            Deployment cell ID

@@ -7,7 +7,7 @@ Create an instance deployment
 This command helps you create an instance deployment for your service.
 
 ```
-omnistrate-ctl instance create --service=[service] --environment=[environment] --plan=[plan] --version=[version] --resource=[resource] --cloud-provider=[aws|gcp] --region=[region] [--param=param] [--param-file=file-path] [--tags key=value,key2=value2] [--breakpoints id-or-key,id-or-key] [flags]
+omnistrate-ctl instance create --service=[service] --environment=[environment] --plan=[plan] --version=[version] --resource=[resource] --cloud-provider=[aws|gcp|azure|nebius] --region=[region] [--param=param] [--param-file=file-path] [--tags key=value,key2=value2] [--breakpoints id-or-key,id-or-key] [flags]
 ```
 
 ### Examples
@@ -33,7 +33,7 @@ omnistrate-ctl instance create --service=mysql --environment=dev --plan=mysql --
 
 ```
       --breakpoints string       Workflow breakpoint resource IDs or resource keys (comma-separated)
-      --cloud-provider string    Cloud provider (aws|gcp)
+      --cloud-provider string    Cloud provider (aws|gcp|azure|nebius)
       --environment string       Environment name
   -h, --help                     help for create
       --param string             Parameters for the instance deployment

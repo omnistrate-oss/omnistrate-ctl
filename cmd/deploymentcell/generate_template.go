@@ -31,6 +31,9 @@ Examples:
   # Generate template for AWS cloud provider
   omnistrate-ctl deployment-cell generate-config-template --cloud aws --output template-aws.yaml
 
+  # Generate template for Nebius cloud provider
+  omnistrate-ctl deployment-cell generate-config-template --cloud nebius --output template-nebius.yaml
+
   # Generate template for Azure cloud provider
   omnistrate-ctl deployment-cell generate-config-template --cloud azure --output template-azure.yaml
 
@@ -41,7 +44,7 @@ Examples:
 }
 
 func init() {
-	generateTemplateCmd.Flags().StringP("cloud", "c", "", "Cloud provider to generate template for (aws,azure,gcp).")
+	generateTemplateCmd.Flags().StringP("cloud", "c", "", "Cloud provider to generate template for (aws, azure, gcp, nebius).")
 	generateTemplateCmd.Flags().StringP("output", "o", "", "Output file path for the template (if not specified, outputs to stdout)")
 	_ = generateTemplateCmd.MarkFlagRequired("cloud")
 }

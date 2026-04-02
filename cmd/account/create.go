@@ -22,11 +22,14 @@ omnistrate-ctl account create [account-name] --aws-account-id=[account-id]
 omnistrate-ctl account create [account-name] --gcp-project-id=[project-id] --gcp-project-number=[project-number]
 
 # Create azure account
-omnistrate-ctl account create [account-name] --azure-subscription-id=[subscription-id] --azure-tenant-id=[tenant-id]`
+omnistrate-ctl account create [account-name] --azure-subscription-id=[subscription-id] --azure-tenant-id=[tenant-id]
+
+# Create Nebius account
+omnistrate-ctl account create [account-name] --nebius-tenant-id=[tenant-id] --nebius-bindings-file=[bindings-file]`
 )
 
 var createCmd = &cobra.Command{
-	Use:          "create [account-name] [--aws-account-id=account-id] [--gcp-project-id=project-id] [--gcp-project-number=project-number] [--azure-subscription-id=subscription-id] [--azure-tenant-id=tenant-id]",
+	Use:          "create [account-name] [--aws-account-id=account-id] [--gcp-project-id=project-id] [--gcp-project-number=project-number] [--azure-subscription-id=subscription-id] [--azure-tenant-id=tenant-id] [--nebius-tenant-id=tenant-id] [--nebius-bindings-file=file]",
 	Short:        "Create a Cloud Provider Account",
 	Long:         `This command helps you create a Cloud Provider Account in your account list.`,
 	Example:      createExample,
@@ -42,12 +45,16 @@ func init() {
 	createCmd.Flags().String("gcp-project-number", "", "GCP project number")
 	createCmd.Flags().String("azure-subscription-id", "", "Azure subscription ID")
 	createCmd.Flags().String("azure-tenant-id", "", "Azure tenant ID")
+	createCmd.Flags().String("nebius-tenant-id", "", "Nebius tenant ID")
+	createCmd.Flags().String("nebius-bindings-file", "", "Path to a YAML file describing Nebius bindings")
 	createCmd.Flags().Bool("skip-wait", false, "Skip waiting for account to become READY")
 
 	// Add validation to the flags
-	createCmd.MarkFlagsOneRequired("aws-account-id", "gcp-project-id", "azure-subscription-id")
+	createCmd.MarkFlagsOneRequired("aws-account-id", "gcp-project-id", "azure-subscription-id", "nebius-tenant-id")
 	createCmd.MarkFlagsRequiredTogether("gcp-project-id", "gcp-project-number")
 	createCmd.MarkFlagsRequiredTogether("azure-subscription-id", "azure-tenant-id")
+	createCmd.MarkFlagsRequiredTogether("nebius-tenant-id", "nebius-bindings-file")
+	createCmd.MarkFlagFilename("nebius-bindings-file")
 }
 
 func runCreate(cmd *cobra.Command, args []string) error {
@@ -65,19 +72,33 @@ func runCreate(cmd *cobra.Command, args []string) error {
 	gcpProjectNumber, _ := cmd.Flags().GetString("gcp-project-number")
 	azureSubscriptionID, _ := cmd.Flags().GetString("azure-subscription-id")
 	azureTenantID, _ := cmd.Flags().GetString("azure-tenant-id")
+	nebiusTenantID, _ := cmd.Flags().GetString("nebius-tenant-id")
+	nebiusBindingsFile, _ := cmd.Flags().GetString("nebius-bindings-file")
 	output, _ := cmd.Flags().GetString("output")
 	skipWait, _ := cmd.Flags().GetBool("skip-wait")
-	if (awsAccountID != "" && gcpProjectID != "") ||
-		(awsAccountID != "" && azureSubscriptionID != "") ||
-		(gcpProjectID != "" && azureSubscriptionID != "") {
-		return fmt.Errorf("only one of --aws-account-id, --gcp-project-id, or --azure-subscription-id can be used at a time")
+
+	var nebiusBindings []openapiclient.NebiusAccountBindingInput
+	var err error
+	if nebiusBindingsFile != "" {
+		nebiusBindings, err = parseNebiusBindingsFile(nebiusBindingsFile)
+		if err != nil {
+			return err
+		}
 	}
 
-	if (gcpProjectID != "" && gcpProjectNumber == "") || (gcpProjectID == "" && gcpProjectNumber != "") {
-		return fmt.Errorf("both --gcp-project-id and --gcp-project-number must be provided together")
+	params := CloudAccountParams{
+		Name:                name,
+		AwsAccountID:        awsAccountID,
+		GcpProjectID:        gcpProjectID,
+		GcpProjectNumber:    gcpProjectNumber,
+		AzureSubscriptionID: azureSubscriptionID,
+		AzureTenantID:       azureTenantID,
+		NebiusTenantID:      nebiusTenantID,
+		NebiusBindings:      nebiusBindings,
 	}
-	if (azureSubscriptionID != "" && azureTenantID == "") || (azureSubscriptionID == "" && azureTenantID != "") {
-		return fmt.Errorf("both --azure-subscription-id and --azure-tenant-id must be provided together")
+
+	if err := validateCloudAccountParams(params); err != nil {
+		return err
 	}
 
 	// Validate user login
@@ -97,16 +118,6 @@ func runCreate(cmd *cobra.Command, args []string) error {
 		sm.Start()
 	}
 
-	// Create account using helper function
-	params := CloudAccountParams{
-		Name:                name,
-		AwsAccountID:        awsAccountID,
-		GcpProjectID:        gcpProjectID,
-		GcpProjectNumber:    gcpProjectNumber,
-		AzureSubscriptionID: azureSubscriptionID,
-		AzureTenantID:       azureTenantID,
-	}
-
 	account, err := CreateCloudAccount(cmd.Context(), token, params, spinner, sm)
 	if err != nil {
 		return err
@@ -114,7 +125,12 @@ func runCreate(cmd *cobra.Command, args []string) error {
 	utils.HandleSpinnerSuccess(spinner, sm, "Successfully created account")
 
 	// Print output
-	err = utils.PrintTextTableJsonOutput(output, account)
+	accountOutput, err := buildCreateAccountOutput(output, account)
+	if err != nil {
+		utils.PrintError(err)
+		return err
+	}
+	err = utils.PrintTextTableJsonOutput(output, accountOutput)
 	if err != nil {
 		utils.PrintError(err)
 		return err
@@ -155,6 +171,8 @@ type CloudAccountParams struct {
 	GcpProjectNumber    string
 	AzureSubscriptionID string
 	AzureTenantID       string
+	NebiusTenantID      string
+	NebiusBindings      []openapiclient.NebiusAccountBindingInput
 }
 
 // CreateCloudAccount creates a cloud provider account and returns the account config ID and account details
@@ -209,6 +227,17 @@ func CreateCloudAccount(ctx context.Context, token string, params CloudAccountPa
 		request.AzureSubscriptionID = &params.AzureSubscriptionID
 		request.AzureTenantID = &params.AzureTenantID
 		request.Description = "Azure Account " + params.AzureSubscriptionID
+	} else if params.NebiusTenantID != "" {
+		cloudProviderID, err := dataaccess.GetCloudProviderByName(ctx, token, "nebius")
+		if err != nil {
+			utils.HandleSpinnerError(spinner, sm, err)
+			return nil, err
+		}
+
+		request.CloudProviderId = cloudProviderID
+		request.NebiusTenantID = &params.NebiusTenantID
+		request.NebiusBindings = params.NebiusBindings
+		request.Description = "Nebius Account " + params.NebiusTenantID
 	} else {
 		return nil, fmt.Errorf("no cloud provider credentials provided")
 	}
@@ -227,6 +256,53 @@ func CreateCloudAccount(ctx context.Context, token string, params CloudAccountPa
 	}
 
 	return account, nil
+}
+
+func buildCreateAccountOutput(
+	output string,
+	account *openapiclient.DescribeAccountConfigResult,
+) (any, error) {
+	if output == "json" {
+		return account, nil
+	}
+
+	return formatAccount(account)
+}
+
+func validateCloudAccountParams(params CloudAccountParams) error {
+	providerCount := 0
+
+	if params.AwsAccountID != "" {
+		providerCount++
+	}
+	if params.GcpProjectID != "" || params.GcpProjectNumber != "" {
+		providerCount++
+	}
+	if params.AzureSubscriptionID != "" || params.AzureTenantID != "" {
+		providerCount++
+	}
+	if params.NebiusTenantID != "" || len(params.NebiusBindings) > 0 {
+		providerCount++
+	}
+
+	if providerCount == 0 {
+		return fmt.Errorf("one cloud provider account configuration must be provided")
+	}
+	if providerCount > 1 {
+		return fmt.Errorf("only one of --aws-account-id, --gcp-project-id, --azure-subscription-id, or --nebius-tenant-id can be used at a time")
+	}
+
+	if (params.GcpProjectID != "" && params.GcpProjectNumber == "") || (params.GcpProjectID == "" && params.GcpProjectNumber != "") {
+		return fmt.Errorf("both --gcp-project-id and --gcp-project-number must be provided together")
+	}
+	if (params.AzureSubscriptionID != "" && params.AzureTenantID == "") || (params.AzureSubscriptionID == "" && params.AzureTenantID != "") {
+		return fmt.Errorf("both --azure-subscription-id and --azure-tenant-id must be provided together")
+	}
+	if (params.NebiusTenantID != "" && len(params.NebiusBindings) == 0) || (params.NebiusTenantID == "" && len(params.NebiusBindings) > 0) {
+		return fmt.Errorf("both --nebius-tenant-id and --nebius-bindings-file must be provided together")
+	}
+
+	return nil
 }
 
 // waitForAccountReady polls for account status to become READY, up to 10 minutes

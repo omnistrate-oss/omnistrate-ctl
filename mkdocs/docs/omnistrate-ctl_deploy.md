@@ -53,7 +53,7 @@ Instance selection and deployment:
 Dry run:
 
   - With --dry-run, deploy performs full validation and build steps but stops
-    before launching or upgrading an instance.
+      before launching or upgrading an instance.
 
 ```
 omnistrate-ctl deploy [--file=file] [--product-name=service-name] [--dry-run] [--deployment-type=deployment-type] [--spec-type=spec-type] [--cloud-provider=cloud] [--region=region] [--env-type=type] [--env-name=name] [--skip-docker-build] [--platforms=platforms] [--param key=value] [--param-file=file] [--instance-id=id] [--resource-id=id] [--github-user-name=username] [flags]
@@ -100,7 +100,7 @@ omnistrate-ctl deploy --platforms "linux/amd64,linux/arm64"
 ### Options
 
 ```
-      --cloud-provider string     Cloud provider (aws|gcp|azure)
+      --cloud-provider string     Cloud provider (aws|gcp|azure|nebius)
       --deployment-type string    Type of deployment. Valid values: hosted, byoa (default "hosted" i.e. deployments are hosted in the service provider account) (default "hosted")
       --dry-run                   Perform validation checks without actually building or deploying
   -e, --environment string        Name of the environment to build the service in (default: Prod) (default "Prod")

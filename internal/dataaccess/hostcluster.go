@@ -332,6 +332,21 @@ func interfaceToMap(data interface{}) (map[string]interface{}, error) {
 	return result, nil
 }
 
+func hostClusterNodepoolEntityType(cloudProvider string) (string, error) {
+	switch cloudProvider {
+	case "aws":
+		return "NODE_GROUP", nil
+	case "gcp":
+		return "NODEPOOL", nil
+	case "azure":
+		return "AZURE_NODEPOOL", nil
+	case "nebius":
+		return "", fmt.Errorf("nodepool management for Nebius deployment cells is not yet supported in ctl because the Fleet host-cluster entity type for Nebius MK8s node groups is not exposed in the SDK/API")
+	default:
+		return "", fmt.Errorf("nodepools are not supported for cloud provider: %s", cloudProvider)
+	}
+}
+
 // ListNodepools lists all nodepools in a deployment cell
 func ListNodepools(ctx context.Context, token string, hostClusterID string) ([]model.NodepoolTableView, []openapiclientfleet.Entity, error) {
 	ctxWithToken := context.WithValue(ctx, openapiclientfleet.ContextAccessToken, token)
@@ -343,17 +358,12 @@ func ListNodepools(ctx context.Context, token string, hostClusterID string) ([]m
 		return nil, nil, fmt.Errorf("failed to describe host cluster: %w", err)
 	}
 
-	var req openapiclientfleet.ApiHostclusterApiListHostClusterEntitiesRequest
-	switch hostCluster.GetCloudProvider() {
-	case "aws":
-		req = apiClient.HostclusterApiAPI.HostclusterApiListHostClusterEntities(ctxWithToken, hostClusterID, "NODE_GROUP")
-	case "gcp":
-		req = apiClient.HostclusterApiAPI.HostclusterApiListHostClusterEntities(ctxWithToken, hostClusterID, "NODEPOOL")
-	case "azure":
-		req = apiClient.HostclusterApiAPI.HostclusterApiListHostClusterEntities(ctxWithToken, hostClusterID, "AZURE_NODEPOOL")
-	default:
-		return nil, nil, fmt.Errorf("nodepools are not supported for cloud provider: %s", hostCluster.GetCloudProvider())
+	entityType, err := hostClusterNodepoolEntityType(hostCluster.GetCloudProvider())
+	if err != nil {
+		return nil, nil, err
 	}
+
+	req := apiClient.HostclusterApiAPI.HostclusterApiListHostClusterEntities(ctxWithToken, hostClusterID, entityType)
 
 	var r *http.Response
 	defer func() {
@@ -571,17 +581,12 @@ func DescribeNodepool(ctx context.Context, token string, hostClusterID string, n
 
 	cloudProvider := hostCluster.GetCloudProvider()
 
-	var req openapiclientfleet.ApiHostclusterApiDescribeHostClusterEntityRequest
-	switch cloudProvider {
-	case "aws":
-		req = apiClient.HostclusterApiAPI.HostclusterApiDescribeHostClusterEntity(ctxWithToken, hostClusterID, "NODE_GROUP", nodepoolName)
-	case "gcp":
-		req = apiClient.HostclusterApiAPI.HostclusterApiDescribeHostClusterEntity(ctxWithToken, hostClusterID, "NODEPOOL", nodepoolName)
-	case "azure":
-		req = apiClient.HostclusterApiAPI.HostclusterApiDescribeHostClusterEntity(ctxWithToken, hostClusterID, "AZURE_NODEPOOL", nodepoolName)
-	default:
-		return nil, nil, fmt.Errorf("nodepools are not supported for cloud provider: %s", cloudProvider)
+	entityType, err := hostClusterNodepoolEntityType(cloudProvider)
+	if err != nil {
+		return nil, nil, err
 	}
+
+	req := apiClient.HostclusterApiAPI.HostclusterApiDescribeHostClusterEntity(ctxWithToken, hostClusterID, entityType, nodepoolName)
 
 	var r *http.Response
 	defer func() {
@@ -668,17 +673,12 @@ func DeleteNodepool(ctx context.Context, token string, hostClusterID string, nod
 		return fmt.Errorf("failed to describe host cluster: %w", err)
 	}
 
-	var req openapiclientfleet.ApiHostclusterApiDeleteEntityRequest
-	switch hostCluster.GetCloudProvider() {
-	case "aws":
-		req = apiClient.HostclusterApiAPI.HostclusterApiDeleteEntity(ctxWithToken, hostClusterID, "NODE_GROUP", nodepoolName)
-	case "gcp":
-		req = apiClient.HostclusterApiAPI.HostclusterApiDeleteEntity(ctxWithToken, hostClusterID, "NODEPOOL", nodepoolName)
-	case "azure":
-		req = apiClient.HostclusterApiAPI.HostclusterApiDeleteEntity(ctxWithToken, hostClusterID, "AZURE_NODEPOOL", nodepoolName)
-	default:
-		return fmt.Errorf("nodepools are not supported for cloud provider: %s", hostCluster.GetCloudProvider())
+	entityType, err := hostClusterNodepoolEntityType(hostCluster.GetCloudProvider())
+	if err != nil {
+		return err
 	}
+
+	req := apiClient.HostclusterApiAPI.HostclusterApiDeleteEntity(ctxWithToken, hostClusterID, entityType, nodepoolName)
 
 	var r *http.Response
 	defer func() {
