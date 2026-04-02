@@ -46,6 +46,7 @@ validation:
 
 nav:
   - Install CTL: "index.md"
+  - Authentication and SSO: "authentication-and-sso.md"
   - Integrate CTL: "integrating.md"
   - CTL Usage: "omnistrate-ctl.md"
   - Commands:
