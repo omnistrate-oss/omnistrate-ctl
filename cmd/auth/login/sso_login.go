@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
@@ -31,20 +32,26 @@ type AccessTokenResponse struct {
 	JWTToken string `json:"jwt_token"`
 }
 
-// GitHub client credentials
+// SSO identity provider credentials and endpoints
 const (
-	identityProviderGitHub = "GitHub for CTL"
-	identityProviderGoogle = "Google for CTL"
-	gitHubDevClientID      = "Ov23ctpQGrpGvsIIJxFv"
-	gitHubProdClientID     = "Ov23li2nyhdelepEtjcg"
-	googleDevClientID      = "635031719937-gqvm0qeelipdc812g9ie2v6ohk3j6gs6.apps.googleusercontent.com" // #nosec G101
-	googleProdClientID     = "421577562987-98lkfnu7e07rig5p6rt4p0dgqpktihhb.apps.googleusercontent.com" // #nosec G101
-	googleDeviceCodeURL    = "https://oauth2.googleapis.com/device/code"
-	gitHubDeviceCodeURL    = "https://github.com/login/device/code"
-	googleVerificationURI  = "https://www.google.com/device"
-	gitHubVerificationURI  = "https://github.com/login/device"
-	gitHubScope            = "read:user user:email"
-	googleScope            = "email profile"
+	identityProviderGitHub         = "GitHub for CTL"
+	identityProviderGoogle         = "Google for CTL"
+	identityProviderMicrosoftEntra = "Microsoft Entra for CTL"
+	gitHubDevClientID              = "Ov23ctpQGrpGvsIIJxFv"
+	gitHubProdClientID             = "Ov23li2nyhdelepEtjcg"
+	googleDevClientID              = "635031719937-gqvm0qeelipdc812g9ie2v6ohk3j6gs6.apps.googleusercontent.com" // #nosec G101
+	googleProdClientID             = "421577562987-98lkfnu7e07rig5p6rt4p0dgqpktihhb.apps.googleusercontent.com" // #nosec G101
+	googleDeviceCodeURL            = "https://oauth2.googleapis.com/device/code"
+	gitHubDeviceCodeURL            = "https://github.com/login/device/code"
+	googleVerificationURI          = "https://www.google.com/device"
+	gitHubVerificationURI          = "https://github.com/login/device"
+	gitHubScope                    = "read:user user:email"
+	googleScope                    = "email profile"
+	microsoftScope                 = "openid email profile offline_access User.Read"
+	entraDevClientID               = "3a09381f-919b-40d5-ac1e-3ad35297a438"
+	entraProdClientID              = "8ca18dc3-470b-44bd-995b-cb4f6f298514"
+	entraDeviceCodeURL             = "https://login.microsoftonline.com/organizations/oauth2/v2.0/devicecode"
+	entraVerificationURI           = "https://microsoft.com/devicelogin"
 )
 
 func ssoLogin(ctx context.Context, identityProviderName string) error {
@@ -107,24 +114,45 @@ func ssoLogin(ctx context.Context, identityProviderName string) error {
 
 // requestDeviceCode requests a device and user verification code from the identity provider
 func requestDeviceCode(ctx context.Context, identityProviderName string) (*DeviceCodeResponse, error) {
-	data := map[string]string{
-		"client_id": getClientID(identityProviderName),
-		"scope":     getScope(identityProviderName),
+	client := &http.Client{}
+	return requestDeviceCodeWithHttpClient(ctx, client, identityProviderName)
+}
+
+// requestDeviceCode requests a device and user verification code from the identity provider
+func requestDeviceCodeWithHttpClient(ctx context.Context, client *http.Client, identityProviderName string) (*DeviceCodeResponse, error) {
+	var reqBody io.Reader
+	var contentType string
+
+	clientID := getClientID(identityProviderName)
+	scope := getScope(identityProviderName)
+
+	if identityProviderName == identityProviderMicrosoftEntra {
+		// Microsoft Entra requires application/x-www-form-urlencoded
+		form := url.Values{}
+		form.Set("client_id", clientID)
+		form.Set("scope", scope)
+		reqBody = strings.NewReader(form.Encode())
+		contentType = "application/x-www-form-urlencoded"
+	} else {
+		data := map[string]string{
+			"client_id": clientID,
+			"scope":     scope,
+		}
+		dataBytes, err := json.Marshal(data)
+		if err != nil {
+			return nil, err
+		}
+		reqBody = bytes.NewBuffer(dataBytes)
+		contentType = "application/json"
 	}
 
-	dataBytes, err := json.Marshal(data)
+	req, err := http.NewRequestWithContext(ctx, "POST", getDeviceCodeURL(identityProviderName), reqBody)
 	if err != nil {
 		return nil, err
 	}
-
-	req, err := http.NewRequestWithContext(ctx, "POST", getDeviceCodeURL(identityProviderName), bytes.NewBuffer(dataBytes))
-	if err != nil {
-		return nil, err
-	}
-	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Content-Type", contentType)
 	req.Header.Set("Accept", "application/json")
 
-	client := &http.Client{}
 	resp, err := client.Do(req)
 	if err != nil {
 		return nil, err
@@ -159,6 +187,9 @@ func pollForAccessTokenAndLogin(ctx context.Context, identityProviderName, devic
 			if strings.Contains(err.Error(), "Failed to get access token with status code: 428 Precondition Required") { // authorization_pending
 				continue
 			}
+			if strings.Contains(err.Error(), "authorization_pending") { // authorization_pending (e.g. Microsoft Entra returns 400)
+				continue
+			}
 			if strings.Contains(err.Error(), "Failed to get access token with status code: 403 Forbidden") { // access_denied
 				return nil, errors.New("Access denied. Please try again.")
 			}
@@ -189,6 +220,12 @@ func getClientID(identityProviderName string) string {
 		} else {
 			return googleDevClientID
 		}
+	case identityProviderMicrosoftEntra:
+		if config.IsProd() {
+			return entraProdClientID
+		} else {
+			return entraDevClientID
+		}
 	default:
 		return ""
 	}
@@ -200,6 +237,8 @@ func getScope(identityProviderName string) string {
 		return gitHubScope
 	case identityProviderGoogle:
 		return googleScope
+	case identityProviderMicrosoftEntra:
+		return microsoftScope
 	default:
 		return ""
 	}
@@ -211,6 +250,8 @@ func getDeviceCodeURL(identityProviderName string) string {
 		return gitHubDeviceCodeURL
 	case identityProviderGoogle:
 		return googleDeviceCodeURL
+	case identityProviderMicrosoftEntra:
+		return entraDeviceCodeURL
 	default:
 		return ""
 	}
@@ -222,6 +263,8 @@ func getVerificationURI(identityProviderName string) string {
 		return gitHubVerificationURI
 	case identityProviderGoogle:
 		return googleVerificationURI
+	case identityProviderMicrosoftEntra:
+		return entraVerificationURI
 	default:
 		return ""
 	}

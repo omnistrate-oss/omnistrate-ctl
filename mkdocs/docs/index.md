@@ -47,7 +47,7 @@ Using the GitHub Action you can execute any command on the CTL to automate your 
 
 ## Login to Omnistrate
 
-Omnistrate provides flexible login options to accommodate different environments and workflows. Below are the methods you can use to log in when running CTL locally. To log in using the Docker image or GitHub Action, refer to the [Integrating with Omnistrate](integrating.md) guide.
+Omnistrate provides flexible login options to accommodate different environments and workflows. Below are the methods you can use to log in when running CTL locally. To log in using the Docker image or GitHub Action, refer to the [Integrating with Omnistrate](integrating.md) guide. For full details (including SSO), see [Authentication and SSO](authentication-and-sso.md).
 
 ### 1. Interactive Login with SSO or Email and Password
 
