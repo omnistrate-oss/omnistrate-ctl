@@ -60,11 +60,33 @@ func fetchTerraformProgress(ctx context.Context, token string, instanceData *ope
 	return progress, history, conn, nil
 }
 
-// extractTerraformProgressFromIndex extracts terraform progress and history for a given
-// resource from a pre-loaded configmap index, without making additional k8s calls.
+// TerraformStateData holds all data extracted from a tf-state configmap:
+// progress, history, and plan previews. This avoids needing a second configmap
+// lookup via terraformDataForResource which can fail in some environments.
+type TerraformStateData struct {
+	Progress      *TerraformProgressData
+	History       []TerraformHistoryEntry
+	PlanPreviews  map[string]string // plan preview JSON keyed by operation ID
+	PreviewErrors map[string]string // plan preview errors keyed by operation ID
+}
+
+// extractTerraformProgressFromIndex extracts terraform progress, history, and plan previews
+// for a given resource from a pre-loaded configmap index, without making additional k8s calls.
+// Plan previews are extracted directly from the same state configmap that provides history,
+// ensuring they are always found when the configmap is accessible.
 func extractTerraformProgressFromIndex(index *terraformConfigMapIndex, instanceID, resourceID string) (*TerraformProgressData, []TerraformHistoryEntry) {
-	if index == nil {
+	result := extractTerraformStateData(index, instanceID, resourceID)
+	if result == nil {
 		return nil, nil
+	}
+	return result.Progress, result.History
+}
+
+// extractTerraformStateData extracts all state data (progress, history, plan previews)
+// from the tf-state and progress configmaps for a given resource.
+func extractTerraformStateData(index *terraformConfigMapIndex, instanceID, resourceID string) *TerraformStateData {
+	if index == nil {
+		return nil
 	}
 
 	// Find the tf-state configmap for this resource, trying multiple key formats
@@ -77,20 +99,42 @@ func extractTerraformProgressFromIndex(index *terraformConfigMapIndex, instanceI
 		}
 	}
 	if !ok {
-		return nil, nil
+		return nil
 	}
 
 	// Parse history from the configmap
 	historyJSON, ok := stateConfigMap.Data["history"]
 	if !ok {
-		return nil, nil
+		return nil
 	}
 
 	var history []TerraformHistoryEntry
 	if err := json.Unmarshal([]byte(historyJSON), &history); err != nil {
 		// Surface history parse problems so that "no data" states are diagnosable.
 		fmt.Printf("warning: failed to parse terraform history for instance %s, resource %s: %v\n", instanceID, resourceID, err)
-		return nil, nil
+		return nil
+	}
+
+	// Extract plan previews directly from the state configmap data.
+	// This is the same configmap we just successfully read history from,
+	// so it avoids the issue where terraformDataForResource may fail to find it.
+	planPreviews := make(map[string]string)
+	previewErrors := make(map[string]string)
+	for k, v := range stateConfigMap.Data {
+		if v == "" {
+			continue
+		}
+		if strings.HasSuffix(k, "-plan-preview-error") {
+			opID := strings.TrimSuffix(k, "-plan-preview-error")
+			if opID != "" {
+				previewErrors[opID] = v
+			}
+		} else if strings.HasSuffix(k, "-plan-preview") {
+			opID := strings.TrimSuffix(k, "-plan-preview")
+			if opID != "" {
+				planPreviews[opID] = v
+			}
+		}
 	}
 
 	// Find the latest progress configmap that matches this resource/instance
@@ -133,7 +177,12 @@ func extractTerraformProgressFromIndex(index *terraformConfigMapIndex, instanceI
 		}
 	}
 
-	return progressData, history
+	return &TerraformStateData{
+		Progress:      progressData,
+		History:       history,
+		PlanPreviews:  planPreviews,
+		PreviewErrors: previewErrors,
+	}
 }
 
 func normalizeResourceIDForConfigMap(resourceID string) string {
