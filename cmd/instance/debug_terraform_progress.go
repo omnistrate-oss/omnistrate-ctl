@@ -118,24 +118,7 @@ func extractTerraformStateData(index *terraformConfigMapIndex, instanceID, resou
 	// Extract plan previews directly from the state configmap data.
 	// This is the same configmap we just successfully read history from,
 	// so it avoids the issue where terraformDataForResource may fail to find it.
-	planPreviews := make(map[string]string)
-	previewErrors := make(map[string]string)
-	for k, v := range stateConfigMap.Data {
-		if v == "" {
-			continue
-		}
-		if strings.HasSuffix(k, "-plan-preview-error") {
-			opID := strings.TrimSuffix(k, "-plan-preview-error")
-			if opID != "" {
-				previewErrors[opID] = v
-			}
-		} else if strings.HasSuffix(k, "-plan-preview") {
-			opID := strings.TrimSuffix(k, "-plan-preview")
-			if opID != "" {
-				planPreviews[opID] = v
-			}
-		}
-	}
+	planPreviews, previewErrors := findAllPlanPreviews(stateConfigMap.Data)
 
 	// Find the latest progress configmap that matches this resource/instance
 	// Progress configmaps contain resourceID and instanceID fields we can match on.
