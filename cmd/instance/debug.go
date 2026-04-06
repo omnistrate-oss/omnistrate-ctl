@@ -329,17 +329,28 @@ func collectTerraformDebugInfo(ctx context.Context, token string, instanceData *
 			}
 		}
 
-		// Get terraform progress and operation history
-		progress, history := extractTerraformProgressFromIndex(index, instanceID, node.ID)
-		if progress != nil {
-			info.TerraformProgress = progress
-		}
-		if len(history) > 0 {
-			info.TerraformHistory = history
+		// Get terraform progress, operation history, and plan previews from the state configmap.
+		// Plan previews are extracted directly from the same configmap that provides history,
+		// which is more reliable than depending on terraformDataForResource (tfData.Files).
+		stateData := extractTerraformStateData(index, instanceID, node.ID)
+		if stateData != nil {
+			if stateData.Progress != nil {
+				info.TerraformProgress = stateData.Progress
+			}
+			if len(stateData.History) > 0 {
+				info.TerraformHistory = stateData.History
+			}
+			if len(stateData.PlanPreviews) > 0 {
+				info.TerraformPlanPreview = stateData.PlanPreviews
+			}
+			if len(stateData.PreviewErrors) > 0 {
+				info.TerraformPlanPreviewError = stateData.PreviewErrors
+			}
 		}
 
-		// Get plan previews keyed by operation ID from configmap files (optional, never fails)
-		if tfData != nil && len(tfData.Files) > 0 {
+		// Fallback: if plan previews weren't found via stateData but tfData.Files has them,
+		// extract from there as well (belt-and-suspenders).
+		if len(info.TerraformPlanPreview) == 0 && len(info.TerraformPlanPreviewError) == 0 && tfData != nil && len(tfData.Files) > 0 {
 			previews, previewErrors := findAllPlanPreviews(tfData.Files)
 			if len(previews) > 0 {
 				info.TerraformPlanPreview = previews
