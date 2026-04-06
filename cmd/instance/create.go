@@ -30,13 +30,19 @@ omnistrate-ctl instance create --service=mysql --environment=dev --plan=mysql --
 omnistrate-ctl instance create --service=mysql --environment=dev --plan=mysql --version=latest --resource=mySQL --cloud-provider=aws --region=ca-central-1 --param-file /path/to/params.json --wait
 
 # Create an instance deployment with workflow breakpoints
-omnistrate-ctl instance create --service=mysql --environment=dev --plan=mysql --version=latest --resource=mySQL --cloud-provider=aws --region=ca-central-1 --param-file /path/to/params.json --breakpoints writer,reader`
+omnistrate-ctl instance create --service=mysql --environment=dev --plan=mysql --version=latest --resource=mySQL --cloud-provider=aws --region=ca-central-1 --param-file /path/to/params.json --breakpoints writer,reader
+
+# Create a BYOA instance deployment using a customer account onboarding instance
+omnistrate-ctl instance create --service=Nebius --environment=dev --plan='Nebius BYOA Compute Variants' --resource=NebiusRedis --cloud-provider=nebius --region=eu-north1 --customer-account-id instance-cg1tthkj0`
+
+	customerAccountConfigIDParamKey = "cloud_provider_account_config_id"
+	serviceModelTypeBYOA            = "BYOA"
 )
 
 var InstanceID string
 
 var createCmd = &cobra.Command{
-	Use:          "create --service=[service] --environment=[environment] --plan=[plan] --version=[version] --resource=[resource] --cloud-provider=[aws|gcp|azure|nebius] --region=[region] [--param=param] [--param-file=file-path] [--tags key=value,key2=value2] [--breakpoints id-or-key,id-or-key]",
+	Use:          "create --service=[service] --environment=[environment] --plan=[plan] --version=[version] --resource=[resource] --cloud-provider=[aws|gcp|azure|nebius] --region=[region] [--param=param] [--param-file=file-path] [--customer-account-id=instance-id] [--tags key=value,key2=value2] [--breakpoints id-or-key,id-or-key]",
 	Short:        "Create an instance deployment",
 	Long:         `This command helps you create an instance deployment for your service.`,
 	Example:      createExample,
@@ -54,6 +60,7 @@ func init() {
 	createCmd.Flags().String("region", "", "Region code (e.g. us-east-2, us-central1)")
 	createCmd.Flags().String("param", "", "Parameters for the instance deployment")
 	createCmd.Flags().String("param-file", "", "Json file containing parameters for the instance deployment")
+	createCmd.Flags().String("customer-account-id", "", "Customer BYOA account onboarding instance ID to inject as the cloud account. Use 'omnistrate-ctl account customer list' or 'omnistrate-ctl account customer describe <instance-id>' to find it.")
 	createCmd.Flags().String("tags", "", "Custom tags to add to the instance deployment (format: key=value,key2=value2)")
 	createCmd.Flags().String("breakpoints", "", "Workflow breakpoint resource IDs or resource keys (comma-separated)")
 	createCmd.Flags().StringP("subscription-id", "", "", "Subscription ID to use for the instance deployment. If not provided, instance deployment will be created in your own subscription.")
@@ -130,6 +137,11 @@ func runCreate(cmd *cobra.Command, args []string) error {
 		return err
 	}
 	paramFile, err := cmd.Flags().GetString("param-file")
+	if err != nil {
+		utils.PrintError(err)
+		return err
+	}
+	customerAccountID, err := cmd.Flags().GetString("customer-account-id")
 	if err != nil {
 		utils.PrintError(err)
 		return err
@@ -225,6 +237,11 @@ func runCreate(cmd *cobra.Command, args []string) error {
 
 	// Format parameters
 	formattedParams, err := common.FormatParams(param, paramFile)
+	if err != nil {
+		utils.HandleSpinnerError(spinner, sm, err)
+		return err
+	}
+	formattedParams, err = applyCustomerAccountIDParam(formattedParams, &offering, customerAccountID)
 	if err != nil {
 		utils.HandleSpinnerError(spinner, sm, err)
 		return err
@@ -422,4 +439,66 @@ func parseWorkflowBreakpoints(valuesCSV string) ([]openapiclientfleet.WorkflowBr
 	}
 
 	return breakpoints, nil
+}
+
+func applyCustomerAccountIDParam(
+	params map[string]any,
+	offering *openapiclientfleet.ServiceOffering,
+	customerAccountID string,
+) (map[string]any, error) {
+	customerAccountID = strings.TrimSpace(customerAccountID)
+	if offering == nil {
+		return nil, fmt.Errorf("service offering is required to validate customer account inputs")
+	}
+
+	existingCustomerAccountID := customerAccountParamValue(params)
+	if strings.EqualFold(offering.ServiceModelType, serviceModelTypeBYOA) &&
+		customerAccountID == "" &&
+		existingCustomerAccountID == "" {
+		return nil, fmt.Errorf(
+			"selected service plan is BYOA and requires a customer cloud account. Provide --customer-account-id or set %s in --param/--param-file. Use 'omnistrate-ctl account customer list' to find the onboarding instance ID",
+			customerAccountConfigIDParamKey,
+		)
+	}
+
+	if customerAccountID == "" {
+		return params, nil
+	}
+	if !strings.EqualFold(offering.ServiceModelType, serviceModelTypeBYOA) {
+		return nil, fmt.Errorf(
+			"--customer-account-id is only supported for BYOA service plans, got %q",
+			offering.ServiceModelType,
+		)
+	}
+
+	if existingCustomerAccountID != "" {
+		return nil, fmt.Errorf(
+			"%s is already set in --param/--param-file; remove it and use --customer-account-id instead",
+			customerAccountConfigIDParamKey,
+		)
+	}
+
+	if params == nil {
+		params = make(map[string]any)
+	}
+	params[customerAccountConfigIDParamKey] = customerAccountID
+	return params, nil
+}
+
+func customerAccountParamValue(params map[string]any) string {
+	if params == nil {
+		return ""
+	}
+
+	value, ok := params[customerAccountConfigIDParamKey]
+	if !ok || value == nil {
+		return ""
+	}
+
+	switch typed := value.(type) {
+	case string:
+		return strings.TrimSpace(typed)
+	default:
+		return strings.TrimSpace(fmt.Sprint(typed))
+	}
 }

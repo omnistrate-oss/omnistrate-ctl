@@ -40,21 +40,7 @@ var createCmd = &cobra.Command{
 func init() {
 	createCmd.Args = cobra.ExactArgs(1) // Require exactly one argument
 
-	createCmd.Flags().String("aws-account-id", "", "AWS account ID")
-	createCmd.Flags().String("gcp-project-id", "", "GCP project ID")
-	createCmd.Flags().String("gcp-project-number", "", "GCP project number")
-	createCmd.Flags().String("azure-subscription-id", "", "Azure subscription ID")
-	createCmd.Flags().String("azure-tenant-id", "", "Azure tenant ID")
-	createCmd.Flags().String("nebius-tenant-id", "", "Nebius tenant ID")
-	createCmd.Flags().String("nebius-bindings-file", "", "Path to a YAML file describing Nebius bindings")
-	createCmd.Flags().Bool("skip-wait", false, "Skip waiting for account to become READY")
-
-	// Add validation to the flags
-	createCmd.MarkFlagsOneRequired("aws-account-id", "gcp-project-id", "azure-subscription-id", "nebius-tenant-id")
-	createCmd.MarkFlagsRequiredTogether("gcp-project-id", "gcp-project-number")
-	createCmd.MarkFlagsRequiredTogether("azure-subscription-id", "azure-tenant-id")
-	createCmd.MarkFlagsRequiredTogether("nebius-tenant-id", "nebius-bindings-file")
-	createCmd.MarkFlagFilename("nebius-bindings-file")
+	addCloudAccountProviderFlags(createCmd)
 }
 
 func runCreate(cmd *cobra.Command, args []string) error {
@@ -66,38 +52,11 @@ func runCreate(cmd *cobra.Command, args []string) error {
 		name = args[0]
 	}
 
-	// Retrieve flags
-	awsAccountID, _ := cmd.Flags().GetString("aws-account-id")
-	gcpProjectID, _ := cmd.Flags().GetString("gcp-project-id")
-	gcpProjectNumber, _ := cmd.Flags().GetString("gcp-project-number")
-	azureSubscriptionID, _ := cmd.Flags().GetString("azure-subscription-id")
-	azureTenantID, _ := cmd.Flags().GetString("azure-tenant-id")
-	nebiusTenantID, _ := cmd.Flags().GetString("nebius-tenant-id")
-	nebiusBindingsFile, _ := cmd.Flags().GetString("nebius-bindings-file")
 	output, _ := cmd.Flags().GetString("output")
-	skipWait, _ := cmd.Flags().GetBool("skip-wait")
+	skipWait, _ := cmd.Flags().GetBool(skipWaitFlag)
 
-	var nebiusBindings []openapiclient.NebiusAccountBindingInput
-	var err error
-	if nebiusBindingsFile != "" {
-		nebiusBindings, err = parseNebiusBindingsFile(nebiusBindingsFile)
-		if err != nil {
-			return err
-		}
-	}
-
-	params := CloudAccountParams{
-		Name:                name,
-		AwsAccountID:        awsAccountID,
-		GcpProjectID:        gcpProjectID,
-		GcpProjectNumber:    gcpProjectNumber,
-		AzureSubscriptionID: azureSubscriptionID,
-		AzureTenantID:       azureTenantID,
-		NebiusTenantID:      nebiusTenantID,
-		NebiusBindings:      nebiusBindings,
-	}
-
-	if err := validateCloudAccountParams(params); err != nil {
+	params, err := cloudAccountParamsFromFlags(cmd, name)
+	if err != nil {
 		return err
 	}
 

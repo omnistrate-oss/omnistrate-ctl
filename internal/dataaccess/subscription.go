@@ -2,10 +2,11 @@ package dataaccess
 
 import (
 	"context"
-	"github.com/pkg/errors"
 	"net/http"
+	"strings"
 
 	openapiclientfleet "github.com/omnistrate-oss/omnistrate-sdk-go/fleet"
+	"github.com/pkg/errors"
 )
 
 func DescribeSubscription(ctx context.Context, token string, serviceID, environmentID, instanceID string) (resp *openapiclientfleet.FleetDescribeSubscriptionResult, err error) {
@@ -34,14 +35,45 @@ func DescribeSubscription(ctx context.Context, token string, serviceID, environm
 }
 
 func GetSubscriptionByCustomerEmail(ctx context.Context, token string, serviceID string, planID string, customerEmail string) (resp *openapiclientfleet.FleetDescribeSubscriptionResult, err error) {
-	ctxWithToken := context.WithValue(ctx, openapiclientfleet.ContextAccessToken, token)
-	apiClient := getFleetClient()
-
 	// Describe the service offering for this service and plan (product tier) ID to get the environment ID
 	serviceOfferingResult, err := DescribeServiceOffering(ctx, token, serviceID, planID, "")
 	if err != nil {
-		return nil, handleFleetError(err)
+		return nil, err
 	}
+
+	for _, offering := range serviceOfferingResult.ConsumptionDescribeServiceOfferingResult.Offerings {
+		if offering.ProductTierID == planID {
+			return GetSubscriptionByCustomerEmailInEnvironment(
+				ctx,
+				token,
+				serviceID,
+				offering.ServiceEnvironmentID,
+				planID,
+				customerEmail,
+			)
+		}
+	}
+
+	err = errors.New("no subscription found for the given customer email or the plan does not exist")
+	return
+}
+
+func GetSubscriptionByCustomerEmailInEnvironment(
+	ctx context.Context,
+	token string,
+	serviceID string,
+	environmentID string,
+	planID string,
+	customerEmail string,
+) (resp *openapiclientfleet.FleetDescribeSubscriptionResult, err error) {
+	ctxWithToken := context.WithValue(ctx, openapiclientfleet.ContextAccessToken, token)
+	apiClient := getFleetClient()
+
+	req := apiClient.InventoryApiAPI.InventoryApiListSubscription(
+		ctxWithToken,
+		serviceID,
+		environmentID,
+	).ProductTierId(planID)
 
 	var r *http.Response
 	defer func() {
@@ -50,74 +82,40 @@ func GetSubscriptionByCustomerEmail(ctx context.Context, token string, serviceID
 		}
 	}()
 
-	for _, offering := range serviceOfferingResult.ConsumptionDescribeServiceOfferingResult.Offerings {
-		if offering.ProductTierID == planID {
-			req := apiClient.InventoryApiAPI.InventoryApiListSubscription(
-				ctxWithToken,
-				serviceID,
-				offering.ServiceEnvironmentID,
-			).ProductTierId(planID)
+	listSubscriptionResult, r, err := req.Execute()
+	if err != nil {
+		return nil, handleFleetError(err)
+	}
+	if r != nil {
+		_ = r.Body.Close()
+		r = nil
+	}
 
-			var listSubscriptionResult *openapiclientfleet.FleetListSubscriptionsResult
-			listSubscriptionResult, r, err = req.Execute()
-			if err != nil {
-				return nil, handleFleetError(err)
-			}
-
-			for _, subscription := range listSubscriptionResult.Subscriptions {
-				if subscription.RootUserEmail == customerEmail {
-					resp = &subscription
-					return
-				}
-			}
-
-			// Search user by email
-			listUsersRes, r, err := apiClient.InventoryApiAPI.InventoryApiListAllUsers(ctxWithToken).Execute()
-			if err != nil {
-				return nil, handleFleetError(errors.Wrap(err, "failed to list users"))
-			}
-			_ = r.Body.Close()
-
-			userID := ""
-			for _, user := range listUsersRes.Users {
-				if *user.Email == customerEmail {
-					userID = *user.UserId
-					break
-				}
-			}
-
-			if userID == "" {
-				return nil, errors.Errorf("no user found with email %s", customerEmail)
-			}
-
-			// Subscription not found for the given customer email, create a new one
-			createReq := apiClient.InventoryApiAPI.InventoryApiCreateSubscriptionOnBehalfOfCustomer(
-				ctxWithToken,
-				serviceID,
-				offering.ServiceEnvironmentID,
-			).FleetCreateSubscriptionOnBehalfOfCustomerRequest2(openapiclientfleet.FleetCreateSubscriptionOnBehalfOfCustomerRequest2{
-				ProductTierId:            planID,
-				OnBehalfOfCustomerUserId: userID,
-			})
-
-			createResp, r, err := createReq.Execute()
-			if err != nil {
-				return nil, handleFleetError(errors.Wrapf(err, "failed to create subscription for user %s", customerEmail))
-			}
-			_ = r.Body.Close()
-
-			// Describe the newly created subscription
-			resp, err = DescribeSubscription(ctx, token, serviceID, offering.ServiceEnvironmentID, *createResp.Id)
-			if err != nil {
-				return nil, handleFleetError(errors.Wrapf(err, "failed to describe newly created subscription for user %s", customerEmail))
-			}
-
-			return resp, nil
+	for _, subscription := range listSubscriptionResult.Subscriptions {
+		if strings.EqualFold(subscription.RootUserEmail, customerEmail) {
+			return &subscription, nil
 		}
 	}
 
-	err = errors.New("no subscription found for the given customer email or the plan does not exist")
-	return
+	createResp, err := CreateSubscriptionOnBehalf(ctx, token, serviceID, environmentID, &CreateSubscriptionOnBehalfOptions{
+		ProductTierID:           planID,
+		OnBehalfOfCustomerEmail: customerEmail,
+	})
+	if err != nil {
+		return nil, errors.Wrapf(err, "failed to create subscription for user %s", customerEmail)
+	}
+
+	subscriptionID := strings.TrimSpace(createResp.GetId())
+	if subscriptionID == "" {
+		return nil, errors.Errorf("subscription creation for user %s returned an empty subscription ID", customerEmail)
+	}
+
+	resp, err = DescribeSubscription(ctx, token, serviceID, environmentID, subscriptionID)
+	if err != nil {
+		return nil, errors.Wrapf(err, "failed to describe newly created subscription for user %s", customerEmail)
+	}
+
+	return resp, nil
 }
 
 func ListSubscriptions(ctx context.Context, token string, serviceID, environmentID string) (resp *openapiclientfleet.FleetListSubscriptionsResult, err error) {
@@ -275,7 +273,7 @@ func CreateSubscriptionOnBehalf(ctx context.Context, token string, serviceID, en
 		}
 
 		for _, user := range listUsersRes.Users {
-			if user.Email != nil && *user.Email == opts.OnBehalfOfCustomerEmail {
+			if user.Email != nil && strings.EqualFold(*user.Email, opts.OnBehalfOfCustomerEmail) {
 				customerUserID = *user.UserId
 				break
 			}
