@@ -20,12 +20,14 @@ func LoginWithPassword(ctx context.Context, email string, pass string) (LoginRes
 	apiClient := getV1Client()
 	resp, r, err := apiClient.SigninApiAPI.SigninApiSignin(ctx).SigninRequest(request).Execute()
 
+	if r != nil {
+		defer r.Body.Close()
+	}
+
 	err = handleV1Error(err)
 	if err != nil {
 		return LoginResult{}, err
 	}
-
-	r.Body.Close()
 
 	result := LoginResult{JWTToken: resp.JwtToken}
 	if rt, ok := resp.AdditionalProperties["refreshToken"].(string); ok {
@@ -41,12 +43,14 @@ func LoginWithIdentityProvider(ctx context.Context, deviceCode, identityProvider
 	apiClient := getV1Client()
 	resp, r, err := apiClient.SigninApiAPI.SigninApiLoginWithIdentityProvider(ctx).LoginWithIdentityProviderRequest(request).Execute()
 
+	if r != nil {
+		defer r.Body.Close()
+	}
+
 	err = handleV1Error(err)
 	if err != nil {
 		return LoginResult{}, err
 	}
-
-	r.Body.Close()
 
 	result := LoginResult{JWTToken: resp.JwtToken}
 	if rt, ok := resp.AdditionalProperties["refreshToken"].(string); ok {

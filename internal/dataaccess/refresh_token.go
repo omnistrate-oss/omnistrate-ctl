@@ -2,6 +2,7 @@ package dataaccess
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -21,14 +22,14 @@ type refreshTokenResponse struct {
 
 // RefreshToken exchanges a refresh token for a new JWT + refresh token pair.
 // Uses raw HTTP because the SDK does not yet include this endpoint.
-func RefreshToken(refreshToken string) (LoginResult, error) {
+func RefreshToken(ctx context.Context, refreshToken string) (LoginResult, error) {
 	reqBody, err := json.Marshal(refreshTokenRequest{RefreshToken: refreshToken})
 	if err != nil {
 		return LoginResult{}, fmt.Errorf("failed to marshal refresh request: %w", err)
 	}
 
 	url := fmt.Sprintf("%s://%s/2022-09-01-00/refresh-token", config.GetHostScheme(), config.GetHost())
-	req, err := http.NewRequest(http.MethodPost, url, bytes.NewReader(reqBody))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(reqBody))
 	if err != nil {
 		return LoginResult{}, fmt.Errorf("failed to create refresh request: %w", err)
 	}
@@ -54,6 +55,10 @@ func RefreshToken(refreshToken string) (LoginResult, error) {
 	var result refreshTokenResponse
 	if err := json.Unmarshal(body, &result); err != nil {
 		return LoginResult{}, fmt.Errorf("failed to parse refresh response: %w", err)
+	}
+
+	if result.JWTToken == "" {
+		return LoginResult{}, fmt.Errorf("refresh response missing jwtToken")
 	}
 
 	return LoginResult(result), nil

@@ -13,6 +13,7 @@ import (
 	"github.com/omnistrate-oss/omnistrate-ctl/cmd/audit"
 	"github.com/omnistrate-oss/omnistrate-ctl/cmd/auth/login"
 	"github.com/omnistrate-oss/omnistrate-ctl/cmd/auth/logout"
+	"github.com/omnistrate-oss/omnistrate-ctl/cmd/auth/refresh"
 	"github.com/omnistrate-oss/omnistrate-ctl/cmd/build"
 	"github.com/omnistrate-oss/omnistrate-ctl/cmd/cost"
 	"github.com/omnistrate-oss/omnistrate-ctl/cmd/customnetwork"
@@ -117,6 +118,7 @@ func init() {
 
 	RootCmd.AddCommand(login.LoginCmd)
 	RootCmd.AddCommand(logout.LogoutCmd)
+	RootCmd.AddCommand(refresh.RefreshCmd)
 
 	RootCmd.AddCommand(build.BuildCmd)
 	RootCmd.AddCommand(build.BuildFromRepoCmd)

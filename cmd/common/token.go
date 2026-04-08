@@ -17,11 +17,13 @@ func GetTokenWithLogin() (token string, err error) {
 		return
 	}
 
+	ctx := context.Background()
+
 	// If token is present, check if it's expired locally before making a network call
 	if token != "" {
 		if config.IsTokenExpired(token, 30*time.Second) {
 			// Token expired or about to expire — try refresh
-			newToken, refreshErr := tryRefreshToken()
+			newToken, refreshErr := tryRefreshToken(ctx)
 			if refreshErr == nil {
 				return newToken, nil
 			}
@@ -30,10 +32,10 @@ func GetTokenWithLogin() (token string, err error) {
 			token = ""
 		} else {
 			// Token still valid locally, verify with server
-			_, err = dataaccess.DescribeUser(context.Background(), token)
+			_, err = dataaccess.DescribeUser(ctx, token)
 			if err != nil {
 				// Server rejected — try refresh before prompting login
-				newToken, refreshErr := tryRefreshToken()
+				newToken, refreshErr := tryRefreshToken(ctx)
 				if refreshErr == nil {
 					return newToken, nil
 				}
@@ -60,13 +62,13 @@ func GetTokenWithLogin() (token string, err error) {
 }
 
 // tryRefreshToken attempts to exchange the stored refresh token for a new JWT.
-func tryRefreshToken() (string, error) {
+func tryRefreshToken(ctx context.Context) (string, error) {
 	refreshToken, err := config.GetRefreshToken()
 	if err != nil {
 		return "", err
 	}
 
-	result, err := dataaccess.RefreshToken(refreshToken)
+	result, err := dataaccess.RefreshToken(ctx, refreshToken)
 	if err != nil {
 		return "", err
 	}
@@ -75,12 +77,12 @@ func tryRefreshToken() (string, error) {
 		return "", errors.New("refresh response missing jwt token")
 	}
 
+	// Preserve the existing refresh token if the server didn't return a new one
 	persistedRefreshToken := result.RefreshToken
 	if persistedRefreshToken == "" {
 		persistedRefreshToken = refreshToken
 	}
 
-	// Persist the new token pair
 	authConfig := config.AuthConfig{
 		Token:        result.JWTToken,
 		RefreshToken: persistedRefreshToken,
