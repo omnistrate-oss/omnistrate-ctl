@@ -139,12 +139,22 @@ type tfResourceChange struct {
 }
 
 type tfChange struct {
-	Actions         []string               `json:"actions"`
-	Before          map[string]interface{} `json:"before"`
-	After           map[string]interface{} `json:"after"`
-	AfterUnknown    interface{}            `json:"after_unknown"`
-	BeforeSensitive interface{}            `json:"before_sensitive"`
-	AfterSensitive  interface{}            `json:"after_sensitive"`
+	Actions         []string    `json:"actions"`
+	Before          interface{} `json:"before"`
+	After           interface{} `json:"after"`
+	AfterUnknown    interface{} `json:"after_unknown"`
+	BeforeSensitive interface{} `json:"before_sensitive"`
+	AfterSensitive  interface{} `json:"after_sensitive"`
+}
+
+// toStringInterfaceMap safely extracts a map[string]interface{} from an interface{}.
+// Terraform plan JSON uses maps for resource before/after, but scalars for output before/after.
+// Returns nil if the value is not a map.
+func toStringInterfaceMap(v interface{}) map[string]interface{} {
+	if m, ok := v.(map[string]interface{}); ok {
+		return m
+	}
+	return nil
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
@@ -222,31 +232,36 @@ func writeResourceChange(b *strings.Builder, rc *tfResourceChange) {
 	fmt.Fprintf(b, "  # %s %s\n", rc.Address, verb)
 	fmt.Fprintf(b, "  %s resource %q %q {\n", prefix, rc.Type, rc.Name)
 
+	// Safely extract maps from Before/After (they are interface{} because
+	// output_changes may use scalars; resource_changes always use maps).
+	afterMap := toStringInterfaceMap(rc.Change.After)
+	beforeMap := toStringInterfaceMap(rc.Change.Before)
+
 	// Collect after-sensitive map for masking
 	afterSensitive, allSensitive := toStringBoolMap(rc.Change.AfterSensitive)
 	afterUnknown, allUnknown := toStringBoolMap(rc.Change.AfterUnknown)
 
 	// When the entire resource is flagged, mark every key in "after" as sensitive/unknown
-	if allSensitive && rc.Change.After != nil {
-		for k := range rc.Change.After {
+	if allSensitive && afterMap != nil {
+		for k := range afterMap {
 			afterSensitive[k] = true
 		}
 	}
-	if allUnknown && rc.Change.After != nil {
-		for k := range rc.Change.After {
+	if allUnknown && afterMap != nil {
+		for k := range afterMap {
 			afterUnknown[k] = true
 		}
 	}
 
 	switch action {
 	case actionCreate:
-		writeCreateAttributes(b, rc.Change.After, afterSensitive, afterUnknown, prefix)
+		writeCreateAttributes(b, afterMap, afterSensitive, afterUnknown, prefix)
 	case actionDelete:
-		writeDeleteAttributes(b, rc.Change.Before, prefix)
+		writeDeleteAttributes(b, beforeMap, prefix)
 	case actionUpdate:
-		writeUpdateAttributes(b, rc.Change.Before, rc.Change.After, afterSensitive, afterUnknown)
+		writeUpdateAttributes(b, beforeMap, afterMap, afterSensitive, afterUnknown)
 	case actionReplace:
-		writeUpdateAttributes(b, rc.Change.Before, rc.Change.After, afterSensitive, afterUnknown)
+		writeUpdateAttributes(b, beforeMap, afterMap, afterSensitive, afterUnknown)
 	}
 
 	b.WriteString("    }\n")
