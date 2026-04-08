@@ -2,6 +2,8 @@ package config
 
 import (
 	_ "embed"
+	"encoding/base64"
+	"encoding/json"
 	"fmt"
 	"path/filepath"
 	"strings"
@@ -53,6 +55,43 @@ func GetToken() (string, error) {
 	}
 
 	return authConfig.Token, nil
+}
+
+// GetRefreshToken returns the stored refresh token.
+func GetRefreshToken() (string, error) {
+	authConfig, err := LookupAuthConfig()
+	if err != nil {
+		return "", err
+	}
+	if authConfig.RefreshToken == "" {
+		return "", ErrAuthConfigNotFound
+	}
+	return authConfig.RefreshToken, nil
+}
+
+// IsTokenExpired parses the JWT's exp claim and returns true if the token
+// has expired or will expire within the given margin. This avoids a network
+// round-trip to validate the token when we can tell locally it's stale.
+func IsTokenExpired(token string, margin time.Duration) bool {
+	parts := strings.SplitN(token, ".", 3)
+	if len(parts) != 3 {
+		return true
+	}
+
+	// JWT payload is base64url-encoded (no padding)
+	payload, err := base64.RawURLEncoding.DecodeString(parts[1])
+	if err != nil {
+		return true
+	}
+
+	var claims struct {
+		Exp int64 `json:"exp"`
+	}
+	if err := json.Unmarshal(payload, &claims); err != nil || claims.Exp == 0 {
+		return true
+	}
+
+	return time.Now().Add(margin).Unix() >= claims.Exp
 }
 
 func GetIndexCacheTTL() time.Duration {

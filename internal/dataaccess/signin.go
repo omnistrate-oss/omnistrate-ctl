@@ -7,7 +7,13 @@ import (
 	openapiclient "github.com/omnistrate-oss/omnistrate-sdk-go/v1"
 )
 
-func LoginWithPassword(ctx context.Context, email string, pass string) (string, error) {
+// LoginResult holds both the JWT and optional refresh token from a login response.
+type LoginResult struct {
+	JWTToken     string //nolint:gosec
+	RefreshToken string //nolint:gosec
+}
+
+func LoginWithPassword(ctx context.Context, email string, pass string) (LoginResult, error) {
 	request := *openapiclient.NewSigninRequest(email)
 	request.Password = utils.ToPtr(pass)
 
@@ -16,14 +22,19 @@ func LoginWithPassword(ctx context.Context, email string, pass string) (string, 
 
 	err = handleV1Error(err)
 	if err != nil {
-		return "", err
+		return LoginResult{}, err
 	}
 
 	r.Body.Close()
-	return resp.JwtToken, nil
+
+	result := LoginResult{JWTToken: resp.JwtToken}
+	if rt, ok := resp.AdditionalProperties["refreshToken"].(string); ok {
+		result.RefreshToken = rt
+	}
+	return result, nil
 }
 
-func LoginWithIdentityProvider(ctx context.Context, deviceCode, identityProviderName string) (string, error) {
+func LoginWithIdentityProvider(ctx context.Context, deviceCode, identityProviderName string) (LoginResult, error) {
 	request := *openapiclient.NewLoginWithIdentityProviderRequest(identityProviderName)
 	request.DeviceCode = utils.ToPtr(deviceCode)
 
@@ -32,9 +43,14 @@ func LoginWithIdentityProvider(ctx context.Context, deviceCode, identityProvider
 
 	err = handleV1Error(err)
 	if err != nil {
-		return "", err
+		return LoginResult{}, err
 	}
 
 	r.Body.Close()
-	return resp.JwtToken, nil
+
+	result := LoginResult{JWTToken: resp.JwtToken}
+	if rt, ok := resp.AdditionalProperties["refreshToken"].(string); ok {
+		result.RefreshToken = rt
+	}
+	return result, nil
 }

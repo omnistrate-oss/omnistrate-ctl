@@ -30,7 +30,8 @@ type ConfigFile struct {
 
 // AuthConfig represents the authentication configuration.
 type AuthConfig struct {
-	Token string `yaml:"token,omitempty"`
+	Token        string `yaml:"token,omitempty"`
+	RefreshToken string `yaml:"refresh_token,omitempty"` //nolint:gosec
 }
 
 var (

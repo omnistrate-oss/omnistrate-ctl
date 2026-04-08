@@ -1,6 +1,9 @@
 package config
 
 import (
+	"encoding/base64"
+	"encoding/json"
+	"fmt"
 	"testing"
 	"time"
 
@@ -104,4 +107,44 @@ func TestGetLlmsTxtURLCustom(t *testing.T) {
 	t.Setenv(omnistrateDocsDomain, "custom.example.com")
 	url := GetLlmsTxtURL()
 	assert.Equal(t, "https://custom.example.com/llms.txt", url)
+}
+
+func makeJWT(exp int64) string {
+	header := base64.RawURLEncoding.EncodeToString([]byte(`{"alg":"RS256","typ":"JWT"}`))
+	payload, _ := json.Marshal(map[string]interface{}{"exp": exp})
+	claims := base64.RawURLEncoding.EncodeToString(payload)
+	return fmt.Sprintf("%s.%s.fakesig", header, claims)
+}
+
+func TestIsTokenExpired_ValidToken(t *testing.T) {
+	token := makeJWT(time.Now().Add(1 * time.Hour).Unix())
+	assert.False(t, IsTokenExpired(token, 30*time.Second))
+}
+
+func TestIsTokenExpired_ExpiredToken(t *testing.T) {
+	token := makeJWT(time.Now().Add(-1 * time.Hour).Unix())
+	assert.True(t, IsTokenExpired(token, 0))
+}
+
+func TestIsTokenExpired_WithinMargin(t *testing.T) {
+	token := makeJWT(time.Now().Add(10 * time.Second).Unix())
+	assert.True(t, IsTokenExpired(token, 30*time.Second))
+}
+
+func TestIsTokenExpired_MalformedToken(t *testing.T) {
+	assert.True(t, IsTokenExpired("not-a-jwt", 0))
+	assert.True(t, IsTokenExpired("a.b", 0))
+	assert.True(t, IsTokenExpired("", 0))
+}
+
+func TestIsTokenExpired_InvalidPayload(t *testing.T) {
+	header := base64.RawURLEncoding.EncodeToString([]byte(`{}`))
+	payload := base64.RawURLEncoding.EncodeToString([]byte(`not json`))
+	token := fmt.Sprintf("%s.%s.sig", header, payload)
+	assert.True(t, IsTokenExpired(token, 0))
+}
+
+func TestIsTokenExpired_ZeroExp(t *testing.T) {
+	token := makeJWT(0)
+	assert.True(t, IsTokenExpired(token, 0))
 }
