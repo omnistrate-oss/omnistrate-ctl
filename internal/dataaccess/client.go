@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httputil"
+	"time"
 
 	"github.com/hashicorp/go-retryablehttp"
 	"github.com/omnistrate-oss/omnistrate-ctl/internal/config"
@@ -12,6 +13,16 @@ import (
 	openapiclientv1 "github.com/omnistrate-oss/omnistrate-sdk-go/v1"
 	"github.com/pkg/errors"
 	"github.com/rs/zerolog/log"
+)
+
+const (
+	// Keep SDK-backed calls alive through transient rate limiting.
+	// retryablehttp interprets RetryMax as "retries after the first attempt".
+	sdkRetryMax      = 6
+	sdkRetryWaitMin  = 1 * time.Second
+	sdkRetryWaitMax  = 30 * time.Second
+	rateLimitWaitMin = 2 * time.Second
+	rateLimitWaitMax = 60 * time.Second
 )
 
 // Configure registration api client
@@ -97,7 +108,10 @@ func getRetryableHttpClient() *http.Client {
 	// HTTP requests are logged at DEBUG level.
 	httpClient.ErrorHandler = retryablehttp.PassthroughErrorHandler
 	httpClient.CheckRetry = retryPolicy
-	httpClient.Backoff = retryablehttp.DefaultBackoff
+	httpClient.Backoff = retryBackoff
+	httpClient.RetryMax = sdkRetryMax
+	httpClient.RetryWaitMin = sdkRetryWaitMin
+	httpClient.RetryWaitMax = sdkRetryWaitMax
 	httpClient.HTTPClient.Timeout = config.GetClientTimeout()
 	httpClient.Logger = NewLeveledLogger()
 	httpClient.RequestLogHook = func(logger retryablehttp.Logger, req *http.Request, retryNumber int) {
@@ -118,7 +132,10 @@ func getRetryableHttpClient() *http.Client {
 			log.Debug().Msgf("Response %s\n%s", res.Status, dump)
 		}
 	}
-	return httpClient.StandardClient()
+
+	standardClient := httpClient.StandardClient()
+	standardClient.Timeout = config.GetClientTimeout()
+	return standardClient
 }
 
 // Used to transform the retryablehttp logger to a zerolog logger
@@ -147,6 +164,10 @@ func (l *LeveledLogger) Warn(msg string, keysAndValues ...interface{}) {
 }
 
 func retryPolicy(ctx context.Context, resp *http.Response, err error) (bool, error) {
+	if resp != nil && resp.StatusCode == http.StatusTooManyRequests {
+		return true, nil
+	}
+
 	shouldRetry, err := retryablehttp.ErrorPropagatedRetryPolicy(ctx, resp, err)
 	// Do not retry POST requests on error, except for 429 (rate limiting)
 	if err != nil && resp != nil && resp.Request != nil && resp.Request.Method == http.MethodPost {
@@ -155,4 +176,12 @@ func retryPolicy(ctx context.Context, resp *http.Response, err error) (bool, err
 		}
 	}
 	return shouldRetry, nil
+}
+
+func retryBackoff(waitMin, waitMax time.Duration, attemptNum int, resp *http.Response) time.Duration {
+	if resp != nil && resp.StatusCode == http.StatusTooManyRequests {
+		return retryablehttp.DefaultBackoff(rateLimitWaitMin, rateLimitWaitMax, attemptNum, resp)
+	}
+
+	return retryablehttp.DefaultBackoff(waitMin, waitMax, attemptNum, resp)
 }
