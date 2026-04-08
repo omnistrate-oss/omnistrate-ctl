@@ -236,17 +236,28 @@ func (m terraformDetailModel) fetchData() tea.Cmd {
 			if indexErr != nil || index == nil {
 				continue
 			}
-			var tfData *TerraformData
-			for _, key := range resourceConfigMapKeys(m.node.ID) {
-				td := index.terraformDataForResource(key)
-				if td != nil && len(td.Files) > 0 {
-					tfData = td
-					break
+			// Extract plan previews directly from the state configmap (reliable path)
+			stateData := extractTerraformStateData(index, m.debugData.InstanceID, m.node.ID)
+			if stateData != nil {
+				if len(stateData.PlanPreviews) > 0 {
+					planPreviewByOpID = stateData.PlanPreviews
+				}
+				if len(stateData.PreviewErrors) > 0 {
+					planPreviewErrByOpID = stateData.PreviewErrors
 				}
 			}
-			if tfData != nil {
+			// Also try terraformDataForResource for output logs
+			tfData := index.terraformDataForResource(m.node.ID)
+			if tfData != nil && len(tfData.Files) > 0 {
 				tfOutputJSON = findLatestOutputLog(tfData.Files, history)
-				planPreviewByOpID, planPreviewErrByOpID = findAllPlanPreviews(tfData.Files)
+				// Fallback: extract plan previews from Files if stateData didn't find them
+				if len(planPreviewByOpID) == 0 && len(planPreviewErrByOpID) == 0 {
+					planPreviewByOpID, planPreviewErrByOpID = findAllPlanPreviews(tfData.Files)
+				}
+				break
+			}
+			// If tfData.Files was empty but we got plan previews from stateData, still break
+			if len(planPreviewByOpID) > 0 || len(planPreviewErrByOpID) > 0 {
 				break
 			}
 		}
