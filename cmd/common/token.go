@@ -71,10 +71,19 @@ func tryRefreshToken() (string, error) {
 		return "", err
 	}
 
+	if result.JWTToken == "" {
+		return "", errors.New("refresh response missing jwt token")
+	}
+
+	persistedRefreshToken := result.RefreshToken
+	if persistedRefreshToken == "" {
+		persistedRefreshToken = refreshToken
+	}
+
 	// Persist the new token pair
 	authConfig := config.AuthConfig{
 		Token:        result.JWTToken,
-		RefreshToken: result.RefreshToken,
+		RefreshToken: persistedRefreshToken,
 	}
 	if err := config.CreateOrUpdateAuthConfig(authConfig); err != nil {
 		return "", err
