@@ -79,6 +79,9 @@ jobs:
           OMNISTRATE_ROOT_DOMAIN: ${{ vars.OMNISTRATE_ROOT_DOMAIN}}
           OMNISTRATE_LOG_LEVEL: debug
           OMNISTRATE_DRY_RUN: true
+          RETRY_MAX: 8
+          RETRY_WAIT_MIN_IN_SECONDS: 60
+          RETRY_WAIT_MAX_IN_SECONDS: 600
         run: gotestsum --format standard-verbose -- ./test/smoke_test/${{ matrix.test-group }} -timeout 1800s -p 1 -p 1 -v
 
   smoke-tests-with-provisioning:
@@ -129,5 +132,8 @@ jobs:
           OMNISTRATE_ROOT_DOMAIN: ${{ vars.OMNISTRATE_ROOT_DOMAIN}}
           OMNISTRATE_LOG_LEVEL: debug
           OMNISTRATE_DRY_RUN: true
+          RETRY_MAX: 8
+          RETRY_WAIT_MIN_IN_SECONDS: 60
+          RETRY_WAIT_MAX_IN_SECONDS: 600
         run: gotestsum --format standard-verbose -- ./test/smoke_test/${{ matrix.test-group }} -timeout 1800s -p 1 -p 1 -v
 
