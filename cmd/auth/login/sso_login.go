@@ -91,16 +91,15 @@ func ssoLogin(ctx context.Context, identityProviderName string) error {
 	fmt.Printf("%s\n\n", deviceCodeResponse.UserCode)
 
 	// Step 3: Poll identity provider server to check if the user authorized the device via backend API
-	jwtTokenResponse, err := pollForAccessTokenAndLogin(ctx, identityProviderName, deviceCodeResponse.DeviceCode, deviceCodeResponse.Interval)
+	loginResult, err := pollForAccessTokenAndLogin(ctx, identityProviderName, deviceCodeResponse.DeviceCode, deviceCodeResponse.Interval)
 	if err != nil {
 		utils.PrintError(err)
 		return err
 	}
 
-	token := jwtTokenResponse.JWTToken
-
 	authConfig := config.AuthConfig{
-		Token: token,
+		Token:        loginResult.JWTToken,
+		RefreshToken: loginResult.RefreshToken,
 	}
 	if err = config.CreateOrUpdateAuthConfig(authConfig); err != nil {
 		utils.PrintError(err)
@@ -178,11 +177,11 @@ func requestDeviceCodeWithHttpClient(ctx context.Context, client *http.Client, i
 }
 
 // pollForAccessTokenAndLogin polls identity provider server for an access token and uses it to log user into the platform
-func pollForAccessTokenAndLogin(ctx context.Context, identityProviderName, deviceCode string, interval int) (*AccessTokenResponse, error) {
+func pollForAccessTokenAndLogin(ctx context.Context, identityProviderName, deviceCode string, interval int) (*dataaccess.LoginResult, error) {
 	for {
 		time.Sleep(time.Duration(interval) * time.Second)
 
-		jwtToken, err := dataaccess.LoginWithIdentityProvider(ctx, deviceCode, identityProviderName)
+		result, err := dataaccess.LoginWithIdentityProvider(ctx, deviceCode, identityProviderName)
 		if err != nil {
 			if strings.Contains(err.Error(), "Failed to get access token with status code: 428 Precondition Required") { // authorization_pending
 				continue
@@ -200,9 +199,7 @@ func pollForAccessTokenAndLogin(ctx context.Context, identityProviderName, devic
 			return nil, err
 		}
 
-		return &AccessTokenResponse{
-			JWTToken: jwtToken,
-		}, nil
+		return &result, nil
 	}
 }
 

@@ -2,11 +2,13 @@ package common
 
 import (
 	"context"
+	"time"
 
 	"github.com/omnistrate-oss/omnistrate-ctl/cmd/auth/login"
 	"github.com/omnistrate-oss/omnistrate-ctl/internal/config"
 	"github.com/omnistrate-oss/omnistrate-ctl/internal/dataaccess"
 	"github.com/pkg/errors"
+	"github.com/rs/zerolog/log"
 )
 
 func GetTokenWithLogin() (token string, err error) {
@@ -15,17 +17,33 @@ func GetTokenWithLogin() (token string, err error) {
 		return
 	}
 
-	// If token is present, validate it by calling the user API
+	ctx := context.Background()
+
+	// If token is present, check if it's expired locally before making a network call
 	if token != "" {
-		// Validate token by making an API call
-		_, err = dataaccess.DescribeUser(context.Background(), token)
-		if err != nil {
-			// Token is invalid, remove it and prompt for login
+		if config.IsTokenExpired(token, 30*time.Second) {
+			// Token expired or about to expire — try refresh
+			newToken, refreshErr := tryRefreshToken(ctx)
+			if refreshErr == nil {
+				return newToken, nil
+			}
+			log.Debug().Err(refreshErr).Msg("Token refresh failed, will re-authenticate")
 			_ = config.RemoveAuthConfig()
 			token = ""
 		} else {
-			// Token is valid, return it
-			return
+			// Token still valid locally, verify with server
+			_, err = dataaccess.DescribeUser(ctx, token)
+			if err != nil {
+				// Server rejected — try refresh before prompting login
+				newToken, refreshErr := tryRefreshToken(ctx)
+				if refreshErr == nil {
+					return newToken, nil
+				}
+				_ = config.RemoveAuthConfig()
+				token = ""
+			} else {
+				return
+			}
 		}
 	}
 
@@ -41,4 +59,37 @@ func GetTokenWithLogin() (token string, err error) {
 	}
 
 	return
+}
+
+// tryRefreshToken attempts to exchange the stored refresh token for a new JWT.
+func tryRefreshToken(ctx context.Context) (string, error) {
+	refreshToken, err := config.GetRefreshToken()
+	if err != nil {
+		return "", err
+	}
+
+	result, err := dataaccess.RefreshToken(ctx, refreshToken)
+	if err != nil {
+		return "", err
+	}
+
+	if result.JWTToken == "" {
+		return "", errors.New("refresh response missing jwt token")
+	}
+
+	// Preserve the existing refresh token if the server didn't return a new one
+	persistedRefreshToken := result.RefreshToken
+	if persistedRefreshToken == "" {
+		persistedRefreshToken = refreshToken
+	}
+
+	authConfig := config.AuthConfig{
+		Token:        result.JWTToken,
+		RefreshToken: persistedRefreshToken,
+	}
+	if err := config.CreateOrUpdateAuthConfig(authConfig); err != nil {
+		return "", err
+	}
+
+	return result.JWTToken, nil
 }

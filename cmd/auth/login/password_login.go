@@ -54,14 +54,15 @@ func passwordLogin(cmd *cobra.Command, calledByInteractiveMode bool) error {
 		return err
 	}
 
-	token, err := dataaccess.LoginWithPassword(cmd.Context(), email, password)
+	result, err := dataaccess.LoginWithPassword(cmd.Context(), email, password)
 	if err != nil {
 		ctlutils.PrintError(err)
 		return err
 	}
 
 	authConfig := config.AuthConfig{
-		Token: token,
+		Token:        result.JWTToken,
+		RefreshToken: result.RefreshToken,
 	}
 	if err = config.CreateOrUpdateAuthConfig(authConfig); err != nil {
 		ctlutils.PrintError(err)

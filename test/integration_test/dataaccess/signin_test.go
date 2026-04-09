@@ -59,14 +59,14 @@ func TestSignIn(t *testing.T) {
 			require := require.New(t)
 
 			ctx := context.TODO()
-			token, err := dataaccess.LoginWithPassword(ctx, tt.email, tt.password)
+			result, err := dataaccess.LoginWithPassword(ctx, tt.email, tt.password)
 
 			if tt.wantErr {
 				assert.Equal(tt.expectedErrMsg, err.Error())
-				assert.Empty(token)
+				assert.Empty(result.JWTToken)
 			} else {
 				require.NoError(err)
-				assert.NotEmpty(token)
+				assert.NotEmpty(result.JWTToken)
 			}
 		})
 	}
