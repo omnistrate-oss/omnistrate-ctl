@@ -98,6 +98,9 @@ func getRetryableHttpClient() *http.Client {
 	httpClient.ErrorHandler = retryablehttp.PassthroughErrorHandler
 	httpClient.CheckRetry = retryPolicy
 	httpClient.Backoff = retryablehttp.DefaultBackoff
+	httpClient.RetryWaitMin = config.GetRetryWaitMin()
+	httpClient.RetryWaitMax = config.GetRetryWaitMax()
+	httpClient.RetryMax = config.GetRetryMax()
 	httpClient.HTTPClient.Timeout = config.GetClientTimeout()
 	httpClient.Logger = NewLeveledLogger()
 	httpClient.RequestLogHook = func(logger retryablehttp.Logger, req *http.Request, retryNumber int) {
