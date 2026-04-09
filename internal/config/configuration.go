@@ -29,9 +29,9 @@ const (
 	omnistrateDocsDomain = "OMNISTRATE_DOCS_DOMAIN"
 	defaultRootDomain    = "omnistrate.cloud"
 	clientTimeout        = "CLIENT_TIMEOUT_IN_SECONDS"
-	retryWaitMin         = "RETRY_WAIT_MIN_IN_SECONDS"
-	retryWaitMax         = "RETRY_WAIT_MAX_IN_SECONDS"
-	retryMax             = "RETRY_MAX"
+	retryWaitMin         = "OMNISTRATE_RETRY_WAIT_MIN_IN_SECONDS"
+	retryWaitMax         = "OMNISTRATE_RETRY_WAIT_MAX_IN_SECONDS"
+	retryMax             = "OMNISTRATE_RETRY_MAX"
 )
 
 func GetComposeSpecUrl() string {
