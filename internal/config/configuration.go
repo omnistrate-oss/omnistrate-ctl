@@ -29,6 +29,9 @@ const (
 	omnistrateDocsDomain = "OMNISTRATE_DOCS_DOMAIN"
 	defaultRootDomain    = "omnistrate.cloud"
 	clientTimeout        = "CLIENT_TIMEOUT_IN_SECONDS"
+	retryWaitMin         = "RETRY_WAIT_MIN_IN_SECONDS"
+	retryWaitMax         = "RETRY_WAIT_MAX_IN_SECONDS"
+	retryMax             = "RETRY_MAX"
 )
 
 func GetComposeSpecUrl() string {
@@ -167,6 +170,23 @@ func IsDryRun() bool {
 func GetClientTimeout() time.Duration {
 	timeoutInSeconds := GetEnvAsInteger(clientTimeout, "300")
 	return time.Duration(timeoutInSeconds) * time.Second
+}
+
+// GetRetryWaitMin returns the minimum wait time between retries
+func GetRetryWaitMin() time.Duration {
+	waitInSeconds := GetEnvAsInteger(retryWaitMin, "5")
+	return time.Duration(waitInSeconds) * time.Second
+}
+
+// GetRetryWaitMax returns the maximum wait time between retries
+func GetRetryWaitMax() time.Duration {
+	waitInSeconds := GetEnvAsInteger(retryWaitMax, "30")
+	return time.Duration(waitInSeconds) * time.Second
+}
+
+// GetRetryMax returns the maximum number of retries
+func GetRetryMax() int {
+	return GetEnvAsInteger(retryMax, "4")
 }
 
 // GetUserAgent returns the User-Agent string for HTTP requests

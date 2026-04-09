@@ -148,3 +148,36 @@ func TestIsTokenExpired_ZeroExp(t *testing.T) {
 	token := makeJWT(0)
 	assert.True(t, IsTokenExpired(token, 0))
 }
+
+func TestGetRetryWaitMin(t *testing.T) {
+	d := GetRetryWaitMin()
+	assert.Equal(t, 1*time.Second, d)
+}
+
+func TestGetRetryWaitMinCustom(t *testing.T) {
+	t.Setenv(retryWaitMin, "5")
+	d := GetRetryWaitMin()
+	assert.Equal(t, 5*time.Second, d)
+}
+
+func TestGetRetryWaitMax(t *testing.T) {
+	d := GetRetryWaitMax()
+	assert.Equal(t, 30*time.Second, d)
+}
+
+func TestGetRetryWaitMaxCustom(t *testing.T) {
+	t.Setenv(retryWaitMax, "60")
+	d := GetRetryWaitMax()
+	assert.Equal(t, 60*time.Second, d)
+}
+
+func TestGetRetryMax(t *testing.T) {
+	n := GetRetryMax()
+	assert.Equal(t, 4, n)
+}
+
+func TestGetRetryMaxCustom(t *testing.T) {
+	t.Setenv(retryMax, "10")
+	n := GetRetryMax()
+	assert.Equal(t, 10, n)
+}
