@@ -151,7 +151,7 @@ func TestIsTokenExpired_ZeroExp(t *testing.T) {
 
 func TestGetRetryWaitMin(t *testing.T) {
 	d := GetRetryWaitMin()
-	assert.Equal(t, 1*time.Second, d)
+	assert.Equal(t, 5*time.Second, d)
 }
 
 func TestGetRetryWaitMinCustom(t *testing.T) {
