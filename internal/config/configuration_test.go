@@ -173,7 +173,7 @@ func TestGetRetryWaitMaxCustom(t *testing.T) {
 
 func TestGetRetryMax(t *testing.T) {
 	n := GetRetryMax()
-	assert.Equal(t, 4, n)
+	assert.Equal(t, 5, n)
 }
 
 func TestGetRetryMaxCustom(t *testing.T) {
