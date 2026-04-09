@@ -186,7 +186,7 @@ func GetRetryWaitMax() time.Duration {
 
 // GetRetryMax returns the maximum number of retries
 func GetRetryMax() int {
-	return GetEnvAsInteger(retryMax, "4")
+	return GetEnvAsInteger(retryMax, "5")
 }
 
 // GetUserAgent returns the User-Agent string for HTTP requests
