@@ -351,6 +351,8 @@ func ListNodepools(ctx context.Context, token string, hostClusterID string) ([]m
 		req = apiClient.HostclusterApiAPI.HostclusterApiListHostClusterEntities(ctxWithToken, hostClusterID, "NODEPOOL")
 	case "azure":
 		req = apiClient.HostclusterApiAPI.HostclusterApiListHostClusterEntities(ctxWithToken, hostClusterID, "AZURE_NODEPOOL")
+	case "oci":
+		req = apiClient.HostclusterApiAPI.HostclusterApiListHostClusterEntities(ctxWithToken, hostClusterID, "OCI_NODEPOOL")
 	default:
 		return nil, nil, fmt.Errorf("nodepools are not supported for cloud provider: %s", hostCluster.GetCloudProvider())
 	}
@@ -553,6 +555,68 @@ func formatNodepoolForTable(entity openapiclientfleet.Entity, cloudProvider stri
 				tableView.PrivateSubnet = !enableNodePublicIP
 			}
 		}
+
+	case "oci":
+		var nodePoolSpec map[string]interface{}
+		var ok bool
+
+		if isDescribe {
+			// Describe response: properties.applyRequest.node_pool.*
+			if applyRequest, applyOk := properties["applyRequest"].(map[string]interface{}); applyOk {
+				nodePoolSpec, ok = applyRequest["node_pool"].(map[string]interface{})
+				if !ok {
+					// Backward-compatible key casing if older API payloads use camelCase.
+					nodePoolSpec, ok = applyRequest["nodePool"].(map[string]interface{})
+				}
+			}
+		} else {
+			// List response: properties.node_pool.*
+			nodePoolSpec, ok = properties["node_pool"].(map[string]interface{})
+			if !ok {
+				// Backward-compatible key casing if older API payloads use camelCase.
+				nodePoolSpec, ok = properties["nodePool"].(map[string]interface{})
+			}
+		}
+
+		if ok {
+			if nodeShape, ok := nodePoolSpec["node_shape"].(string); ok {
+				tableView.MachineType = nodeShape
+			}
+
+			if nodeConfigDetails, ok := nodePoolSpec["node_config_details"].(map[string]interface{}); ok {
+				switch size := nodeConfigDetails["size"].(type) {
+				case float64:
+					tableView.MinNodes = int64(size)
+					tableView.MaxNodes = int64(size)
+				case int:
+					tableView.MinNodes = int64(size)
+					tableView.MaxNodes = int64(size)
+				case int32:
+					tableView.MinNodes = int64(size)
+					tableView.MaxNodes = int64(size)
+				case int64:
+					tableView.MinNodes = size
+					tableView.MaxNodes = size
+				}
+
+				if placementConfigs, ok := nodeConfigDetails["placement_configs"].([]interface{}); ok && len(placementConfigs) > 0 {
+					if placementConfig, ok := placementConfigs[0].(map[string]interface{}); ok {
+						if ad, ok := placementConfig["availability_domain"].(string); ok && ad != "" {
+							tableView.Location = ad
+						} else if subnetID, ok := placementConfig["subnet_id"].(string); ok {
+							tableView.Location = subnetID
+						}
+					}
+				}
+			}
+
+			// Extract privateSubnet from labels without storing all labels
+			if labels, ok := nodePoolSpec["initial_node_labels"].(map[string]interface{}); ok {
+				if privateSubnetStr, ok := labels["omnistrate.com/private-subnet"].(string); ok {
+					tableView.PrivateSubnet = (privateSubnetStr == "true")
+				}
+			}
+		}
 	}
 
 	return tableView
@@ -579,6 +643,8 @@ func DescribeNodepool(ctx context.Context, token string, hostClusterID string, n
 		req = apiClient.HostclusterApiAPI.HostclusterApiDescribeHostClusterEntity(ctxWithToken, hostClusterID, "NODEPOOL", nodepoolName)
 	case "azure":
 		req = apiClient.HostclusterApiAPI.HostclusterApiDescribeHostClusterEntity(ctxWithToken, hostClusterID, "AZURE_NODEPOOL", nodepoolName)
+	case "oci":
+		req = apiClient.HostclusterApiAPI.HostclusterApiDescribeHostClusterEntity(ctxWithToken, hostClusterID, "OCI_NODEPOOL", nodepoolName)
 	default:
 		return nil, nil, fmt.Errorf("nodepools are not supported for cloud provider: %s", cloudProvider)
 	}
@@ -676,6 +742,8 @@ func DeleteNodepool(ctx context.Context, token string, hostClusterID string, nod
 		req = apiClient.HostclusterApiAPI.HostclusterApiDeleteEntity(ctxWithToken, hostClusterID, "NODEPOOL", nodepoolName)
 	case "azure":
 		req = apiClient.HostclusterApiAPI.HostclusterApiDeleteEntity(ctxWithToken, hostClusterID, "AZURE_NODEPOOL", nodepoolName)
+	case "oci":
+		req = apiClient.HostclusterApiAPI.HostclusterApiDeleteEntity(ctxWithToken, hostClusterID, "OCI_NODEPOOL", nodepoolName)
 	default:
 		return fmt.Errorf("nodepools are not supported for cloud provider: %s", hostCluster.GetCloudProvider())
 	}
