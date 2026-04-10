@@ -118,7 +118,7 @@ jobs:
       - name: Gotestsum installer
         uses: autero1/action-gotestsum@v2.0.0
         with:
-          gotestsum_version: 1.11.0
+          gotestsum_version: 1.13.0
 
       - name: Integraiton test
         timeout-minutes: 30
