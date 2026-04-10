@@ -7,6 +7,7 @@ import (
 	"github.com/omnistrate-oss/omnistrate-ctl/internal/dataaccess"
 	"github.com/stretchr/testify/require"
 	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 func TestDebugDataJSONIncludesServiceAndEnvironment(t *testing.T) {
@@ -687,6 +688,51 @@ func TestExtractTerraformStateDataStateCMFallback(t *testing.T) {
 	// Plan preview falls back to state CM when no dedicated CMs found
 	require.Len(stateData.PlanPreviews, 1)
 	require.Equal(`{"from":"state-cm-only"}`, stateData.PlanPreviews["state-only"])
+}
+
+// TestExtractTerraformStateDataMultiResourceDedicatedCMs verifies that two separate
+// resources each get their own plan preview from their respective dedicated tf-plan-* CMs.
+// This mirrors the real-world scenario:
+//   tf-plan-tf-r-wenitbo0ia-instance-y24o87zd1-7629a67a7ad45ef55fc4
+//   tf-plan-tf-r-zpo5rklwsc-instance-y24o87zd1-a4b6ca139fecb81e1804
+func TestExtractTerraformStateDataMultiResourceDedicatedCMs(t *testing.T) {
+	require := require.New(t)
+
+	// Build the index from ConfigMaps matching the user's exact CM names.
+	// No state CMs, no progress CMs — only dedicated plan CMs.
+	configMaps := []corev1.ConfigMap{
+		{
+			ObjectMeta: metav1.ObjectMeta{Name: "tf-plan-tf-r-wenitbo0ia-instance-y24o87zd1-7629a67a7ad45ef55fc4"},
+			Data: map[string]string{
+				"plan-preview": `{"planned_values":{"root_module":{"resources":[{"address":"aws_instance.example"}]}}}`,
+			},
+		},
+		{
+			ObjectMeta: metav1.ObjectMeta{Name: "tf-plan-tf-r-zpo5rklwsc-instance-y24o87zd1-a4b6ca139fecb81e1804"},
+			Data: map[string]string{
+				"plan-preview": `{"planned_values":{"root_module":{"resources":[{"address":"aws_rds.db"}]}}}`,
+			},
+		},
+	}
+
+	index := newTerraformConfigMapIndex("instance-y24o87zd1", configMaps)
+	require.Len(index.planPreviewByResource, 2, "should index plan CMs for two different resources")
+
+	// Resource 1: r-wenitbo0ia
+	stateData1 := extractTerraformStateData(index, "instance-y24o87zd1", "r-wenitbo0ia")
+	require.NotNil(stateData1, "resource r-wenitbo0ia should have plan preview data")
+	require.Len(stateData1.PlanPreviews, 1)
+	require.Contains(stateData1.PlanPreviews["7629a67a7ad45ef55fc4"], "aws_instance.example")
+
+	// Resource 2: r-zpo5rklwsc
+	stateData2 := extractTerraformStateData(index, "instance-y24o87zd1", "r-zpo5rklwsc")
+	require.NotNil(stateData2, "resource r-zpo5rklwsc should have plan preview data")
+	require.Len(stateData2.PlanPreviews, 1)
+	require.Contains(stateData2.PlanPreviews["a4b6ca139fecb81e1804"], "aws_rds.db")
+
+	// Neither resource should bleed into the other
+	require.NotContains(stateData1.PlanPreviews["7629a67a7ad45ef55fc4"], "aws_rds.db")
+	require.NotContains(stateData2.PlanPreviews["a4b6ca139fecb81e1804"], "aws_instance.example")
 }
 
 func TestResourceDebugInfoPlanPreviewJSON(t *testing.T) {
