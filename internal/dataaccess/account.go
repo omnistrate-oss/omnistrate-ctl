@@ -1,12 +1,8 @@
 package dataaccess
 
 import (
-	"bytes"
 	"context"
-	"encoding/json"
 	"fmt"
-	"io"
-	"net/http"
 	"strings"
 
 	"github.com/omnistrate-oss/omnistrate-ctl/internal/config"
@@ -93,103 +89,30 @@ type UpdateAccountParams struct {
 	NebiusBindings  []openapiclient.NebiusAccountBindingInput
 }
 
-type updateAccountConfigRequestBody struct {
-	Name           *string                          `json:"name,omitempty"`
-	Description    *string                          `json:"description,omitempty"`
-	NebiusBindings []updateNebiusAccountBindingBody `json:"nebiusBindings,omitempty"`
-}
-
-type updateNebiusAccountBindingBody struct {
-	ProjectID        string `json:"projectID"`
-	ServiceAccountID string `json:"serviceAccountID"`
-	PublicKeyID      string `json:"publicKeyID"`
-	PrivateKeyPEM    string `json:"privateKeyPEM"`
-}
-
 func UpdateAccount(ctx context.Context, token string, params UpdateAccountParams) (string, error) {
-	httpClient := getRetryableHttpClient()
+	ctxWithToken := context.WithValue(ctx, openapiclient.ContextAccessToken, token)
 
-	body := updateAccountConfigRequestBody{
+	request := openapiclient.UpdateAccountConfigRequest2{
 		Name:        params.Name,
 		Description: params.Description,
 	}
 	if len(params.NebiusBindings) > 0 {
-		body.NebiusBindings = make([]updateNebiusAccountBindingBody, 0, len(params.NebiusBindings))
-		for _, binding := range params.NebiusBindings {
-			body.NebiusBindings = append(body.NebiusBindings, updateNebiusAccountBindingBody{
-				ProjectID:        binding.ProjectID,
-				ServiceAccountID: binding.ServiceAccountID,
-				PublicKeyID:      binding.PublicKeyID,
-				PrivateKeyPEM:    binding.PrivateKeyPEM,
-			})
-		}
+		request.NebiusBindings = params.NebiusBindings
 	}
 
-	jsonPayload, err := json.Marshal(body)
-	if err != nil {
-		return "", err
-	}
-
-	urlPath := fmt.Sprintf(
-		"%s://%s/2022-09-01-00/accountconfig/%s",
-		config.GetHostScheme(),
-		config.GetHost(),
+	apiClient := getV1Client()
+	res, r, err := apiClient.AccountConfigApiAPI.AccountConfigApiUpdateAccountConfig(
+		ctxWithToken,
 		params.AccountConfigID,
-	)
-	request, err := http.NewRequest(http.MethodPut, urlPath, bytes.NewBuffer(jsonPayload))
-	if err != nil {
-		return "", err
-	}
-	request = request.WithContext(ctx)
-	request.Header.Add("Authorization", token)
-	request.Header.Set("Content-Type", "application/json")
+	).UpdateAccountConfigRequest2(request).Execute()
 
-	var response *http.Response
-	defer func() {
-		if response != nil {
-			_ = response.Body.Close()
-		}
-	}()
-
-	response, err = httpClient.Do(request)
+	err = handleV1Error(err)
 	if err != nil {
 		return "", err
 	}
 
-	if response.StatusCode != http.StatusAccepted {
-		return "", handleV1HTTPResponseError(response)
-	}
-
-	responseBody, err := io.ReadAll(response.Body)
-	if err != nil {
-		return "", err
-	}
-
-	var accountConfigID string
-	if err := json.Unmarshal(responseBody, &accountConfigID); err == nil {
-		return accountConfigID, nil
-	}
-
-	return strings.TrimSpace(strings.Trim(string(responseBody), "\"")), nil
-}
-
-func handleV1HTTPResponseError(response *http.Response) error {
-	responseBody, readErr := io.ReadAll(response.Body)
-	if readErr != nil {
-		return fmt.Errorf("request failed: %s", response.Status)
-	}
-
-	var apiError openapiclient.Error
-	if err := json.Unmarshal(responseBody, &apiError); err == nil && apiError.Message != "" {
-		return fmt.Errorf("%s\nDetail: %s", apiError.Name, apiError.Message)
-	}
-
-	trimmed := strings.TrimSpace(string(responseBody))
-	if trimmed == "" {
-		return fmt.Errorf("request failed: %s", response.Status)
-	}
-
-	return fmt.Errorf("request failed: %s\nDetail: %s", response.Status, trimmed)
+	r.Body.Close()
+	return strings.Trim(res, "\"\n"), nil
 }
 
 const (

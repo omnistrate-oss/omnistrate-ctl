@@ -14,7 +14,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestUpdateAccount_ConstructsDirectRESTPayload(t *testing.T) {
+func TestUpdateAccount_ConstructsSDKUpdatePayload(t *testing.T) {
 	var capturedMethod string
 	var capturedPath string
 	var capturedAuth string
@@ -39,7 +39,7 @@ func TestUpdateAccount_ConstructsDirectRESTPayload(t *testing.T) {
 	t.Setenv("OMNISTRATE_HOST_SCHEME", serverURL.Scheme)
 	t.Setenv("CLIENT_TIMEOUT_IN_SECONDS", "5")
 
-	accountID, err := UpdateAccount(context.Background(), "Bearer test-token", UpdateAccountParams{
+	accountID, err := UpdateAccount(context.Background(), "test-token", UpdateAccountParams{
 		AccountConfigID: "ac-123",
 		Name:            ptr("updated-name"),
 		Description:     ptr("updated-description"),
@@ -49,7 +49,9 @@ func TestUpdateAccount_ConstructsDirectRESTPayload(t *testing.T) {
 				ServiceAccountID: "service-account-1",
 				PublicKeyID:      "public-key-1",
 				PrivateKeyPEM:    "pem-data",
-				Region:           "eu-north1",
+				AdditionalProperties: map[string]any{
+					"artifactBinding": true,
+				},
 			},
 		},
 	})
@@ -76,8 +78,7 @@ func TestUpdateAccount_ConstructsDirectRESTPayload(t *testing.T) {
 	assert.Equal(t, "service-account-1", binding["serviceAccountID"])
 	assert.Equal(t, "public-key-1", binding["publicKeyID"])
 	assert.Equal(t, "pem-data", binding["privateKeyPEM"])
-	_, hasRegion := binding["region"]
-	assert.False(t, hasRegion)
+	assert.Equal(t, true, binding["artifactBinding"])
 
 	assert.Equal(t, serverURL.Host, config.GetHost())
 	assert.Equal(t, serverURL.Scheme, config.GetHostScheme())
@@ -100,7 +101,7 @@ func TestUpdateAccount_PropagatesAPIError(t *testing.T) {
 	t.Setenv("OMNISTRATE_HOST_SCHEME", serverURL.Scheme)
 	t.Setenv("CLIENT_TIMEOUT_IN_SECONDS", "5")
 
-	_, err = UpdateAccount(context.Background(), "Bearer test-token", UpdateAccountParams{
+	_, err = UpdateAccount(context.Background(), "test-token", UpdateAccountParams{
 		AccountConfigID: "ac-123",
 		Name:            ptr("updated-name"),
 	})
