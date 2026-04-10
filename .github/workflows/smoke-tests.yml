@@ -117,10 +117,8 @@ jobs:
         timeout-minutes: 10
         run: go mod tidy
 
-      - name: Gotestsum installer
-        uses: autero1/action-gotestsum@v2.0.0
-        with:
-          gotestsum_version: 1.11.0
+      - name: Install gotestsum
+        run: go install gotest.tools/gotestsum@v1.11.0
 
       - name: Smoke test auth (${{ matrix.os }})
         timeout-minutes: 30
