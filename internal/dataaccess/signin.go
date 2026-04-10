@@ -29,10 +29,7 @@ func LoginWithPassword(ctx context.Context, email string, pass string) (LoginRes
 		return LoginResult{}, err
 	}
 
-	result := LoginResult{JWTToken: resp.JwtToken}
-	if rt, ok := resp.AdditionalProperties["refreshToken"].(string); ok {
-		result.RefreshToken = rt
-	}
+	result := LoginResult{JWTToken: resp.JwtToken, RefreshToken: utils.FromPtr(resp.RefreshToken)}
 	return result, nil
 }
 
@@ -52,9 +49,6 @@ func LoginWithIdentityProvider(ctx context.Context, deviceCode, identityProvider
 		return LoginResult{}, err
 	}
 
-	result := LoginResult{JWTToken: resp.JwtToken}
-	if rt, ok := resp.AdditionalProperties["refreshToken"].(string); ok {
-		result.RefreshToken = rt
-	}
+	result := LoginResult{JWTToken: resp.JwtToken, RefreshToken: utils.FromPtr(resp.RefreshToken)}
 	return result, nil
 }
