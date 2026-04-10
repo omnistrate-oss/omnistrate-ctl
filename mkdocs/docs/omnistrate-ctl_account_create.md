@@ -37,7 +37,7 @@ omnistrate-ctl account create [account-name] --nebius-tenant-id=[tenant-id] --ne
   -h, --help                           help for create
       --nebius-bindings-file string    Path to a YAML file describing Nebius bindings
       --nebius-tenant-id string        Nebius tenant ID
-      --skip-wait                      Skip waiting for account to become READY
+      --skip-wait                      Skip waiting for the account to become READY
 ```
 
 ### Options inherited from parent commands

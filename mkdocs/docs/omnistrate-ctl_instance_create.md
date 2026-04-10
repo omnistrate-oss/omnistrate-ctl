@@ -7,7 +7,7 @@ Create an instance deployment
 This command helps you create an instance deployment for your service.
 
 ```
-omnistrate-ctl instance create --service=[service] --environment=[environment] --plan=[plan] --version=[version] --resource=[resource] --cloud-provider=[aws|gcp|azure|nebius] --region=[region] [--param=param] [--param-file=file-path] [--tags key=value,key2=value2] [--breakpoints id-or-key,id-or-key] [flags]
+omnistrate-ctl instance create --service=[service] --environment=[environment] --plan=[plan] --version=[version] --resource=[resource] --cloud-provider=[aws|gcp|azure|nebius] --region=[region] [--param=param] [--param-file=file-path] [--customer-account-id=instance-id] [--tags key=value,key2=value2] [--breakpoints id-or-key,id-or-key] [flags]
 ```
 
 ### Examples
@@ -27,25 +27,29 @@ omnistrate-ctl instance create --service=mysql --environment=dev --plan=mysql --
 
 # Create an instance deployment with workflow breakpoints
 omnistrate-ctl instance create --service=mysql --environment=dev --plan=mysql --version=latest --resource=mySQL --cloud-provider=aws --region=ca-central-1 --param-file /path/to/params.json --breakpoints writer,reader
+
+# Create a BYOA instance deployment using a customer account onboarding instance
+omnistrate-ctl instance create --service=Nebius --environment=dev --plan='Nebius BYOA Compute Variants' --resource=NebiusRedis --cloud-provider=nebius --region=eu-north1 --customer-account-id instance-cg1tthkj0
 ```
 
 ### Options
 
 ```
-      --breakpoints string       Workflow breakpoint resource IDs or resource keys (comma-separated)
-      --cloud-provider string    Cloud provider (aws|gcp|azure|nebius)
-      --environment string       Environment name
-  -h, --help                     help for create
-      --param string             Parameters for the instance deployment
-      --param-file string        Json file containing parameters for the instance deployment
-      --plan string              Service plan name
-      --region string            Region code (e.g. us-east-2, us-central1)
-      --resource string          Resource name
-      --service string           Service name
-      --subscription-id string   Subscription ID to use for the instance deployment. If not provided, instance deployment will be created in your own subscription.
-      --tags string              Custom tags to add to the instance deployment (format: key=value,key2=value2)
-      --version string           Service plan version (latest|preferred|1.0 etc.) (default "preferred")
-      --wait                     Wait for deployment to complete and show progress
+      --breakpoints string           Workflow breakpoint resource IDs or resource keys (comma-separated)
+      --cloud-provider string        Cloud provider (aws|gcp|azure|nebius)
+      --customer-account-id string   Customer BYOA account onboarding instance ID to inject as the cloud account. Use 'omnistrate-ctl account customer list' or 'omnistrate-ctl account customer describe <instance-id>' to find it.
+      --environment string           Environment name
+  -h, --help                         help for create
+      --param string                 Parameters for the instance deployment
+      --param-file string            Json file containing parameters for the instance deployment
+      --plan string                  Service plan name
+      --region string                Region code (e.g. us-east-2, us-central1)
+      --resource string              Resource name
+      --service string               Service name
+      --subscription-id string       Subscription ID to use for the instance deployment. If not provided, instance deployment will be created in your own subscription.
+      --tags string                  Custom tags to add to the instance deployment (format: key=value,key2=value2)
+      --version string               Service plan version (latest|preferred|1.0 etc.) (default "preferred")
+      --wait                         Wait for deployment to complete and show progress
 ```
 
 ### Options inherited from parent commands

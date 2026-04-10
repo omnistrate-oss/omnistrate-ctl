@@ -645,24 +645,9 @@ func DescribeNodepool(ctx context.Context, token string, hostClusterID string, n
 
 	cloudProvider := hostCluster.GetCloudProvider()
 
-<<<<<<< HEAD
 	entityType, err := hostClusterNodepoolEntityType(cloudProvider)
 	if err != nil {
 		return nil, nil, err
-=======
-	var req openapiclientfleet.ApiHostclusterApiDescribeHostClusterEntityRequest
-	switch cloudProvider {
-	case "aws":
-		req = apiClient.HostclusterApiAPI.HostclusterApiDescribeHostClusterEntity(ctxWithToken, hostClusterID, "NODE_GROUP", nodepoolName)
-	case "gcp":
-		req = apiClient.HostclusterApiAPI.HostclusterApiDescribeHostClusterEntity(ctxWithToken, hostClusterID, "NODEPOOL", nodepoolName)
-	case "azure":
-		req = apiClient.HostclusterApiAPI.HostclusterApiDescribeHostClusterEntity(ctxWithToken, hostClusterID, "AZURE_NODEPOOL", nodepoolName)
-	case "oci":
-		req = apiClient.HostclusterApiAPI.HostclusterApiDescribeHostClusterEntity(ctxWithToken, hostClusterID, "OCI_NODEPOOL", nodepoolName)
-	default:
-		return nil, nil, fmt.Errorf("nodepools are not supported for cloud provider: %s", cloudProvider)
->>>>>>> origin/main
 	}
 
 	req := apiClient.HostclusterApiAPI.HostclusterApiDescribeHostClusterEntity(ctxWithToken, hostClusterID, entityType, nodepoolName)
@@ -752,24 +737,9 @@ func DeleteNodepool(ctx context.Context, token string, hostClusterID string, nod
 		return fmt.Errorf("failed to describe host cluster: %w", err)
 	}
 
-<<<<<<< HEAD
 	entityType, err := hostClusterNodepoolEntityType(hostCluster.GetCloudProvider())
 	if err != nil {
 		return err
-=======
-	var req openapiclientfleet.ApiHostclusterApiDeleteEntityRequest
-	switch hostCluster.GetCloudProvider() {
-	case "aws":
-		req = apiClient.HostclusterApiAPI.HostclusterApiDeleteEntity(ctxWithToken, hostClusterID, "NODE_GROUP", nodepoolName)
-	case "gcp":
-		req = apiClient.HostclusterApiAPI.HostclusterApiDeleteEntity(ctxWithToken, hostClusterID, "NODEPOOL", nodepoolName)
-	case "azure":
-		req = apiClient.HostclusterApiAPI.HostclusterApiDeleteEntity(ctxWithToken, hostClusterID, "AZURE_NODEPOOL", nodepoolName)
-	case "oci":
-		req = apiClient.HostclusterApiAPI.HostclusterApiDeleteEntity(ctxWithToken, hostClusterID, "OCI_NODEPOOL", nodepoolName)
-	default:
-		return fmt.Errorf("nodepools are not supported for cloud provider: %s", hostCluster.GetCloudProvider())
->>>>>>> origin/main
 	}
 
 	req := apiClient.HostclusterApiAPI.HostclusterApiDeleteEntity(ctxWithToken, hostClusterID, entityType, nodepoolName)
