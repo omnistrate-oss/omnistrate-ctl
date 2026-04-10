@@ -67,7 +67,7 @@ func GetRefreshToken() (string, error) {
 		return "", err
 	}
 	if authConfig.RefreshToken == "" {
-		return "", ErrAuthConfigNotFound
+		return "", ErrRefreshTokenNotFound
 	}
 	return authConfig.RefreshToken, nil
 }
