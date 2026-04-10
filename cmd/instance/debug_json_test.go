@@ -693,8 +693,9 @@ func TestExtractTerraformStateDataStateCMFallback(t *testing.T) {
 // TestExtractTerraformStateDataMultiResourceDedicatedCMs verifies that two separate
 // resources each get their own plan preview from their respective dedicated tf-plan-* CMs.
 // This mirrors the real-world scenario:
-//   tf-plan-tf-r-wenitbo0ia-instance-y24o87zd1-7629a67a7ad45ef55fc4
-//   tf-plan-tf-r-zpo5rklwsc-instance-y24o87zd1-a4b6ca139fecb81e1804
+//
+//	tf-plan-tf-r-wenitbo0ia-instance-y24o87zd1-7629a67a7ad45ef55fc4
+//	tf-plan-tf-r-zpo5rklwsc-instance-y24o87zd1-a4b6ca139fecb81e1804
 func TestExtractTerraformStateDataMultiResourceDedicatedCMs(t *testing.T) {
 	require := require.New(t)
 
