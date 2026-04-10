@@ -509,6 +509,35 @@ func TestExtractTerraformProgressFromIndexNoMatch(t *testing.T) {
 	require.Nil(t, history)
 }
 
+func TestExtractTerraformStateDataProgressOnly(t *testing.T) {
+	require := require.New(t)
+
+	// Resource has progress data but no history, no plan previews.
+	// Should still return a result with progress (best-effort).
+	index := &terraformConfigMapIndex{
+		instanceID:      "inst-1",
+		instanceSuffix:  "inst-1",
+		stateByResource: map[string]*corev1.ConfigMap{},
+		progress: []*corev1.ConfigMap{
+			{
+				Data: map[string]string{
+					"progress": `{"terraformName":"tf-test","instanceID":"inst-1","resourceID":"r-abc123","status":"running","startedAt":"2026-01-01T00:00:00Z","totalResources":5,"inProgressResources":2}`,
+				},
+			},
+		},
+		planPreviewByResource: make(map[string][]planPreviewEntry),
+	}
+
+	stateData := extractTerraformStateData(index, "inst-1", "r-abc123")
+	require.NotNil(stateData, "should return data when only progress exists")
+	require.NotNil(stateData.Progress)
+	require.Equal("tf-test", stateData.Progress.TerraformName)
+	require.Equal("running", stateData.Progress.Status)
+	require.Equal(5, stateData.Progress.TotalResources)
+	require.Empty(stateData.History)
+	require.Empty(stateData.PlanPreviews)
+}
+
 func TestExtractTerraformStateDataWithDedicatedPlanPreviewCMs(t *testing.T) {
 	require := require.New(t)
 
@@ -584,11 +613,11 @@ func TestExtractTerraformStateDataPlanPreviewCMsOnlyNoStateCM(t *testing.T) {
 	require.Equal(`{"planned_values":{"outputs":{}}}`, stateData.PlanPreviews["myop-hash789"])
 }
 
-func TestExtractTerraformStateDataDedicatedCMTakesPriority(t *testing.T) {
+func TestExtractTerraformStateDataDedicatedCMOnly(t *testing.T) {
 	require := require.New(t)
 
-	// Both state CM and dedicated plan CM have a preview for the same op suffix.
-	// Dedicated CM data should take priority.
+	// State CM has plan preview keys but they should be ignored.
+	// Only dedicated tf-plan-* CMs provide plan previews.
 	index := &terraformConfigMapIndex{
 		instanceID:     "inst-1",
 		instanceSuffix: "inst-1",
@@ -626,17 +655,17 @@ func TestExtractTerraformStateDataDedicatedCMTakesPriority(t *testing.T) {
 	stateData := extractTerraformStateData(index, "inst-1", "r-abc123")
 	require.NotNil(stateData)
 
-	// "shared" key exists in both sources — dedicated CM should take priority
+	// Only dedicated CM previews are returned — state CM previews are ignored
+	require.Len(stateData.PlanPreviews, 2)
 	require.Equal(`{"from":"dedicated-cm"}`, stateData.PlanPreviews["shared"])
-	// "unique-op" only from dedicated CM
 	require.Equal(`{"from":"dedicated-cm-2"}`, stateData.PlanPreviews["unique-op"])
 }
 
-func TestExtractTerraformStateDataStateCMFillsGaps(t *testing.T) {
+func TestExtractTerraformStateDataStateCMPlanPreviewIgnored(t *testing.T) {
 	require := require.New(t)
 
-	// Dedicated CM has one op, state CM has a different op.
-	// Both should be present: dedicated CM wins for its op, state CM fills the gap.
+	// State CM has plan preview keys but no dedicated CMs exist.
+	// Plan previews should be empty since we only use dedicated CMs.
 	index := &terraformConfigMapIndex{
 		instanceID:     "inst-1",
 		instanceSuffix: "inst-1",
@@ -648,28 +677,18 @@ func TestExtractTerraformStateDataStateCMFillsGaps(t *testing.T) {
 				},
 			},
 		},
-		progress: []*corev1.ConfigMap{},
-		planPreviewByResource: map[string][]planPreviewEntry{
-			"tf-r-abc123": {
-				{
-					cm: &corev1.ConfigMap{
-						Data: map[string]string{
-							"plan-preview": `{"from":"dedicated-cm"}`,
-						},
-					},
-					opSuffix: "dedicated-only",
-				},
-			},
-		},
+		progress:              []*corev1.ConfigMap{},
+		planPreviewByResource: map[string][]planPreviewEntry{},
 	}
 
 	stateData := extractTerraformStateData(index, "inst-1", "r-abc123")
 	require.NotNil(stateData)
 
-	// Dedicated CM provides its own op
-	require.Equal(`{"from":"dedicated-cm"}`, stateData.PlanPreviews["dedicated-only"])
-	// State CM fills the gap for an op not in dedicated CMs
-	require.Equal(`{"from":"state-cm-only"}`, stateData.PlanPreviews["state-only"])
+	// History is available from state CM
+	require.Len(stateData.History, 1)
+	// But plan previews are empty — state CM plan preview keys are NOT consulted
+	require.Empty(stateData.PlanPreviews)
+	require.Empty(stateData.PreviewErrors)
 }
 
 func TestResourceDebugInfoPlanPreviewJSON(t *testing.T) {

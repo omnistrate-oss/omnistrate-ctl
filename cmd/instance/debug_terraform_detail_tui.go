@@ -219,8 +219,8 @@ func (m terraformDetailModel) fetchData() tea.Cmd {
 		}
 
 		// Fetch terraform output JSON and plan preview from configmaps.
-		// Plan previews are checked in order: dedicated tf-plan-* CMs, then tf-state CM,
-		// then tfData.Files as a last resort. All lookups are best-effort.
+		// Plan previews come exclusively from dedicated tf-plan-* CMs.
+		// All lookups are best-effort.
 		var tfOutputJSON string
 		var planPreviewByOpID, planPreviewErrByOpID map[string]string
 		if conn == nil {
@@ -237,7 +237,7 @@ func (m terraformDetailModel) fetchData() tea.Cmd {
 			if indexErr != nil || index == nil {
 				continue
 			}
-			// Extract plan previews (dedicated tf-plan-* CMs first, state CM fallback)
+			// Extract plan previews from dedicated tf-plan-* CMs only
 			stateData := extractTerraformStateData(index, m.debugData.InstanceID, m.node.ID)
 			if stateData != nil {
 				if len(stateData.PlanPreviews) > 0 {
@@ -251,10 +251,6 @@ func (m terraformDetailModel) fetchData() tea.Cmd {
 			tfData := index.terraformDataForResource(m.node.ID)
 			if tfData != nil && len(tfData.Files) > 0 {
 				tfOutputJSON = findLatestOutputLog(tfData.Files, history)
-				// Last resort: extract plan previews from Files if nothing found yet
-				if len(planPreviewByOpID) == 0 && len(planPreviewErrByOpID) == 0 {
-					planPreviewByOpID, planPreviewErrByOpID = findAllPlanPreviews(tfData.Files)
-				}
 				break
 			}
 			// If tfData.Files was empty but we got plan previews, still break

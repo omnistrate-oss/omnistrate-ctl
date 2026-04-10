@@ -330,8 +330,8 @@ func collectTerraformDebugInfo(ctx context.Context, token string, instanceData *
 		}
 
 		// Get terraform progress, operation history, and plan previews.
-		// Plan previews are checked in order: dedicated tf-plan-* CMs first, then state CM,
-		// then tfData.Files as a last resort. All lookups are best-effort.
+		// Plan previews come exclusively from dedicated tf-plan-* CMs.
+		// All lookups are best-effort.
 		stateData := extractTerraformStateData(index, instanceID, node.ID)
 		if stateData != nil {
 			if stateData.Progress != nil {
@@ -345,18 +345,6 @@ func collectTerraformDebugInfo(ctx context.Context, token string, instanceData *
 			}
 			if len(stateData.PreviewErrors) > 0 {
 				info.TerraformPlanPreviewError = stateData.PreviewErrors
-			}
-		}
-
-		// Last resort: if plan previews weren't found via stateData but tfData.Files has them,
-		// extract from there as well (belt-and-suspenders).
-		if len(info.TerraformPlanPreview) == 0 && len(info.TerraformPlanPreviewError) == 0 && tfData != nil && len(tfData.Files) > 0 {
-			previews, previewErrors := findAllPlanPreviews(tfData.Files)
-			if len(previews) > 0 {
-				info.TerraformPlanPreview = previews
-			}
-			if len(previewErrors) > 0 {
-				info.TerraformPlanPreviewError = previewErrors
 			}
 		}
 	}

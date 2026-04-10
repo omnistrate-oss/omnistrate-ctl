@@ -84,8 +84,8 @@ func extractTerraformProgressFromIndex(index *terraformConfigMapIndex, instanceI
 
 // extractTerraformStateData extracts all state data (progress, history, plan previews)
 // from the tf-state and progress configmaps for a given resource.
-// Plan previews are sourced from dedicated tf-plan-* ConfigMaps first (preferred),
-// falling back to the tf-state ConfigMap. All lookups are best-effort.
+// Plan previews are sourced exclusively from dedicated tf-plan-* ConfigMaps.
+// History comes from the tf-state ConfigMap. All lookups are best-effort.
 func extractTerraformStateData(index *terraformConfigMapIndex, instanceID, resourceID string) *TerraformStateData {
 	if index == nil {
 		return nil
@@ -113,24 +113,11 @@ func extractTerraformStateData(index *terraformConfigMapIndex, instanceID, resou
 		}
 	}
 
-	// Check dedicated tf-plan-* ConfigMaps first (preferred, newer format).
+	// Load plan previews/errors exclusively from dedicated tf-plan-* ConfigMaps.
 	// These are per-operation ConfigMaps with data keys "plan-preview" and "plan-preview-error".
 	planPreviews, previewErrors := index.planPreviewsForResource(resourceID)
 
-	// Fall back to the state configmap for any plan previews not found in dedicated CMs.
-	// State CM stores previews as "{opID}-plan-preview" / "{opID}-plan-preview-error" keys.
-	if stateConfigMap != nil {
-		statePreviews, stateErrors := findAllPlanPreviews(stateConfigMap.Data)
-		mergeStringMapNewKeys(planPreviews, statePreviews)
-		mergeStringMapNewKeys(previewErrors, stateErrors)
-	}
-
-	// If we have no history and no plan previews, there's nothing useful to return
-	if len(history) == 0 && len(planPreviews) == 0 && len(previewErrors) == 0 {
-		return nil
-	}
-
-	// Find the latest progress configmap that matches this resource/instance
+	// Find the latest progress configmap that matches this resource/instance.
 	// Progress configmaps contain resourceID and instanceID fields we can match on.
 	// We pick the one with the latest startedAt timestamp.
 	normalizedInstanceID := strings.ToLower(instanceID)
@@ -168,6 +155,12 @@ func extractTerraformStateData(index *terraformConfigMapIndex, instanceID, resou
 			progressData = &pd
 			latestProgressTime = t
 		}
+	}
+
+	// Return nil only when ALL fields are empty — best-effort means we return
+	// whatever data was found, even if only one source had results.
+	if progressData == nil && len(history) == 0 && len(planPreviews) == 0 && len(previewErrors) == 0 {
+		return nil
 	}
 
 	return &TerraformStateData{
@@ -208,13 +201,4 @@ func fetchInstanceDataForResource(ctx context.Context, token, serviceID, environ
 		return nil, fmt.Errorf("failed to describe resource instance: %w", err)
 	}
 	return instanceData, nil
-}
-
-// mergeStringMapNewKeys copies entries from src into dst, skipping any key already present in dst.
-func mergeStringMapNewKeys(dst, src map[string]string) {
-	for k, v := range src {
-		if _, exists := dst[k]; !exists {
-			dst[k] = v
-		}
-	}
 }
