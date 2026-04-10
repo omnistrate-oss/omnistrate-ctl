@@ -211,6 +211,40 @@ func TestArchiveArtifactPaths_NonExistentPath(t *testing.T) {
 	assert.Contains(t, err.Error(), "does not exist")
 }
 
+func TestArchiveArtifactPaths_RejectsPathsOutsideBaseDir(t *testing.T) {
+	rootDir, err := os.MkdirTemp("", "test-archive-root-*")
+	require.NoError(t, err)
+	defer os.RemoveAll(rootDir)
+
+	sourceDir := filepath.Join(rootDir, "source")
+	outsideDir := filepath.Join(rootDir, "outside")
+	require.NoError(t, os.MkdirAll(sourceDir, 0755))
+	require.NoError(t, os.MkdirAll(outsideDir, 0755))
+	require.NoError(t, os.WriteFile(filepath.Join(outsideDir, "secret.txt"), []byte("secret"), 0600))
+
+	tests := []struct {
+		name string
+		path string
+	}{
+		{
+			name: "relative parent traversal",
+			path: filepath.Join("..", "outside"),
+		},
+		{
+			name: "absolute path outside base dir",
+			path: outsideDir,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := ArchiveArtifactPaths(sourceDir, []string{tt.path})
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), "escapes base directory")
+		})
+	}
+}
+
 func TestArchiveArtifactPaths_FileNotDirectory(t *testing.T) {
 	// Create a temporary file (not a directory and not tar.gz)
 	tmpFile, err := os.CreateTemp("", "test-file-*.txt")

@@ -59,7 +59,7 @@ func parseNebiusBindingsFile(path string) ([]openapiclient.NebiusAccountBindingI
 	}
 
 	if len(entries) == 0 {
-		return nil, fmt.Errorf("Nebius bindings file %q must contain at least one binding", resolvedPath)
+		return nil, fmt.Errorf("nebius bindings file %q must contain at least one binding", resolvedPath)
 	}
 
 	baseDir := filepath.Dir(resolvedPath)

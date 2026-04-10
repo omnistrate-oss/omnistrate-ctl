@@ -34,7 +34,7 @@ func addCloudAccountProviderFlags(cmd *cobra.Command) {
 	cmd.MarkFlagsRequiredTogether(gcpProjectIDFlag, gcpProjectNumberFlag)
 	cmd.MarkFlagsRequiredTogether(azureSubscriptionIDFlag, azureTenantIDFlag)
 	cmd.MarkFlagsRequiredTogether(nebiusTenantIDFlag, nebiusBindingsFileFlag)
-	cmd.MarkFlagFilename(nebiusBindingsFileFlag)
+	_ = cmd.MarkFlagFilename(nebiusBindingsFileFlag)
 }
 
 func cloudAccountParamsFromFlags(cmd *cobra.Command, name string) (CloudAccountParams, error) {

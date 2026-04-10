@@ -106,9 +106,9 @@ func init() {
 	customerCreateCmd.Flags().String("subscription-id", "", "Subscription ID to use for the onboarding instance")
 	customerCreateCmd.Flags().String(customerEmailFlag, "", "Customer email to onboard on behalf of in production environments")
 
-	customerCreateCmd.MarkFlagRequired("service")
-	customerCreateCmd.MarkFlagRequired("environment")
-	customerCreateCmd.MarkFlagRequired("plan")
+	_ = customerCreateCmd.MarkFlagRequired("service")
+	_ = customerCreateCmd.MarkFlagRequired("environment")
+	_ = customerCreateCmd.MarkFlagRequired("plan")
 }
 
 func runCustomerCreate(cmd *cobra.Command, args []string) error {

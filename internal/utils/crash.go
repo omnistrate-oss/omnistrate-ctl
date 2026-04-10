@@ -55,13 +55,13 @@ func buildCrashLog(panicValue interface{}, stack string) string {
 	var b strings.Builder
 
 	b.WriteString("=== omnistrate-ctl crash report ===\n")
-	b.WriteString(fmt.Sprintf("Time:    %s\n", time.Now().UTC().Format(time.RFC3339)))
-	b.WriteString(fmt.Sprintf("Version: %s\n", config.Version))
-	b.WriteString(fmt.Sprintf("Commit:  %s\n", config.CommitID))
-	b.WriteString(fmt.Sprintf("OS/Arch: %s/%s\n", runtime.GOOS, runtime.GOARCH))
-	b.WriteString(fmt.Sprintf("Go:      %s\n", runtime.Version()))
-	b.WriteString(fmt.Sprintf("\nPanic: %v\n", panicValue))
-	b.WriteString(fmt.Sprintf("\nStack trace:\n%s\n", stack))
+	fmt.Fprintf(&b, "Time:    %s\n", time.Now().UTC().Format(time.RFC3339))
+	fmt.Fprintf(&b, "Version: %s\n", config.Version)
+	fmt.Fprintf(&b, "Commit:  %s\n", config.CommitID)
+	fmt.Fprintf(&b, "OS/Arch: %s/%s\n", runtime.GOOS, runtime.GOARCH)
+	fmt.Fprintf(&b, "Go:      %s\n", runtime.Version())
+	fmt.Fprintf(&b, "\nPanic: %v\n", panicValue)
+	fmt.Fprintf(&b, "\nStack trace:\n%s\n", stack)
 
 	return b.String()
 }

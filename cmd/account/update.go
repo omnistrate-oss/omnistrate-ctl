@@ -37,7 +37,7 @@ func init() {
 	updateCmd.Flags().String("description", "", "Updated account description")
 	updateCmd.Flags().String("nebius-bindings-file", "", "Path to a YAML file describing the full replacement Nebius bindings")
 	updateCmd.Flags().Bool("skip-wait", false, "Skip waiting for account to become READY after replacing Nebius bindings")
-	updateCmd.MarkFlagFilename("nebius-bindings-file")
+	_ = updateCmd.MarkFlagFilename("nebius-bindings-file")
 }
 
 type UpdateCloudAccountParams struct {

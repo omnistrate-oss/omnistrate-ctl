@@ -118,7 +118,7 @@ Dry run:
   - With --dry-run, deploy performs full validation and build steps but stops
       before launching or upgrading an instance.`
 
-	nebiusDeployOnboardingMessage = "Nebius account onboarding from deploy is not supported. Run 'omnistrate-ctl account create <name> --nebius-tenant-id <tenant-id> --nebius-bindings-file <bindings-file>' first, wait for the desired binding to become READY, and then rerun deploy."
+	nebiusDeployOnboardingMessage = "Nebius account onboarding from deploy is not supported. Run 'omnistrate-ctl account create <name> --nebius-tenant-id <tenant-id> --nebius-bindings-file <bindings-file>' first, wait for the desired binding to become READY, and then rerun deploy"
 )
 
 var (
@@ -2088,7 +2088,7 @@ func ensureReadyNebiusAccountForRegion(ctx context.Context, token, region string
 	}
 
 	if len(accounts.AccountConfigs) == 0 {
-		return fmt.Errorf("no Nebius accounts are linked. %s", nebiusDeployOnboardingMessage)
+		return fmt.Errorf("no Nebius accounts are linked; %s", nebiusDeployOnboardingMessage)
 	}
 
 	readyRegions := map[string]struct{}{}
@@ -2106,7 +2106,7 @@ func ensureReadyNebiusAccountForRegion(ctx context.Context, token, region string
 	}
 
 	if len(readyRegions) == 0 {
-		return fmt.Errorf("linked Nebius accounts do not have any READY region bindings. %s", nebiusDeployOnboardingMessage)
+		return fmt.Errorf("linked Nebius accounts do not have any READY region bindings; %s", nebiusDeployOnboardingMessage)
 	}
 
 	availableRegions := make([]string, 0, len(readyRegions))
@@ -2224,7 +2224,7 @@ func promptForCloudCredentials(cloudProvider string) (string, error) {
 		}
 
 	case "nebius":
-		return "", fmt.Errorf(nebiusDeployOnboardingMessage)
+		return "", fmt.Errorf("action required: %s", nebiusDeployOnboardingMessage)
 
 	default:
 		return "", fmt.Errorf("unsupported cloud provider: %s", cloudProvider)

@@ -27,11 +27,6 @@ type DeviceCodeResponse struct {
 	Interval   int    `json:"interval"`
 }
 
-// AccessTokenResponse represents the response from the jwt token request
-type AccessTokenResponse struct {
-	JWTToken string `json:"jwt_token"`
-}
-
 // SSO identity provider credentials and endpoints
 const (
 	identityProviderGitHub         = "GitHub for CTL"
@@ -145,14 +140,19 @@ func requestDeviceCodeWithHttpClient(ctx context.Context, client *http.Client, i
 		contentType = "application/json"
 	}
 
-	req, err := http.NewRequestWithContext(ctx, "POST", getDeviceCodeURL(identityProviderName), reqBody)
+	deviceCodeURL := getDeviceCodeURL(identityProviderName)
+	if deviceCodeURL == "" {
+		return nil, fmt.Errorf("unsupported identity provider %q", identityProviderName)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, "POST", deviceCodeURL, reqBody)
 	if err != nil {
 		return nil, err
 	}
 	req.Header.Set("Content-Type", contentType)
 	req.Header.Set("Accept", "application/json")
 
-	resp, err := client.Do(req)
+	resp, err := client.Do(req) //nolint:gosec // deviceCodeURL is chosen from the fixed identity-provider endpoint list above
 	if err != nil {
 		return nil, err
 	}

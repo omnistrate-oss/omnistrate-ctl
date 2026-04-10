@@ -33,7 +33,7 @@ func init() {
 	customerUpdateCmd.Flags().String("description", "", "Updated backing account description")
 	customerUpdateCmd.Flags().String("nebius-bindings-file", "", "Path to a YAML file describing the full replacement Nebius bindings")
 	customerUpdateCmd.Flags().Bool("skip-wait", false, "Skip waiting for the backing account to become READY after replacing Nebius bindings")
-	customerUpdateCmd.MarkFlagFilename("nebius-bindings-file")
+	_ = customerUpdateCmd.MarkFlagFilename("nebius-bindings-file")
 }
 
 func runCustomerUpdate(cmd *cobra.Command, args []string) error {

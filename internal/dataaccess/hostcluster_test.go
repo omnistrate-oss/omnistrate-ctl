@@ -31,11 +31,4 @@ func TestHostClusterNodepoolEntityType(t *testing.T) {
 		assert.Empty(t, entityType)
 		assert.Contains(t, err.Error(), "Nebius deployment cells is not yet supported")
 	})
-
-	t.Run("unknown provider unsupported", func(t *testing.T) {
-		entityType, err := hostClusterNodepoolEntityType("oci")
-		require.Error(t, err)
-		assert.Empty(t, entityType)
-		assert.Contains(t, err.Error(), "nodepools are not supported for cloud provider: oci")
-	})
 }

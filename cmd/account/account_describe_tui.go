@@ -270,9 +270,9 @@ func (m accountDescribeModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 func (m accountDescribeModel) handleViewportKey(msg tea.KeyMsg) accountDescribeModel {
 	switch msg.String() {
 	case "down", "j":
-		m.viewport.LineDown(1)
+		m.viewport.ScrollDown(1)
 	case "up", "k":
-		m.viewport.LineUp(1)
+		m.viewport.ScrollUp(1)
 	case "pgdown", "f", " ":
 		m.viewport.PageDown()
 	case "pgup", "b":
@@ -351,7 +351,6 @@ func (m *accountDescribeModel) collapseSelectedItem() bool {
 		return false
 	}
 
-	targetKey := selected.key
 	if selected.expandable && selected.expanded {
 		if setNodeExpanded(m.rootNodes, selected.key, false) {
 			m.rebuildVisibleItems(selected.key)
@@ -365,8 +364,7 @@ func (m *accountDescribeModel) collapseSelectedItem() bool {
 	}
 
 	if setNodeExpanded(m.rootNodes, selected.parentKey, false) {
-		targetKey = selected.parentKey
-		m.rebuildVisibleItems(targetKey)
+		m.rebuildVisibleItems(selected.parentKey)
 		return true
 	}
 	return false
@@ -440,15 +438,6 @@ func (m accountDescribeModel) selectedCopyText() string {
 	}
 
 	return selectedCopyText(selected)
-}
-
-func (m accountDescribeModel) selectedOpenURL() string {
-	selected := m.selectedItem()
-	if selected == nil {
-		return ""
-	}
-
-	return selectedOpenURL(selected)
 }
 
 func (m accountDescribeModel) selectedLinkOptions() []accountDescribeLinkOption {
@@ -562,7 +551,20 @@ func renderAccountDescribeSnapshot(account *openapiclient.DescribeAccountConfigR
 }
 
 func isAccountDescribeInteractive() bool {
-	return term.IsTerminal(int(os.Stdout.Fd())) && term.IsTerminal(int(os.Stdin.Fd()))
+	return fileIsTerminal(os.Stdout) && fileIsTerminal(os.Stdin)
+}
+
+func fileIsTerminal(file *os.File) bool {
+	if file == nil {
+		return false
+	}
+
+	fd := file.Fd()
+	if fd > uintptr(^uint(0)>>1) {
+		return false
+	}
+
+	return term.IsTerminal(int(fd))
 }
 
 func buildAccountDescribeNodes(account *openapiclient.DescribeAccountConfigResult) []*accountDescribeNode {
