@@ -473,6 +473,7 @@ func TestExtractTerraformProgressFromIndex(t *testing.T) {
 				},
 			},
 		},
+		planPreviewByResource: make(map[string][]planPreviewEntry),
 	}
 
 	progress, history := extractTerraformProgressFromIndex(index, "inst-1", "r-abc123")
@@ -496,15 +497,140 @@ func TestExtractTerraformProgressFromIndexNilIndex(t *testing.T) {
 
 func TestExtractTerraformProgressFromIndexNoMatch(t *testing.T) {
 	index := &terraformConfigMapIndex{
-		instanceID:      "inst-1",
-		instanceSuffix:  "inst-1",
-		stateByResource: map[string]*corev1.ConfigMap{},
-		progress:        []*corev1.ConfigMap{},
+		instanceID:            "inst-1",
+		instanceSuffix:        "inst-1",
+		stateByResource:       map[string]*corev1.ConfigMap{},
+		progress:              []*corev1.ConfigMap{},
+		planPreviewByResource: make(map[string][]planPreviewEntry),
 	}
 
 	progress, history := extractTerraformProgressFromIndex(index, "inst-1", "r-nonexistent")
 	require.Nil(t, progress)
 	require.Nil(t, history)
+}
+
+func TestExtractTerraformStateDataWithDedicatedPlanPreviewCMs(t *testing.T) {
+	require := require.New(t)
+
+	index := &terraformConfigMapIndex{
+		instanceID:     "inst-1",
+		instanceSuffix: "inst-1",
+		stateByResource: map[string]*corev1.ConfigMap{
+			"tf-r-abc123": {
+				Data: map[string]string{
+					"history": `[{"operation":"apply","status":"completed","operationId":"op-1"}]`,
+				},
+			},
+		},
+		progress: []*corev1.ConfigMap{},
+		planPreviewByResource: map[string][]planPreviewEntry{
+			"tf-r-abc123": {
+				{
+					cm: &corev1.ConfigMap{
+						Data: map[string]string{
+							"plan-preview": `{"format_version":"1.2","planned_values":{}}`,
+						},
+					},
+					opSuffix: "op-1-hash123",
+				},
+				{
+					cm: &corev1.ConfigMap{
+						Data: map[string]string{
+							"plan-preview-error": "Error: timeout waiting",
+						},
+					},
+					opSuffix: "op-2-hash456",
+				},
+			},
+		},
+	}
+
+	stateData := extractTerraformStateData(index, "inst-1", "r-abc123")
+	require.NotNil(stateData)
+	require.Len(stateData.History, 1)
+	require.Len(stateData.PlanPreviews, 1)
+	require.Equal(`{"format_version":"1.2","planned_values":{}}`, stateData.PlanPreviews["op-1-hash123"])
+	require.Len(stateData.PreviewErrors, 1)
+	require.Equal("Error: timeout waiting", stateData.PreviewErrors["op-2-hash456"])
+}
+
+func TestExtractTerraformStateDataPlanPreviewCMsOnlyNoStateCM(t *testing.T) {
+	require := require.New(t)
+
+	// No state configmap, but dedicated plan preview CMs exist
+	index := &terraformConfigMapIndex{
+		instanceID:      "inst-1",
+		instanceSuffix:  "inst-1",
+		stateByResource: map[string]*corev1.ConfigMap{},
+		progress:        []*corev1.ConfigMap{},
+		planPreviewByResource: map[string][]planPreviewEntry{
+			"tf-r-abc123": {
+				{
+					cm: &corev1.ConfigMap{
+						Data: map[string]string{
+							"plan-preview": `{"planned_values":{"outputs":{}}}`,
+						},
+					},
+					opSuffix: "myop-hash789",
+				},
+			},
+		},
+	}
+
+	stateData := extractTerraformStateData(index, "inst-1", "r-abc123")
+	require.NotNil(stateData, "should return state data when plan preview CMs exist even without state CM")
+	require.Empty(stateData.History)
+	require.Len(stateData.PlanPreviews, 1)
+	require.Equal(`{"planned_values":{"outputs":{}}}`, stateData.PlanPreviews["myop-hash789"])
+}
+
+func TestExtractTerraformStateDataStateCMPreviewTakesPriority(t *testing.T) {
+	require := require.New(t)
+
+	// Both state CM and dedicated plan CM have a preview for the same op suffix.
+	// State CM data should take priority.
+	index := &terraformConfigMapIndex{
+		instanceID:     "inst-1",
+		instanceSuffix: "inst-1",
+		stateByResource: map[string]*corev1.ConfigMap{
+			"tf-r-abc123": {
+				Data: map[string]string{
+					"history":          `[{"operation":"apply","status":"completed","operationId":"op-1"}]`,
+					"shared-plan-preview": `{"from":"state-cm"}`,
+				},
+			},
+		},
+		progress: []*corev1.ConfigMap{},
+		planPreviewByResource: map[string][]planPreviewEntry{
+			"tf-r-abc123": {
+				{
+					cm: &corev1.ConfigMap{
+						Data: map[string]string{
+							"plan-preview": `{"from":"dedicated-cm"}`,
+						},
+					},
+					opSuffix: "shared",
+				},
+				{
+					cm: &corev1.ConfigMap{
+						Data: map[string]string{
+							"plan-preview": `{"from":"dedicated-cm-2"}`,
+						},
+					},
+					opSuffix: "unique-op",
+				},
+			},
+		},
+	}
+
+	stateData := extractTerraformStateData(index, "inst-1", "r-abc123")
+	require.NotNil(stateData)
+
+	// "shared" key exists in state CM data as "shared-plan-preview" → key "shared"
+	// The state CM version should take priority
+	require.Equal(`{"from":"state-cm"}`, stateData.PlanPreviews["shared"])
+	// "unique-op" only from dedicated CM
+	require.Equal(`{"from":"dedicated-cm-2"}`, stateData.PlanPreviews["unique-op"])
 }
 
 func TestResourceDebugInfoPlanPreviewJSON(t *testing.T) {

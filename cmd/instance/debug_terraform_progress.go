@@ -84,6 +84,7 @@ func extractTerraformProgressFromIndex(index *terraformConfigMapIndex, instanceI
 
 // extractTerraformStateData extracts all state data (progress, history, plan previews)
 // from the tf-state and progress configmaps for a given resource.
+// Plan previews are also sourced from dedicated tf-plan-* ConfigMaps.
 func extractTerraformStateData(index *terraformConfigMapIndex, instanceID, resourceID string) *TerraformStateData {
 	if index == nil {
 		return nil
@@ -91,34 +92,53 @@ func extractTerraformStateData(index *terraformConfigMapIndex, instanceID, resou
 
 	// Find the tf-state configmap for this resource, trying multiple key formats
 	var stateConfigMap *corev1.ConfigMap
-	var ok bool
 	for _, key := range resourceConfigMapKeys(resourceID) {
-		stateConfigMap, ok = index.stateByResource[key]
-		if ok {
+		if cm, ok := index.stateByResource[key]; ok {
+			stateConfigMap = cm
 			break
 		}
 	}
-	if !ok {
-		return nil
-	}
-
-	// Parse history from the configmap
-	historyJSON, ok := stateConfigMap.Data["history"]
-	if !ok {
-		return nil
-	}
 
 	var history []TerraformHistoryEntry
-	if err := json.Unmarshal([]byte(historyJSON), &history); err != nil {
-		// Surface history parse problems so that "no data" states are diagnosable.
-		fmt.Printf("warning: failed to parse terraform history for instance %s, resource %s: %v\n", instanceID, resourceID, err)
-		return nil
+	var planPreviews, previewErrors map[string]string
+
+	if stateConfigMap != nil {
+		// Parse history from the configmap
+		historyJSON, ok := stateConfigMap.Data["history"]
+		if ok {
+			if err := json.Unmarshal([]byte(historyJSON), &history); err != nil {
+				// Surface history parse problems so that "no data" states are diagnosable.
+				fmt.Printf("warning: failed to parse terraform history for instance %s, resource %s: %v\n", instanceID, resourceID, err)
+			}
+		}
+
+		// Extract plan previews directly from the state configmap data.
+		// This is the same configmap we just successfully read history from,
+		// so it avoids the issue where terraformDataForResource may fail to find it.
+		planPreviews, previewErrors = findAllPlanPreviews(stateConfigMap.Data)
+	} else {
+		planPreviews = make(map[string]string)
+		previewErrors = make(map[string]string)
 	}
 
-	// Extract plan previews directly from the state configmap data.
-	// This is the same configmap we just successfully read history from,
-	// so it avoids the issue where terraformDataForResource may fail to find it.
-	planPreviews, previewErrors := findAllPlanPreviews(stateConfigMap.Data)
+	// Also check dedicated tf-plan-* ConfigMaps for plan previews.
+	// These are per-operation ConfigMaps with data keys "plan-preview" and "plan-preview-error".
+	planCMPreviews, planCMErrors := index.planPreviewsForResource(resourceID)
+	for opID, content := range planCMPreviews {
+		if _, exists := planPreviews[opID]; !exists {
+			planPreviews[opID] = content
+		}
+	}
+	for opID, content := range planCMErrors {
+		if _, exists := previewErrors[opID]; !exists {
+			previewErrors[opID] = content
+		}
+	}
+
+	// If we have no history and no plan previews, there's nothing useful to return
+	if len(history) == 0 && len(planPreviews) == 0 && len(previewErrors) == 0 {
+		return nil
+	}
 
 	// Find the latest progress configmap that matches this resource/instance
 	// Progress configmaps contain resourceID and instanceID fields we can match on.

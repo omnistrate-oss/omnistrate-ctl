@@ -312,3 +312,176 @@ func TestLoadTerraformConfigMapIndex_MissingDeploymentCell(t *testing.T) {
 	_, _, err := loadTerraformConfigMapIndexForInstanceWithLoader(ctx, "token", inst, "instance-abc", loader)
 	require.Error(err)
 }
+
+func TestExtractPlanPreviewOpSuffix(t *testing.T) {
+	tests := []struct {
+		name           string
+		instanceAndOp  string
+		instanceSuffix string
+		instanceID     string
+		expected       string
+	}{
+		{
+			name:           "suffix match",
+			instanceAndOp:  "y24o87zd1-7629a67a7ad45ef55fc4",
+			instanceSuffix: "y24o87zd1",
+			instanceID:     "instance-y24o87zd1",
+			expected:       "7629a67a7ad45ef55fc4",
+		},
+		{
+			name:           "full instance ID match",
+			instanceAndOp:  "instance-abc-op123",
+			instanceSuffix: "abc",
+			instanceID:     "instance-abc",
+			expected:       "op123",
+		},
+		{
+			name:           "suffix match takes priority",
+			instanceAndOp:  "abc-op456",
+			instanceSuffix: "abc",
+			instanceID:     "instance-abc",
+			expected:       "op456",
+		},
+		{
+			name:           "no match",
+			instanceAndOp:  "xyz-op789",
+			instanceSuffix: "abc",
+			instanceID:     "instance-abc",
+			expected:       "",
+		},
+		{
+			name:           "instance suffix only without op suffix",
+			instanceAndOp:  "abc",
+			instanceSuffix: "abc",
+			instanceID:     "instance-abc",
+			expected:       "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := extractPlanPreviewOpSuffix(tt.instanceAndOp, tt.instanceSuffix, tt.instanceID)
+			require.Equal(t, tt.expected, result)
+		})
+	}
+}
+
+func TestNewTerraformConfigMapIndex_PlanPreviewCMs(t *testing.T) {
+	require := require.New(t)
+
+	configMaps := []corev1.ConfigMap{
+		{ObjectMeta: metav1.ObjectMeta{Name: "tf-state-tf-r-abc-instance-xyz"}},
+		{
+			ObjectMeta: metav1.ObjectMeta{Name: "tf-plan-tf-r-abc-instance-xyz-op111"},
+			Data: map[string]string{
+				"plan-preview": `{"format_version":"1.2","planned_values":{}}`,
+			},
+		},
+		{
+			ObjectMeta: metav1.ObjectMeta{Name: "tf-plan-tf-r-abc-instance-xyz-op222"},
+			Data: map[string]string{
+				"plan-preview-error": "Error: Failed to refresh state",
+			},
+		},
+		{
+			// Different instance — should not be indexed
+			ObjectMeta: metav1.ObjectMeta{Name: "tf-plan-tf-r-abc-instance-other-op333"},
+		},
+	}
+
+	index := newTerraformConfigMapIndex("instance-xyz", configMaps)
+
+	require.Len(index.planPreviewByResource, 1)
+	entries := index.planPreviewByResource["tf-r-abc"]
+	require.Len(entries, 2)
+
+	// Check operation suffixes
+	opSuffixes := make(map[string]bool)
+	for _, e := range entries {
+		opSuffixes[e.opSuffix] = true
+	}
+	require.True(opSuffixes["op111"])
+	require.True(opSuffixes["op222"])
+}
+
+func TestPlanPreviewsForResource(t *testing.T) {
+	require := require.New(t)
+
+	configMaps := []corev1.ConfigMap{
+		{
+			ObjectMeta: metav1.ObjectMeta{Name: "tf-plan-tf-r-abc-instance-xyz-op111"},
+			Data: map[string]string{
+				"plan-preview": `{"format_version":"1.2","planned_values":{}}`,
+			},
+		},
+		{
+			ObjectMeta: metav1.ObjectMeta{Name: "tf-plan-tf-r-abc-instance-xyz-op222"},
+			Data: map[string]string{
+				"plan-preview-error": "Error: timeout",
+			},
+		},
+		{
+			ObjectMeta: metav1.ObjectMeta{Name: "tf-plan-tf-r-abc-instance-xyz-op333"},
+			Data: map[string]string{
+				"plan-preview":       `{"planned_values":{"outputs":{}}}`,
+				"plan-preview-error": "Warning: partial failure",
+			},
+		},
+	}
+
+	index := newTerraformConfigMapIndex("instance-xyz", configMaps)
+
+	// r-abc should match via resourceConfigMapKeys ("tf-r-abc" is the first key tried)
+	previews, previewErrors := index.planPreviewsForResource("r-abc")
+	require.Len(previews, 2)
+	require.Equal(`{"format_version":"1.2","planned_values":{}}`, previews["op111"])
+	require.Equal(`{"planned_values":{"outputs":{}}}`, previews["op333"])
+
+	require.Len(previewErrors, 2)
+	require.Equal("Error: timeout", previewErrors["op222"])
+	require.Equal("Warning: partial failure", previewErrors["op333"])
+}
+
+func TestPlanPreviewsForResource_NilIndex(t *testing.T) {
+	var index *terraformConfigMapIndex
+	previews, previewErrors := index.planPreviewsForResource("r-abc")
+	require.Empty(t, previews)
+	require.Empty(t, previewErrors)
+}
+
+func TestPlanPreviewsForResource_NoMatch(t *testing.T) {
+	index := newTerraformConfigMapIndex("instance-xyz", nil)
+	previews, previewErrors := index.planPreviewsForResource("r-nonexistent")
+	require.Empty(t, previews)
+	require.Empty(t, previewErrors)
+}
+
+func TestMerge_PlanPreviewCMs(t *testing.T) {
+	require := require.New(t)
+
+	dpCMs := []corev1.ConfigMap{
+		{
+			ObjectMeta: metav1.ObjectMeta{Name: "tf-plan-tf-r-dp-instance-abc-op1"},
+			Data: map[string]string{
+				"plan-preview": `{"dp":"plan"}`,
+			},
+		},
+	}
+	cpCMs := []corev1.ConfigMap{
+		{
+			ObjectMeta: metav1.ObjectMeta{Name: "tf-plan-tf-r-cp-instance-abc-op2"},
+			Data: map[string]string{
+				"plan-preview": `{"cp":"plan"}`,
+			},
+		},
+	}
+
+	dpIndex := newTerraformConfigMapIndex("instance-abc", dpCMs)
+	cpIndex := newTerraformConfigMapIndex("instance-abc", cpCMs)
+
+	dpIndex.merge(cpIndex)
+
+	require.Len(dpIndex.planPreviewByResource, 2)
+	require.Len(dpIndex.planPreviewByResource["tf-r-dp"], 1)
+	require.Len(dpIndex.planPreviewByResource["tf-r-cp"], 1)
+}
