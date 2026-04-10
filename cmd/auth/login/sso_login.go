@@ -27,6 +27,11 @@ type DeviceCodeResponse struct {
 	Interval   int    `json:"interval"`
 }
 
+// AccessTokenResponse represents the response from the jwt token request
+type AccessTokenResponse struct {
+	JWTToken string `json:"jwt_token"` // #nosec G117 -- field must hold the JWT token value
+}
+
 // SSO identity provider credentials and endpoints
 const (
 	identityProviderGitHub         = "GitHub for CTL"

@@ -4,15 +4,16 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"os"
+	"path/filepath"
+
+	"github.com/pkg/errors"
+
 	"fmt"
 	"io"
 	"net/http"
 	"net/url"
-	"os"
-	"path/filepath"
 	"strings"
-
-	"github.com/pkg/errors"
 )
 
 func GetInstanceDeploymentEntity(ctx context.Context, token string, instanceID string, deploymentType string, deploymentName string) (output string, err error) {
