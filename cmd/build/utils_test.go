@@ -208,7 +208,7 @@ func TestArchiveArtifactPaths_NilPaths(t *testing.T) {
 func TestArchiveArtifactPaths_NonExistentPath(t *testing.T) {
 	_, err := ArchiveArtifactPaths("/tmp", []string{"/non/existent/path/that/does/not/exist"})
 	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "escapes base directory")
+	assert.Contains(t, err.Error(), "does not exist")
 }
 
 func TestArchiveArtifactPaths_RejectsPathsOutsideBaseDir(t *testing.T) {
