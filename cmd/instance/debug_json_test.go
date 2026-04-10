@@ -595,7 +595,7 @@ func TestExtractTerraformStateDataStateCMPreviewTakesPriority(t *testing.T) {
 		stateByResource: map[string]*corev1.ConfigMap{
 			"tf-r-abc123": {
 				Data: map[string]string{
-					"history":          `[{"operation":"apply","status":"completed","operationId":"op-1"}]`,
+					"history":             `[{"operation":"apply","status":"completed","operationId":"op-1"}]`,
 					"shared-plan-preview": `{"from":"state-cm"}`,
 				},
 			},

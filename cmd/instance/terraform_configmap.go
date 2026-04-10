@@ -45,11 +45,11 @@ type planPreviewEntry struct {
 }
 
 type terraformConfigMapIndex struct {
-	instanceID             string
-	instanceSuffix         string
-	stateByResource        map[string]*corev1.ConfigMap
-	progress               []*corev1.ConfigMap
-	planPreviewByResource  map[string][]planPreviewEntry
+	instanceID            string
+	instanceSuffix        string
+	stateByResource       map[string]*corev1.ConfigMap
+	progress              []*corev1.ConfigMap
+	planPreviewByResource map[string][]planPreviewEntry
 }
 
 // k8sConnection holds both the clientset and rest config for k8s operations

@@ -124,16 +124,8 @@ func extractTerraformStateData(index *terraformConfigMapIndex, instanceID, resou
 	// Also check dedicated tf-plan-* ConfigMaps for plan previews.
 	// These are per-operation ConfigMaps with data keys "plan-preview" and "plan-preview-error".
 	planCMPreviews, planCMErrors := index.planPreviewsForResource(resourceID)
-	for opID, content := range planCMPreviews {
-		if _, exists := planPreviews[opID]; !exists {
-			planPreviews[opID] = content
-		}
-	}
-	for opID, content := range planCMErrors {
-		if _, exists := previewErrors[opID]; !exists {
-			previewErrors[opID] = content
-		}
-	}
+	mergeStringMapNewKeys(planPreviews, planCMPreviews)
+	mergeStringMapNewKeys(previewErrors, planCMErrors)
 
 	// If we have no history and no plan previews, there's nothing useful to return
 	if len(history) == 0 && len(planPreviews) == 0 && len(previewErrors) == 0 {
@@ -218,4 +210,13 @@ func fetchInstanceDataForResource(ctx context.Context, token, serviceID, environ
 		return nil, fmt.Errorf("failed to describe resource instance: %w", err)
 	}
 	return instanceData, nil
+}
+
+// mergeStringMapNewKeys copies entries from src into dst, skipping any key already present in dst.
+func mergeStringMapNewKeys(dst, src map[string]string) {
+	for k, v := range src {
+		if _, exists := dst[k]; !exists {
+			dst[k] = v
+		}
+	}
 }

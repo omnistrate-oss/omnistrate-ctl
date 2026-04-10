@@ -384,7 +384,7 @@ func TestNewTerraformConfigMapIndex_PlanPreviewCMs(t *testing.T) {
 			},
 		},
 		{
-			// Different instance — should not be indexed
+			// Different instance - should not be indexed
 			ObjectMeta: metav1.ObjectMeta{Name: "tf-plan-tf-r-abc-instance-other-op333"},
 		},
 	}
