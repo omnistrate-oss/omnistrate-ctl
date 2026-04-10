@@ -117,9 +117,6 @@ jobs:
         timeout-minutes: 10
         run: go mod tidy
 
-      - name: Install gotestsum
-        run: go install gotest.tools/gotestsum@v1.11.0
-
       - name: Smoke test auth (${{ matrix.os }})
         timeout-minutes: 30
         env:
@@ -132,7 +129,7 @@ jobs:
           OMNISTRATE_RETRY_MAX: 8
           OMNISTRATE_RETRY_WAIT_MIN_IN_SECONDS: 60
           OMNISTRATE_RETRY_WAIT_MAX_IN_SECONDS: 600
-        run: gotestsum --format standard-verbose -- ./test/smoke_test/auth/... -timeout 1800s -p 1 -v
+        run: go test -v -timeout 1800s -p 1 ./test/smoke_test/auth/...
 
   smoke-tests-with-provisioning:
     environment: ${{ inputs.environment }}
