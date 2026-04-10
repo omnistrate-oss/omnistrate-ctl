@@ -9,7 +9,7 @@ import (
 func TestEncryptDecryptToken(t *testing.T) {
 	require := require.New(t)
 
-	token := "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.test-refresh-token"
+	token := "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.test-refresh-token" // #nosec G101 -- test data, not a real credential
 
 	encrypted, err := EncryptToken(token)
 	require.NoError(err)
