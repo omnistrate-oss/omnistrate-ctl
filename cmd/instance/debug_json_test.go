@@ -584,11 +584,11 @@ func TestExtractTerraformStateDataPlanPreviewCMsOnlyNoStateCM(t *testing.T) {
 	require.Equal(`{"planned_values":{"outputs":{}}}`, stateData.PlanPreviews["myop-hash789"])
 }
 
-func TestExtractTerraformStateDataStateCMPreviewTakesPriority(t *testing.T) {
+func TestExtractTerraformStateDataDedicatedCMTakesPriority(t *testing.T) {
 	require := require.New(t)
 
 	// Both state CM and dedicated plan CM have a preview for the same op suffix.
-	// State CM data should take priority.
+	// Dedicated CM data should take priority.
 	index := &terraformConfigMapIndex{
 		instanceID:     "inst-1",
 		instanceSuffix: "inst-1",
@@ -626,11 +626,50 @@ func TestExtractTerraformStateDataStateCMPreviewTakesPriority(t *testing.T) {
 	stateData := extractTerraformStateData(index, "inst-1", "r-abc123")
 	require.NotNil(stateData)
 
-	// "shared" key exists in state CM data as "shared-plan-preview" → key "shared"
-	// The state CM version should take priority
-	require.Equal(`{"from":"state-cm"}`, stateData.PlanPreviews["shared"])
+	// "shared" key exists in both sources — dedicated CM should take priority
+	require.Equal(`{"from":"dedicated-cm"}`, stateData.PlanPreviews["shared"])
 	// "unique-op" only from dedicated CM
 	require.Equal(`{"from":"dedicated-cm-2"}`, stateData.PlanPreviews["unique-op"])
+}
+
+func TestExtractTerraformStateDataStateCMFillsGaps(t *testing.T) {
+	require := require.New(t)
+
+	// Dedicated CM has one op, state CM has a different op.
+	// Both should be present: dedicated CM wins for its op, state CM fills the gap.
+	index := &terraformConfigMapIndex{
+		instanceID:     "inst-1",
+		instanceSuffix: "inst-1",
+		stateByResource: map[string]*corev1.ConfigMap{
+			"tf-r-abc123": {
+				Data: map[string]string{
+					"history":               `[{"operation":"apply","status":"completed","operationId":"op-1"}]`,
+					"state-only-plan-preview": `{"from":"state-cm-only"}`,
+				},
+			},
+		},
+		progress: []*corev1.ConfigMap{},
+		planPreviewByResource: map[string][]planPreviewEntry{
+			"tf-r-abc123": {
+				{
+					cm: &corev1.ConfigMap{
+						Data: map[string]string{
+							"plan-preview": `{"from":"dedicated-cm"}`,
+						},
+					},
+					opSuffix: "dedicated-only",
+				},
+			},
+		},
+	}
+
+	stateData := extractTerraformStateData(index, "inst-1", "r-abc123")
+	require.NotNil(stateData)
+
+	// Dedicated CM provides its own op
+	require.Equal(`{"from":"dedicated-cm"}`, stateData.PlanPreviews["dedicated-only"])
+	// State CM fills the gap for an op not in dedicated CMs
+	require.Equal(`{"from":"state-cm-only"}`, stateData.PlanPreviews["state-only"])
 }
 
 func TestResourceDebugInfoPlanPreviewJSON(t *testing.T) {

@@ -84,7 +84,8 @@ func extractTerraformProgressFromIndex(index *terraformConfigMapIndex, instanceI
 
 // extractTerraformStateData extracts all state data (progress, history, plan previews)
 // from the tf-state and progress configmaps for a given resource.
-// Plan previews are also sourced from dedicated tf-plan-* ConfigMaps.
+// Plan previews are sourced from dedicated tf-plan-* ConfigMaps first (preferred),
+// falling back to the tf-state ConfigMap. All lookups are best-effort.
 func extractTerraformStateData(index *terraformConfigMapIndex, instanceID, resourceID string) *TerraformStateData {
 	if index == nil {
 		return nil
@@ -100,7 +101,6 @@ func extractTerraformStateData(index *terraformConfigMapIndex, instanceID, resou
 	}
 
 	var history []TerraformHistoryEntry
-	var planPreviews, previewErrors map[string]string
 
 	if stateConfigMap != nil {
 		// Parse history from the configmap
@@ -111,21 +111,19 @@ func extractTerraformStateData(index *terraformConfigMapIndex, instanceID, resou
 				fmt.Printf("warning: failed to parse terraform history for instance %s, resource %s: %v\n", instanceID, resourceID, err)
 			}
 		}
-
-		// Extract plan previews directly from the state configmap data.
-		// This is the same configmap we just successfully read history from,
-		// so it avoids the issue where terraformDataForResource may fail to find it.
-		planPreviews, previewErrors = findAllPlanPreviews(stateConfigMap.Data)
-	} else {
-		planPreviews = make(map[string]string)
-		previewErrors = make(map[string]string)
 	}
 
-	// Also check dedicated tf-plan-* ConfigMaps for plan previews.
+	// Check dedicated tf-plan-* ConfigMaps first (preferred, newer format).
 	// These are per-operation ConfigMaps with data keys "plan-preview" and "plan-preview-error".
-	planCMPreviews, planCMErrors := index.planPreviewsForResource(resourceID)
-	mergeStringMapNewKeys(planPreviews, planCMPreviews)
-	mergeStringMapNewKeys(previewErrors, planCMErrors)
+	planPreviews, previewErrors := index.planPreviewsForResource(resourceID)
+
+	// Fall back to the state configmap for any plan previews not found in dedicated CMs.
+	// State CM stores previews as "{opID}-plan-preview" / "{opID}-plan-preview-error" keys.
+	if stateConfigMap != nil {
+		statePreviews, stateErrors := findAllPlanPreviews(stateConfigMap.Data)
+		mergeStringMapNewKeys(planPreviews, statePreviews)
+		mergeStringMapNewKeys(previewErrors, stateErrors)
+	}
 
 	// If we have no history and no plan previews, there's nothing useful to return
 	if len(history) == 0 && len(planPreviews) == 0 && len(previewErrors) == 0 {
