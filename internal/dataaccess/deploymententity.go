@@ -4,9 +4,10 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"github.com/pkg/errors"
 	"os"
 	"path/filepath"
+
+	"github.com/pkg/errors"
 
 	"fmt"
 	"io"
