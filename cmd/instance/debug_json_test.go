@@ -616,8 +616,7 @@ func TestExtractTerraformStateDataPlanPreviewCMsOnlyNoStateCM(t *testing.T) {
 func TestExtractTerraformStateDataDedicatedCMOnly(t *testing.T) {
 	require := require.New(t)
 
-	// State CM has plan preview keys but they should be ignored.
-	// Only dedicated tf-plan-* CMs provide plan previews.
+	// When dedicated tf-plan-* CMs exist, state CM plan preview keys are ignored.
 	index := &terraformConfigMapIndex{
 		instanceID:     "inst-1",
 		instanceSuffix: "inst-1",
@@ -655,17 +654,16 @@ func TestExtractTerraformStateDataDedicatedCMOnly(t *testing.T) {
 	stateData := extractTerraformStateData(index, "inst-1", "r-abc123")
 	require.NotNil(stateData)
 
-	// Only dedicated CM previews are returned — state CM previews are ignored
+	// Only dedicated CM previews — state CM is not consulted when dedicated CMs have data
 	require.Len(stateData.PlanPreviews, 2)
 	require.Equal(`{"from":"dedicated-cm"}`, stateData.PlanPreviews["shared"])
 	require.Equal(`{"from":"dedicated-cm-2"}`, stateData.PlanPreviews["unique-op"])
 }
 
-func TestExtractTerraformStateDataStateCMPlanPreviewIgnored(t *testing.T) {
+func TestExtractTerraformStateDataStateCMFallback(t *testing.T) {
 	require := require.New(t)
 
-	// State CM has plan preview keys but no dedicated CMs exist.
-	// Plan previews should be empty since we only use dedicated CMs.
+	// No dedicated CMs exist → fall back to state CM for plan previews.
 	index := &terraformConfigMapIndex{
 		instanceID:     "inst-1",
 		instanceSuffix: "inst-1",
@@ -686,9 +684,9 @@ func TestExtractTerraformStateDataStateCMPlanPreviewIgnored(t *testing.T) {
 
 	// History is available from state CM
 	require.Len(stateData.History, 1)
-	// But plan previews are empty — state CM plan preview keys are NOT consulted
-	require.Empty(stateData.PlanPreviews)
-	require.Empty(stateData.PreviewErrors)
+	// Plan preview falls back to state CM when no dedicated CMs found
+	require.Len(stateData.PlanPreviews, 1)
+	require.Equal(`{"from":"state-cm-only"}`, stateData.PlanPreviews["state-only"])
 }
 
 func TestResourceDebugInfoPlanPreviewJSON(t *testing.T) {

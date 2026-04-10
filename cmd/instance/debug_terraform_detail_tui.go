@@ -219,7 +219,7 @@ func (m terraformDetailModel) fetchData() tea.Cmd {
 		}
 
 		// Fetch terraform output JSON and plan preview from configmaps.
-		// Plan previews come exclusively from dedicated tf-plan-* CMs.
+		// Plan previews: dedicated tf-plan-* CMs first, then state CM fallback.
 		// All lookups are best-effort.
 		var tfOutputJSON string
 		var planPreviewByOpID, planPreviewErrByOpID map[string]string
@@ -237,7 +237,7 @@ func (m terraformDetailModel) fetchData() tea.Cmd {
 			if indexErr != nil || index == nil {
 				continue
 			}
-			// Extract plan previews from dedicated tf-plan-* CMs only
+			// Extract plan previews (dedicated tf-plan-* CMs first, state CM fallback)
 			stateData := extractTerraformStateData(index, m.debugData.InstanceID, m.node.ID)
 			if stateData != nil {
 				if len(stateData.PlanPreviews) > 0 {

@@ -330,7 +330,7 @@ func collectTerraformDebugInfo(ctx context.Context, token string, instanceData *
 		}
 
 		// Get terraform progress, operation history, and plan previews.
-		// Plan previews come exclusively from dedicated tf-plan-* CMs.
+		// Plan previews: dedicated tf-plan-* CMs first, then state CM fallback.
 		// All lookups are best-effort.
 		stateData := extractTerraformStateData(index, instanceID, node.ID)
 		if stateData != nil {

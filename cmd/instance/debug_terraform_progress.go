@@ -84,7 +84,8 @@ func extractTerraformProgressFromIndex(index *terraformConfigMapIndex, instanceI
 
 // extractTerraformStateData extracts all state data (progress, history, plan previews)
 // from the tf-state and progress configmaps for a given resource.
-// Plan previews are sourced exclusively from dedicated tf-plan-* ConfigMaps.
+// Plan previews are sourced from dedicated tf-plan-* ConfigMaps first, falling back
+// to the tf-state ConfigMap if dedicated CMs yield nothing.
 // History comes from the tf-state ConfigMap. All lookups are best-effort.
 func extractTerraformStateData(index *terraformConfigMapIndex, instanceID, resourceID string) *TerraformStateData {
 	if index == nil {
@@ -113,9 +114,15 @@ func extractTerraformStateData(index *terraformConfigMapIndex, instanceID, resou
 		}
 	}
 
-	// Load plan previews/errors exclusively from dedicated tf-plan-* ConfigMaps.
+	// Load plan previews/errors from dedicated tf-plan-* ConfigMaps first.
 	// These are per-operation ConfigMaps with data keys "plan-preview" and "plan-preview-error".
 	planPreviews, previewErrors := index.planPreviewsForResource(resourceID)
+
+	// Fall back to the state configmap if dedicated CMs yielded nothing.
+	// State CM stores previews as "{opID}-plan-preview" / "{opID}-plan-preview-error" keys.
+	if len(planPreviews) == 0 && len(previewErrors) == 0 && stateConfigMap != nil {
+		planPreviews, previewErrors = findAllPlanPreviews(stateConfigMap.Data)
+	}
 
 	// Find the latest progress configmap that matches this resource/instance.
 	// Progress configmaps contain resourceID and instanceID fields we can match on.
