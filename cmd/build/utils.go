@@ -120,17 +120,30 @@ func ArchiveArtifactPaths(baseDir string, artifactPaths []string) (map[string]st
 		// Clean the path
 		resolvedPath = filepath.Clean(resolvedPath)
 
+		// Validate the resolved path stays within baseDir to prevent path traversal
+		absBase, err := filepath.Abs(baseDir)
+		if err != nil {
+			return nil, fmt.Errorf("failed to resolve base directory: %w", err)
+		}
+		absResolved, err := filepath.Abs(resolvedPath)
+		if err != nil {
+			return nil, fmt.Errorf("failed to resolve artifact path '%s': %w", artifactPath, err)
+		}
+		if !strings.HasPrefix(absResolved, absBase+string(filepath.Separator)) && absResolved != absBase {
+			return nil, fmt.Errorf("artifact path '%s' escapes base directory", artifactPath)
+		}
+
 		// Check if the path exists
-		info, err := os.Stat(resolvedPath)
+		info, err := os.Stat(absResolved) // #nosec G703 -- path validated against baseDir above
 		if err != nil {
 			return nil, fmt.Errorf("artifact path '%s' does not exist: %w", artifactPath, err)
 		}
 
 		if !info.IsDir() {
 			// Path is a file - check if it's already a .tar.gz / .tgz file
-			if isGzipTarFile(resolvedPath) {
+			if isGzipTarFile(absResolved) {
 				// Already a tar.gz file, just read and base64 encode it directly
-				fileContent, readErr := os.ReadFile(resolvedPath)
+				fileContent, readErr := os.ReadFile(absResolved) // #nosec G703 -- path validated against baseDir above
 				if readErr != nil {
 					return nil, fmt.Errorf("failed to read tar.gz file '%s': %w", artifactPath, readErr)
 				}
@@ -141,7 +154,7 @@ func ArchiveArtifactPaths(baseDir string, artifactPaths []string) (map[string]st
 		}
 
 		// Create the tar.gz archive in memory and encode to base64
-		base64Content, err := createTarGzBase64(resolvedPath)
+		base64Content, err := createTarGzBase64(absResolved)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create archive for '%s': %w", artifactPath, err)
 		}
@@ -164,7 +177,7 @@ func createTarGzBase64(sourceDir string) (string, error) {
 	tarWriter := tar.NewWriter(gzWriter)
 
 	// Walk through the source directory
-	err := filepath.Walk(sourceDir, func(path string, info os.FileInfo, err error) error {
+	err := filepath.Walk(sourceDir, func(path string, info os.FileInfo, err error) error { // #nosec G703 -- callers validate sourceDir
 		if err != nil {
 			return err
 		}
@@ -244,7 +257,7 @@ func isGzipTarFile(filePath string) bool {
 	hasExtension := strings.HasSuffix(lower, ".tar.gz") || strings.HasSuffix(lower, ".tgz")
 
 	// Also verify by reading the first two bytes (gzip magic number)
-	f, err := os.Open(filePath)
+	f, err := os.Open(filePath) // #nosec G703 -- callers validate filePath against baseDir
 	if err != nil {
 		return hasExtension
 	}

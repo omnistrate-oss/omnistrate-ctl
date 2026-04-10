@@ -19,7 +19,7 @@ type LogsStream struct {
 type LogsConfig struct {
 	BaseURL  string
 	Username string
-	Password string
+	Password string // #nosec G117 -- field must hold log service credentials
 }
 
 // LogsService provides methods for log-related operations

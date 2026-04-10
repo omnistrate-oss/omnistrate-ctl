@@ -37,7 +37,7 @@ func RefreshToken(ctx context.Context, refreshToken string) (LoginResult, error)
 	req.Header.Set("User-Agent", config.GetUserAgent())
 
 	client := getRetryableHttpClient()
-	resp, err := client.Do(req)
+	resp, err := client.Do(req) // #nosec G704 -- URL constructed from config constants
 	if err != nil {
 		return LoginResult{}, fmt.Errorf("refresh token request failed: %w", err)
 	}

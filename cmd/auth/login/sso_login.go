@@ -29,7 +29,7 @@ type DeviceCodeResponse struct {
 
 // AccessTokenResponse represents the response from the jwt token request
 type AccessTokenResponse struct {
-	JWTToken string `json:"jwt_token"`
+	JWTToken string `json:"jwt_token"` // #nosec G117 -- field must hold the JWT token value
 }
 
 // SSO identity provider credentials and endpoints
@@ -152,7 +152,7 @@ func requestDeviceCodeWithHttpClient(ctx context.Context, client *http.Client, i
 	req.Header.Set("Content-Type", contentType)
 	req.Header.Set("Accept", "application/json")
 
-	resp, err := client.Do(req)
+	resp, err := client.Do(req) // #nosec G704 -- URL is constructed from hardcoded identity provider constants
 	if err != nil {
 		return nil, err
 	}

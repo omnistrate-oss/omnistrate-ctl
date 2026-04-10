@@ -31,7 +31,7 @@ func GetInstanceDeploymentEntity(ctx context.Context, token string, instanceID s
 		}
 	}()
 
-	response, err = httpClient.Do(request)
+	response, err = httpClient.Do(request) // #nosec G704 -- URL host is hardcoded to localhost
 	if err != nil {
 		err = errors.Wrap(err, "Could not retrieve instance deployment information. Please try executing the command within the dataplane agent pod.")
 		return "", err
@@ -67,7 +67,7 @@ func PauseInstanceDeploymentEntity(ctx context.Context, token string, instanceID
 		}
 	}()
 
-	response, err = httpClient.Do(request)
+	response, err = httpClient.Do(request) // #nosec G704 -- URL host is hardcoded to localhost
 	if err != nil {
 		err = errors.Wrap(err, "failed to pause instance deployment entity, you need to run it on dataplane agent")
 		return err
@@ -126,7 +126,7 @@ func ResumeInstanceDeploymentEntity(ctx context.Context, token string, instanceI
 		}
 	}()
 
-	response, err = httpClient.Do(request)
+	response, err = httpClient.Do(request) // #nosec G704 -- URL host is hardcoded to localhost
 	if err != nil {
 		err = errors.Wrap(err, "failed to resume instance deployment entity, you need to run it on dataplane agent")
 		return err
@@ -194,7 +194,7 @@ func PatchInstanceDeploymentEntity(ctx context.Context, token string, instanceID
 		}
 	}()
 
-	response, err = httpClient.Do(request)
+	response, err = httpClient.Do(request) // #nosec G704 -- URL host is hardcoded to localhost
 	if err != nil {
 		err = errors.Wrap(err, "failed to patch instance deployment entity, you need to run it on dataplane agent")
 		return err
