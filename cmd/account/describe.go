@@ -32,7 +32,7 @@ var describeCmd = &cobra.Command{
 func init() {
 	describeCmd.Args = cobra.MaximumNArgs(1) // Require at most 1 argument
 
-	describeCmd.Flags().StringP("output", "o", "table", "Output format (text|table|json).") // Override inherited flag
+	describeCmd.Flags().StringP("output", "o", "json", "Output format (text|table|json).") // Override inherited flag
 }
 
 func runDescribe(cmd *cobra.Command, args []string) error {
