@@ -428,8 +428,8 @@ func renderWorkflowEventsTab(steps *ResourceWorkflowSteps, state *workflowErrors
 			pct := (scroll * 100) / maxScroll
 			pos = fmt.Sprintf("%d%%", pct)
 		}
-		b.WriteString(fmt.Sprintf("  %s\n", dimStyle.Render(
-			fmt.Sprintf("[%d/%d %s]", scroll+viewH, totalLines, pos))))
+		fmt.Fprintf(&b, "  %s\n", dimStyle.Render(
+			fmt.Sprintf("[%d/%d %s]", scroll+viewH, totalLines, pos)))
 	}
 
 	return b.String()
@@ -982,9 +982,9 @@ func renderWfEventModal(state *workflowErrorsState, width, height int) string {
 		vl := vlines[i]
 		if vl.sourceNum > 0 {
 			lineNum := lineNumStyle.Render(fmt.Sprintf("%4d", vl.sourceNum))
-			b.WriteString(fmt.Sprintf("  %s │ %s\n", lineNum, textStyle.Render(vl.text)))
+			fmt.Fprintf(&b, "  %s │ %s\n", lineNum, textStyle.Render(vl.text))
 		} else {
-			b.WriteString(fmt.Sprintf("  %s   %s\n", "    ", textStyle.Render(vl.text)))
+			fmt.Fprintf(&b, "  %s   %s\n", "    ", textStyle.Render(vl.text))
 		}
 	}
 	for i := end - scroll; i < bodyH; i++ {
@@ -1034,9 +1034,9 @@ func workflowEventsCopyText(steps *ResourceWorkflowSteps) string {
 	}
 	var b strings.Builder
 	for _, step := range steps.Steps {
-		b.WriteString(fmt.Sprintf("\n=== %s [%s] %s → %s ===\n", step.stepDisplayName(), step.Status, step.StartTime, step.EndTime))
+		fmt.Fprintf(&b, "\n=== %s [%s] %s → %s ===\n", step.stepDisplayName(), step.Status, step.StartTime, step.EndTime)
 		for _, evt := range step.Events {
-			b.WriteString(fmt.Sprintf("[%s] %s: %s\n", evt.EventTime, evt.EventType, evt.Message))
+			fmt.Fprintf(&b, "[%s] %s: %s\n", evt.EventTime, evt.EventType, evt.Message)
 		}
 	}
 	return b.String()

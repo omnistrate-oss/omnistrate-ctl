@@ -35,9 +35,10 @@ type AuthConfig struct {
 }
 
 var (
-	ErrConfigFileNotFound = errors.New("auth failure: config file not found, please login first")
-	ErrAuthConfigNotFound = errors.New("auth failure: auth credentials not found, please login first")
-	ErrGitHubPATNotFound  = errors.New("no github personal access token found")
+	ErrConfigFileNotFound   = errors.New("auth failure: config file not found, please login first")
+	ErrAuthConfigNotFound   = errors.New("auth failure: auth credentials not found, please login first")
+	ErrRefreshTokenNotFound = errors.New("no refresh token available — please login again")
+	ErrGitHubPATNotFound    = errors.New("no github personal access token found")
 )
 
 // New initializes a config file for the given file path.
@@ -151,6 +152,16 @@ func CreateOrUpdateAuthConfig(authConfig AuthConfig) error {
 		return err
 	}
 
+	// Encrypt the refresh token before writing to disk
+	if authConfig.RefreshToken != "" {
+		encrypted, encErr := EncryptToken(authConfig.RefreshToken)
+		if encErr != nil {
+			authConfig.RefreshToken = ""
+		} else {
+			authConfig.RefreshToken = encrypted
+		}
+	}
+
 	if len(cfg.AuthConfigs) == 0 {
 		cfg.AuthConfigs = append(cfg.AuthConfigs, authConfig)
 	} else {
@@ -183,7 +194,17 @@ func LookupAuthConfig() (AuthConfig, error) {
 	}
 
 	if len(cfg.AuthConfigs) > 0 && cfg.AuthConfigs[0].Token != "" {
-		return cfg.AuthConfigs[0], nil
+		ac := cfg.AuthConfigs[0]
+		// Decrypt the refresh token after reading from disk
+		if ac.RefreshToken != "" {
+			decrypted, decErr := DecryptToken(ac.RefreshToken)
+			if decErr != nil {
+				ac.RefreshToken = ""
+			} else {
+				ac.RefreshToken = decrypted
+			}
+		}
+		return ac, nil
 	}
 
 	return authConfig, ErrAuthConfigNotFound

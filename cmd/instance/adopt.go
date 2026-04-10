@@ -28,7 +28,7 @@ type ResourceAdoptionConfig struct {
 // HelmAdoptionConfig represents the Helm adoption configuration
 type HelmAdoptionConfig struct {
 	ChartRepoURL         string             `yaml:"chartRepoURL"`
-	Password             *string            `yaml:"password,omitempty"`
+	Password             *string            `yaml:"password,omitempty"` // #nosec G117 -- field must hold helm repo credentials
 	ReleaseName          string             `yaml:"releaseName"`
 	ReleaseNamespace     string             `yaml:"releaseNamespace"`
 	RuntimeConfiguration *HelmRuntimeConfig `yaml:"runtimeConfiguration,omitempty"`

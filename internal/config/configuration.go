@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"os"
 	"path/filepath"
 	"strings"
 	"time"
@@ -28,7 +29,8 @@ const (
 	omnistrateHostSchema = "OMNISTRATE_HOST_SCHEME"
 	omnistrateDocsDomain = "OMNISTRATE_DOCS_DOMAIN"
 	defaultRootDomain    = "omnistrate.cloud"
-	clientTimeout        = "CLIENT_TIMEOUT_IN_SECONDS"
+	clientTimeoutOld     = "CLIENT_TIMEOUT_IN_SECONDS"
+	clientTimeout        = "OMNISTRATE_CLIENT_TIMEOUT_IN_SECONDS"
 	retryWaitMin         = "OMNISTRATE_RETRY_WAIT_MIN_IN_SECONDS"
 	retryWaitMax         = "OMNISTRATE_RETRY_WAIT_MAX_IN_SECONDS"
 	retryMax             = "OMNISTRATE_RETRY_MAX"
@@ -67,7 +69,7 @@ func GetRefreshToken() (string, error) {
 		return "", err
 	}
 	if authConfig.RefreshToken == "" {
-		return "", ErrAuthConfigNotFound
+		return "", ErrRefreshTokenNotFound
 	}
 	return authConfig.RefreshToken, nil
 }
@@ -168,7 +170,12 @@ func IsDryRun() bool {
 }
 
 func GetClientTimeout() time.Duration {
-	timeoutInSeconds := GetEnvAsInteger(clientTimeout, "300")
+	// Prefer OMNISTRATE_CLIENT_TIMEOUT_IN_SECONDS, fall back to CLIENT_TIMEOUT_IN_SECONDS
+	if v := os.Getenv(clientTimeout); v != "" {
+		timeoutInSeconds := GetEnvAsInteger(clientTimeout, "300")
+		return time.Duration(timeoutInSeconds) * time.Second
+	}
+	timeoutInSeconds := GetEnvAsInteger(clientTimeoutOld, "300")
 	return time.Duration(timeoutInSeconds) * time.Second
 }
 
