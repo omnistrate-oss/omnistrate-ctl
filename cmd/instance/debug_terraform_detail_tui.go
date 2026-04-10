@@ -1471,18 +1471,35 @@ func buildTimelineSections(history []TerraformHistoryEntry) []dateSection {
 }
 
 // hasPlanPreview reports whether the given operation ID has a plan preview or plan preview error.
+// It tries both the full canonical operation ID (e.g. "genA.nonceA1") and the generation-only
+// prefix (e.g. "genA"), because dedicated tf-plan-* ConfigMap names only contain the generation ID.
 func hasPlanPreview(opID string, previews, previewErrors map[string]string) bool {
-	if previews != nil {
-		if v, ok := previews[opID]; ok && v != "" {
-			return true
+	for _, key := range planPreviewLookupKeys(opID) {
+		if previews != nil {
+			if v, ok := previews[key]; ok && v != "" {
+				return true
+			}
 		}
-	}
-	if previewErrors != nil {
-		if v, ok := previewErrors[opID]; ok && v != "" {
-			return true
+		if previewErrors != nil {
+			if v, ok := previewErrors[key]; ok && v != "" {
+				return true
+			}
 		}
 	}
 	return false
+}
+
+// planPreviewLookupKeys returns the keys to try when looking up a plan preview
+// for the given operation ID. It returns the full canonical ID first, then the
+// generation-only prefix (before the first dot) if different.
+// This is needed because dedicated tf-plan-* ConfigMap names encode only the
+// generation ID, not the full generation.nonce canonical ID.
+func planPreviewLookupKeys(opID string) []string {
+	keys := []string{opID}
+	if genID, _, found := strings.Cut(opID, "."); found && genID != opID {
+		keys = append(keys, genID)
+	}
+	return keys
 }
 
 func flattenTimeline(dates []dateSection, previews, previewErrors map[string]string) []timelineRow {
@@ -2112,16 +2129,20 @@ func (m terraformDetailModel) renderTfWfErrorsTab() string {
 }
 
 // planPreviewForOpID returns the plan preview content and whether it's an error for the given operation ID.
+// It tries both the full canonical operation ID and the generation-only prefix,
+// because dedicated tf-plan-* ConfigMap names only contain the generation ID.
 // Returns ("", false, false) if no plan preview exists.
 func (m terraformDetailModel) planPreviewForOpID(opID string) (content string, isError bool, found bool) {
-	if m.planPreviewByOpID != nil {
-		if preview, ok := m.planPreviewByOpID[opID]; ok && preview != "" {
-			return preview, false, true
+	for _, key := range planPreviewLookupKeys(opID) {
+		if m.planPreviewByOpID != nil {
+			if preview, ok := m.planPreviewByOpID[key]; ok && preview != "" {
+				return preview, false, true
+			}
 		}
-	}
-	if m.planPreviewErrByOpID != nil {
-		if errText, ok := m.planPreviewErrByOpID[opID]; ok && errText != "" {
-			return errText, true, true
+		if m.planPreviewErrByOpID != nil {
+			if errText, ok := m.planPreviewErrByOpID[key]; ok && errText != "" {
+				return errText, true, true
+			}
 		}
 	}
 	return "", false, false
