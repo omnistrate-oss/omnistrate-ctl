@@ -421,3 +421,182 @@ func TestFlattenTimeline_PlanPreviewAtEndWithoutApply(t *testing.T) {
 		t.Fatalf("expected 1 plan preview row, got %d", previewRows)
 	}
 }
+
+// TestFlattenTimeline_PlanPreviewMatchesByGenerationID verifies that plan previews
+// keyed by generation ID only (no nonce) match attempts whose operationID is
+// "generationID.nonce". This mirrors real ConfigMap names like
+// tf-plan-tf-r-xxx-instance-yyy-{generationID} where the suffix is only the generation.
+func TestFlattenTimeline_PlanPreviewMatchesByGenerationID(t *testing.T) {
+	history := []TerraformHistoryEntry{
+		{
+			Operation:   "init",
+			Status:      "completed",
+			StartedAt:   "2026-03-03T10:00:00Z",
+			CompletedAt: "2026-03-03T10:00:10Z",
+			OperationID: "a4b6ca139fecb81e1804.69965f91ff",
+		},
+		{
+			Operation:   "apply",
+			Status:      "completed",
+			StartedAt:   "2026-03-03T10:00:11Z",
+			CompletedAt: "2026-03-03T10:00:30Z",
+			OperationID: "a4b6ca139fecb81e1804.69965f91ff",
+		},
+		{
+			Operation:   "output",
+			Status:      "completed",
+			StartedAt:   "2026-03-03T10:00:31Z",
+			CompletedAt: "2026-03-03T10:00:35Z",
+			OperationID: "a4b6ca139fecb81e1804.69965f91ff",
+		},
+	}
+
+	sections := buildTimelineSections(history)
+	sections[0].expanded = true
+	sections[0].groups[0].expanded = true
+	sections[0].groups[0].attempts[0].expanded = true
+
+	// Key is the generation ID only (no nonce) — this is how dedicated tf-plan-* CMs work
+	previews := map[string]string{
+		"a4b6ca139fecb81e1804": `{"planned_values":{"root_module":{}}}`,
+	}
+
+	rows := flattenTimeline(sections, previews, nil)
+	var previewRows int
+	var previewBeforeApply bool
+	for i, row := range rows {
+		if row.isPlanPreviewRow {
+			previewRows++
+			// Next row should be the "apply" entry
+			if i+1 < len(rows) && rows[i+1].entry != nil && rows[i+1].entry.Operation == "apply" {
+				previewBeforeApply = true
+			}
+		}
+	}
+	if previewRows != 1 {
+		t.Fatalf("expected 1 plan preview row with generation-only key, got %d", previewRows)
+	}
+	if !previewBeforeApply {
+		t.Fatal("expected plan preview row to appear before 'apply' entry")
+	}
+}
+
+// TestFlattenTimeline_PlanPreviewGenerationKeyMultipleAttempts verifies that when a
+// generation-only preview key exists, ALL attempts within that generation see the preview.
+func TestFlattenTimeline_PlanPreviewGenerationKeyMultipleAttempts(t *testing.T) {
+	history := []TerraformHistoryEntry{
+		// First attempt
+		{
+			Operation:   "output",
+			Status:      "failed",
+			StartedAt:   "2026-03-03T10:00:00Z",
+			CompletedAt: "2026-03-03T10:00:05Z",
+			OperationID: "genX.nonce1",
+		},
+		{
+			Operation:   "init",
+			Status:      "completed",
+			StartedAt:   "2026-03-03T10:00:06Z",
+			CompletedAt: "2026-03-03T10:00:10Z",
+			OperationID: "genX.nonce1",
+		},
+		{
+			Operation:   "output",
+			Status:      "completed",
+			StartedAt:   "2026-03-03T10:00:11Z",
+			CompletedAt: "2026-03-03T10:00:15Z",
+			OperationID: "genX.nonce1",
+		},
+		// Second attempt (has apply)
+		{
+			Operation:   "init",
+			Status:      "completed",
+			StartedAt:   "2026-03-03T09:00:00Z",
+			CompletedAt: "2026-03-03T09:00:10Z",
+			OperationID: "genX.nonce2",
+		},
+		{
+			Operation:   "apply",
+			Status:      "completed",
+			StartedAt:   "2026-03-03T09:00:11Z",
+			CompletedAt: "2026-03-03T09:00:30Z",
+			OperationID: "genX.nonce2",
+		},
+		{
+			Operation:   "output",
+			Status:      "completed",
+			StartedAt:   "2026-03-03T09:00:31Z",
+			CompletedAt: "2026-03-03T09:00:35Z",
+			OperationID: "genX.nonce2",
+		},
+	}
+
+	sections := buildTimelineSections(history)
+	sections[0].expanded = true
+	for gi := range sections[0].groups {
+		sections[0].groups[gi].expanded = true
+		for ai := range sections[0].groups[gi].attempts {
+			sections[0].groups[gi].attempts[ai].expanded = true
+		}
+	}
+
+	// Generation-only key — matches all attempts in this generation
+	previews := map[string]string{
+		"genX": `{"planned_values":{}}`,
+	}
+
+	rows := flattenTimeline(sections, previews, nil)
+	var previewRows int
+	for _, row := range rows {
+		if row.isPlanPreviewRow {
+			previewRows++
+		}
+	}
+	// Both attempts should get a plan preview row
+	if previewRows != 2 {
+		t.Fatalf("expected 2 plan preview rows (one per attempt), got %d", previewRows)
+	}
+}
+
+func TestPlanPreviewLookupKeys(t *testing.T) {
+	tests := []struct {
+		name     string
+		opID     string
+		expected []string
+	}{
+		{
+			name:     "canonical with nonce",
+			opID:     "genA.nonceA1",
+			expected: []string{"genA.nonceA1", "genA"},
+		},
+		{
+			name:     "generation only (legacy or already short)",
+			opID:     "genA",
+			expected: []string{"genA"},
+		},
+		{
+			name:     "real-world generation hash with nonce",
+			opID:     "a4b6ca139fecb81e1804.69965f91ff",
+			expected: []string{"a4b6ca139fecb81e1804.69965f91ff", "a4b6ca139fecb81e1804"},
+		},
+		{
+			name:     "empty",
+			opID:     "",
+			expected: []string{""},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			keys := planPreviewLookupKeys(tt.opID)
+			if len(keys) != len(tt.expected) {
+				t.Fatalf("expected %d keys, got %d: %v", len(tt.expected), len(keys), keys)
+			}
+			for i, k := range keys {
+				if k != tt.expected[i] {
+					t.Fatalf("key[%d]: expected %q, got %q", i, tt.expected[i], k)
+				}
+			}
+		})
+	}
+}

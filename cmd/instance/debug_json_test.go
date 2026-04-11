@@ -7,6 +7,7 @@ import (
 	"github.com/omnistrate-oss/omnistrate-ctl/internal/dataaccess"
 	"github.com/stretchr/testify/require"
 	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 func TestDebugDataJSONIncludesServiceAndEnvironment(t *testing.T) {
@@ -473,6 +474,7 @@ func TestExtractTerraformProgressFromIndex(t *testing.T) {
 				},
 			},
 		},
+		planPreviewByResource: make(map[string][]planPreviewEntry),
 	}
 
 	progress, history := extractTerraformProgressFromIndex(index, "inst-1", "r-abc123")
@@ -496,15 +498,242 @@ func TestExtractTerraformProgressFromIndexNilIndex(t *testing.T) {
 
 func TestExtractTerraformProgressFromIndexNoMatch(t *testing.T) {
 	index := &terraformConfigMapIndex{
-		instanceID:      "inst-1",
-		instanceSuffix:  "inst-1",
-		stateByResource: map[string]*corev1.ConfigMap{},
-		progress:        []*corev1.ConfigMap{},
+		instanceID:            "inst-1",
+		instanceSuffix:        "inst-1",
+		stateByResource:       map[string]*corev1.ConfigMap{},
+		progress:              []*corev1.ConfigMap{},
+		planPreviewByResource: make(map[string][]planPreviewEntry),
 	}
 
 	progress, history := extractTerraformProgressFromIndex(index, "inst-1", "r-nonexistent")
 	require.Nil(t, progress)
 	require.Nil(t, history)
+}
+
+func TestExtractTerraformStateDataProgressOnly(t *testing.T) {
+	require := require.New(t)
+
+	// Resource has progress data but no history, no plan previews.
+	// Should still return a result with progress (best-effort).
+	index := &terraformConfigMapIndex{
+		instanceID:      "inst-1",
+		instanceSuffix:  "inst-1",
+		stateByResource: map[string]*corev1.ConfigMap{},
+		progress: []*corev1.ConfigMap{
+			{
+				Data: map[string]string{
+					"progress": `{"terraformName":"tf-test","instanceID":"inst-1","resourceID":"r-abc123","status":"running","startedAt":"2026-01-01T00:00:00Z","totalResources":5,"inProgressResources":2}`,
+				},
+			},
+		},
+		planPreviewByResource: make(map[string][]planPreviewEntry),
+	}
+
+	stateData := extractTerraformStateData(index, "inst-1", "r-abc123")
+	require.NotNil(stateData, "should return data when only progress exists")
+	require.NotNil(stateData.Progress)
+	require.Equal("tf-test", stateData.Progress.TerraformName)
+	require.Equal("running", stateData.Progress.Status)
+	require.Equal(5, stateData.Progress.TotalResources)
+	require.Empty(stateData.History)
+	require.Empty(stateData.PlanPreviews)
+}
+
+func TestExtractTerraformStateDataWithDedicatedPlanPreviewCMs(t *testing.T) {
+	require := require.New(t)
+
+	index := &terraformConfigMapIndex{
+		instanceID:     "inst-1",
+		instanceSuffix: "inst-1",
+		stateByResource: map[string]*corev1.ConfigMap{
+			"tf-r-abc123": {
+				Data: map[string]string{
+					"history": `[{"operation":"apply","status":"completed","operationId":"op-1"}]`,
+				},
+			},
+		},
+		progress: []*corev1.ConfigMap{},
+		planPreviewByResource: map[string][]planPreviewEntry{
+			"tf-r-abc123": {
+				{
+					cm: &corev1.ConfigMap{
+						Data: map[string]string{
+							"plan-preview": `{"format_version":"1.2","planned_values":{}}`,
+						},
+					},
+					opSuffix: "op-1-hash123",
+				},
+				{
+					cm: &corev1.ConfigMap{
+						Data: map[string]string{
+							"plan-preview-error": "Error: timeout waiting",
+						},
+					},
+					opSuffix: "op-2-hash456",
+				},
+			},
+		},
+	}
+
+	stateData := extractTerraformStateData(index, "inst-1", "r-abc123")
+	require.NotNil(stateData)
+	require.Len(stateData.History, 1)
+	require.Len(stateData.PlanPreviews, 1)
+	require.Equal(`{"format_version":"1.2","planned_values":{}}`, stateData.PlanPreviews["op-1-hash123"])
+	require.Len(stateData.PreviewErrors, 1)
+	require.Equal("Error: timeout waiting", stateData.PreviewErrors["op-2-hash456"])
+}
+
+func TestExtractTerraformStateDataPlanPreviewCMsOnlyNoStateCM(t *testing.T) {
+	require := require.New(t)
+
+	// No state configmap, but dedicated plan preview CMs exist
+	index := &terraformConfigMapIndex{
+		instanceID:      "inst-1",
+		instanceSuffix:  "inst-1",
+		stateByResource: map[string]*corev1.ConfigMap{},
+		progress:        []*corev1.ConfigMap{},
+		planPreviewByResource: map[string][]planPreviewEntry{
+			"tf-r-abc123": {
+				{
+					cm: &corev1.ConfigMap{
+						Data: map[string]string{
+							"plan-preview": `{"planned_values":{"outputs":{}}}`,
+						},
+					},
+					opSuffix: "myop-hash789",
+				},
+			},
+		},
+	}
+
+	stateData := extractTerraformStateData(index, "inst-1", "r-abc123")
+	require.NotNil(stateData, "should return state data when plan preview CMs exist even without state CM")
+	require.Empty(stateData.History)
+	require.Len(stateData.PlanPreviews, 1)
+	require.Equal(`{"planned_values":{"outputs":{}}}`, stateData.PlanPreviews["myop-hash789"])
+}
+
+func TestExtractTerraformStateDataDedicatedCMOnly(t *testing.T) {
+	require := require.New(t)
+
+	// When dedicated tf-plan-* CMs exist, state CM plan preview keys are ignored.
+	index := &terraformConfigMapIndex{
+		instanceID:     "inst-1",
+		instanceSuffix: "inst-1",
+		stateByResource: map[string]*corev1.ConfigMap{
+			"tf-r-abc123": {
+				Data: map[string]string{
+					"history":             `[{"operation":"apply","status":"completed","operationId":"op-1"}]`,
+					"shared-plan-preview": `{"from":"state-cm"}`,
+				},
+			},
+		},
+		progress: []*corev1.ConfigMap{},
+		planPreviewByResource: map[string][]planPreviewEntry{
+			"tf-r-abc123": {
+				{
+					cm: &corev1.ConfigMap{
+						Data: map[string]string{
+							"plan-preview": `{"from":"dedicated-cm"}`,
+						},
+					},
+					opSuffix: "shared",
+				},
+				{
+					cm: &corev1.ConfigMap{
+						Data: map[string]string{
+							"plan-preview": `{"from":"dedicated-cm-2"}`,
+						},
+					},
+					opSuffix: "unique-op",
+				},
+			},
+		},
+	}
+
+	stateData := extractTerraformStateData(index, "inst-1", "r-abc123")
+	require.NotNil(stateData)
+
+	// Only dedicated CM previews — state CM is not consulted when dedicated CMs have data
+	require.Len(stateData.PlanPreviews, 2)
+	require.Equal(`{"from":"dedicated-cm"}`, stateData.PlanPreviews["shared"])
+	require.Equal(`{"from":"dedicated-cm-2"}`, stateData.PlanPreviews["unique-op"])
+}
+
+func TestExtractTerraformStateDataStateCMFallback(t *testing.T) {
+	require := require.New(t)
+
+	// No dedicated CMs exist → fall back to state CM for plan previews.
+	index := &terraformConfigMapIndex{
+		instanceID:     "inst-1",
+		instanceSuffix: "inst-1",
+		stateByResource: map[string]*corev1.ConfigMap{
+			"tf-r-abc123": {
+				Data: map[string]string{
+					"history":                 `[{"operation":"apply","status":"completed","operationId":"op-1"}]`,
+					"state-only-plan-preview": `{"from":"state-cm-only"}`,
+				},
+			},
+		},
+		progress:              []*corev1.ConfigMap{},
+		planPreviewByResource: map[string][]planPreviewEntry{},
+	}
+
+	stateData := extractTerraformStateData(index, "inst-1", "r-abc123")
+	require.NotNil(stateData)
+
+	// History is available from state CM
+	require.Len(stateData.History, 1)
+	// Plan preview falls back to state CM when no dedicated CMs found
+	require.Len(stateData.PlanPreviews, 1)
+	require.Equal(`{"from":"state-cm-only"}`, stateData.PlanPreviews["state-only"])
+}
+
+// TestExtractTerraformStateDataMultiResourceDedicatedCMs verifies that two separate
+// resources each get their own plan preview from their respective dedicated tf-plan-* CMs.
+// This mirrors the real-world scenario:
+//
+//	tf-plan-tf-r-wenitbo0ia-instance-y24o87zd1-7629a67a7ad45ef55fc4
+//	tf-plan-tf-r-zpo5rklwsc-instance-y24o87zd1-a4b6ca139fecb81e1804
+func TestExtractTerraformStateDataMultiResourceDedicatedCMs(t *testing.T) {
+	require := require.New(t)
+
+	// Build the index from ConfigMaps matching the user's exact CM names.
+	// No state CMs, no progress CMs — only dedicated plan CMs.
+	configMaps := []corev1.ConfigMap{
+		{
+			ObjectMeta: metav1.ObjectMeta{Name: "tf-plan-tf-r-wenitbo0ia-instance-y24o87zd1-7629a67a7ad45ef55fc4"},
+			Data: map[string]string{
+				"plan-preview": `{"planned_values":{"root_module":{"resources":[{"address":"aws_instance.example"}]}}}`,
+			},
+		},
+		{
+			ObjectMeta: metav1.ObjectMeta{Name: "tf-plan-tf-r-zpo5rklwsc-instance-y24o87zd1-a4b6ca139fecb81e1804"},
+			Data: map[string]string{
+				"plan-preview": `{"planned_values":{"root_module":{"resources":[{"address":"aws_rds.db"}]}}}`,
+			},
+		},
+	}
+
+	index := newTerraformConfigMapIndex("instance-y24o87zd1", configMaps)
+	require.Len(index.planPreviewByResource, 2, "should index plan CMs for two different resources")
+
+	// Resource 1: r-wenitbo0ia
+	stateData1 := extractTerraformStateData(index, "instance-y24o87zd1", "r-wenitbo0ia")
+	require.NotNil(stateData1, "resource r-wenitbo0ia should have plan preview data")
+	require.Len(stateData1.PlanPreviews, 1)
+	require.Contains(stateData1.PlanPreviews["7629a67a7ad45ef55fc4"], "aws_instance.example")
+
+	// Resource 2: r-zpo5rklwsc
+	stateData2 := extractTerraformStateData(index, "instance-y24o87zd1", "r-zpo5rklwsc")
+	require.NotNil(stateData2, "resource r-zpo5rklwsc should have plan preview data")
+	require.Len(stateData2.PlanPreviews, 1)
+	require.Contains(stateData2.PlanPreviews["a4b6ca139fecb81e1804"], "aws_rds.db")
+
+	// Neither resource should bleed into the other
+	require.NotContains(stateData1.PlanPreviews["7629a67a7ad45ef55fc4"], "aws_rds.db")
+	require.NotContains(stateData2.PlanPreviews["a4b6ca139fecb81e1804"], "aws_instance.example")
 }
 
 func TestResourceDebugInfoPlanPreviewJSON(t *testing.T) {
