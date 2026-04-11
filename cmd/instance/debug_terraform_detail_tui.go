@@ -947,9 +947,9 @@ func (m terraformDetailModel) renderErrorModal() string {
 		vl := vlines[i]
 		if vl.sourceNum > 0 {
 			lineNum := lineNumStyle.Render(fmt.Sprintf("%4d", vl.sourceNum))
-			b.WriteString(fmt.Sprintf("  %s │ %s\n", lineNum, errStyle.Render(vl.text)))
+			fmt.Fprintf(&b, "  %s │ %s\n", lineNum, errStyle.Render(vl.text))
 		} else {
-			b.WriteString(fmt.Sprintf("  %s   %s\n", "    ", errStyle.Render(vl.text)))
+			fmt.Fprintf(&b, "  %s   %s\n", "    ", errStyle.Render(vl.text))
 		}
 	}
 	// Pad remaining lines
@@ -1228,7 +1228,7 @@ func (m terraformDetailModel) renderProgressTab() string {
 
 	if p.OperationID != "" {
 		subtleStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("245"))
-		b.WriteString(fmt.Sprintf("  Operation: %s\n", subtleStyle.Render(p.OperationID)))
+		fmt.Fprintf(&b, "  Operation: %s\n", subtleStyle.Render(p.OperationID))
 	}
 
 	// Progress bar
@@ -1245,18 +1245,18 @@ func (m terraformDetailModel) renderProgressTab() string {
 
 	bar := m.progressBar.ViewAs(percent)
 	readyText := fmt.Sprintf("%d/%d resources ready", ready, total)
-	b.WriteString(fmt.Sprintf("  %s  %s\n", bar, readyText))
+	fmt.Fprintf(&b, "  %s  %s\n", bar, readyText)
 
 	// Status counts
 	b.WriteString("\n")
 	counts := countResourceStates(p.Resources)
 	headerStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("255"))
-	b.WriteString(fmt.Sprintf("  %s\n", headerStyle.Render("Resource Status Summary")))
+	fmt.Fprintf(&b, "  %s\n", headerStyle.Render("Resource Status Summary"))
 
 	for _, entry := range counts {
 		icon := stateIcon(entry.state)
 		sStyle := styleForStatus(entry.state)
-		b.WriteString(fmt.Sprintf("    %s %s %d\n", icon, sStyle.Render(entry.state), entry.count))
+		fmt.Fprintf(&b, "    %s %s %d\n", icon, sStyle.Render(entry.state), entry.count)
 	}
 
 	// Timing
@@ -1264,16 +1264,16 @@ func (m terraformDetailModel) renderProgressTab() string {
 		b.WriteString("\n")
 		subtleStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("245"))
 		if p.StartedAt != "" {
-			b.WriteString(fmt.Sprintf("  Started:   %s\n", subtleStyle.Render(p.StartedAt)))
+			fmt.Fprintf(&b, "  Started:   %s\n", subtleStyle.Render(p.StartedAt))
 		}
 		if p.CompletedAt != "" {
-			b.WriteString(fmt.Sprintf("  Completed: %s\n", subtleStyle.Render(p.CompletedAt)))
+			fmt.Fprintf(&b, "  Completed: %s\n", subtleStyle.Render(p.CompletedAt))
 		}
 	}
 
 	// Resource list
 	b.WriteString("\n")
-	b.WriteString(fmt.Sprintf("  %s\n", headerStyle.Render(fmt.Sprintf("Resources (%d)", len(p.Resources)))))
+	fmt.Fprintf(&b, "  %s\n", headerStyle.Render(fmt.Sprintf("Resources (%d)", len(p.Resources))))
 	b.WriteString("\n")
 
 	// Table header
@@ -1286,7 +1286,7 @@ func (m terraformDetailModel) renderProgressTab() string {
 		stateStr := sStyle.Render(fmt.Sprintf("%-12s", res.State))
 		addr := addrStyle.Render(res.Address)
 		resType := typeStyle.Render(res.Type)
-		b.WriteString(fmt.Sprintf("  %s %s  %s  %s\n", icon, stateStr, addr, resType))
+		fmt.Fprintf(&b, "  %s %s  %s  %s\n", icon, stateStr, addr, resType)
 	}
 
 	return b.String()
@@ -1597,9 +1597,9 @@ func (m terraformDetailModel) renderOperationHistoryTab() string {
 			totalAttempts += len(g.attempts)
 		}
 	}
-	b.WriteString(fmt.Sprintf("  %s\n\n", headerStyle.Render(
+	fmt.Fprintf(&b, "  %s\n\n", headerStyle.Render(
 		fmt.Sprintf("Operation History (%d days, %d generations, %d attempts, %d entries)",
-			len(m.historyDates), totalGenerations, totalAttempts, len(m.history)))))
+			len(m.historyDates), totalGenerations, totalAttempts, len(m.history))))
 
 	rows := flattenTimeline(m.historyDates, m.planPreviewByOpID, m.planPreviewErrByOpID)
 
@@ -1656,7 +1656,7 @@ func (m terraformDetailModel) renderOperationHistoryTab() string {
 			if selected {
 				line = selectedBg.Render(line)
 			}
-			b.WriteString(fmt.Sprintf("  %s%s\n", cursor, line))
+			fmt.Fprintf(&b, "  %s%s\n", cursor, line)
 		} else if row.isGroupHeader {
 			g := row.group
 
@@ -1690,7 +1690,7 @@ func (m terraformDetailModel) renderOperationHistoryTab() string {
 				line = selectedBg.Render(line)
 			}
 
-			b.WriteString(fmt.Sprintf("  %s%s\n", cursor, line))
+			fmt.Fprintf(&b, "  %s%s\n", cursor, line)
 		} else if row.isAttemptHeader {
 			attempt := row.attempt
 
@@ -1725,7 +1725,7 @@ func (m terraformDetailModel) renderOperationHistoryTab() string {
 				line = selectedBg.Render(line)
 			}
 
-			b.WriteString(fmt.Sprintf("  %s%s\n", cursor, line))
+			fmt.Fprintf(&b, "  %s%s\n", cursor, line)
 		} else if row.isPlanPreviewRow {
 			// Dedicated plan preview row inserted before "apply"
 			connector := "│   │   ├─"
@@ -1740,7 +1740,7 @@ func (m terraformDetailModel) renderOperationHistoryTab() string {
 			if selected {
 				line = selectedBg.Render(line)
 			}
-			b.WriteString(fmt.Sprintf("  %s%s\n", cursor, line))
+			fmt.Fprintf(&b, "  %s%s\n", cursor, line)
 		} else {
 			// Child entry row
 			e := row.entry
@@ -1776,7 +1776,7 @@ func (m terraformDetailModel) renderOperationHistoryTab() string {
 				line = selectedBg.Render(line)
 			}
 
-			b.WriteString(fmt.Sprintf("  %s%s\n", cursor, line))
+			fmt.Fprintf(&b, "  %s%s\n", cursor, line)
 		}
 	}
 
@@ -1795,8 +1795,8 @@ func (m terraformDetailModel) renderOperationHistoryTab() string {
 			pct := (scrollOffset * 100) / maxOffset
 			pos = fmt.Sprintf("%d%%", pct)
 		}
-		b.WriteString(fmt.Sprintf("\n  %s\n", dimStyle.Render(
-			fmt.Sprintf("↑↓: navigate  enter: expand/collapse  [%d/%d %s]", m.historyCursor+1, totalRows, pos))))
+		fmt.Fprintf(&b, "\n  %s\n", dimStyle.Render(
+			fmt.Sprintf("↑↓: navigate  enter: expand/collapse  [%d/%d %s]", m.historyCursor+1, totalRows, pos)))
 	}
 
 	return b.String()
@@ -1866,7 +1866,7 @@ func (m terraformDetailModel) renderTerraformFilesTab() string {
 	var b strings.Builder
 
 	headerStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("255"))
-	b.WriteString(fmt.Sprintf("  %s\n\n", headerStyle.Render(fmt.Sprintf("Files in %s", m.fileTree.BasePath))))
+	fmt.Fprintf(&b, "  %s\n\n", headerStyle.Render(fmt.Sprintf("Files in %s", m.fileTree.BasePath)))
 
 	dirStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("117")).Bold(true)
 	fileStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("252"))
@@ -1925,7 +1925,7 @@ func (m terraformDetailModel) renderTerraformFilesTab() string {
 			}
 		}
 
-		b.WriteString(fmt.Sprintf("  %s%s%s %s\n", cursor, indent, icon, name))
+		fmt.Fprintf(&b, "  %s%s%s %s\n", cursor, indent, icon, name)
 	}
 
 	// Scroll indicator
@@ -1940,9 +1940,9 @@ func (m terraformDetailModel) renderTerraformFilesTab() string {
 			pos = fmt.Sprintf("%d%%", pct)
 		}
 		dimStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("241"))
-		b.WriteString(fmt.Sprintf("\n  %s\n", dimStyle.Render(fmt.Sprintf("↑↓: navigate  enter: open/expand  esc: back  [%d/%d %s]", m.fileCursor+1, totalEntries, pos))))
+		fmt.Fprintf(&b, "\n  %s\n", dimStyle.Render(fmt.Sprintf("↑↓: navigate  enter: open/expand  esc: back  [%d/%d %s]", m.fileCursor+1, totalEntries, pos)))
 	} else {
-		b.WriteString(fmt.Sprintf("\n  %s\n", lipgloss.NewStyle().Foreground(lipgloss.Color("241")).Render("↑↓: navigate  enter: open/expand  esc: back")))
+		fmt.Fprintf(&b, "\n  %s\n", lipgloss.NewStyle().Foreground(lipgloss.Color("241")).Render("↑↓: navigate  enter: open/expand  esc: back"))
 	}
 
 	return b.String()
@@ -1962,8 +1962,8 @@ func (m terraformDetailModel) renderFileContent() string {
 	if m.fileTree != nil && m.fileCursor >= 0 && m.fileCursor < len(m.fileTree.Flat) {
 		entry := m.fileTree.Flat[m.fileCursor]
 		headerStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("117"))
-		b.WriteString(fmt.Sprintf("  %s\n", headerStyle.Render(entry.RelPath)))
-		b.WriteString(fmt.Sprintf("  %s\n\n", lipgloss.NewStyle().Foreground(lipgloss.Color("241")).Render("esc: back to file list  ↑↓/pgup/pgdn: scroll")))
+		fmt.Fprintf(&b, "  %s\n", headerStyle.Render(entry.RelPath))
+		fmt.Fprintf(&b, "  %s\n\n", lipgloss.NewStyle().Foreground(lipgloss.Color("241")).Render("esc: back to file list  ↑↓/pgup/pgdn: scroll"))
 		headerLines = 3
 	}
 
@@ -2011,9 +2011,9 @@ func (m terraformDetailModel) renderFileContent() string {
 		code := syntaxHighlightLine(vl.text, filename)
 		if vl.sourceNum > 0 {
 			lineNum := lineNumStyle.Render(fmt.Sprintf("%4d", vl.sourceNum))
-			b.WriteString(fmt.Sprintf("  %s │ %s\n", lineNum, code))
+			fmt.Fprintf(&b, "  %s │ %s\n", lineNum, code)
 		} else {
-			b.WriteString(fmt.Sprintf("  %s   %s\n", "    ", code))
+			fmt.Fprintf(&b, "  %s   %s\n", "    ", code)
 		}
 	}
 
@@ -2236,7 +2236,7 @@ func (m terraformDetailModel) renderPreviewModal() string {
 			style = headerLineStyle
 		}
 
-		b.WriteString(fmt.Sprintf("  %s\n", style.Render(text)))
+		fmt.Fprintf(&b, "  %s\n", style.Render(text))
 	}
 	for i := end - scroll; i < bodyH; i++ {
 		b.WriteString("\n")

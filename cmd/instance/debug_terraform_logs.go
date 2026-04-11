@@ -289,12 +289,12 @@ func (m terraformDetailModel) renderLogsTab() string {
 	if m.logLabel != "" {
 		labelText = lipgloss.NewStyle().Foreground(lipgloss.Color("245")).Render("  " + m.logLabel)
 	}
-	b.WriteString(fmt.Sprintf("  %s%s%s%s\n\n",
+	fmt.Fprintf(&b, "  %s%s%s%s\n\n",
 		headerStyle.Render(fmt.Sprintf("Operation Logs (%d lines)", len(m.logLines))),
 		statusText,
 		followText,
 		labelText,
-	))
+	)
 
 	bodyH := m.bodyHeight() - 4
 	if bodyH < 1 {
@@ -335,9 +335,9 @@ func (m terraformDetailModel) renderLogsTab() string {
 		styled := highlightLogLine(vl.text)
 		if vl.sourceNum > 0 {
 			lineNum := lineNumStyle.Render(fmt.Sprintf("%4d", vl.sourceNum))
-			b.WriteString(fmt.Sprintf("  %s │ %s\n", lineNum, styled))
+			fmt.Fprintf(&b, "  %s │ %s\n", lineNum, styled)
 		} else {
-			b.WriteString(fmt.Sprintf("  %s   %s\n", "    ", styled))
+			fmt.Fprintf(&b, "  %s   %s\n", "    ", styled)
 		}
 	}
 
@@ -358,8 +358,8 @@ func (m terraformDetailModel) renderLogsTab() string {
 			pct := (scroll * 100) / maxScroll
 			pos = fmt.Sprintf("%d%%", pct)
 		}
-		b.WriteString(fmt.Sprintf("  %s\n", dimStyle.Render(
-			fmt.Sprintf("[%d/%d %s]", scroll+bodyH, totalLines, pos))))
+		fmt.Fprintf(&b, "  %s\n", dimStyle.Render(
+			fmt.Sprintf("[%d/%d %s]", scroll+bodyH, totalLines, pos)))
 	}
 
 	return b.String()

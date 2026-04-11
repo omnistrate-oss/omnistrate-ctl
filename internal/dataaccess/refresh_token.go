@@ -37,7 +37,7 @@ func RefreshToken(ctx context.Context, refreshToken string) (LoginResult, error)
 	req.Header.Set("User-Agent", config.GetUserAgent())
 
 	client := getRetryableHttpClient()
-	resp, err := client.Do(req)
+	resp, err := client.Do(req) //nolint:gosec // the CLI intentionally targets the configured Omnistrate API host
 	if err != nil {
 		return LoginResult{}, fmt.Errorf("refresh token request failed: %w", err)
 	}

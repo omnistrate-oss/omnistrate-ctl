@@ -82,9 +82,22 @@ func TestGetClientTimeout(t *testing.T) {
 }
 
 func TestGetClientTimeoutOverride(t *testing.T) {
-	t.Setenv(clientTimeout, "1")
+	t.Setenv(clientTimeoutOld, "1")
 	clientTimeout := GetClientTimeout()
 	assert.Equal(t, time.Duration(1)*time.Second, clientTimeout)
+}
+
+func TestGetClientTimeoutNewEnvVar(t *testing.T) {
+	t.Setenv(clientTimeout, "10")
+	clientTimeout := GetClientTimeout()
+	assert.Equal(t, time.Duration(10)*time.Second, clientTimeout)
+}
+
+func TestGetClientTimeoutNewEnvVarTakesPrecedence(t *testing.T) {
+	t.Setenv(clientTimeoutOld, "1")
+	t.Setenv(clientTimeout, "10")
+	clientTimeout := GetClientTimeout()
+	assert.Equal(t, time.Duration(10)*time.Second, clientTimeout)
 }
 
 func TestDryRun(t *testing.T) {

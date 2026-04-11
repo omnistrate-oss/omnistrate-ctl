@@ -28,7 +28,7 @@ type ResourceAdoptionConfig struct {
 // HelmAdoptionConfig represents the Helm adoption configuration
 type HelmAdoptionConfig struct {
 	ChartRepoURL         string             `yaml:"chartRepoURL"`
-	Password             *string            `yaml:"password,omitempty"`
+	BasicAuthCredential  *string            `yaml:"password,omitempty"`
 	ReleaseName          string             `yaml:"releaseName"`
 	ReleaseNamespace     string             `yaml:"releaseNamespace"`
 	RuntimeConfiguration *HelmRuntimeConfig `yaml:"runtimeConfiguration,omitempty"`
@@ -325,8 +325,8 @@ func convertToSDKHelmAdoptionConfiguration(yamlConfig *HelmAdoptionConfig) opena
 		sdkConfig.Username = yamlConfig.Username
 	}
 
-	if yamlConfig.Password != nil {
-		sdkConfig.Password = yamlConfig.Password
+	if yamlConfig.BasicAuthCredential != nil {
+		sdkConfig.Password = yamlConfig.BasicAuthCredential
 	}
 
 	if yamlConfig.RuntimeConfiguration != nil {

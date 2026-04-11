@@ -101,6 +101,8 @@ func TestGetCloudProviderName(t *testing.T) {
 		{"GCP", "GCP"},
 		{"azure", "Azure"},
 		{"AZURE", "Azure"},
+		{"nebius", "Nebius"},
+		{"NEBIUS", "Nebius"},
 		{"unknown", "unknown"},
 		{"", ""},
 	}

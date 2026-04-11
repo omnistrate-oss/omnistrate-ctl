@@ -25,6 +25,9 @@ Examples:
   # Update organization template for PROD environment and AWS
   omnistrate-ctl deployment-cell update-config-template --environment PROD --cloud aws -f template-aws.yaml
 
+  # Update organization template for GLOBAL environment and Nebius
+  omnistrate-ctl deployment-cell update-config-template --environment GLOBAL --cloud nebius -f template-nebius.yaml
+
   # Update specific deployment cell with configuration file using flag
   omnistrate-ctl deployment-cell update-config-template --id hc-12345 -f deployment-cell-config.yaml
 
@@ -38,7 +41,7 @@ omnistrate-ctl deployment-cell update-config-template [flags]
 ### Options
 
 ```
-  -c, --cloud string         Cloud provider (e.g., aws, azure, gcp) - required for organization template updates
+  -c, --cloud string         Cloud provider (e.g., aws, azure, gcp, nebius) - required for organization template updates
   -e, --environment string   Environment type (e.g., GLOBAL, PROD, STAGING) - optional for organization template update, defaults to GLOBAL
   -f, --file string          Configuration file path (YAML format)
   -h, --help                 help for update-config-template
