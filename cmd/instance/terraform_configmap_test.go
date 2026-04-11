@@ -518,7 +518,7 @@ func TestNewTerraformConfigMapIndex_PlanPreviewMultiOpCM(t *testing.T) {
 			Data: map[string]string{
 				"807196bfc80f676658519a223477b575d5d56821960e873877463fa358b3cc80.e78a354252039003-plan-preview": `{"format_version":"1.2","planned_values":{}}`,
 				"aaa111.bbb222-plan-preview":       `{"planned_values":{"outputs":{}}}`,
-				"aaa111.bbb222-plan-preview-error":  "Warning: partial",
+				"aaa111.bbb222-plan-preview-error": "Warning: partial",
 			},
 		},
 		{
@@ -551,9 +551,9 @@ func TestPlanPreviewsForResource_MultiOpCM(t *testing.T) {
 			ObjectMeta: metav1.ObjectMeta{Name: "tf-plan-tf-r-abc-instance-xyz"},
 			Data: map[string]string{
 				"op1.nonce1-plan-preview":       `{"format_version":"1.2","planned_values":{}}`,
-				"op2.nonce2-plan-preview-error":  "Error: timeout",
-				"op3.nonce3-plan-preview":        `{"planned_values":{"outputs":{}}}`,
-				"op3.nonce3-plan-preview-error":  "Warning: partial failure",
+				"op2.nonce2-plan-preview-error": "Error: timeout",
+				"op3.nonce3-plan-preview":       `{"planned_values":{"outputs":{}}}`,
+				"op3.nonce3-plan-preview-error": "Warning: partial failure",
 			},
 		},
 	}
