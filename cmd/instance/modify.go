@@ -169,8 +169,10 @@ func runModify(cmd *cobra.Command, args []string) error {
 	}
 
 	// Display workflow resource-wise data if output is not JSON and wait flag is enabled
-	if output != "json" && waitFlag {
+	if output != "json" {
 		fmt.Printf("ℹ️  For step-by-step details, run: omnistrate-ctl instance debug %s\n", formattedInstance.InstanceID)
+	}
+	if output != "json" && waitFlag {
 		fmt.Println("🔄 Deployment progress...")
 		err = DisplayWorkflowResourceDataWithSpinners(cmd.Context(), token, formattedInstance.InstanceID, "modify")
 		if err != nil {
