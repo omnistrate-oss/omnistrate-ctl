@@ -25,38 +25,14 @@ func isStdinPiped() bool {
 
 // GetToken gets and validates auth token without prompting for login.
 func GetToken() (string, error) {
-	token, err := config.GetToken()
-	if err != nil {
-		if errors.Is(err, config.ErrAuthConfigNotFound) || errors.Is(err, config.ErrConfigFileNotFound) {
-			return "", fmt.Errorf("authentication required: not logged in. %s", loginInstructionMsg)
-		}
-		return "", errors.Wrap(err, "failed to retrieve authentication token")
-	}
-
-	if token == "" {
-		return "", fmt.Errorf("authentication required: not logged in. %s", loginInstructionMsg)
-	}
-
-	// Validate token with API call
-	_, err = dataaccess.DescribeUser(context.Background(), token)
-	if err != nil {
-		if errors.Is(err, config.ErrTokenExpired) {
-			return "", fmt.Errorf("authentication expired: token has expired. %s", loginInstructionMsg)
-		}
-		if errors.Is(err, config.ErrUnauthorized) {
-			return "", fmt.Errorf("authentication failed: unauthorized access. %s", loginInstructionMsg)
-		}
-		return "", errors.Wrap(err, "failed to validate token")
-	}
-
-	return token, nil
+	return getTokenAttempt(false)
 }
 
 // GetTokenWithLogin gets auth token, prompting for login only in interactive mode.
 // In non-interactive contexts (MCP, automation), fails immediately to prevent hanging.
 func GetTokenWithLogin() (string, error) {
 	if isStdinPiped() {
-		return GetToken()
+		return getTokenAttempt(false)
 	}
 	return getTokenWithRetry()
 }
@@ -65,7 +41,7 @@ func getTokenWithRetry() (string, error) {
 	var lastErr error
 
 	for retryCount := 0; retryCount < maxTokenRetries; retryCount++ {
-		token, err := getTokenAttempt()
+		token, err := getTokenAttempt(true)
 		if err == nil {
 			return token, nil
 		}
@@ -79,10 +55,17 @@ func getTokenWithRetry() (string, error) {
 	return "", fmt.Errorf("maximum token retries (%d) exceeded, please try again later", maxTokenRetries)
 }
 
-func getTokenAttempt() (string, error) {
+func getTokenAttempt(interactive bool) (string, error) {
 	token, err := config.GetToken()
-	if err != nil && !errors.Is(err, config.ErrAuthConfigNotFound) && !errors.Is(err, config.ErrConfigFileNotFound) {
-		return "", errors.Wrap(err, "failed to retrieve authentication token")
+	if err != nil {
+		if errors.Is(err, config.ErrAuthConfigNotFound) || errors.Is(err, config.ErrConfigFileNotFound) {
+			if !interactive {
+				return "", fmt.Errorf("authentication required: not logged in. %s", loginInstructionMsg)
+			}
+			// Fall through to login prompt
+		} else {
+			return "", errors.Wrap(err, "failed to retrieve authentication token")
+		}
 	}
 
 	// Validate existing token
@@ -94,12 +77,21 @@ func getTokenAttempt() (string, error) {
 
 		if errors.Is(err, config.ErrTokenExpired) || errors.Is(err, config.ErrUnauthorized) {
 			_ = config.RemoveAuthConfig()
+			if !interactive {
+				if errors.Is(err, config.ErrTokenExpired) {
+					return "", fmt.Errorf("authentication expired: token has expired. %s", loginInstructionMsg)
+				}
+				return "", fmt.Errorf("authentication failed: unauthorized access. %s", loginInstructionMsg)
+			}
+			// Fall through to login prompt
 		} else {
 			return "", errors.Wrap(err, "failed to validate token")
 		}
+	} else if !interactive {
+		return "", fmt.Errorf("authentication required: not logged in. %s", loginInstructionMsg)
 	}
 
-	// Prompt for login
+	// Prompt for login (interactive only)
 	err = login.RunLogin(login.LoginCmd, []string{})
 	if err != nil {
 		return "", errors.Wrap(err, "login failed")
@@ -114,5 +106,6 @@ func getTokenAttempt() (string, error) {
 		return "", fmt.Errorf("received empty token after login")
 	}
 
+	// Newly generated token is trusted — no validation needed
 	return token, nil
 }
