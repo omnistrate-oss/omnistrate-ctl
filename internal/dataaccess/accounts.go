@@ -62,7 +62,7 @@ func ListAllAccountConfigs(ctx context.Context, token string) (*openapiclientfle
 		AccountConfigs: []openapiclientfleet.FleetDescribeAccountConfigResult{},
 	}
 
-	cloudProviders := []string{"aws", "gcp", "azure"}
+	cloudProviders := []string{"aws", "gcp", "azure", "nebius"}
 
 	for _, provider := range cloudProviders {
 		request := openapiclientfleet.FleetListAccountConfigsRequest2{
@@ -309,6 +309,8 @@ func getCloudProviderName(cloudProviderID string) string {
 		return "GCP"
 	case "azure":
 		return "Azure"
+	case "nebius":
+		return "Nebius"
 	default:
 		return cloudProviderID
 	}

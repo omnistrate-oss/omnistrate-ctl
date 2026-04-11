@@ -82,6 +82,39 @@ func CreateAccount(ctx context.Context, token string, accountConfig openapiclien
 	return strings.Trim(res, "\"\n"), nil
 }
 
+type UpdateAccountParams struct {
+	AccountConfigID string
+	Name            *string
+	Description     *string
+	NebiusBindings  []openapiclient.NebiusAccountBindingInput
+}
+
+func UpdateAccount(ctx context.Context, token string, params UpdateAccountParams) (string, error) {
+	ctxWithToken := context.WithValue(ctx, openapiclient.ContextAccessToken, token)
+
+	request := openapiclient.UpdateAccountConfigRequest2{
+		Name:        params.Name,
+		Description: params.Description,
+	}
+	if len(params.NebiusBindings) > 0 {
+		request.NebiusBindings = params.NebiusBindings
+	}
+
+	apiClient := getV1Client()
+	res, r, err := apiClient.AccountConfigApiAPI.AccountConfigApiUpdateAccountConfig(
+		ctxWithToken,
+		params.AccountConfigID,
+	).UpdateAccountConfigRequest2(request).Execute()
+
+	err = handleV1Error(err)
+	if err != nil {
+		return "", err
+	}
+
+	r.Body.Close()
+	return strings.Trim(res, "\"\n"), nil
+}
+
 const (
 	AccountNotVerifiedWarningMsgTemplateAWS = `
 WARNING! Account %s (ID: %s) is not verified. To complete the account configuration setup, follow the instructions below:
@@ -145,6 +178,13 @@ Verify your account.
 
 For guidance, watch our Azure setup guide at: https://youtu.be/isTGi8tQA2w`
 
+	NextStepVerifyAccountMsgTemplateNebius = `
+Next step:
+Verify your Nebius account.
+
+- Run 'omnistrate-ctl account describe %s' to inspect the per-region binding status.
+- Every Nebius binding should become READY before using this account for deployments.`
+
 	AwsCloudFormationGuideURL = "https://youtu.be/Mu-4jppldwk"
 	AwsGcpTerraformScriptsURL = "https://github.com/omnistrate-oss/account-setup"
 	AwsGcpTerraformGuideURL   = "https://youtu.be/eKktc4QKgaA"
@@ -180,6 +220,10 @@ func PrintNextStepVerifyAccountMsg(account *openapiclient.DescribeAccountConfigR
 			name,
 			fmt.Sprintf(NextStepVerifyAccountMsgTemplateAzure,
 				*account.AzureBootstrapShellCommand))
+	} else if account.NebiusTenantID != nil {
+		nextStepMessage = fmt.Sprintf("Account: %s\n%s",
+			name,
+			fmt.Sprintf(NextStepVerifyAccountMsgTemplateNebius, account.Id))
 	}
 
 	if nextStepMessage != "" {
@@ -211,11 +255,50 @@ func PrintAccountNotVerifiedWarning(account *openapiclient.DescribeAccountConfig
 	} else if account.AzureSubscriptionID != nil && account.AzureTenantID != nil && account.AzureBootstrapShellCommand != nil {
 		warningMessage = fmt.Sprintf(AccountNotVerifiedWarningMsgTemplateAzure, name, *account.AzureSubscriptionID,
 			*account.AzureTenantID, *account.AzureBootstrapShellCommand)
+	} else if account.NebiusTenantID != nil {
+		warningMessage = fmt.Sprintf(
+			"WARNING! Account %s (Nebius Tenant ID: %s) is not verified.\n\n%s",
+			name,
+			*account.NebiusTenantID,
+			formatNebiusBindingStatusSummary(account),
+		)
 	}
 
 	if warningMessage != "" {
 		utils.PrintWarning(warningMessage)
 	}
+}
+
+func formatNebiusBindingStatusSummary(account *openapiclient.DescribeAccountConfigResult) string {
+	if len(account.NebiusBindings) == 0 {
+		return "No Nebius bindings are configured. Add at least one Nebius binding and then verify the account."
+	}
+
+	lines := []string{
+		"Per-region binding status:",
+	}
+	for _, binding := range account.NebiusBindings {
+		status := utils.FromPtr(binding.Status)
+		if status == "" {
+			status = account.Status
+		}
+		statusMessage := utils.FromPtr(binding.StatusMessage)
+
+		line := fmt.Sprintf("- region=%s project=%s serviceAccountID=%s publicKeyID=%s status=%s",
+			binding.Region,
+			binding.ProjectID,
+			binding.ServiceAccountID,
+			binding.PublicKeyID,
+			status,
+		)
+		if statusMessage != "" {
+			line += fmt.Sprintf(" message=%s", statusMessage)
+		}
+		lines = append(lines, line)
+	}
+
+	lines = append(lines, fmt.Sprintf("Run 'omnistrate-ctl account describe %s' for the full Nebius verification details.", account.Id))
+	return strings.Join(lines, "\n")
 }
 
 func AskVerifyAccountIfAny(ctx context.Context) {

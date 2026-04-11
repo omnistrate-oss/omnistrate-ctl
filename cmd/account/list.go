@@ -135,6 +135,12 @@ func formatAccount(account *openapiclient.DescribeAccountConfigResult) (model.Ac
 		// Handle Azure account
 		targetAccountID = *account.AzureSubscriptionID
 		cloudProvider = "Azure"
+	} else if account.NebiusTenantID != nil {
+		targetAccountID = *account.NebiusTenantID
+		if len(account.NebiusBindings) > 0 {
+			targetAccountID = fmt.Sprintf("%s (%d bindings)", targetAccountID, len(account.NebiusBindings))
+		}
+		cloudProvider = "Nebius"
 	} else {
 		// Handle unknown account type
 		targetAccountID = "unknown"

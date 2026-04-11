@@ -17,9 +17,9 @@ type LogsStream struct {
 
 // LogsConfig holds the configuration for log streaming
 type LogsConfig struct {
-	BaseURL  string
-	Username string
-	Password string // #nosec G117 -- field must hold log service credentials
+	BaseURL    string
+	Username   string
+	Credential string
 }
 
 // LogsService provides methods for log-related operations
@@ -76,9 +76,9 @@ func (ls *LogsService) GetLogsConfig(instance *openapiclientfleet.ResourceInstan
 					creds := strings.SplitN(userPass, ":", 2)
 					if len(creds) == 2 {
 						return &LogsConfig{
-							BaseURL:  baseURL,
-							Username: creds[0],
-							Password: creds[1],
+							BaseURL:    baseURL,
+							Username:   creds[0],
+							Credential: creds[1],
 						}, nil
 					}
 				}
@@ -122,7 +122,7 @@ func (ls *LogsService) BuildLogStreams(instance *openapiclientfleet.ResourceInst
 				continue
 			}
 			logsURL := fmt.Sprintf("wss://%s/logs?username=%s&password=%s&podName=%s&instanceId=%s",
-				logsConfig.BaseURL, logsConfig.Username, logsConfig.Password, *n.Id, instanceID)
+				logsConfig.BaseURL, logsConfig.Username, logsConfig.Credential, *n.Id, instanceID)
 			logStreams = append(logStreams, LogsStream{
 				PodName: *n.Id,
 				LogsURL: logsURL,

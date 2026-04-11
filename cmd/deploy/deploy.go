@@ -9,6 +9,8 @@ import (
 	"path/filepath"
 	"reflect"
 	"regexp"
+	"slices"
+	"sort"
 	"strings"
 	"time"
 
@@ -114,7 +116,18 @@ Instance selection and deployment:
 Dry run:
 
   - With --dry-run, deploy performs full validation and build steps but stops
-    before launching or upgrading an instance.`
+      before launching or upgrading an instance.`
+
+	nebiusDeployOnboardingMessage = "Nebius account onboarding from deploy is not supported. Run 'omnistrate-ctl account create <name> --nebius-tenant-id <tenant-id> --nebius-bindings-file <bindings-file>' first, wait for the desired binding to become READY, and then rerun deploy"
+)
+
+var (
+	deployCloudProviders = []string{"aws", "gcp", "azure", "nebius"}
+	deployDefaultRegions = map[string]string{
+		"aws":   "ap-south-1",
+		"gcp":   "us-central1",
+		"azure": "eastus2",
+	}
 )
 
 // DeployCmd represents the deploy command
@@ -138,7 +151,7 @@ func init() {
 	DeployCmd.Flags().StringP("environment", "e", "Prod", "Name of the environment to build the service in (default: Prod)")
 	DeployCmd.Flags().StringP("environment-type", "t", "prod", "Type of environment. Valid options: dev, prod, qa, canary, staging, private (default: prod)")
 
-	DeployCmd.Flags().String("cloud-provider", "", "Cloud provider (aws|gcp|azure)")
+	DeployCmd.Flags().String("cloud-provider", "", "Cloud provider (aws|gcp|azure|nebius)")
 	DeployCmd.Flags().String("region", "", "Region code (e.g. us-east-2, us-central1)")
 	DeployCmd.Flags().String("param", "", "JSON parameters for the instance deployment")
 	DeployCmd.Flags().String("param-file", "", "JSON file containing parameters for the instance deployment")
@@ -265,6 +278,12 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 	// Validate deployment-type
 	if deploymentType != build.DeploymentTypeHosted && deploymentType != build.DeploymentTypeByoa {
 		err := fmt.Errorf("invalid deployment-type '%s'. Valid values are: hosted, byoa", deploymentType)
+		utils.PrintError(err)
+		return err
+	}
+
+	if cloudProvider != "" && !isSupportedDeployCloudProvider(cloudProvider) {
+		err := fmt.Errorf("invalid cloud-provider '%s'. Valid values are: %s", cloudProvider, strings.Join(deployCloudProviders, ", "))
 		utils.PrintError(err)
 		return err
 	}
@@ -415,7 +434,11 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 
 	// If spec does not constrain providers, check all
 	if len(cloudProvidersToCheck) == 0 {
-		cloudProvidersToCheck = []string{"aws", "gcp", "azure"}
+		if cloudProvider != "" {
+			cloudProvidersToCheck = []string{cloudProvider}
+		} else {
+			cloudProvidersToCheck = append([]string(nil), deployCloudProviders...)
+		}
 	}
 
 	allAccounts := []*openapiclient.DescribeAccountConfigResult{}
@@ -1158,106 +1181,14 @@ func createInstanceUnified(ctx context.Context, token, serviceID, environmentID,
 			return "", fmt.Errorf("invalid resource in service plan: missing ID or key")
 		}
 
-		// Select default cloudProvider and region from offering.CloudProviders if available
-
-		if len(offering.CloudProviders) > 0 && cloudProvider != "" {
-			found := false
-			for _, cp := range offering.CloudProviders {
-				if cp == cloudProvider {
-					found = true
-					break
-				}
-			}
-			if !found {
-				// fallback to first available provider, but explain
-				return "", fmt.Errorf("cloud provider '%s' is not supported for this service plan. Supported providers: %v", cloudProvider, offering.CloudProviders)
-			}
+		cloudProvider, region, err = resolveCloudProviderAndRegion(offering, cloudProvider, region)
+		if err != nil {
+			return "", err
 		}
 
-		if cloudProvider == "" && region == "" {
-			if len(offering.CloudProviders) > 0 {
-				cloudProvider = offering.CloudProviders[0]
-			} else {
-				return "", fmt.Errorf("no cloud providers available for this service plan")
-			}
-
-		}
-
-		if cloudProvider == "" && region != "" {
-			// If region is specified but not cloud provider, try to infer cloud provider from region
-
-			gcpRegions := offering.GcpRegions
-			awsRegions := offering.AwsRegions
-			azureRegions := offering.AzureRegions
-
-			// Check GCP regions first
-			for _, gcpRegion := range gcpRegions {
-				if gcpRegion == region {
-					cloudProvider = "gcp"
-					break
-				}
-			}
-
-			// check AWS regions
-			if cloudProvider == "" {
-				for _, awsRegion := range awsRegions {
-					if awsRegion == region {
-						cloudProvider = "aws"
-						break
-					}
-				}
-			}
-
-			// check Azure regions
-			if cloudProvider == "" {
-				for _, azureRegion := range azureRegions {
-					if azureRegion == region {
-						cloudProvider = "azure"
-						break
-					}
-				}
-			}
-
-			// If not found in any provider, return error
-			if cloudProvider == "" {
-				return "", fmt.Errorf("unknown region '%s'. Please specify a valid cloud provider", region)
-			}
-		}
-
-		if cloudProvider != "" {
-			var regions []string
-			switch cloudProvider {
-			case "gcp":
-				regions = offering.GcpRegions
-			case "aws":
-				regions = offering.AwsRegions
-			case "azure":
-				regions = offering.AzureRegions
-			}
-			found := false
-			for _, rk := range regions {
-				if rk == region {
-					found = true
-					break
-				}
-			}
-			if region == "" && len(regions) > 0 {
-				found = true // skip check if region is not specified
-				region = regions[0]
-			}
-			if !found && len(regions) > 0 {
-				return "", fmt.Errorf("region '%s' is not supported for cloud provider '%s'. Supported regions: %v", region, cloudProvider, regions)
-			}
-		}
-
-		if region == "" {
-			switch cloudProvider {
-			case "gcp":
-				region = "us-central1"
-			case "aws":
-				region = "ap-south-1"
-			case "azure":
-				region = "eastus2"
+		if cloudProvider == "nebius" {
+			if err := ensureReadyNebiusAccountForRegion(ctx, token, region); err != nil {
+				return "", err
 			}
 		}
 
@@ -1917,6 +1848,14 @@ func createCloudAccountInstances(ctx context.Context, token, serviceID, environm
 		}
 	}
 
+	if targetCloudProvider != "" {
+		if instances, ok := readyInstances[targetCloudProvider]; ok {
+			readyInstances = map[string][]string{targetCloudProvider: instances}
+		} else {
+			readyInstances = map[string][]string{}
+		}
+	}
+
 	spinner.Complete()
 
 	// If we have READY instances for any cloud provider, show them and let user choose
@@ -2049,21 +1988,152 @@ func listCloudAccountInstancesByProvider(ctx context.Context, token, serviceID, 
 	return cloudProviderMap, nil
 }
 
+func isSupportedDeployCloudProvider(cloudProvider string) bool {
+	return slices.Contains(deployCloudProviders, cloudProvider)
+}
+
+func regionsForCloudProvider(offering openapiclient.ServiceOffering, cloudProvider string) []string {
+	switch cloudProvider {
+	case "aws":
+		return offering.AwsRegions
+	case "gcp":
+		return offering.GcpRegions
+	case "azure":
+		return offering.AzureRegions
+	case "nebius":
+		return offering.NebiusRegions
+	default:
+		return nil
+	}
+}
+
+func inferCloudProviderFromRegion(offering openapiclient.ServiceOffering, region string) string {
+	providers := offering.CloudProviders
+	if len(providers) == 0 {
+		providers = deployCloudProviders
+	}
+
+	for _, provider := range providers {
+		if slices.Contains(regionsForCloudProvider(offering, provider), region) {
+			return provider
+		}
+	}
+
+	return ""
+}
+
+func resolveCloudProviderAndRegion(offering openapiclient.ServiceOffering, cloudProvider, region string) (string, string, error) {
+	if cloudProvider != "" && !isSupportedDeployCloudProvider(cloudProvider) {
+		return "", "", fmt.Errorf("cloud provider '%s' is not supported. Supported providers: %s", cloudProvider, strings.Join(deployCloudProviders, ", "))
+	}
+
+	if len(offering.CloudProviders) > 0 && cloudProvider != "" && !slices.Contains(offering.CloudProviders, cloudProvider) {
+		return "", "", fmt.Errorf("cloud provider '%s' is not supported for this service plan. Supported providers: %v", cloudProvider, offering.CloudProviders)
+	}
+
+	if cloudProvider == "" && region == "" {
+		if len(offering.CloudProviders) == 0 {
+			return "", "", fmt.Errorf("no cloud providers available for this service plan")
+		}
+		cloudProvider = offering.CloudProviders[0]
+	}
+
+	if cloudProvider == "" && region != "" {
+		cloudProvider = inferCloudProviderFromRegion(offering, region)
+		if cloudProvider == "" {
+			return "", "", fmt.Errorf("unknown region '%s'. Please specify a valid cloud provider", region)
+		}
+	}
+
+	regions := regionsForCloudProvider(offering, cloudProvider)
+	if len(regions) > 0 {
+		if region == "" {
+			region = regions[0]
+		} else if !slices.Contains(regions, region) {
+			return "", "", fmt.Errorf("region '%s' is not supported for cloud provider '%s'. Supported regions: %v", region, cloudProvider, regions)
+		}
+	}
+
+	if region == "" {
+		if defaultRegion, ok := deployDefaultRegions[cloudProvider]; ok {
+			region = defaultRegion
+		}
+	}
+
+	if region == "" && cloudProvider == "nebius" {
+		return "", "", fmt.Errorf("region is required for cloud provider 'nebius' because this service offering does not expose any Nebius regions")
+	}
+
+	return cloudProvider, region, nil
+}
+
+func hasReadyNebiusBindingForRegion(account *openapiclient.DescribeAccountConfigResult, region string) bool {
+	if account == nil || account.Status != "READY" || account.NebiusTenantID == nil {
+		return false
+	}
+
+	for _, binding := range account.NebiusBindings {
+		if binding.Region == region && binding.Status != nil && *binding.Status == "READY" {
+			return true
+		}
+	}
+
+	return false
+}
+
+func ensureReadyNebiusAccountForRegion(ctx context.Context, token, region string) error {
+	accounts, err := dataaccess.ListAccounts(ctx, token, "nebius")
+	if err != nil {
+		return err
+	}
+
+	if len(accounts.AccountConfigs) == 0 {
+		return fmt.Errorf("no Nebius accounts are linked; %s", nebiusDeployOnboardingMessage)
+	}
+
+	readyRegions := map[string]struct{}{}
+	for i := range accounts.AccountConfigs {
+		account := &accounts.AccountConfigs[i]
+		if hasReadyNebiusBindingForRegion(account, region) {
+			return nil
+		}
+
+		for _, binding := range account.NebiusBindings {
+			if binding.Status != nil && *binding.Status == "READY" && binding.Region != "" {
+				readyRegions[binding.Region] = struct{}{}
+			}
+		}
+	}
+
+	if len(readyRegions) == 0 {
+		return fmt.Errorf("linked Nebius accounts do not have any READY region bindings; %s", nebiusDeployOnboardingMessage)
+	}
+
+	availableRegions := make([]string, 0, len(readyRegions))
+	for readyRegion := range readyRegions {
+		availableRegions = append(availableRegions, readyRegion)
+	}
+	sort.Strings(availableRegions)
+
+	return fmt.Errorf("no READY Nebius account binding found for region '%s'. READY Nebius regions in linked accounts: %s", region, strings.Join(availableRegions, ", "))
+}
+
 // promptForCloudProvider prompts user to select a cloud provider
 func promptForCloudProvider() string {
 	fmt.Println("Available cloud providers:")
 	fmt.Println("  1. AWS")
 	fmt.Println("  2. GCP")
 	fmt.Println("  3. Azure")
+	fmt.Println("  4. Nebius")
 
 	var choice int
 	for {
-		fmt.Print("Select cloud provider (1-3): ")
+		fmt.Print("Select cloud provider (1-4): ")
 		_, err := fmt.Scanln(&choice)
-		if err == nil && choice >= 1 && choice <= 3 {
+		if err == nil && choice >= 1 && choice <= 4 {
 			break
 		}
-		fmt.Println("Invalid selection. Please enter 1, 2, or 3.")
+		fmt.Println("Invalid selection. Please enter 1, 2, 3, or 4.")
 	}
 
 	switch choice {
@@ -2073,6 +2143,8 @@ func promptForCloudProvider() string {
 		return "gcp"
 	case 3:
 		return "azure"
+	case 4:
+		return "nebius"
 	default:
 		return "aws" // fallback
 	}
@@ -2150,6 +2222,9 @@ func promptForCloudCredentials(cloudProvider string) (string, error) {
 			"azure_tenant_id":              azureTenantID,
 			"cloud_provider":               "azure",
 		}
+
+	case "nebius":
+		return "", fmt.Errorf("action required: %s", nebiusDeployOnboardingMessage)
 
 	default:
 		return "", fmt.Errorf("unsupported cloud provider: %s", cloudProvider)

@@ -13,7 +13,7 @@ omnistrate-ctl deployment-cell adopt [flags]
 ### Options
 
 ```
-  -c, --cloud-provider string   Cloud provider name (required)
+  -c, --cloud-provider string   Cloud provider name (required, e.g. aws, azure, gcp, nebius)
   -u, --customer-email string   Customer email to adopt the deployment cell for (optional)
   -d, --description string      Description for the deployment cell (default "Deployment cell adopted via CLI")
   -h, --help                    help for adopt

@@ -108,42 +108,24 @@ func ArchiveArtifactPaths(baseDir string, artifactPaths []string) (map[string]st
 		return nil, nil
 	}
 
+	resolvedBaseDir, err := resolveArchiveBaseDir(baseDir)
+	if err != nil {
+		return nil, err
+	}
+
 	result := make(map[string]string)
 
 	for _, artifactPath := range artifactPaths {
-		// Resolve the artifact path relative to baseDir
-		resolvedPath := artifactPath
-		if !filepath.IsAbs(artifactPath) {
-			resolvedPath = filepath.Join(baseDir, artifactPath)
-		}
-
-		// Clean the path
-		resolvedPath = filepath.Clean(resolvedPath)
-
-		// Validate the resolved path stays within baseDir to prevent path traversal
-		absBase, err := filepath.Abs(baseDir)
+		resolvedPath, info, err := resolveArtifactPath(resolvedBaseDir, artifactPath)
 		if err != nil {
-			return nil, fmt.Errorf("failed to resolve base directory: %w", err)
-		}
-		absResolved, err := filepath.Abs(resolvedPath)
-		if err != nil {
-			return nil, fmt.Errorf("failed to resolve artifact path '%s': %w", artifactPath, err)
-		}
-		if !strings.HasPrefix(absResolved, absBase+string(filepath.Separator)) && absResolved != absBase {
-			return nil, fmt.Errorf("artifact path '%s' escapes base directory", artifactPath)
-		}
-
-		// Check if the path exists
-		info, err := os.Stat(absResolved) // #nosec G703 -- path validated against baseDir above
-		if err != nil {
-			return nil, fmt.Errorf("artifact path '%s' does not exist: %w", artifactPath, err)
+			return nil, err
 		}
 
 		if !info.IsDir() {
 			// Path is a file - check if it's already a .tar.gz / .tgz file
-			if isGzipTarFile(absResolved) {
+			if isGzipTarFile(resolvedPath) {
 				// Already a tar.gz file, just read and base64 encode it directly
-				fileContent, readErr := os.ReadFile(absResolved) // #nosec G703 -- path validated against baseDir above
+				fileContent, readErr := os.ReadFile(resolvedPath) //nolint:gosec // resolvedPath is constrained to resolvedBaseDir by resolveArtifactPath
 				if readErr != nil {
 					return nil, fmt.Errorf("failed to read tar.gz file '%s': %w", artifactPath, readErr)
 				}
@@ -154,7 +136,7 @@ func ArchiveArtifactPaths(baseDir string, artifactPaths []string) (map[string]st
 		}
 
 		// Create the tar.gz archive in memory and encode to base64
-		base64Content, err := createTarGzBase64(absResolved)
+		base64Content, err := createTarGzBase64(resolvedPath)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create archive for '%s': %w", artifactPath, err)
 		}
@@ -163,6 +145,70 @@ func ArchiveArtifactPaths(baseDir string, artifactPaths []string) (map[string]st
 	}
 
 	return result, nil
+}
+
+func resolveArchiveBaseDir(baseDir string) (string, error) {
+	if strings.TrimSpace(baseDir) == "" {
+		return "", fmt.Errorf("base directory is required")
+	}
+
+	absBaseDir, err := filepath.Abs(baseDir)
+	if err != nil {
+		return "", fmt.Errorf("failed to resolve base directory %q: %w", baseDir, err)
+	}
+
+	resolvedBaseDir, err := filepath.EvalSymlinks(absBaseDir)
+	if err != nil {
+		return "", fmt.Errorf("failed to resolve base directory %q: %w", baseDir, err)
+	}
+
+	return resolvedBaseDir, nil
+}
+
+func resolveArtifactPath(baseDir, artifactPath string) (string, os.FileInfo, error) {
+	if strings.TrimSpace(artifactPath) == "" {
+		return "", nil, fmt.Errorf("artifact path cannot be empty")
+	}
+
+	candidatePath := artifactPath
+	if !filepath.IsAbs(candidatePath) {
+		candidatePath = filepath.Join(baseDir, candidatePath)
+	}
+
+	absCandidatePath, err := filepath.Abs(candidatePath)
+	if err != nil {
+		return "", nil, fmt.Errorf("failed to resolve artifact path %q: %w", artifactPath, err)
+	}
+
+	info, err := os.Stat(absCandidatePath) //nolint:gosec // absCandidatePath is validated to remain under baseDir below
+	if err != nil {
+		return "", nil, fmt.Errorf("artifact path '%s' does not exist: %w", artifactPath, err)
+	}
+
+	resolvedCandidatePath, err := filepath.EvalSymlinks(absCandidatePath)
+	if err != nil {
+		return "", nil, fmt.Errorf("failed to resolve artifact path %q: %w", artifactPath, err)
+	}
+
+	if !pathWithinBaseDir(baseDir, resolvedCandidatePath) {
+		return "", nil, fmt.Errorf("artifact path '%s' escapes base directory '%s'", artifactPath, baseDir)
+	}
+
+	return resolvedCandidatePath, info, nil
+}
+
+func pathWithinBaseDir(baseDir, candidatePath string) bool {
+	relPath, err := filepath.Rel(baseDir, candidatePath)
+	if err != nil {
+		return false
+	}
+
+	if relPath == "." {
+		return true
+	}
+
+	parentDirPrefix := ".." + string(filepath.Separator)
+	return relPath != ".." && !strings.HasPrefix(relPath, parentDirPrefix)
 }
 
 // createTarGzBase64 creates a tar.gz archive of a directory and returns base64 encoded content
@@ -177,7 +223,7 @@ func createTarGzBase64(sourceDir string) (string, error) {
 	tarWriter := tar.NewWriter(gzWriter)
 
 	// Walk through the source directory
-	err := filepath.Walk(sourceDir, func(path string, info os.FileInfo, err error) error { // #nosec G703 -- callers validate sourceDir
+	err := filepath.Walk(sourceDir, func(path string, info os.FileInfo, err error) error { //nolint:gosec // sourceDir is validated by resolveArtifactPath before this function is called
 		if err != nil {
 			return err
 		}
@@ -257,7 +303,7 @@ func isGzipTarFile(filePath string) bool {
 	hasExtension := strings.HasSuffix(lower, ".tar.gz") || strings.HasSuffix(lower, ".tgz")
 
 	// Also verify by reading the first two bytes (gzip magic number)
-	f, err := os.Open(filePath) // #nosec G703 -- callers validate filePath against baseDir
+	f, err := os.Open(filePath) //nolint:gosec // filePath is only used with validated local artifact paths or test temp files
 	if err != nil {
 		return hasExtension
 	}
