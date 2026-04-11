@@ -87,11 +87,9 @@ func getTokenAttempt(interactive bool) (string, error) {
 		} else {
 			return "", errors.Wrap(err, "failed to validate token")
 		}
-	} else if !interactive {
-		return "", fmt.Errorf("authentication required: not logged in. %s", loginInstructionMsg)
 	}
 
-	// Prompt for login (interactive only)
+	// Interactive only: prompt for login
 	err = login.RunLogin(login.LoginCmd, []string{})
 	if err != nil {
 		return "", errors.Wrap(err, "login failed")
