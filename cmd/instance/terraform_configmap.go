@@ -50,6 +50,11 @@ type terraformConfigMapIndex struct {
 	stateByResource       map[string]*corev1.ConfigMap
 	progress              []*corev1.ConfigMap
 	planPreviewByResource map[string][]planPreviewEntry
+
+	// planPreviewMultiByResource maps resource ID → tf-plan-* ConfigMaps that
+	// belong to this instance but contain multiple operations in their data keys
+	// (Format 2: no operation suffix in CM name, data keys are "{opID}-plan-preview").
+	planPreviewMultiByResource map[string][]*corev1.ConfigMap
 }
 
 // k8sConnection holds both the clientset and rest config for k8s operations
@@ -246,11 +251,12 @@ func loadTerraformConfigMapIndex(ctx context.Context, clientset kubernetes.Inter
 
 func newTerraformConfigMapIndex(instanceID string, configMaps []corev1.ConfigMap) *terraformConfigMapIndex {
 	index := &terraformConfigMapIndex{
-		instanceID:            instanceID,
-		instanceSuffix:        normalizeInstanceIDForConfigMap(instanceID),
-		stateByResource:       make(map[string]*corev1.ConfigMap),
-		progress:              []*corev1.ConfigMap{},
-		planPreviewByResource: make(map[string][]planPreviewEntry),
+		instanceID:                 instanceID,
+		instanceSuffix:             normalizeInstanceIDForConfigMap(instanceID),
+		stateByResource:            make(map[string]*corev1.ConfigMap),
+		progress:                   []*corev1.ConfigMap{},
+		planPreviewByResource:      make(map[string][]planPreviewEntry),
+		planPreviewMultiByResource: make(map[string][]*corev1.ConfigMap),
 	}
 
 	for i := range configMaps {
@@ -268,10 +274,15 @@ func newTerraformConfigMapIndex(instanceID string, configMaps []corev1.ConfigMap
 			// instanceAndOp is "{instanceSuffix}-{opSuffix}" or just "{instanceSuffix}"
 			opSuffix := extractPlanPreviewOpSuffix(instanceAndOp, index.instanceSuffix, index.instanceID)
 			if opSuffix != "" {
+				// Format 1: per-operation CM (op suffix in CM name, data key is "plan-preview")
 				index.planPreviewByResource[resourceID] = append(index.planPreviewByResource[resourceID], planPreviewEntry{
 					cm:       cm,
 					opSuffix: opSuffix,
 				})
+			} else if isExactInstanceMatch(instanceAndOp, index.instanceSuffix, index.instanceID) {
+				// Format 2: multi-operation CM (no op suffix in CM name,
+				// data keys are "{opID}-plan-preview" and "{opID}-plan-preview-error")
+				index.planPreviewMultiByResource[resourceID] = append(index.planPreviewMultiByResource[resourceID], cm)
 			}
 			continue
 		}
@@ -307,6 +318,9 @@ func (index *terraformConfigMapIndex) merge(other *terraformConfigMapIndex) {
 	index.progress = append(index.progress, other.progress...)
 	for resourceID, entries := range other.planPreviewByResource {
 		index.planPreviewByResource[resourceID] = append(index.planPreviewByResource[resourceID], entries...)
+	}
+	for resourceID, cms := range other.planPreviewMultiByResource {
+		index.planPreviewMultiByResource[resourceID] = append(index.planPreviewMultiByResource[resourceID], cms...)
 	}
 }
 
@@ -474,6 +488,8 @@ func matchScoreFromData(data map[string]string, instanceID, instanceSuffix, reso
 
 // planPreviewsForResource returns plan previews and plan preview errors from dedicated
 // tf-plan-* ConfigMaps for a given resource. The returned maps are keyed by operation suffix.
+// It handles both Format 1 (per-operation CMs with data key "plan-preview") and Format 2
+// (multi-operation CMs with data keys "{opID}-plan-preview").
 func (index *terraformConfigMapIndex) planPreviewsForResource(resourceID string) (map[string]string, map[string]string) {
 	previews := make(map[string]string)
 	previewErrors := make(map[string]string)
@@ -482,16 +498,31 @@ func (index *terraformConfigMapIndex) planPreviewsForResource(resourceID string)
 	}
 
 	for _, key := range resourceConfigMapKeys(resourceID) {
+		// Format 1: per-operation CMs (op suffix in CM name, data key is "plan-preview")
 		entries, ok := index.planPreviewByResource[key]
-		if !ok {
-			continue
-		}
-		for _, entry := range entries {
-			if v, ok := entry.cm.Data[planPreviewDataKey]; ok && v != "" {
-				previews[entry.opSuffix] = v
+		if ok {
+			for _, entry := range entries {
+				if v, ok := entry.cm.Data[planPreviewDataKey]; ok && v != "" {
+					previews[entry.opSuffix] = v
+				}
+				if v, ok := entry.cm.Data[planPreviewErrorDataKey]; ok && v != "" {
+					previewErrors[entry.opSuffix] = v
+				}
 			}
-			if v, ok := entry.cm.Data[planPreviewErrorDataKey]; ok && v != "" {
-				previewErrors[entry.opSuffix] = v
+		}
+
+		// Format 2: multi-operation CMs (no op suffix in CM name,
+		// data keys are "{opID}-plan-preview" and "{opID}-plan-preview-error")
+		multiCMs, multiOk := index.planPreviewMultiByResource[key]
+		if multiOk {
+			for _, cm := range multiCMs {
+				p, e := findAllPlanPreviews(cm.Data)
+				for opID, v := range p {
+					previews[opID] = v
+				}
+				for opID, v := range e {
+					previewErrors[opID] = v
+				}
 			}
 		}
 	}
@@ -519,6 +550,14 @@ func extractPlanPreviewOpSuffix(instanceAndOp, instanceSuffix, instanceID string
 		}
 	}
 	return ""
+}
+
+// isExactInstanceMatch returns true when instanceAndOp exactly matches the
+// instance suffix or full instance ID — meaning the tf-plan-* ConfigMap name
+// has no operation suffix appended (Format 2: multi-operation CM).
+func isExactInstanceMatch(instanceAndOp, instanceSuffix, instanceID string) bool {
+	return (instanceSuffix != "" && instanceAndOp == instanceSuffix) ||
+		(instanceID != "" && instanceAndOp == instanceID)
 }
 
 func isConfigMapNewer(candidate, existing *corev1.ConfigMap) bool {
