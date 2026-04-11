@@ -162,6 +162,10 @@ func extractEndpoints(instance *openapiclientfleet.ResourceInstance) (resourceEn
 	}
 
 	for _, resource := range *instance.ConsumptionResourceInstanceResult.DetailedNetworkTopology {
+		if shouldHideObservabilityEndpoints(resource) {
+			continue
+		}
+
 		if resource.ClusterEndpoint == "" {
 			if resource.AdditionalEndpoints == nil || len(*resource.AdditionalEndpoints) == 0 {
 				// If both clusterEndpoint and additionalEndpoints are empty, skip this resource
@@ -183,6 +187,14 @@ func extractEndpoints(instance *openapiclientfleet.ResourceInstance) (resourceEn
 	}
 
 	return resourceEndpoints
+}
+
+func shouldHideObservabilityEndpoints(resource openapiclientfleet.ResourceNetworkTopologyResult) bool {
+	if resource.ResourceKey == "omnistrateobserv" {
+		return true
+	}
+
+	return strings.EqualFold(strings.TrimSpace(resource.ResourceName), "Omnistrate Observability")
 }
 
 // convertToTableRows converts the nested endpoint structure to a flat table format
