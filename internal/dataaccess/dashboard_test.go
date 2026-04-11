@@ -15,7 +15,7 @@ func TestDashboardServiceGetDashboardCatalogIncludesCustomerAndInternalMetrics(t
 		ConsumptionResourceInstanceResult: openapiclientfleet.DescribeResourceInstanceResult{
 			Id: &instanceID,
 			ProductTierFeatures: map[string]interface{}{
-				customerMetricsFeatureKey: map[string]interface{}{
+				customerMetricsFeatureKey: map[string]interface{}{ // #nosec -- test data
 					"enabled":                true,
 					"grafanaEndpoint":        "https://grafana.example.com",
 					"instanceOrgId":          "customer-org",

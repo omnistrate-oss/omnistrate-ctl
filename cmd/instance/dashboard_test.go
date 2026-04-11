@@ -23,7 +23,7 @@ func TestRenderDashboardSnapshot(t *testing.T) {
 		InstanceID:          "instance-123",
 		PreferredFeatureKey: "METRICS",
 		Features: []dataaccess.DashboardFeatureInfo{
-			{
+			{ // #nosec -- test data
 				Key:                 "METRICS",
 				Label:               "Customer",
 				GrafanaEndpoint:     "https://grafana.example.com",
