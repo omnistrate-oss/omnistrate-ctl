@@ -77,3 +77,40 @@ func TestConvertToTableRows(t *testing.T) {
 	assert.Equal(t, "PUBLIC", appRow.NetworkType)
 	assert.Equal(t, "443,80", appRow.Ports)
 }
+
+func TestExtractEndpointsHidesObservabilityResource(t *testing.T) {
+	topology := map[string]openapiclientfleet.ResourceNetworkTopologyResult{
+		"resource-main": {
+			ResourceKey:        "app",
+			ResourceName:       "Application",
+			ClusterEndpoint:    "https://app.example.com",
+			AllowedIPRanges:    []string{},
+			HasCompute:         true,
+			Main:               true,
+			NetworkingType:     "PUBLIC",
+			PubliclyAccessible: true,
+		},
+		"resource-observ": {
+			ResourceKey:        "omnistrateobserv",
+			ResourceName:       "Omnistrate Observability",
+			ClusterEndpoint:    "https://streamer.example.com",
+			AllowedIPRanges:    []string{},
+			HasCompute:         false,
+			Main:               false,
+			NetworkingType:     "PUBLIC",
+			PubliclyAccessible: true,
+		},
+	}
+
+	instance := &openapiclientfleet.ResourceInstance{
+		ConsumptionResourceInstanceResult: openapiclientfleet.DescribeResourceInstanceResult{
+			DetailedNetworkTopology: &topology,
+		},
+	}
+
+	endpoints := extractEndpoints(instance)
+
+	assert.Len(t, endpoints, 1)
+	assert.Contains(t, endpoints, "Application")
+	assert.NotContains(t, endpoints, "Omnistrate Observability")
+}
