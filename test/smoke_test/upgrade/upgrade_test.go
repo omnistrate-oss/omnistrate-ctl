@@ -95,9 +95,9 @@ func Test_upgrade_basic(t *testing.T) {
 	err = cmd.RootCmd.ExecuteContext(ctx)
 	require.NoError(err)
 
-	// PASS: wait for instance to reach running status and version 2.0
-	log.Debug().Msg("Waiting for instance to reach running status and version 2.0 after upgrade...")
-	err = testutils.WaitForInstanceToReachStatusAndVersion(ctx, instanceID, instance.InstanceStatusRunning, "2.0")
+	// PASS: wait for upgrade completion and version 2.0 convergence
+	log.Debug().Msg("Waiting for upgrade to complete and instance to converge to version 2.0...")
+	err = testutils.WaitForInstanceUpgradeToComplete(ctx, upgradeID, instanceID, "2.0")
 	require.NoError(err)
 
 	// PASS: upgrade instance to version 1.0
@@ -106,10 +106,11 @@ func Test_upgrade_basic(t *testing.T) {
 	err = cmd.RootCmd.ExecuteContext(ctx)
 	require.NoError(err)
 	require.Len(upgrade.UpgradePathIDs, 1)
+	upgradeID = upgrade.UpgradePathIDs[0]
 
-	// PASS: wait for instance to reach running status and version 1.0
-	log.Debug().Msg("Waiting for instance to reach running status and version 1.0 after upgrade...")
-	err = testutils.WaitForInstanceToReachStatusAndVersion(ctx, instanceID, instance.InstanceStatusRunning, "1.0")
+	// PASS: wait for upgrade completion and version 1.0 convergence
+	log.Debug().Msg("Waiting for upgrade to complete and instance to converge to version 1.0...")
+	err = testutils.WaitForInstanceUpgradeToComplete(ctx, upgradeID, instanceID, "1.0")
 	require.NoError(err)
 
 	// PASS: upgrade instance to preferred version
@@ -118,10 +119,11 @@ func Test_upgrade_basic(t *testing.T) {
 	err = cmd.RootCmd.ExecuteContext(ctx)
 	require.NoError(err)
 	require.Len(upgrade.UpgradePathIDs, 1)
+	upgradeID = upgrade.UpgradePathIDs[0]
 
-	// PASS: wait for instance to reach running status and version 2.0
-	log.Debug().Msg("Waiting for instance to reach running status and version 2.0 after upgrade to preferred version...")
-	err = testutils.WaitForInstanceToReachStatusAndVersion(ctx, instanceID, instance.InstanceStatusRunning, "2.0")
+	// PASS: wait for upgrade completion and version 2.0 convergence
+	log.Debug().Msg("Waiting for preferred upgrade to complete and instance to converge to version 2.0...")
+	err = testutils.WaitForInstanceUpgradeToComplete(ctx, upgradeID, instanceID, "2.0")
 	require.NoError(err)
 	// PASS: scheduled upgrade
 	err = validateScheduledAndCancel(ctx, instanceID, "1.0", false)
@@ -133,10 +135,11 @@ func Test_upgrade_basic(t *testing.T) {
 	err = cmd.RootCmd.ExecuteContext(ctx)
 	require.NoError(err)
 	require.Len(upgrade.UpgradePathIDs, 1)
+	upgradeID = upgrade.UpgradePathIDs[0]
 
-	// PASS: wait for instance to reach running status and version 1.0
-	log.Debug().Msg("Waiting for instance to reach running status and version 1.0 after upgrade...")
-	err = testutils.WaitForInstanceToReachStatusAndVersion(ctx, instanceID, instance.InstanceStatusRunning, "1.0")
+	// PASS: wait for upgrade completion and version 1.0 convergence
+	log.Debug().Msg("Waiting for upgrade to complete and instance to converge to version 1.0...")
+	err = testutils.WaitForInstanceUpgradeToComplete(ctx, upgradeID, instanceID, "1.0")
 	require.NoError(err)
 
 	// PASS: upgrade instance to "v1.0.0-alpha"
@@ -145,10 +148,11 @@ func Test_upgrade_basic(t *testing.T) {
 	err = cmd.RootCmd.ExecuteContext(ctx)
 	require.NoError(err)
 	require.Len(upgrade.UpgradePathIDs, 1)
+	upgradeID = upgrade.UpgradePathIDs[0]
 
-	// PASS: wait for instance to reach running status and version 2.0
-	log.Debug().Msg("Waiting for instance to reach running status and version 2.0 after version-name upgrade...")
-	err = testutils.WaitForInstanceToReachStatusAndVersion(ctx, instanceID, instance.InstanceStatusRunning, "2.0")
+	// PASS: wait for upgrade completion and version 2.0 convergence
+	log.Debug().Msg("Waiting for version-name upgrade to complete and instance to converge to version 2.0...")
+	err = testutils.WaitForInstanceUpgradeToComplete(ctx, upgradeID, instanceID, "2.0")
 	require.NoError(err)
 
 	// PASS: delete instance
