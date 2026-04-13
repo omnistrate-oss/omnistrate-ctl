@@ -28,7 +28,10 @@ omnistrate-ctl instance describe instance-abcd1234 --deployment-status --resourc
 
 type InstanceStatusType string
 
-var InstanceStatus InstanceStatusType
+var (
+	InstanceStatus      InstanceStatusType
+	InstanceTierVersion string
+)
 
 const (
 	InstanceStatusRunning   InstanceStatusType = "RUNNING"
@@ -158,6 +161,7 @@ func runDescribe(cmd *cobra.Command, args []string) error {
 	} else {
 		InstanceStatus = InstanceStatusUnknown
 	}
+	InstanceTierVersion = instance.TierVersion
 
 	// If deployment-status flag is set, return compact deployment status
 	if deploymentStatus {
