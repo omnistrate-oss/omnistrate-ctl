@@ -32,4 +32,5 @@ omnistrate-ctl account [operation] [flags]
 * [omnistrate-ctl account describe](omnistrate-ctl_account_describe.md)	 - Describe a Cloud Provider Account
 * [omnistrate-ctl account list](omnistrate-ctl_account_list.md)	 - List Cloud Provider Accounts
 * [omnistrate-ctl account update](omnistrate-ctl_account_update.md)	 - Update a Cloud Provider Account
+* [omnistrate-ctl account vpc](omnistrate-ctl_account_vpc.md)	 - Manage VPCs for a Cloud Provider Account
 
