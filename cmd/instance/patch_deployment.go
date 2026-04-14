@@ -5,7 +5,6 @@ import (
 	"errors"
 	"strings"
 
-	"github.com/chelnak/ysmrr"
 	"github.com/omnistrate-oss/omnistrate-ctl/cmd/common"
 	"github.com/omnistrate-oss/omnistrate-ctl/internal/config"
 	"github.com/omnistrate-oss/omnistrate-ctl/internal/dataaccess"
@@ -96,10 +95,10 @@ func runPatchDeployment(cmd *cobra.Command, args []string) error {
 	}
 
 	// Initialize spinner if output is not JSON
-	var sm ysmrr.SpinnerManager
-	var spinner *ysmrr.Spinner
+	var sm utils.SpinnerManager
+	var spinner *utils.Spinner
 	if output != "json" {
-		sm = ysmrr.NewSpinnerManager()
+		sm = utils.NewSpinnerManager()
 		msg := "Patching deployment..."
 		spinner = sm.AddSpinner(msg)
 		sm.Start()
@@ -167,7 +166,7 @@ func runPatchDeployment(cmd *cobra.Command, args []string) error {
 
 	// Describe instance
 	var instance *openapiclientfleet.ResourceInstance
-	instance, err = dataaccess.DescribeResourceInstance(cmd.Context(), token, serviceID, environmentID, instanceID, true)
+	instance, err = dataaccess.DescribeResourceInstance(cmd.Context(), token, serviceID, environmentID, instanceID)
 	if err != nil {
 		utils.HandleSpinnerError(spinner, sm, err)
 		return err

@@ -14,6 +14,7 @@ var Cmd = &cobra.Command{
 
 func init() {
 	Cmd.AddCommand(createCmd)
+	Cmd.AddCommand(dashboardCmd)
 	Cmd.AddCommand(describeCmd)
 	Cmd.AddCommand(deleteCmd)
 	Cmd.AddCommand(listCmd)
@@ -36,6 +37,7 @@ func init() {
 	Cmd.AddCommand(adoptCmd)
 	Cmd.AddCommand(versionUpgradeCmd)
 	Cmd.AddCommand(debugCmd)
+	Cmd.AddCommand(breakpointCmd)
 	Cmd.AddCommand(evaluateCmd)
 	Cmd.AddCommand(getInstallerCmd)
 	Cmd.AddCommand(deploymentParametersCmd)

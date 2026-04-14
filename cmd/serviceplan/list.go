@@ -1,11 +1,12 @@
 package serviceplan
 
 import (
+	"encoding/json"
+	"fmt"
 	"strings"
 
 	"github.com/omnistrate-oss/omnistrate-ctl/cmd/common"
 
-	"github.com/chelnak/ysmrr"
 	"github.com/omnistrate-oss/omnistrate-ctl/internal/config"
 	"github.com/omnistrate-oss/omnistrate-ctl/internal/dataaccess"
 	"github.com/omnistrate-oss/omnistrate-ctl/internal/model"
@@ -34,6 +35,7 @@ func init() {
 
 	listCmd.Flags().StringArrayP("filter", "f", []string{}, "Filter to apply to the list of service plans. E.g.: key1:value1,key2:value2, which filters service plans where key1 equals value1 and key2 equals value2. Allow use of multiple filters to form the logical OR operation. Supported keys: "+strings.Join(utils.GetSupportedFilterKeys(model.ServicePlanVersion{}), ",")+". Check the examples for more details.")
 	listCmd.Flags().Bool("truncate", false, "Truncate long names in the output")
+	listCmd.Flags().BoolP("interactive", "i", false, "Launch interactive list with fuzzy search and selection")
 	listCmd.Args = cobra.NoArgs
 }
 
@@ -44,6 +46,7 @@ func runList(cmd *cobra.Command, args []string) error {
 	output, _ := cmd.Flags().GetString("output")
 	filters, _ := cmd.Flags().GetStringArray("filter")
 	truncateNames, _ := cmd.Flags().GetBool("truncate")
+	interactive, _ := cmd.Flags().GetBool("interactive")
 
 	// Parse and validate filters
 	filterMaps, err := utils.ParseFilters(filters, utils.GetSupportedFilterKeys(model.ServicePlanVersion{}))
@@ -59,11 +62,11 @@ func runList(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	// Initialize spinner if output is not JSON
-	var sm ysmrr.SpinnerManager
-	var spinner *ysmrr.Spinner
-	if output != "json" {
-		sm = ysmrr.NewSpinnerManager()
+	// Initialize spinner if output is not JSON and not interactive
+	var sm utils.SpinnerManager
+	var spinner *utils.Spinner
+	if output != "json" && !interactive {
+		sm = utils.NewSpinnerManager()
 		spinner = sm.AddSpinner("Listing service plans...")
 		sm.Start()
 	}
@@ -103,10 +106,48 @@ func runList(cmd *cobra.Command, args []string) error {
 		utils.HandleSpinnerSuccess(spinner, sm, "Service plans retrieved successfully.")
 	}
 
+	// Interactive mode
+	if interactive {
+		return runInteractiveServicePlanList(formattedServicePlans)
+	}
+
 	// Format output as requested
 	err = utils.PrintTextTableJsonArrayOutput(output, formattedServicePlans)
 	if err != nil {
 		return err
+	}
+
+	return nil
+}
+
+func runInteractiveServicePlanList(plans []model.ServicePlan) error {
+	items := make([]utils.InteractiveListItem, len(plans))
+	for i, plan := range plans {
+		rawJSON, _ := json.Marshal(plan)
+		items[i] = utils.NewInteractiveListItem(
+			plan.PlanName,
+			fmt.Sprintf("%s · %s · %s · %s/%s", plan.PlanID, plan.ServiceName, plan.Environment, plan.DeploymentType, plan.TenancyType),
+			plan.PlanID,
+			"",
+			rawJSON,
+		)
+	}
+
+	selected, err := utils.RunInteractiveList(utils.InteractiveListConfig{
+		Title:    "Service Plans",
+		Items:    items,
+		ShowJSON: true,
+	})
+	if err != nil {
+		return err
+	}
+
+	if selected != nil {
+		var prettyJSON json.RawMessage
+		if err := json.Unmarshal([]byte(selected.JSONData()), &prettyJSON); err == nil {
+			data, _ := json.MarshalIndent(prettyJSON, "", "    ")
+			fmt.Println(string(data))
+		}
 	}
 
 	return nil

@@ -56,12 +56,12 @@ omnistrate-ctl [flags]
 * [omnistrate-ctl domain](omnistrate-ctl_domain.md)	 - Manage Customer Domains for your service
 * [omnistrate-ctl environment](omnistrate-ctl_environment.md)	 - Manage Service Environments for your service
 * [omnistrate-ctl helm](omnistrate-ctl_helm.md)	 - Manage Helm Charts for your service
-* [omnistrate-ctl inspect](omnistrate-ctl_inspect.md)	 - Interactive TUI to inspect Kubernetes resources
 * [omnistrate-ctl instance](omnistrate-ctl_instance.md)	 - Manage Instance Deployments for your service
 * [omnistrate-ctl login](omnistrate-ctl_login.md)	 - Log in to the Omnistrate platform
 * [omnistrate-ctl logout](omnistrate-ctl_logout.md)	 - Logout
 * [omnistrate-ctl mcp](omnistrate-ctl_mcp.md)	 - MCP server management
 * [omnistrate-ctl operations](omnistrate-ctl_operations.md)	 - Operations and health monitoring commands
+* [omnistrate-ctl refresh](omnistrate-ctl_refresh.md)	 - Refresh the access token using the stored refresh token
 * [omnistrate-ctl secret](omnistrate-ctl_secret.md)	 - Manage secrets
 * [omnistrate-ctl service](omnistrate-ctl_service.md)	 - Manage Services for your account
 * [omnistrate-ctl service-plan](omnistrate-ctl_service-plan.md)	 - Manage Service Plans for your service

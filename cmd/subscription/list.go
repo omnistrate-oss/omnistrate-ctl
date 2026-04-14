@@ -1,11 +1,12 @@
 package subscription
 
 import (
+	"encoding/json"
+	"fmt"
 	"strings"
 
 	"github.com/omnistrate-oss/omnistrate-ctl/cmd/common"
 
-	"github.com/chelnak/ysmrr"
 	"github.com/omnistrate-oss/omnistrate-ctl/internal/dataaccess"
 	"github.com/omnistrate-oss/omnistrate-ctl/internal/model"
 	"github.com/omnistrate-oss/omnistrate-ctl/internal/utils"
@@ -31,6 +32,7 @@ You can filter for specific subscriptions by using the filter flag.`,
 func init() {
 	listCmd.Flags().StringArrayP("filter", "f", []string{}, "Filter to apply to the list of subscriptions. E.g.: key1:value1,key2:value2, which filters subscriptions where key1 equals value1 and key2 equals value2. Allow use of multiple filters to form the logical OR operation. Supported keys: "+strings.Join(utils.GetSupportedFilterKeys(model.Subscription{}), ",")+". Check the examples for more details.")
 	listCmd.Flags().Bool("truncate", false, "Truncate long names in the output")
+	listCmd.Flags().BoolP("interactive", "i", false, "Launch interactive list with fuzzy search and selection")
 }
 
 func runList(cmd *cobra.Command, args []string) error {
@@ -50,6 +52,7 @@ func runList(cmd *cobra.Command, args []string) error {
 		utils.PrintError(err)
 		return err
 	}
+	interactive, _ := cmd.Flags().GetBool("interactive")
 
 	// Parse filters into a map
 	filterMaps, err := utils.ParseFilters(filters, utils.GetSupportedFilterKeys(model.Subscription{}))
@@ -65,11 +68,11 @@ func runList(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	// Initialize spinner if output is not JSON
-	var sm ysmrr.SpinnerManager
-	var spinner *ysmrr.Spinner
-	if output != "json" {
-		sm = ysmrr.NewSpinnerManager()
+	// Initialize spinner if output is not JSON and not interactive
+	var sm utils.SpinnerManager
+	var spinner *utils.Spinner
+	if output != "json" && !interactive {
+		sm = utils.NewSpinnerManager()
 		msg := "Retrieving subscriptions..."
 		spinner = sm.AddSpinner(msg)
 		sm.Start()
@@ -109,11 +112,49 @@ func runList(cmd *cobra.Command, args []string) error {
 		utils.HandleSpinnerSuccess(spinner, sm, "Successfully retrieved subscriptions")
 	}
 
+	// Interactive mode
+	if interactive {
+		return runInteractiveSubscriptionList(formattedSubscriptions)
+	}
+
 	// Print output
 	err = utils.PrintTextTableJsonArrayOutput(output, formattedSubscriptions)
 	if err != nil {
 		utils.PrintError(err)
 		return err
+	}
+
+	return nil
+}
+
+func runInteractiveSubscriptionList(subscriptions []model.Subscription) error {
+	items := make([]utils.InteractiveListItem, len(subscriptions))
+	for i, sub := range subscriptions {
+		rawJSON, _ := json.Marshal(sub)
+		items[i] = utils.NewInteractiveListItem(
+			sub.SubscriptionOwnerName,
+			fmt.Sprintf("%s · %s · %s · %s", sub.SubscriptionID, sub.ServiceName, sub.PlanName, sub.Environment),
+			sub.SubscriptionID,
+			sub.Status,
+			rawJSON,
+		)
+	}
+
+	selected, err := utils.RunInteractiveList(utils.InteractiveListConfig{
+		Title:    "Subscriptions",
+		Items:    items,
+		ShowJSON: true,
+	})
+	if err != nil {
+		return err
+	}
+
+	if selected != nil {
+		var prettyJSON json.RawMessage
+		if err := json.Unmarshal([]byte(selected.JSONData()), &prettyJSON); err == nil {
+			data, _ := json.MarshalIndent(prettyJSON, "", "    ")
+			fmt.Println(string(data))
+		}
 	}
 
 	return nil

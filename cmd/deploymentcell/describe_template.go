@@ -29,6 +29,9 @@ Examples:
   # Describe organization template for all environments and AWS
   omnistrate-ctl deployment-cell describe-config-template --cloud aws
 
+  # Describe organization template for GLOBAL and Nebius
+  omnistrate-ctl deployment-cell describe-config-template --environment GLOBAL --cloud nebius
+
   # Describe organization template for all environments and AWS
   omnistrate-ctl deployment-cell describe-config-template --cloud aws
 
@@ -52,7 +55,7 @@ Examples:
 
 func init() {
 	describeTemplateCmd.Flags().StringP("environment", "e", "", "Environment type (e.g., GLOBAL, PROD, STAGING) - optional for organization template update, defaults to GLOBAL")
-	describeTemplateCmd.Flags().StringP("cloud", "c", "", "Cloud provider (e.g., aws, azure, gcp) - required for organization template updates")
+	describeTemplateCmd.Flags().StringP("cloud", "c", "", "Cloud provider (e.g., aws, azure, gcp, nebius) - required for organization template updates")
 	describeTemplateCmd.Flags().StringP("id", "i", "", "Deployment cell ID")
 	describeTemplateCmd.Flags().StringP("output", "o", "yaml", "Output format (yaml, json, table)")
 	describeTemplateCmd.Flags().StringP("output-file", "", "", "Output template to file (YAML format)")

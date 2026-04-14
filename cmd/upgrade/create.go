@@ -6,7 +6,6 @@ import (
 
 	"github.com/omnistrate-oss/omnistrate-ctl/cmd/common"
 
-	"github.com/chelnak/ysmrr"
 	"github.com/omnistrate-oss/omnistrate-ctl/internal/config"
 	"github.com/omnistrate-oss/omnistrate-ctl/internal/dataaccess"
 	"github.com/omnistrate-oss/omnistrate-ctl/internal/model"
@@ -123,10 +122,10 @@ func runCreate(cmd *cobra.Command, args []string) error {
 	}
 
 	// Initialize spinner if output is not json
-	var sm ysmrr.SpinnerManager
-	var spinner *ysmrr.Spinner
+	var sm utils.SpinnerManager
+	var spinner *utils.Spinner
 	if output != "json" {
-		sm = ysmrr.NewSpinnerManager()
+		sm = utils.NewSpinnerManager()
 		msg := "Creating upgrade for all instances"
 		if len(args) == 1 {
 			msg = fmt.Sprintf("Creating upgrade for %s", args[0])
@@ -157,6 +156,9 @@ func runCreate(cmd *cobra.Command, args []string) error {
 				serviceID = instance.ServiceId
 				environmentID = instance.ServiceEnvironmentId
 				productTierID = instance.ProductTierId
+				if instance.ProductTierVersion != nil {
+					sourceVersion = *instance.ProductTierVersion
+				}
 				found = true
 				break
 			}
@@ -167,13 +169,15 @@ func runCreate(cmd *cobra.Command, args []string) error {
 			return nil
 		}
 
-		// Find the source version of the instance
-		describeRes, err := dataaccess.DescribeResourceInstance(cmd.Context(), token, serviceID, environmentID, instanceID, true)
-		if err != nil {
-			utils.HandleSpinnerError(spinner, sm, err)
-			return err
+		// Fall back to a lightweight describe if version wasn't in search results
+		if sourceVersion == "" {
+			describeRes, descErr := dataaccess.DescribeResourceInstance(cmd.Context(), token, serviceID, environmentID, instanceID)
+			if descErr != nil {
+				utils.HandleSpinnerError(spinner, sm, descErr)
+				return descErr
+			}
+			sourceVersion = describeRes.TierVersion
 		}
-		sourceVersion = describeRes.TierVersion
 
 		// Get the target version
 		if version != "" {

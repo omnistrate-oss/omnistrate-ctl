@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/chelnak/ysmrr"
 	"github.com/omnistrate-oss/omnistrate-ctl/cmd/common"
 	"github.com/omnistrate-oss/omnistrate-ctl/internal/config"
 	"github.com/omnistrate-oss/omnistrate-ctl/internal/dataaccess"
@@ -29,7 +28,7 @@ type ResourceAdoptionConfig struct {
 // HelmAdoptionConfig represents the Helm adoption configuration
 type HelmAdoptionConfig struct {
 	ChartRepoURL         string             `yaml:"chartRepoURL"`
-	Password             *string            `yaml:"password,omitempty"`
+	BasicAuthCredential  *string            `yaml:"password,omitempty"`
 	ReleaseName          string             `yaml:"releaseName"`
 	ReleaseNamespace     string             `yaml:"releaseNamespace"`
 	RuntimeConfiguration *HelmRuntimeConfig `yaml:"runtimeConfiguration,omitempty"`
@@ -199,10 +198,10 @@ func runAdopt(cmd *cobra.Command, args []string) error {
 	}
 
 	// Initialize spinner if output is not JSON
-	var sm ysmrr.SpinnerManager
-	var spinner *ysmrr.Spinner
+	var sm utils.SpinnerManager
+	var spinner *utils.Spinner
 	if output != "json" {
-		sm = ysmrr.NewSpinnerManager()
+		sm = utils.NewSpinnerManager()
 		msg := "Adopting resource instance..."
 		spinner = sm.AddSpinner(msg)
 		sm.Start()
@@ -326,8 +325,8 @@ func convertToSDKHelmAdoptionConfiguration(yamlConfig *HelmAdoptionConfig) opena
 		sdkConfig.Username = yamlConfig.Username
 	}
 
-	if yamlConfig.Password != nil {
-		sdkConfig.Password = yamlConfig.Password
+	if yamlConfig.BasicAuthCredential != nil {
+		sdkConfig.Password = yamlConfig.BasicAuthCredential
 	}
 
 	if yamlConfig.RuntimeConfiguration != nil {

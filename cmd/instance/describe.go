@@ -9,7 +9,6 @@ import (
 	"github.com/omnistrate-oss/omnistrate-ctl/cmd/common"
 	openapiclientfleet "github.com/omnistrate-oss/omnistrate-sdk-go/fleet"
 
-	"github.com/chelnak/ysmrr"
 	"github.com/omnistrate-oss/omnistrate-ctl/internal/config"
 	"github.com/omnistrate-oss/omnistrate-ctl/internal/dataaccess"
 	"github.com/omnistrate-oss/omnistrate-ctl/internal/utils"
@@ -29,7 +28,10 @@ omnistrate-ctl instance describe instance-abcd1234 --deployment-status --resourc
 
 type InstanceStatusType string
 
-var InstanceStatus InstanceStatusType
+var (
+	InstanceStatus      InstanceStatusType
+	InstanceTierVersion string
+)
 
 const (
 	InstanceStatusRunning   InstanceStatusType = "RUNNING"
@@ -81,7 +83,6 @@ func init() {
 	describeCmd.Flags().String("resource-id", "", "Filter results by resource ID")
 	describeCmd.Flags().String("resource-key", "", "Filter results by resource key")
 	describeCmd.Flags().Bool("deployment-status", false, "Return compact deployment status information instead of full instance details")
-	describeCmd.Flags().Bool("detail", false, "Include detailed information in the response")
 }
 
 func runDescribe(cmd *cobra.Command, args []string) error {
@@ -115,12 +116,6 @@ func runDescribe(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	detail, err := cmd.Flags().GetBool("detail")
-	if err != nil {
-		utils.PrintError(err)
-		return err
-	}
-
 	// Validate output flag
 	if output != "json" {
 		err = errors.New("only json output is supported")
@@ -136,10 +131,10 @@ func runDescribe(cmd *cobra.Command, args []string) error {
 	}
 
 	// Initialize spinner if output is not JSON
-	var sm ysmrr.SpinnerManager
-	var spinner *ysmrr.Spinner
+	var sm utils.SpinnerManager
+	var spinner *utils.Spinner
 	if output != "json" {
-		sm = ysmrr.NewSpinnerManager()
+		sm = utils.NewSpinnerManager()
 		msg := "Describing instance..."
 		spinner = sm.AddSpinner(msg)
 		sm.Start()
@@ -154,7 +149,7 @@ func runDescribe(cmd *cobra.Command, args []string) error {
 
 	// Describe instance
 	var instance *openapiclientfleet.ResourceInstance
-	instance, err = dataaccess.DescribeResourceInstance(cmd.Context(), token, serviceID, environmentID, instanceID, detail)
+	instance, err = dataaccess.DescribeResourceInstance(cmd.Context(), token, serviceID, environmentID, instanceID)
 	if err != nil {
 		utils.HandleSpinnerError(spinner, sm, err)
 		return err
@@ -166,6 +161,7 @@ func runDescribe(cmd *cobra.Command, args []string) error {
 	} else {
 		InstanceStatus = InstanceStatusUnknown
 	}
+	InstanceTierVersion = instance.TierVersion
 
 	// If deployment-status flag is set, return compact deployment status
 	if deploymentStatus {
@@ -250,7 +246,7 @@ func getResourceFromInstance(ctx context.Context, token string, instanceID strin
 	}
 
 	// Retrieve resource ID
-	instanceDes, err := dataaccess.DescribeResourceInstance(ctx, token, serviceID, environmentID, instanceID, true)
+	instanceDes, err := dataaccess.DescribeResourceInstance(ctx, token, serviceID, environmentID, instanceID)
 	if err != nil {
 		return
 	}

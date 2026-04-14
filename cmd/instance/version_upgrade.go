@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/chelnak/ysmrr"
 	"github.com/omnistrate-oss/omnistrate-ctl/cmd/common"
 	"github.com/omnistrate-oss/omnistrate-ctl/internal/config"
 	"github.com/omnistrate-oss/omnistrate-ctl/internal/dataaccess"
@@ -124,8 +123,8 @@ func runVersionUpgrade(cmd *cobra.Command, args []string) error {
 	}
 
 	// Initialize spinner if output is not JSON
-	var sm ysmrr.SpinnerManager
-	var spinner *ysmrr.Spinner
+	var sm utils.SpinnerManager
+	var spinner *utils.Spinner
 
 	defer func() {
 		if spinner != nil {
@@ -137,7 +136,7 @@ func runVersionUpgrade(cmd *cobra.Command, args []string) error {
 	}()
 
 	if output != "json" {
-		sm = ysmrr.NewSpinnerManager()
+		sm = utils.NewSpinnerManager()
 		var msg string
 		if !generateConfig {
 			msg = fmt.Sprintf("Upgrading deployment instance to target tier version %s", targetTierVersion)
@@ -187,7 +186,7 @@ func runVersionUpgrade(cmd *cobra.Command, args []string) error {
 			spinner.UpdateMessage("Processing instance configuration to generate overrides")
 		}
 		// Describe instance to get current configuration
-		instance, err := dataaccess.DescribeResourceInstance(cmd.Context(), token, serviceID, environmentID, instanceID, true)
+		instance, err := dataaccess.DescribeResourceInstance(cmd.Context(), token, serviceID, environmentID, instanceID)
 		if err != nil {
 			utils.HandleSpinnerError(spinner, sm, err)
 			return err
@@ -347,7 +346,8 @@ func runVersionUpgrade(cmd *cobra.Command, args []string) error {
 		err = DisplayWorkflowResourceDataWithSpinners(cmd.Context(), token, formattedInstance.InstanceID, "upgrade")
 		if err != nil {
 			// Handle spinner error if deployment monitoring fails
-			fmt.Println("❌ Deployment failed")
+			fmt.Fprintln(os.Stderr, "❌ Deployment failed")
+			return err
 		} else {
 			fmt.Println("✅ Deployment successful")
 		}

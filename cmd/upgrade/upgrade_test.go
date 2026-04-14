@@ -10,17 +10,35 @@ func TestUpgradeCommands(t *testing.T) {
 	require.Equal(t, "upgrade --version=[version]", Cmd.Use)
 	require.Equal(t, "Upgrade Instance Deployments to a newer or older version", Cmd.Short)
 
-	// Check that new subcommands are added
-	subCommands := []string{"list", "describe"}
-	for _, subCmd := range subCommands {
-		found := false
-		for _, cmd := range Cmd.Commands() {
-			if cmd.Use == subCmd || cmd.Use == subCmd+" <upgrade-path-id>" {
-				found = true
-				break
-			}
-		}
-		require.True(t, found, "Expected subcommand %s not found", subCmd)
+	// Check that subcommands are registered
+	subCommands := []string{"list", "describe", "create"}
+	actualCommands := make([]string, 0)
+	for _, cmd := range Cmd.Commands() {
+		actualCommands = append(actualCommands, cmd.Name())
+	}
+	for _, expected := range subCommands {
+		require.Contains(t, actualCommands, expected, "Expected subcommand %s not found", expected)
+	}
+}
+
+func TestUpgradeCommandFlags(t *testing.T) {
+	// Verify flags on the root upgrade command
+	flags := []string{"version", "version-name", "scheduled-date", "notify-customer", "max-concurrent-upgrades"}
+	for _, flagName := range flags {
+		flag := Cmd.Flags().Lookup(flagName)
+		require.NotNil(t, flag, "Expected flag %s not found on upgrade command", flagName)
+	}
+}
+
+func TestCreateCommandFlags(t *testing.T) {
+	require.Equal(t, "create [instance-id] [instance-id] ... --version=[version]", createCmd.Use)
+	require.Equal(t, "Create an upgrade path for one or more instances", createCmd.Short)
+
+	// Check flags
+	flags := []string{"version", "version-name", "scheduled-date", "notify-customer", "max-concurrent-upgrades"}
+	for _, flagName := range flags {
+		flag := createCmd.Flags().Lookup(flagName)
+		require.NotNil(t, flag, "Expected flag %s not found on create command", flagName)
 	}
 }
 

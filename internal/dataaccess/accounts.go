@@ -62,7 +62,7 @@ func ListAllAccountConfigs(ctx context.Context, token string) (*openapiclientfle
 		AccountConfigs: []openapiclientfleet.FleetDescribeAccountConfigResult{},
 	}
 
-	cloudProviders := []string{"aws", "gcp", "azure"}
+	cloudProviders := []string{"aws", "gcp", "azure", "nebius"}
 
 	for _, provider := range cloudProviders {
 		request := openapiclientfleet.FleetListAccountConfigsRequest2{
@@ -90,21 +90,6 @@ func ListAllAccountConfigs(ctx context.Context, token string) (*openapiclientfle
 	}
 
 	return allConfigs, nil
-}
-
-func ListServiceModels(ctx context.Context, token, serviceID, serviceAPIID string) (*openapiclient.ListServiceModelsResult, error) {
-	ctxWithToken := context.WithValue(ctx, openapiclient.ContextAccessToken, token)
-	apiClient := getV1Client()
-
-	resp, r, err := apiClient.ServiceModelApiAPI.ServiceModelApiListServiceModel(ctxWithToken, serviceID, serviceAPIID).Execute()
-
-	err = handleV1Error(err)
-	if err != nil {
-		return nil, err
-	}
-
-	r.Body.Close()
-	return resp, nil
 }
 
 func ListServicePlans(ctx context.Context, token, serviceID, serviceEnvironmentID string) (*openapiclient.ListServicePlansResult, error) {
@@ -324,6 +309,8 @@ func getCloudProviderName(cloudProviderID string) string {
 		return "GCP"
 	case "azure":
 		return "Azure"
+	case "nebius":
+		return "Nebius"
 	default:
 		return cloudProviderID
 	}

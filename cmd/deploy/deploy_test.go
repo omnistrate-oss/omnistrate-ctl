@@ -3,6 +3,7 @@ package deploy
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -737,6 +738,52 @@ func TestContainsString(t *testing.T) {
 	}
 }
 
+func TestIsMissingParamValue(t *testing.T) {
+	tests := []struct {
+		name     string
+		value    interface{}
+		expected bool
+	}{
+		{
+			name:     "nil value is missing",
+			value:    nil,
+			expected: true,
+		},
+		{
+			name:     "empty string is missing",
+			value:    "",
+			expected: true,
+		},
+		{
+			name:     "whitespace-only string is missing",
+			value:    "   \t\n  ",
+			expected: true,
+		},
+		{
+			name:     "non-string non-nil number is not missing",
+			value:    123,
+			expected: false,
+		},
+		{
+			name:     "non-string non-nil boolean is not missing",
+			value:    false,
+			expected: false,
+		},
+		{
+			name:     "non-empty string is not missing",
+			value:    "value",
+			expected: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := isMissingParamValue(tt.value)
+			assert.Equal(t, tt.expected, result)
+		})
+	}
+}
+
 func TestExtractCloudAccountsFromProcessedData(t *testing.T) {
 	tests := []struct {
 		name                        string
@@ -855,4 +902,118 @@ services:
 	for i := 0; i < b.N; i++ {
 		extractCloudAccountsFromProcessedData(data)
 	}
+}
+
+func TestFormatPromptLabel(t *testing.T) {
+	tests := []struct {
+		name         string
+		paramKey     string
+		displayNames map[string]string
+		expected     string
+	}{
+		{
+			name:         "key only when no display names map",
+			paramKey:     "disk_size",
+			displayNames: nil,
+			expected:     "disk_size",
+		},
+		{
+			name:         "key only when key not in display names",
+			paramKey:     "disk_size",
+			displayNames: map[string]string{"username": "Username"},
+			expected:     "disk_size",
+		},
+		{
+			name:         "display name with key in parentheses",
+			paramKey:     "disk_size",
+			displayNames: map[string]string{"disk_size": "Disk Size"},
+			expected:     "Disk Size (disk_size)",
+		},
+		{
+			name:         "empty display name falls back to key",
+			paramKey:     "disk_size",
+			displayNames: map[string]string{"disk_size": ""},
+			expected:     "disk_size",
+		},
+		{
+			name:         "empty display names map returns key",
+			paramKey:     "password",
+			displayNames: map[string]string{},
+			expected:     "password",
+		},
+		{
+			name:         "display name with special characters",
+			paramKey:     "db_password",
+			displayNames: map[string]string{"db_password": "Database Password (required)"},
+			expected:     "Database Password (required) (db_password)",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := formatPromptLabel(tt.paramKey, tt.displayNames)
+			require.Equal(t, tt.expected, result)
+		})
+	}
+}
+
+func TestParsePromptInputValue(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    string
+		expected interface{}
+	}{
+		{name: "json integer", input: "42", expected: float64(42)},
+		{name: "json boolean", input: "true", expected: true},
+		{name: "json array", input: `["a","b"]`, expected: []interface{}{"a", "b"}},
+		{name: "json null falls back to literal", input: "null", expected: "null"},
+		{name: "plain string", input: "db-user", expected: "db-user"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			require.Equal(t, tt.expected, parsePromptInputValue(tt.input))
+		})
+	}
+}
+
+func TestApplyPromptedParamValues(t *testing.T) {
+	t.Run("fills only missing required values", func(t *testing.T) {
+		params := map[string]interface{}{
+			"username": "",
+			"count":    nil,
+			"region":   "us-east-1",
+		}
+		reads := map[string]string{
+			"username": "admin",
+			"count":    "3",
+		}
+
+		err := applyPromptedParamValues(params, []string{"username", "count", "region"}, func(paramKey string) (string, error) {
+			return reads[paramKey], nil
+		})
+		require.NoError(t, err)
+		require.Equal(t, "admin", params["username"])
+		require.Equal(t, float64(3), params["count"])
+		require.Equal(t, "us-east-1", params["region"])
+	})
+
+	t.Run("returns read error", func(t *testing.T) {
+		params := map[string]interface{}{"password": nil}
+		err := applyPromptedParamValues(params, []string{"password"}, func(string) (string, error) {
+			return "", errors.New("read failed")
+		})
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "read failed")
+	})
+
+	t.Run("keeps prompted null as literal string", func(t *testing.T) {
+		params := map[string]interface{}{"username": nil}
+		err := applyPromptedParamValues(params, []string{"username"}, func(string) (string, error) {
+			return "null", nil
+		})
+		require.NoError(t, err)
+		require.Equal(t, "null", params["username"])
+		require.False(t, isMissingParamValue(params["username"]))
+	})
 }

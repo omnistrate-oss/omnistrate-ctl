@@ -38,6 +38,7 @@ func attachWorkflowProgress(ctx context.Context, token, serviceID, environmentID
 	plan.ProgressByID = map[string]ResourceProgress{}
 	plan.ProgressByKey = map[string]ResourceProgress{}
 	plan.ProgressByName = map[string]ResourceProgress{}
+	plan.WorkflowStepsByKey = map[string]*ResourceWorkflowSteps{}
 
 	for _, resource := range resourcesData {
 		progress := computeResourceProgress(resource.EventsByWorkflowStep, resource.WorkflowStatus, workflowInfo)
@@ -46,6 +47,10 @@ func attachWorkflowProgress(ctx context.Context, token, serviceID, environmentID
 		}
 		if resource.ResourceKey != "" {
 			plan.ProgressByKey[resource.ResourceKey] = progress
+			steps := buildStepsFromRawSteps(resource.RawSteps)
+			if steps != nil {
+				plan.WorkflowStepsByKey[resource.ResourceKey] = steps
+			}
 		}
 		if resource.ResourceName != "" {
 			plan.ProgressByName[resource.ResourceName] = progress

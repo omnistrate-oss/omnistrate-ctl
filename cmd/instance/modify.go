@@ -2,8 +2,8 @@ package instance
 
 import (
 	"fmt"
+	"os"
 
-	"github.com/chelnak/ysmrr"
 	"github.com/omnistrate-oss/omnistrate-ctl/cmd/common"
 	"github.com/omnistrate-oss/omnistrate-ctl/internal/config"
 	"github.com/omnistrate-oss/omnistrate-ctl/internal/dataaccess"
@@ -107,10 +107,10 @@ func runModify(cmd *cobra.Command, args []string) error {
 	}
 
 	// Initialize spinner if output is not JSON
-	var sm ysmrr.SpinnerManager
-	var spinner *ysmrr.Spinner
+	var sm utils.SpinnerManager
+	var spinner *utils.Spinner
 	if output != "json" {
-		sm = ysmrr.NewSpinnerManager()
+		sm = utils.NewSpinnerManager()
 		msg := "Modify instance..."
 		spinner = sm.AddSpinner(msg)
 		sm.Start()
@@ -174,7 +174,8 @@ func runModify(cmd *cobra.Command, args []string) error {
 		err = DisplayWorkflowResourceDataWithSpinners(cmd.Context(), token, formattedInstance.InstanceID, "modify")
 		if err != nil {
 			// Handle spinner error if deployment monitoring fails
-			fmt.Println("❌ Deployment failed")
+			fmt.Fprintln(os.Stderr, "❌ Deployment failed")
+			return err
 		} else {
 			fmt.Println("✅ Deployment successful")
 		}

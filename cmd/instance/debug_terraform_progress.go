@@ -50,37 +50,81 @@ type TerraformHistoryEntry struct {
 }
 
 // fetchTerraformProgress fetches and parses terraform progress for a given resource node
-func fetchTerraformProgress(ctx context.Context, token string, instanceData *openapiclientfleet.ResourceInstance, instanceID, resourceID string) (*TerraformProgressData, []TerraformHistoryEntry, *k8sConnection, error) {
+func fetchTerraformProgress(ctx context.Context, token string, instanceData *openapiclientfleet.ResourceInstance, instanceID, resourceID string) (*TerraformProgressData, []TerraformHistoryEntry, *k8sConnections, error) {
 	index, conn, err := loadTerraformConfigMapIndexForInstance(ctx, token, instanceData, instanceID)
 	if err != nil {
 		return nil, nil, nil, fmt.Errorf("failed to load terraform configmap index: %w", err)
 	}
 
+	progress, history := extractTerraformProgressFromIndex(index, instanceID, resourceID)
+	return progress, history, conn, nil
+}
+
+// TerraformStateData holds all data extracted from a tf-state configmap:
+// progress, history, and plan previews. This avoids needing a second configmap
+// lookup via terraformDataForResource which can fail in some environments.
+type TerraformStateData struct {
+	Progress      *TerraformProgressData
+	History       []TerraformHistoryEntry
+	PlanPreviews  map[string]string // plan preview JSON keyed by operation ID
+	PreviewErrors map[string]string // plan preview errors keyed by operation ID
+}
+
+// extractTerraformProgressFromIndex extracts terraform progress, history, and plan previews
+// for a given resource from a pre-loaded configmap index, without making additional k8s calls.
+// Plan previews are extracted directly from the same state configmap that provides history,
+// ensuring they are always found when the configmap is accessible.
+func extractTerraformProgressFromIndex(index *terraformConfigMapIndex, instanceID, resourceID string) (*TerraformProgressData, []TerraformHistoryEntry) {
+	result := extractTerraformStateData(index, instanceID, resourceID)
+	if result == nil {
+		return nil, nil
+	}
+	return result.Progress, result.History
+}
+
+// extractTerraformStateData extracts all state data (progress, history, plan previews)
+// from the tf-state and progress configmaps for a given resource.
+// Plan previews are sourced from dedicated tf-plan-* ConfigMaps first, falling back
+// to the tf-state ConfigMap if dedicated CMs yield nothing.
+// History comes from the tf-state ConfigMap. All lookups are best-effort.
+func extractTerraformStateData(index *terraformConfigMapIndex, instanceID, resourceID string) *TerraformStateData {
+	if index == nil {
+		return nil
+	}
+
 	// Find the tf-state configmap for this resource, trying multiple key formats
 	var stateConfigMap *corev1.ConfigMap
-	var ok bool
 	for _, key := range resourceConfigMapKeys(resourceID) {
-		stateConfigMap, ok = index.stateByResource[key]
-		if ok {
+		if cm, ok := index.stateByResource[key]; ok {
+			stateConfigMap = cm
 			break
 		}
 	}
-	if !ok {
-		return nil, nil, nil, nil
-	}
-
-	// Parse history from the configmap
-	historyJSON, ok := stateConfigMap.Data["history"]
-	if !ok {
-		return nil, nil, nil, nil
-	}
 
 	var history []TerraformHistoryEntry
-	if err := json.Unmarshal([]byte(historyJSON), &history); err != nil {
-		return nil, nil, nil, fmt.Errorf("failed to parse history: %w", err)
+
+	if stateConfigMap != nil {
+		// Parse history from the configmap
+		historyJSON, ok := stateConfigMap.Data["history"]
+		if ok {
+			if err := json.Unmarshal([]byte(historyJSON), &history); err != nil {
+				// Surface history parse problems so that "no data" states are diagnosable.
+				fmt.Printf("warning: failed to parse terraform history for instance %s, resource %s: %v\n", instanceID, resourceID, err)
+			}
+		}
 	}
 
-	// Find the latest progress configmap that matches this resource/instance
+	// Load plan previews/errors from dedicated tf-plan-* ConfigMaps first.
+	// These are per-operation ConfigMaps with data keys "plan-preview" and "plan-preview-error".
+	planPreviews, previewErrors := index.planPreviewsForResource(resourceID)
+
+	// Fall back to the state configmap if dedicated CMs yielded nothing.
+	// State CM stores previews as "{opID}-plan-preview" / "{opID}-plan-preview-error" keys.
+	if len(planPreviews) == 0 && len(previewErrors) == 0 && stateConfigMap != nil {
+		planPreviews, previewErrors = findAllPlanPreviews(stateConfigMap.Data)
+	}
+
+	// Find the latest progress configmap that matches this resource/instance.
 	// Progress configmaps contain resourceID and instanceID fields we can match on.
 	// We pick the one with the latest startedAt timestamp.
 	normalizedInstanceID := strings.ToLower(instanceID)
@@ -120,11 +164,18 @@ func fetchTerraformProgress(ctx context.Context, token string, instanceData *ope
 		}
 	}
 
-	if progressData == nil {
-		return nil, history, conn, nil
+	// Return nil only when ALL fields are empty — best-effort means we return
+	// whatever data was found, even if only one source had results.
+	if progressData == nil && len(history) == 0 && len(planPreviews) == 0 && len(previewErrors) == 0 {
+		return nil
 	}
 
-	return progressData, history, conn, nil
+	return &TerraformStateData{
+		Progress:      progressData,
+		History:       history,
+		PlanPreviews:  planPreviews,
+		PreviewErrors: previewErrors,
+	}
 }
 
 func normalizeResourceIDForConfigMap(resourceID string) string {
@@ -139,12 +190,12 @@ func normalizeResourceIDForConfigMap(resourceID string) string {
 // so the regex-extracted index key is "tf-r-{lowercased_resource_id}".
 // We try the documented format first, then fall back to less common variants.
 func resourceConfigMapKeys(resourceID string) []string {
-	lowered := strings.ToLower(resourceID)     // r-eialbqvwcd
+	lowered := strings.ToLower(resourceID)                    // r-eialbqvwcd
 	normalized := normalizeResourceIDForConfigMap(resourceID) // reialbqvwcd
 	return []string{
-		"tf-" + lowered,  // tf-r-eialbqvwcd  (documented format)
-		lowered,          // r-eialbqvwcd
-		resourceID,       // r-EIAlBQvwCd     (raw, exact case)
+		"tf-" + lowered,    // tf-r-eialbqvwcd  (documented format)
+		lowered,            // r-eialbqvwcd
+		resourceID,         // r-EIAlBQvwCd     (raw, exact case)
 		"tf-" + normalized, // tf-reialbqvwcd (fallback, no dashes)
 		normalized,         // reialbqvwcd    (fallback, no dashes)
 	}
@@ -152,7 +203,7 @@ func resourceConfigMapKeys(resourceID string) []string {
 
 // fetchInstanceDataForResource gets the resource instance data needed for k8s access
 func fetchInstanceDataForResource(ctx context.Context, token, serviceID, environmentID, instanceID string) (*openapiclientfleet.ResourceInstance, error) {
-	instanceData, err := dataaccess.DescribeResourceInstance(ctx, token, serviceID, environmentID, instanceID, true)
+	instanceData, err := dataaccess.DescribeResourceInstance(ctx, token, serviceID, environmentID, instanceID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to describe resource instance: %w", err)
 	}

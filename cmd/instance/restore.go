@@ -4,10 +4,6 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/cqroot/prompt"
-	"github.com/cqroot/prompt/choose"
-
-	"github.com/chelnak/ysmrr"
 	"github.com/omnistrate-oss/omnistrate-ctl/cmd/common"
 	"github.com/omnistrate-oss/omnistrate-ctl/internal/config"
 	"github.com/omnistrate-oss/omnistrate-ctl/internal/dataaccess"
@@ -88,8 +84,8 @@ func runRestore(cmd *cobra.Command, args []string) error {
 	}
 
 	// Initialize spinner if output is not JSON
-	var sm ysmrr.SpinnerManager
-	var spinner *ysmrr.Spinner
+	var sm utils.SpinnerManager
+	var spinner *utils.Spinner
 
 	// Get service and environment IDs from the instance
 	serviceID, environmentID, _, _, err := getInstance(cmd.Context(), token, instanceID)
@@ -112,24 +108,14 @@ func runRestore(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	// If tier version override is set, show warning and require confirmation using prompt/choose
+	// If tier version override is set, show warning and require confirmation
 	if tierVersionOverride != "" {
-		// Prompt user to confirm
-		var choice string
-		choice, err = prompt.New().Ask(fmt.Sprintf("NOTICE: System is initiating restoration of instance with service ID %s, using service plan version %s override. Please verify plan compatibility with the target snapshot before proceeding. Continue to proceed?", serviceID, tierVersionOverride)).
-			Choose([]string{
-				"Yes",
-				"No",
-			}, choose.WithTheme(choose.ThemeArrow))
+		confirmed, err := utils.ConfirmAction(fmt.Sprintf("NOTICE: System is initiating restoration of instance with service ID %s, using service plan version %s override. Please verify plan compatibility with the target snapshot before proceeding. Continue to proceed?", serviceID, tierVersionOverride))
 		if err != nil {
 			utils.PrintError(err)
 			return err
 		}
-
-		switch choice {
-		case "Yes":
-			break
-		case "No":
+		if !confirmed {
 			utils.PrintInfo("Operation cancelled")
 			return nil
 		}
@@ -143,7 +129,7 @@ func runRestore(cmd *cobra.Command, args []string) error {
 	}
 
 	if output != "json" {
-		sm = ysmrr.NewSpinnerManager()
+		sm = utils.NewSpinnerManager()
 		msg := "Creating new instance from snapshot..."
 		spinner = sm.AddSpinner(msg)
 		sm.Start()

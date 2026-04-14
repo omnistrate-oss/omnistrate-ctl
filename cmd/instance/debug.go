@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 
 	"github.com/spf13/cobra"
 
@@ -13,6 +14,7 @@ import (
 	"github.com/charmbracelet/bubbles/spinner"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	openapiclientfleet "github.com/omnistrate-oss/omnistrate-sdk-go/fleet"
 )
 
 var debugCmd = &cobra.Command{
@@ -26,11 +28,12 @@ var debugCmd = &cobra.Command{
 }
 
 type DebugData struct {
-	InstanceID    string   `json:"instanceId"`
-	PlanDAG       *PlanDAG `json:"planDag,omitempty"`
-	ServiceID     string   `json:"-"`
-	EnvironmentID string   `json:"-"`
-	Token         string   `json:"-"`
+	InstanceID        string                        `json:"instanceId"`
+	PlanDAG           *PlanDAG                      `json:"planDag,omitempty"`
+	ServiceID         string                        `json:"serviceId,omitempty"`
+	EnvironmentID     string                        `json:"environmentId,omitempty"`
+	Token             string                        `json:"-"`
+	ResourceDebugInfo map[string]*ResourceDebugInfo `json:"resourceDebugInfo,omitempty"`
 }
 
 // Messages for the loading spinner model
@@ -93,7 +96,7 @@ func fetchDebugData(instanceID, token string) tea.Cmd {
 			return debugDataMsg{err: fmt.Errorf("failed to get instance: %w", err)}
 		}
 
-		instanceData, err := dataaccess.DescribeResourceInstance(ctx, token, serviceID, environmentID, instanceID, true)
+		instanceData, err := dataaccess.DescribeResourceInstance(ctx, token, serviceID, environmentID, instanceID)
 		if err != nil {
 			return debugDataMsg{err: fmt.Errorf("failed to describe resource instance: %w", err)}
 		}
@@ -168,7 +171,7 @@ func runDebugJSON(instanceID, token string) error {
 		return fmt.Errorf("failed to get instance: %w", err)
 	}
 
-	instanceData, err := dataaccess.DescribeResourceInstance(ctx, token, serviceID, environmentID, instanceID, true)
+	instanceData, err := dataaccess.DescribeResourceInstance(ctx, token, serviceID, environmentID, instanceID)
 	if err != nil {
 		return fmt.Errorf("failed to describe resource instance: %w", err)
 	}
@@ -181,11 +184,22 @@ func runDebugJSON(instanceID, token string) error {
 	}
 	if planDAG != nil {
 		attachWorkflowProgress(ctx, token, serviceID, environmentID, instanceID, planDAG)
+		// Enrich bootstrap steps with dependency timelines for all resources
+		for resourceKey, steps := range planDAG.WorkflowStepsByKey {
+			enrichBootstrapSteps(steps, resourceKey, planDAG)
+		}
 	}
 
 	data := DebugData{
-		InstanceID: instanceID,
-		PlanDAG:    planDAG,
+		InstanceID:    instanceID,
+		ServiceID:     serviceID,
+		EnvironmentID: environmentID,
+		PlanDAG:       planDAG,
+	}
+
+	// Collect per-resource debug info (helm data, terraform progress/files/logs)
+	if planDAG != nil {
+		data.ResourceDebugInfo = collectResourceDebugInfo(ctx, token, serviceID, environmentID, instanceID, planDAG, instanceData)
 	}
 
 	jsonData, err := json.MarshalIndent(data, "", "  ")
@@ -194,6 +208,146 @@ func runDebugJSON(instanceID, token string) error {
 	}
 	fmt.Println(string(jsonData))
 	return nil
+}
+
+// collectResourceDebugInfo fetches all per-resource debug data for the JSON output path.
+// It collects helm data (logs, values) and terraform data (progress, history, files, logs)
+// for each resource in the plan DAG. Errors for individual resources or data sources are
+// handled gracefully — partial data is returned rather than failing the entire operation.
+func collectResourceDebugInfo(ctx context.Context, token, serviceID, environmentID, instanceID string, planDAG *PlanDAG, instanceData *openapiclientfleet.ResourceInstance) map[string]*ResourceDebugInfo {
+	result := make(map[string]*ResourceDebugInfo)
+	if planDAG == nil || len(planDAG.Nodes) == 0 {
+		return result
+	}
+
+	// Initialize entries for all visible nodes
+	for _, node := range planDAG.Nodes {
+		key := node.Key
+		if key == "" {
+			key = node.ID
+		}
+		result[key] = &ResourceDebugInfo{
+			ResourceID:   node.ID,
+			ResourceKey:  key,
+			ResourceType: node.Type,
+		}
+	}
+
+	// Collect helm debug data from the DebugResourceInstance API
+	collectHelmDebugInfo(ctx, token, serviceID, environmentID, instanceID, result)
+
+	// Collect terraform debug data from k8s ConfigMaps
+	collectTerraformDebugInfo(ctx, token, instanceData, instanceID, planDAG, result)
+
+	// Remove entries that have no debug data
+	for key, info := range result {
+		if !info.hasData() {
+			delete(result, key)
+		}
+	}
+
+	return result
+}
+
+// collectHelmDebugInfo fetches helm debug data (logs, chart values) for all helm resources.
+func collectHelmDebugInfo(ctx context.Context, token, serviceID, environmentID, instanceID string, result map[string]*ResourceDebugInfo) {
+	debugResult, err := dataaccess.DebugResourceInstance(ctx, token, serviceID, environmentID, instanceID)
+	if err != nil || debugResult.ResourcesDebug == nil {
+		return
+	}
+
+	for resourceKey, resourceDebugInfo := range *debugResult.ResourcesDebug {
+		if resourceKey == "omnistrateobserv" {
+			continue
+		}
+
+		info, exists := result[resourceKey]
+		if !exists {
+			continue
+		}
+
+		debugDataInterface, ok := resourceDebugInfo.GetDebugDataOk()
+		if !ok || debugDataInterface == nil {
+			continue
+		}
+
+		actualDebugData, ok := (*debugDataInterface).(map[string]interface{})
+		if !ok {
+			continue
+		}
+
+		// Check if it's a helm resource (has chart metadata)
+		if _, hasChart := actualDebugData["chartRepoName"]; hasChart {
+			info.Helm = parseHelmData(actualDebugData)
+		}
+	}
+}
+
+// collectTerraformDebugInfo fetches terraform debug data (progress, history, files, logs)
+// for all terraform resources from k8s ConfigMaps.
+func collectTerraformDebugInfo(ctx context.Context, token string, instanceData *openapiclientfleet.ResourceInstance, instanceID string, planDAG *PlanDAG, result map[string]*ResourceDebugInfo) {
+	// Check if there are any terraform resources
+	hasTerraform := false
+	for _, node := range planDAG.Nodes {
+		if strings.Contains(strings.ToLower(node.Type), "terraform") {
+			hasTerraform = true
+			break
+		}
+	}
+	if !hasTerraform {
+		return
+	}
+
+	// Load terraform configmap index once for all resources
+	index, _, err := loadTerraformConfigMapIndexForInstance(ctx, token, instanceData, instanceID)
+	if err != nil || index == nil {
+		return
+	}
+
+	for _, node := range planDAG.Nodes {
+		if !strings.Contains(strings.ToLower(node.Type), "terraform") {
+			continue
+		}
+
+		key := node.Key
+		if key == "" {
+			key = node.ID
+		}
+		info, exists := result[key]
+		if !exists {
+			continue
+		}
+
+		// Get terraform files and logs from configmap data
+		tfData := index.terraformDataForResource(node.ID)
+		if tfData != nil {
+			if len(tfData.Files) > 0 {
+				info.TerraformFiles = tfData.Files
+			}
+			if len(tfData.Logs) > 0 {
+				info.TerraformLogs = tfData.Logs
+			}
+		}
+
+		// Get terraform progress, operation history, and plan previews.
+		// Plan previews: dedicated tf-plan-* CMs first, then state CM fallback.
+		// All lookups are best-effort.
+		stateData := extractTerraformStateData(index, instanceID, node.ID)
+		if stateData != nil {
+			if stateData.Progress != nil {
+				info.TerraformProgress = stateData.Progress
+			}
+			if len(stateData.History) > 0 {
+				info.TerraformHistory = stateData.History
+			}
+			if len(stateData.PlanPreviews) > 0 {
+				info.TerraformPlanPreview = stateData.PlanPreviews
+			}
+			if len(stateData.PreviewErrors) > 0 {
+				info.TerraformPlanPreviewError = stateData.PreviewErrors
+			}
+		}
+	}
 }
 
 func init() {

@@ -89,7 +89,7 @@ jobs:
 
       - name: Upload compressed artifacts
         timeout-minutes: 5
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: ${{ steps.calc_binary_name.outputs.binary_name }}-compressed
           path: |
@@ -111,7 +111,7 @@ jobs:
     steps:
       - name: Download build artifacts
         timeout-minutes: 5
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@v8
 
       - name: Display structure of downloaded files
         timeout-minutes: 1
@@ -217,7 +217,7 @@ jobs:
 
       - name: Download build artifacts
         timeout-minutes: 5
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@v8
 
       - name: Display structure of downloaded files
         timeout-minutes: 1
@@ -270,7 +270,7 @@ jobs:
 
       - name: Download build artifacts
         timeout-minutes: 5
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@v8
 
       - name: Display structure of downloaded files
         timeout-minutes: 1
@@ -353,7 +353,7 @@ jobs:
 
       # https://github.com/sigstore/cosign-installer
       - name: Install cosign
-        uses: sigstore/cosign-installer@v4.0.0
+        uses: sigstore/cosign-installer@v4.1.1
 
       - name: Check install!
         run: cosign version
@@ -362,14 +362,14 @@ jobs:
         uses: docker/setup-qemu-action@v3
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@v4
         with:
           platforms: ${{ env.PLATFORMS }}
 
       # Login against a Docker registry
       # https://github.com/docker/login-action
       - name: Log into registry ${{ env.REGISTRY }}
-        uses: docker/login-action@v3
+        uses: docker/login-action@v4
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
@@ -392,7 +392,7 @@ jobs:
       - name: Build and push multi-arch
         timeout-minutes: 60
         id: build-and-push
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: .
           file: ./build/Dockerfile

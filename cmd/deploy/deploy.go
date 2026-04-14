@@ -1,6 +1,7 @@
 package deploy
 
 import (
+	"bufio"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -8,6 +9,8 @@ import (
 	"path/filepath"
 	"reflect"
 	"regexp"
+	"slices"
+	"sort"
 	"strings"
 	"time"
 
@@ -17,7 +20,6 @@ import (
 	"golang.org/x/text/language"
 	"gopkg.in/yaml.v3"
 
-	"github.com/chelnak/ysmrr"
 	"github.com/omnistrate-oss/omnistrate-ctl/cmd/account"
 	"github.com/omnistrate-oss/omnistrate-ctl/cmd/build"
 	"github.com/omnistrate-oss/omnistrate-ctl/cmd/common"
@@ -33,7 +35,8 @@ import (
 const (
 	deployExample = `
 # Build and deploy using the default spec in the current directory
-# Looks for omnistrate-compose.yaml, if no spec file is found, deploy falls back to build-from-repo.
+# Looks for omnistrate-compose.yaml first, then spec.yaml.
+# If no supported spec file is found, deploy falls back to build-from-repo.
 omnistrate-ctl deploy
 
 # Deploy using a specific Omnistrate spec
@@ -88,7 +91,7 @@ It automatically handles:
 Main modes of operation:
 
   - Build from repository and deploy
-      Triggered when no spec file is provided and no supported spec is found in
+        Triggered when no spec file is provided and no supported spec is found in
       the current directory. The command detects a Dockerfile, builds an image,
       creates the service, generates the Omnistrate spec, and deploys an instance.
 
@@ -113,7 +116,18 @@ Instance selection and deployment:
 Dry run:
 
   - With --dry-run, deploy performs full validation and build steps but stops
-    before launching or upgrading an instance.`
+      before launching or upgrading an instance.`
+
+	nebiusDeployOnboardingMessage = "Nebius account onboarding from deploy is not supported. Run 'omnistrate-ctl account create <name> --nebius-tenant-id <tenant-id> --nebius-bindings-file <bindings-file>' first, wait for the desired binding to become READY, and then rerun deploy"
+)
+
+var (
+	deployCloudProviders = []string{"aws", "gcp", "azure", "nebius"}
+	deployDefaultRegions = map[string]string{
+		"aws":   "ap-south-1",
+		"gcp":   "us-central1",
+		"azure": "eastus2",
+	}
 )
 
 // DeployCmd represents the deploy command
@@ -137,7 +151,7 @@ func init() {
 	DeployCmd.Flags().StringP("environment", "e", "Prod", "Name of the environment to build the service in (default: Prod)")
 	DeployCmd.Flags().StringP("environment-type", "t", "prod", "Type of environment. Valid options: dev, prod, qa, canary, staging, private (default: prod)")
 
-	DeployCmd.Flags().String("cloud-provider", "", "Cloud provider (aws|gcp|azure)")
+	DeployCmd.Flags().String("cloud-provider", "", "Cloud provider (aws|gcp|azure|nebius)")
 	DeployCmd.Flags().String("region", "", "Region code (e.g. us-east-2, us-central1)")
 	DeployCmd.Flags().String("param", "", "JSON parameters for the instance deployment")
 	DeployCmd.Flags().String("param-file", "", "JSON file containing parameters for the instance deployment")
@@ -268,15 +282,21 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
+	if cloudProvider != "" && !isSupportedDeployCloudProvider(cloudProvider) {
+		err := fmt.Errorf("invalid cloud-provider '%s'. Valid values are: %s", cloudProvider, strings.Join(deployCloudProviders, ", "))
+		utils.PrintError(err)
+		return err
+	}
+
 	// Initialize spinner manager (only after we know we're logged in)
-	sm := ysmrr.NewSpinnerManager()
+	sm := utils.NewSpinnerManager()
 	sm.Start()
 	defer sm.Stop()
 
 	// Inform user of deployment start
 	spinner := sm.AddSpinner("Step 1/2: Starting service creation...")
 
-	// Improved spec file detection: prefer service plan, then docker compose, else repo
+	// Improved spec file detection: prefer omnistrate-compose.yaml, then spec.yaml, else repo
 	var specFile string
 	var specType = build.DockerComposeSpecType
 	var buildFromRepo = false
@@ -290,6 +310,9 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 		// Check for omnistrate-compose.yaml first (preferred)
 		if _, err := os.Stat(build.OmnistrateComposeFileName); err == nil {
 			specFile = build.OmnistrateComposeFileName
+		} else if _, err := os.Stat(build.PlanSpecFileName); err == nil {
+			// Fallback to service plan spec if present
+			specFile = build.PlanSpecFileName
 		} else {
 			// If omnistrate-compose.yaml not found, check for docker-compose.yaml and error out
 			if _, err := os.Stat(build.DockerComposeFileName); err == nil {
@@ -344,9 +367,11 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 		// Check for omnistrate-specific configurations
 		var planCheck map[string]interface{}
 		if err := yaml.Unmarshal(processedData, &planCheck); err == nil {
+			// Use the common function to detect spec type
+			specType = build.DetectSpecType(planCheck)
 			// Check if this is an omnistrate spec file
 			isOmnistrate := build.ContainsOmnistrateKey(planCheck)
-			if !isOmnistrate {
+			if !isOmnistrate && specType == build.DockerComposeSpecType {
 				err := fmt.Errorf(
 					"spec file '%s' is missing Omnistrate configuration (x-omnistrate-* keys).\n"+
 						"This looks like a plain docker-compose or non-Omnistrate YAML file.\n\n"+
@@ -359,8 +384,7 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 				spinner.Error()
 				return err
 			}
-			// Use the common function to detect spec type
-			specType = build.DetectSpecType(planCheck)
+
 		} else {
 			// Fallback to file extension based detection
 			fileToRead := filepath.Base(absSpecFile)
@@ -410,7 +434,11 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 
 	// If spec does not constrain providers, check all
 	if len(cloudProvidersToCheck) == 0 {
-		cloudProvidersToCheck = []string{"aws", "gcp", "azure"}
+		if cloudProvider != "" {
+			cloudProvidersToCheck = []string{cloudProvider}
+		} else {
+			cloudProvidersToCheck = append([]string(nil), deployCloudProviders...)
+		}
 	}
 
 	allAccounts := []*openapiclient.DescribeAccountConfigResult{}
@@ -708,7 +736,7 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 			wrapAndPrintServiceBuildError(err)
 			return err
 		}
-		sm = ysmrr.NewSpinnerManager()
+		sm = utils.NewSpinnerManager()
 		sm.Start()
 
 	} else {
@@ -819,7 +847,7 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 			utils.PrintWarning(fmt.Sprintf("  %s: %s", resourceName, resourceID))
 		}
 		utils.PrintWarning("These resources were not processed during the build.")
-		sm = ysmrr.NewSpinnerManager()
+		sm = utils.NewSpinnerManager()
 		sm.Start()
 	}
 
@@ -834,7 +862,7 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 
 // executeDeploymentWorkflow handles the complete post-service-build deployment workflow
 // This function is reusable for both deploy and build_simple commands
-func executeDeploymentWorkflow(cmd *cobra.Command, sm ysmrr.SpinnerManager, token, serviceID, environmentID, planID, serviceName, environment, environmentTypeUpper, instanceID, cloudProvider, region, param, paramFile, resourceID, deploymentType string) error {
+func executeDeploymentWorkflow(cmd *cobra.Command, sm utils.SpinnerManager, token, serviceID, environmentID, planID, serviceName, environment, environmentTypeUpper, instanceID, cloudProvider, region, param, paramFile, resourceID, deploymentType string) error {
 
 	// Step 7: Set service plan as preferred in environment
 	spinner := sm.AddSpinner(fmt.Sprintf("Step 1/2: Setting service plan as preferred in %s...", environment))
@@ -879,13 +907,15 @@ func executeDeploymentWorkflow(cmd *cobra.Command, sm ysmrr.SpinnerManager, toke
 		if instanceID != "" && len(existingInstanceIDs) == 0 {
 			spinner.UpdateMessage(fmt.Sprintf("%s: No existing instance found for instance ID: %s (provided instance does not match)", spinnerMsg, instanceID))
 			spinner.Error()
-			fmt.Println()
-			fmt.Println("❌ No instance found with the given --instance-id.")
-			fmt.Printf("   Instance ID: %s\n\n", instanceID)
-			fmt.Println("Next steps:")
-			fmt.Println("  - Check the instance ID value.")
-			fmt.Println("  - List instances for this service: omnistrate-ctl instance list --service", serviceName)
-			return nil
+			// Stop spinner manager before printing multi-line guidance to avoid interleaved output.
+			sm.Stop()
+			fmt.Fprintln(os.Stderr)
+			fmt.Fprintln(os.Stderr, "❌ No instance found with the given --instance-id.")
+			fmt.Fprintf(os.Stderr, "   Instance ID: %s\n\n", instanceID)
+			fmt.Fprintln(os.Stderr, "Next steps:")
+			fmt.Fprintln(os.Stderr, "  - Check the instance ID value.")
+			fmt.Fprintln(os.Stderr, "  - List instances for this service: omnistrate-ctl instance list --service", serviceName)
+			return fmt.Errorf("no instance found with the given --instance-id: %s", instanceID)
 		}
 
 		// Display automatic instance handling message
@@ -917,7 +947,7 @@ func executeDeploymentWorkflow(cmd *cobra.Command, sm ysmrr.SpinnerManager, toke
 		spinner = sm.AddSpinner(fmt.Sprintf("Step 2/2: Upgrading existing instance %s to latest version...", finalInstanceID))
 		spinner.Complete()
 		spinner = sm.AddSpinner("Step 2/2: Upgrading existing instance")
-		upgradeErr := upgradeExistingInstance(cmd.Context(), token, []string{finalInstanceID}, serviceID, planID)
+		upgradeErr := upgradeExistingInstance(cmd.Context(), token, []string{finalInstanceID}, serviceID, environmentID, planID)
 		instanceActionType = "upgrade"
 		if upgradeErr != nil {
 			utils.HandleSpinnerError(spinner, sm, upgradeErr)
@@ -950,7 +980,7 @@ func executeDeploymentWorkflow(cmd *cobra.Command, sm ysmrr.SpinnerManager, toke
 			fmt.Printf("BYOA deployment detected. Creating cloud account instance...\n")
 			cloudAccountInstanceID, targetCloudProvider, err := createCloudAccountInstances(cmd.Context(), token, serviceID, environmentID, planID, cloudProvider, sm)
 			if err != nil {
-				fmt.Printf("Warning: Failed to create cloud account instances: %v\n", err)
+				fmt.Fprintf(os.Stderr, "Warning: Failed to create cloud account instances: %v\n", err)
 				return err
 			}
 			cloudProvider = targetCloudProvider
@@ -967,7 +997,7 @@ func executeDeploymentWorkflow(cmd *cobra.Command, sm ysmrr.SpinnerManager, toke
 		// instanceActionType is already "create" from initialization
 		if err != nil {
 			// Restart spinner manager to handle error properly
-			sm = ysmrr.NewSpinnerManager()
+			sm = utils.NewSpinnerManager()
 			sm.Start()
 			spinner = sm.AddSpinner("Step 2/2: Deploying a new instance")
 			utils.HandleSpinnerError(spinner, sm, err)
@@ -1007,7 +1037,7 @@ func executeDeploymentWorkflow(cmd *cobra.Command, sm ysmrr.SpinnerManager, toke
 	if finalInstanceID != "" {
 		err = instance.DisplayWorkflowResourceDataWithSpinners(cmd.Context(), token, finalInstanceID, instanceActionType)
 		if err != nil {
-			fmt.Printf("❌ Deployment workflow failed: %s\n", err)
+			fmt.Fprintf(os.Stderr, "❌ Deployment workflow failed: %s\n", err)
 			return err
 		} else {
 			fmt.Println("✅ Deployment successful")
@@ -1019,7 +1049,7 @@ func executeDeploymentWorkflow(cmd *cobra.Command, sm ysmrr.SpinnerManager, toke
 
 // createInstanceUnified creates an instance with or without subscription, removing duplicate code
 func createInstanceUnified(ctx context.Context, token, serviceID, environmentID, productTierID, cloudProvider, region, resourceID, instanceType string, formattedParams map[string]interface{}) (string, error) {
-	sm := ysmrr.NewSpinnerManager()
+	sm := utils.NewSpinnerManager()
 	sm.Start()
 	spinner := sm.AddSpinner("Step 2/2: Deploying a new instance")
 
@@ -1140,7 +1170,7 @@ func createInstanceUnified(ctx context.Context, token, serviceID, environmentID,
 				resourceID = selected.Id
 
 				// Create new spinner manager after warning
-				sm = ysmrr.NewSpinnerManager()
+				sm = utils.NewSpinnerManager()
 				sm.Start()
 
 			}
@@ -1151,106 +1181,14 @@ func createInstanceUnified(ctx context.Context, token, serviceID, environmentID,
 			return "", fmt.Errorf("invalid resource in service plan: missing ID or key")
 		}
 
-		// Select default cloudProvider and region from offering.CloudProviders if available
-
-		if len(offering.CloudProviders) > 0 && cloudProvider != "" {
-			found := false
-			for _, cp := range offering.CloudProviders {
-				if cp == cloudProvider {
-					found = true
-					break
-				}
-			}
-			if !found {
-				// fallback to first available provider, but explain
-				return "", fmt.Errorf("cloud provider '%s' is not supported for this service plan. Supported providers: %v", cloudProvider, offering.CloudProviders)
-			}
+		cloudProvider, region, err = resolveCloudProviderAndRegion(offering, cloudProvider, region)
+		if err != nil {
+			return "", err
 		}
 
-		if cloudProvider == "" && region == "" {
-			if len(offering.CloudProviders) > 0 {
-				cloudProvider = offering.CloudProviders[0]
-			} else {
-				return "", fmt.Errorf("no cloud providers available for this service plan")
-			}
-
-		}
-
-		if cloudProvider == "" && region != "" {
-			// If region is specified but not cloud provider, try to infer cloud provider from region
-
-			gcpRegions := offering.GcpRegions
-			awsRegions := offering.AwsRegions
-			azureRegions := offering.AzureRegions
-
-			// Check GCP regions first
-			for _, gcpRegion := range gcpRegions {
-				if gcpRegion == region {
-					cloudProvider = "gcp"
-					break
-				}
-			}
-
-			// check AWS regions
-			if cloudProvider == "" {
-				for _, awsRegion := range awsRegions {
-					if awsRegion == region {
-						cloudProvider = "aws"
-						break
-					}
-				}
-			}
-
-			// check Azure regions
-			if cloudProvider == "" {
-				for _, azureRegion := range azureRegions {
-					if azureRegion == region {
-						cloudProvider = "azure"
-						break
-					}
-				}
-			}
-
-			// If not found in any provider, return error
-			if cloudProvider == "" {
-				return "", fmt.Errorf("unknown region '%s'. Please specify a valid cloud provider", region)
-			}
-		}
-
-		if cloudProvider != "" {
-			var regions []string
-			switch cloudProvider {
-			case "gcp":
-				regions = offering.GcpRegions
-			case "aws":
-				regions = offering.AwsRegions
-			case "azure":
-				regions = offering.AzureRegions
-			}
-			found := false
-			for _, rk := range regions {
-				if rk == region {
-					found = true
-					break
-				}
-			}
-			if region == "" && len(regions) > 0 {
-				found = true // skip check if region is not specified
-				region = regions[0]
-			}
-			if !found && len(regions) > 0 {
-				return "", fmt.Errorf("region '%s' is not supported for cloud provider '%s'. Supported regions: %v", region, cloudProvider, regions)
-			}
-		}
-
-		if region == "" {
-			switch cloudProvider {
-			case "gcp":
-				region = "us-central1"
-			case "aws":
-				region = "ap-south-1"
-			case "azure":
-				region = "eastus2"
+		if cloudProvider == "nebius" {
+			if err := ensureReadyNebiusAccountForRegion(ctx, token, region); err != nil {
+				return "", err
 			}
 		}
 
@@ -1264,11 +1202,15 @@ func createInstanceUnified(ctx context.Context, token, serviceID, environmentID,
 		}
 
 		// Extract CREATE verb parameters and set defaults
+		paramDisplayNames := make(map[string]string)
 		if len(resApiParams.ConsumptionDescribeServiceOfferingResourceResult.Apis) > 0 {
 			for _, apiSpec := range resApiParams.ConsumptionDescribeServiceOfferingResourceResult.Apis {
 				if apiSpec.Verb == "CREATE" {
 
 					for _, inputParam := range apiSpec.InputParameters {
+						if inputParam.DisplayName != "" {
+							paramDisplayNames[inputParam.Key] = inputParam.DisplayName
+						}
 						// Handle special system parameters
 						switch inputParam.Key {
 						case "subscriptionId", "cloud_provider", "region":
@@ -1303,18 +1245,31 @@ func createInstanceUnified(ctx context.Context, token, serviceID, environmentID,
 		// Check for missing required parameters
 		var defaultRequiredParams []string
 		for k, v := range defaultParams {
-			if v == nil {
-				defaultRequiredParams = append(defaultRequiredParams, k)
-				continue
-			}
-			if reflect.TypeOf(v).Kind() == reflect.String && v == "" {
+			if isMissingParamValue(v) {
 				defaultRequiredParams = append(defaultRequiredParams, k)
 			}
 		}
 
-		// Validate that all required parameters have values
+		var promptErr error
 		if len(defaultRequiredParams) > 0 {
-			return "", fmt.Errorf("missing required parameters for instance creation: %v", defaultRequiredParams)
+			sm.Stop()
+			promptErr = promptForMissingRequiredParams(defaultParams, defaultRequiredParams, paramDisplayNames)
+			sm.Start()
+		}
+
+		// Validate that all required parameters have values
+		var stillMissingParams []string
+		for k, v := range defaultParams {
+			if isMissingParamValue(v) {
+				stillMissingParams = append(stillMissingParams, k)
+			}
+		}
+		if len(stillMissingParams) > 0 {
+			sm.Stop()
+			if promptErr != nil {
+				return "", fmt.Errorf("missing required parameters for instance creation: %v (%w)", stillMissingParams, promptErr)
+			}
+			return "", fmt.Errorf("missing required parameters for instance creation: %v", stillMissingParams)
 		}
 
 		// Check for unused parameters from formattedParams
@@ -1327,11 +1282,11 @@ func createInstanceUnified(ctx context.Context, token, serviceID, environmentID,
 
 		// Warn user about unused parameters
 		if len(unusedParams) > 0 {
-			fmt.Printf("⚠️  Warning: The following parameters were provided but are not supported by this service and will be ignored:\n")
+			fmt.Fprintf(os.Stderr, "⚠️  Warning: The following parameters were provided but are not supported by this service and will be ignored:\n")
 			for _, param := range unusedParams {
-				fmt.Printf("   - %s\n", param)
+				fmt.Fprintf(os.Stderr, "   - %s\n", param)
 			}
-			fmt.Println()
+			fmt.Fprintln(os.Stderr)
 		}
 	}
 	spinner = sm.AddSpinner("Step 2/2: Deploying a new instance")
@@ -1447,24 +1402,14 @@ func listInstances(ctx context.Context, token, serviceID, environmentID, service
 }
 
 // upgradeExistingInstance upgrades an existing instance to the latest version
-func upgradeExistingInstance(ctx context.Context, token string, instanceIDs []string, serviceID, productTierID string) error {
+func upgradeExistingInstance(ctx context.Context, token string, instanceIDs []string, serviceID, environmentID, productTierID string) error {
 	// Get the latest version
 	latestVersion, err := dataaccess.FindLatestVersion(ctx, token, serviceID, productTierID)
 	if err != nil {
 		return fmt.Errorf("failed to find latest version: %w", err)
 	}
 
-	// Get instance details to find environment ID
 	for _, id := range instanceIDs {
-		searchRes, err := dataaccess.SearchInventory(ctx, token, fmt.Sprintf("resourceinstance:%s", id))
-		if err != nil {
-			return fmt.Errorf("failed to find instance details for %s: %w", id, err)
-		}
-		if len(searchRes.ResourceInstanceResults) == 0 {
-			return fmt.Errorf("instance not found: %s", id)
-		}
-
-		environmentID := searchRes.ResourceInstanceResults[0].ServiceEnvironmentId
 		resourceOverrideConfig := make(map[string]openapiclientfleet.ResourceOneOffPatchConfigurationOverride)
 		err = dataaccess.OneOffPatchResourceInstance(ctx, token,
 			serviceID,
@@ -1759,7 +1704,7 @@ func createDeploymentYAML(
 ) map[string]interface{} {
 	// Validate deployment type
 	if deploymentType != build.DeploymentTypeHosted && deploymentType != build.DeploymentTypeByoa {
-		fmt.Printf("Warning: Invalid deployment type '%s'. Using default 'hosted'. Valid values are: hosted, byoa\n", deploymentType)
+		fmt.Fprintf(os.Stderr, "Warning: Invalid deployment type '%s'. Using default 'hosted'. Valid values are: hosted, byoa\n", deploymentType)
 		deploymentType = "hosted"
 	}
 
@@ -1882,7 +1827,7 @@ type CloudInstanceStatus struct {
 	Provider string
 }
 
-func createCloudAccountInstances(ctx context.Context, token, serviceID, environmentID, planID, cloudProvider string, sm ysmrr.SpinnerManager) (string, string, error) {
+func createCloudAccountInstances(ctx context.Context, token, serviceID, environmentID, planID, cloudProvider string, sm utils.SpinnerManager) (string, string, error) {
 
 	spinnerMsg := "Step 2/2: Checking for existing cloud account instances"
 	spinner := sm.AddSpinner(spinnerMsg)
@@ -1900,6 +1845,14 @@ func createCloudAccountInstances(ctx context.Context, token, serviceID, environm
 	for provider, instances := range cloudInstancesByProvider {
 		if len(instances.Ready) > 0 {
 			readyInstances[provider] = instances.Ready
+		}
+	}
+
+	if targetCloudProvider != "" {
+		if instances, ok := readyInstances[targetCloudProvider]; ok {
+			readyInstances = map[string][]string{targetCloudProvider: instances}
+		} else {
+			readyInstances = map[string][]string{}
 		}
 	}
 
@@ -1941,7 +1894,7 @@ func createCloudAccountInstances(ctx context.Context, token, serviceID, environm
 
 		if choice == 0 {
 			// User chose to create a new instance - continue with creation logic below
-			sm = ysmrr.NewSpinnerManager()
+			sm = utils.NewSpinnerManager()
 			sm.Start()
 		} else {
 			// User selected an existing instance
@@ -1978,7 +1931,7 @@ func createCloudAccountInstances(ctx context.Context, token, serviceID, environm
 
 	createdInstanceID, err := createInstanceUnified(ctx, token, serviceID, environmentID, planID, targetCloudProvider, "", "", "cloudAccount", formattedParams)
 	if err != nil {
-		sm = ysmrr.NewSpinnerManager()
+		sm = utils.NewSpinnerManager()
 		sm.Start()
 		spinner.UpdateMessage("Step 2/2: Creating cloud account instance: Failed (" + err.Error() + ")")
 		spinner.Error()
@@ -1989,7 +1942,7 @@ func createCloudAccountInstances(ctx context.Context, token, serviceID, environm
 	fmt.Println("\n🔄 Checking for account verification...")
 	accountID, err := waitForAccountVerification(ctx, token, serviceID, environmentID, planID, createdInstanceID, targetCloudProvider)
 	if err != nil {
-		fmt.Printf("❌ Account verification failed: %v\n", err)
+		fmt.Fprintf(os.Stderr, "❌ Account verification failed: %v\n", err)
 		return createdInstanceID, targetCloudProvider, err
 	}
 
@@ -2035,21 +1988,152 @@ func listCloudAccountInstancesByProvider(ctx context.Context, token, serviceID, 
 	return cloudProviderMap, nil
 }
 
+func isSupportedDeployCloudProvider(cloudProvider string) bool {
+	return slices.Contains(deployCloudProviders, cloudProvider)
+}
+
+func regionsForCloudProvider(offering openapiclient.ServiceOffering, cloudProvider string) []string {
+	switch cloudProvider {
+	case "aws":
+		return offering.AwsRegions
+	case "gcp":
+		return offering.GcpRegions
+	case "azure":
+		return offering.AzureRegions
+	case "nebius":
+		return offering.NebiusRegions
+	default:
+		return nil
+	}
+}
+
+func inferCloudProviderFromRegion(offering openapiclient.ServiceOffering, region string) string {
+	providers := offering.CloudProviders
+	if len(providers) == 0 {
+		providers = deployCloudProviders
+	}
+
+	for _, provider := range providers {
+		if slices.Contains(regionsForCloudProvider(offering, provider), region) {
+			return provider
+		}
+	}
+
+	return ""
+}
+
+func resolveCloudProviderAndRegion(offering openapiclient.ServiceOffering, cloudProvider, region string) (string, string, error) {
+	if cloudProvider != "" && !isSupportedDeployCloudProvider(cloudProvider) {
+		return "", "", fmt.Errorf("cloud provider '%s' is not supported. Supported providers: %s", cloudProvider, strings.Join(deployCloudProviders, ", "))
+	}
+
+	if len(offering.CloudProviders) > 0 && cloudProvider != "" && !slices.Contains(offering.CloudProviders, cloudProvider) {
+		return "", "", fmt.Errorf("cloud provider '%s' is not supported for this service plan. Supported providers: %v", cloudProvider, offering.CloudProviders)
+	}
+
+	if cloudProvider == "" && region == "" {
+		if len(offering.CloudProviders) == 0 {
+			return "", "", fmt.Errorf("no cloud providers available for this service plan")
+		}
+		cloudProvider = offering.CloudProviders[0]
+	}
+
+	if cloudProvider == "" && region != "" {
+		cloudProvider = inferCloudProviderFromRegion(offering, region)
+		if cloudProvider == "" {
+			return "", "", fmt.Errorf("unknown region '%s'. Please specify a valid cloud provider", region)
+		}
+	}
+
+	regions := regionsForCloudProvider(offering, cloudProvider)
+	if len(regions) > 0 {
+		if region == "" {
+			region = regions[0]
+		} else if !slices.Contains(regions, region) {
+			return "", "", fmt.Errorf("region '%s' is not supported for cloud provider '%s'. Supported regions: %v", region, cloudProvider, regions)
+		}
+	}
+
+	if region == "" {
+		if defaultRegion, ok := deployDefaultRegions[cloudProvider]; ok {
+			region = defaultRegion
+		}
+	}
+
+	if region == "" && cloudProvider == "nebius" {
+		return "", "", fmt.Errorf("region is required for cloud provider 'nebius' because this service offering does not expose any Nebius regions")
+	}
+
+	return cloudProvider, region, nil
+}
+
+func hasReadyNebiusBindingForRegion(account *openapiclient.DescribeAccountConfigResult, region string) bool {
+	if account == nil || account.Status != "READY" || account.NebiusTenantID == nil {
+		return false
+	}
+
+	for _, binding := range account.NebiusBindings {
+		if binding.Region == region && binding.Status != nil && *binding.Status == "READY" {
+			return true
+		}
+	}
+
+	return false
+}
+
+func ensureReadyNebiusAccountForRegion(ctx context.Context, token, region string) error {
+	accounts, err := dataaccess.ListAccounts(ctx, token, "nebius")
+	if err != nil {
+		return err
+	}
+
+	if len(accounts.AccountConfigs) == 0 {
+		return fmt.Errorf("no Nebius accounts are linked; %s", nebiusDeployOnboardingMessage)
+	}
+
+	readyRegions := map[string]struct{}{}
+	for i := range accounts.AccountConfigs {
+		account := &accounts.AccountConfigs[i]
+		if hasReadyNebiusBindingForRegion(account, region) {
+			return nil
+		}
+
+		for _, binding := range account.NebiusBindings {
+			if binding.Status != nil && *binding.Status == "READY" && binding.Region != "" {
+				readyRegions[binding.Region] = struct{}{}
+			}
+		}
+	}
+
+	if len(readyRegions) == 0 {
+		return fmt.Errorf("linked Nebius accounts do not have any READY region bindings; %s", nebiusDeployOnboardingMessage)
+	}
+
+	availableRegions := make([]string, 0, len(readyRegions))
+	for readyRegion := range readyRegions {
+		availableRegions = append(availableRegions, readyRegion)
+	}
+	sort.Strings(availableRegions)
+
+	return fmt.Errorf("no READY Nebius account binding found for region '%s'. READY Nebius regions in linked accounts: %s", region, strings.Join(availableRegions, ", "))
+}
+
 // promptForCloudProvider prompts user to select a cloud provider
 func promptForCloudProvider() string {
 	fmt.Println("Available cloud providers:")
 	fmt.Println("  1. AWS")
 	fmt.Println("  2. GCP")
 	fmt.Println("  3. Azure")
+	fmt.Println("  4. Nebius")
 
 	var choice int
 	for {
-		fmt.Print("Select cloud provider (1-3): ")
+		fmt.Print("Select cloud provider (1-4): ")
 		_, err := fmt.Scanln(&choice)
-		if err == nil && choice >= 1 && choice <= 3 {
+		if err == nil && choice >= 1 && choice <= 4 {
 			break
 		}
-		fmt.Println("Invalid selection. Please enter 1, 2, or 3.")
+		fmt.Println("Invalid selection. Please enter 1, 2, 3, or 4.")
 	}
 
 	switch choice {
@@ -2059,6 +2143,8 @@ func promptForCloudProvider() string {
 		return "gcp"
 	case 3:
 		return "azure"
+	case 4:
+		return "nebius"
 	default:
 		return "aws" // fallback
 	}
@@ -2137,6 +2223,9 @@ func promptForCloudCredentials(cloudProvider string) (string, error) {
 			"cloud_provider":               "azure",
 		}
 
+	case "nebius":
+		return "", fmt.Errorf("action required: %s", nebiusDeployOnboardingMessage)
+
 	default:
 		return "", fmt.Errorf("unsupported cloud provider: %s", cloudProvider)
 	}
@@ -2185,7 +2274,7 @@ func waitForAccountVerification(ctx context.Context, token, serviceID,
 		// Get all accounts for the cloud provider
 		_, existingInstances, err := listInstances(ctx, token, serviceID, environmentID, planID, "", "onlyCloudAccounts")
 		if err != nil {
-			fmt.Printf("⚠️  Failed to check account status: %v\n", err)
+			fmt.Fprintf(os.Stderr, "⚠️  Failed to check account status: %v\n", err)
 			time.Sleep(retryInterval)
 			continue
 		}
@@ -2275,4 +2364,91 @@ func printMissingParamsGuidance(err error) {
 			"  - Or provide a JSON file with --param-file",
 		err.Error(),
 	))
+}
+
+func isMissingParamValue(value interface{}) bool {
+	if value == nil {
+		return true
+	}
+	if s, ok := value.(string); ok {
+		return strings.TrimSpace(s) == ""
+	}
+	return false
+}
+
+func isInteractivePromptEnabled() bool {
+	if strings.EqualFold(os.Getenv("OMNISTRATE_NON_INTERACTIVE"), "true") {
+		return false
+	}
+	stdinInfo, err := os.Stdin.Stat()
+	if err != nil {
+		return false
+	}
+	return (stdinInfo.Mode() & os.ModeCharDevice) != 0
+}
+
+func promptForMissingRequiredParams(defaultParams map[string]interface{}, requiredParams []string, displayNames map[string]string) error {
+	if len(requiredParams) == 0 {
+		return nil
+	}
+	if !isInteractivePromptEnabled() {
+		return fmt.Errorf("cannot prompt for required parameters in non-interactive mode")
+	}
+
+	fmt.Println()
+	fmt.Println("ℹ️  Missing required instance launch parameters. Please enter values to continue deployment.")
+
+	reader := bufio.NewReader(os.Stdin)
+	return applyPromptedParamValues(defaultParams, requiredParams, func(paramKey string) (string, error) {
+		for {
+			promptLabel := formatPromptLabel(paramKey, displayNames)
+			fmt.Printf("Enter value for '%s': ", promptLabel)
+			value, err := reader.ReadString('\n')
+			if err != nil {
+				return "", fmt.Errorf("failed to read value for '%s': %w", paramKey, err)
+			}
+			value = strings.TrimSpace(value)
+			if value == "" {
+				fmt.Println("Value cannot be empty. Please try again.")
+				continue
+			}
+			return value, nil
+		}
+	})
+}
+
+// formatPromptLabel returns a user-friendly label for a parameter prompt.
+// When a display name is available it returns "DisplayName (key)", otherwise just the key.
+func formatPromptLabel(paramKey string, displayNames map[string]string) string {
+	if displayNames != nil {
+		if name, ok := displayNames[paramKey]; ok && name != "" {
+			return fmt.Sprintf("%s (%s)", name, paramKey)
+		}
+	}
+	return paramKey
+}
+
+func applyPromptedParamValues(defaultParams map[string]interface{}, requiredParams []string, readValue func(string) (string, error)) error {
+	for _, paramKey := range requiredParams {
+		if !isMissingParamValue(defaultParams[paramKey]) {
+			continue
+		}
+		value, err := readValue(paramKey)
+		if err != nil {
+			return err
+		}
+		defaultParams[paramKey] = parsePromptInputValue(value)
+	}
+	return nil
+}
+
+func parsePromptInputValue(value string) interface{} {
+	var parsed interface{}
+	if err := json.Unmarshal([]byte(value), &parsed); err == nil {
+		if parsed == nil {
+			return value
+		}
+		return parsed
+	}
+	return value
 }

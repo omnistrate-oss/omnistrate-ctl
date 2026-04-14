@@ -28,7 +28,7 @@ It automatically handles:
 Main modes of operation:
 
   - Build from repository and deploy
-      Triggered when no spec file is provided and no supported spec is found in
+        Triggered when no spec file is provided and no supported spec is found in
       the current directory. The command detects a Dockerfile, builds an image,
       creates the service, generates the Omnistrate spec, and deploys an instance.
 
@@ -53,7 +53,7 @@ Instance selection and deployment:
 Dry run:
 
   - With --dry-run, deploy performs full validation and build steps but stops
-    before launching or upgrading an instance.
+      before launching or upgrading an instance.
 
 ```
 omnistrate-ctl deploy [--file=file] [--product-name=service-name] [--dry-run] [--deployment-type=deployment-type] [--spec-type=spec-type] [--cloud-provider=cloud] [--region=region] [--env-type=type] [--env-name=name] [--skip-docker-build] [--platforms=platforms] [--param key=value] [--param-file=file] [--instance-id=id] [--resource-id=id] [--github-user-name=username] [flags]
@@ -64,7 +64,8 @@ omnistrate-ctl deploy [--file=file] [--product-name=service-name] [--dry-run] [-
 ```
 
 # Build and deploy using the default spec in the current directory
-# Looks for omnistrate-compose.yaml, if no spec file is found, deploy falls back to build-from-repo.
+# Looks for omnistrate-compose.yaml first, then spec.yaml.
+# If no supported spec file is found, deploy falls back to build-from-repo.
 omnistrate-ctl deploy
 
 # Deploy using a specific Omnistrate spec
@@ -99,7 +100,7 @@ omnistrate-ctl deploy --platforms "linux/amd64,linux/arm64"
 ### Options
 
 ```
-      --cloud-provider string     Cloud provider (aws|gcp|azure)
+      --cloud-provider string     Cloud provider (aws|gcp|azure|nebius)
       --deployment-type string    Type of deployment. Valid values: hosted, byoa (default "hosted" i.e. deployments are hosted in the service provider account) (default "hosted")
       --dry-run                   Perform validation checks without actually building or deploying
   -e, --environment string        Name of the environment to build the service in (default: Prod) (default "Prod")

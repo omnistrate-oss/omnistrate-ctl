@@ -1,11 +1,6 @@
 package login
 
 import (
-	"regexp"
-
-	"github.com/cqroot/prompt"
-	"github.com/cqroot/prompt/choose"
-	"github.com/cqroot/prompt/input"
 	"github.com/omnistrate-oss/omnistrate-ctl/internal/utils"
 	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
@@ -29,11 +24,21 @@ omnistrate-ctl login --email email --password password
   cat ~/omnistrate_pass.txt | omnistrate-ctl login --email email --password-stdin
 
 # Login with email and password from stdin. Save the password in an environment variable and use echo to read it
-  echo $OMNISTRATE_PASSWORD | omnistrate-ctl login --email email --password-stdin`
+  echo $OMNISTRATE_PASSWORD | omnistrate-ctl login --email email --password-stdin
+
+# Login with GitHub SSO
+  omnistrate-ctl login --gh
+
+# Login with Google SSO
+  omnistrate-ctl login --google
+
+# Login with Microsoft Entra SSO
+  omnistrate-ctl login --entra`
 
 	loginWithEmailAndPassword loginMethod = "Login with email and password"
 	loginWithGoogle           loginMethod = "Login with Google"
 	loginWithGitHub           loginMethod = "Login with GitHub"
+	loginWithEntra            loginMethod = "Login with Microsoft Entra"
 )
 
 var (
@@ -42,6 +47,7 @@ var (
 	passwordStdin bool
 	gh            bool
 	google        bool
+	entra         bool
 )
 
 // LoginCmd represents the login command
@@ -61,8 +67,11 @@ func init() {
 
 	LoginCmd.Flags().BoolVarP(&gh, "gh", "", false, "Login with GitHub")
 	LoginCmd.Flags().BoolVarP(&google, "google", "", false, "Login with Google")
+	LoginCmd.Flags().BoolVarP(&entra, "entra", "", false, "Login with Microsoft Entra")
 
-	LoginCmd.MarkFlagsMutuallyExclusive("gh", "google", "email")
+	LoginCmd.MarkFlagsMutuallyExclusive("gh", "google", "entra", "email")
+	LoginCmd.MarkFlagsMutuallyExclusive("gh", "google", "entra", "password")
+	LoginCmd.MarkFlagsMutuallyExclusive("gh", "google", "entra", "password-stdin")
 
 	LoginCmd.Args = cobra.NoArgs
 }
@@ -83,13 +92,17 @@ func RunLogin(cmd *cobra.Command, args []string) error {
 		return ssoLogin(cmd.Context(), identityProviderGoogle)
 	}
 
+	if entra {
+		return ssoLogin(cmd.Context(), identityProviderMicrosoftEntra)
+	}
+
 	// Login interactively
-	choice, err := prompt.New().Ask("How would you like to log in?").
-		Choose([]string{
-			string(loginWithEmailAndPassword),
-			string(loginWithGoogle),
-			string(loginWithGitHub),
-		}, choose.WithTheme(choose.ThemeArrow))
+	choice, err := utils.PromptSelect("How would you like to log in?", []string{
+		string(loginWithEmailAndPassword),
+		string(loginWithGoogle),
+		string(loginWithGitHub),
+		string(loginWithEntra),
+	})
 	if err != nil {
 		utils.PrintError(err)
 		return err
@@ -97,23 +110,13 @@ func RunLogin(cmd *cobra.Command, args []string) error {
 
 	switch choice {
 	case string(loginWithEmailAndPassword):
-		email, err = prompt.New().Ask("Please enter your email:").
-			Input("Email", input.WithValidateFunc(
-				func(input string) error {
-					emailRegex := regexp.MustCompile(`^[a-z0-9._%+\-]+@[a-z0-9.\-]+\.[a-z]{2,4}$`)
-					if emailRegex.MatchString(input) {
-						return nil
-					} else {
-						return errors.New("invalid email address")
-					}
-				}))
+		email, err = utils.PromptInput("Please enter your email:", "Email", utils.ValidateEmail)
 		if err != nil {
 			utils.PrintError(err)
 			return err
 		}
 
-		password, err = prompt.New().Ask("Please enter your password:").
-			Input("Password", input.WithEchoMode(input.EchoPassword))
+		password, err = utils.PromptPassword("Please enter your password:", "Password")
 		if err != nil {
 			utils.PrintError(err)
 			return err
@@ -124,6 +127,8 @@ func RunLogin(cmd *cobra.Command, args []string) error {
 		return ssoLogin(cmd.Context(), identityProviderGoogle)
 	case string(loginWithGitHub):
 		return ssoLogin(cmd.Context(), identityProviderGitHub)
+	case string(loginWithEntra):
+		return ssoLogin(cmd.Context(), identityProviderMicrosoftEntra)
 
 	default:
 		err := errors.New("Invalid selection")
@@ -136,4 +141,7 @@ func resetLogin() {
 	email = ""
 	password = ""
 	passwordStdin = false
+	gh = false
+	google = false
+	entra = false
 }

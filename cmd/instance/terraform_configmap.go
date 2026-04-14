@@ -21,37 +21,112 @@ import (
 const (
 	terraformConfigMapNamespace      = "dataplane-agent"
 	terraformProgressConfigMapPrefix = "terraform-progress-"
+	terraformPlanPreviewPrefix       = "tf-plan-"
+
+	// planPreviewDataKey is the ConfigMap data key that holds the full plan JSON
+	// inside a per-operation plan preview ConfigMap.
+	planPreviewDataKey = "plan-preview"
+
+	// planPreviewErrorDataKey is the ConfigMap data key that holds the plan error
+	// inside a per-operation plan preview ConfigMap.
+	planPreviewErrorDataKey = "plan-preview-error"
 )
 
-var terraformStateConfigMapPattern = regexp.MustCompile(`^tf-state-(.+)-instance-(.+)$`)
+var (
+	terraformStateConfigMapPattern = regexp.MustCompile(`^tf-state-(.+)-instance-(.+)$`)
+	terraformPlanConfigMapPattern  = regexp.MustCompile(`^tf-plan-(.+)-instance-(.+)$`)
+)
+
+// planPreviewEntry holds a dedicated tf-plan-* ConfigMap together with the
+// operation ID suffix extracted from its name.
+type planPreviewEntry struct {
+	cm       *corev1.ConfigMap
+	opSuffix string // operation ID suffix from the ConfigMap name
+}
 
 type terraformConfigMapIndex struct {
-	instanceID      string
-	instanceSuffix  string
-	stateByResource map[string]*corev1.ConfigMap
-	progress        []*corev1.ConfigMap
+	instanceID            string
+	instanceSuffix        string
+	stateByResource       map[string]*corev1.ConfigMap
+	progress              []*corev1.ConfigMap
+	planPreviewByResource map[string][]planPreviewEntry
+
+	// planPreviewMultiByResource maps resource ID → tf-plan-* ConfigMaps that
+	// belong to this instance but contain multiple operations in their data keys
+	// (Format 2: no operation suffix in CM name, data keys are "{opID}-plan-preview").
+	planPreviewMultiByResource map[string][]*corev1.ConfigMap
 }
 
 // k8sConnection holds both the clientset and rest config for k8s operations
 type k8sConnection struct {
-	clientset  *kubernetes.Clientset
+	clientset  kubernetes.Interface
 	restConfig *rest.Config
 }
 
-func loadTerraformConfigMapIndexForInstance(ctx context.Context, token string, instanceData *openapiclientfleet.ResourceInstance, instanceID string) (*terraformConfigMapIndex, *k8sConnection, error) {
+// k8sConnections holds connections for both the dataplane and (optionally) control-plane clusters.
+type k8sConnections struct {
+	dataplane    *k8sConnection
+	controlPlane *k8sConnection // nil if no control-plane deployment cell
+}
+
+// findConnectionWithStateConfigMap returns the first k8sConnection (trying dataplane, then control-plane)
+// that contains a tf-state ConfigMap for the given resource. Falls back to dataplane if neither has data.
+func findConnectionWithStateConfigMap(conns *k8sConnections, instanceID, resourceID string) *k8sConnection {
+	if conns == nil {
+		return nil
+	}
+	for _, c := range []*k8sConnection{conns.dataplane, conns.controlPlane} {
+		if c == nil {
+			continue
+		}
+		ctx := context.Background()
+		index, err := loadTerraformConfigMapIndex(ctx, c.clientset, instanceID)
+		if err != nil || index == nil {
+			continue
+		}
+		for _, key := range resourceConfigMapKeys(resourceID) {
+			if _, ok := index.stateByResource[key]; ok {
+				return c
+			}
+		}
+	}
+	// Fall back to dataplane if no state configmap was found anywhere
+	return conns.dataplane
+}
+
+// k8sConnectionLoader is a function that fetches a k8s connection for a given deployment cell.
+// It is used as a dependency injection point to make loadTerraformConfigMapIndexForInstanceWithLoader testable.
+type k8sConnectionLoader func(ctx context.Context, token, cellID string) (*k8sConnection, error)
+
+// loadK8sConnectionForCell fetches the kubeconfig and creates a k8s connection for a given cell.
+func loadK8sConnectionForCell(ctx context.Context, token, cellID string) (*k8sConnection, error) {
+	kubeConfig, err := dataaccess.GetKubeConfigForHostCluster(ctx, token, cellID, "cluster-admin")
+	if err != nil {
+		return nil, fmt.Errorf("failed to get kubeconfig for deployment cell %s: %w", cellID, err)
+	}
+	conn, err := newK8sConnectionFromKubeConfigResult(kubeConfig)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create Kubernetes client for deployment cell %s: %w", cellID, err)
+	}
+	return conn, nil
+}
+
+func loadTerraformConfigMapIndexForInstance(ctx context.Context, token string, instanceData *openapiclientfleet.ResourceInstance, instanceID string) (*terraformConfigMapIndex, *k8sConnections, error) {
+	return loadTerraformConfigMapIndexForInstanceWithLoader(ctx, token, instanceData, instanceID, loadK8sConnectionForCell)
+}
+
+// loadTerraformConfigMapIndexForInstanceWithLoader loads and merges terraform ConfigMaps from all
+// relevant clusters (dataplane and optionally control-plane). The loader parameter is used to obtain
+// a k8s connection for a given cell ID, making this function testable via injection.
+func loadTerraformConfigMapIndexForInstanceWithLoader(ctx context.Context, token string, instanceData *openapiclientfleet.ResourceInstance, instanceID string, loader k8sConnectionLoader) (*terraformConfigMapIndex, *k8sConnections, error) {
 	if instanceData == nil || instanceData.DeploymentCellID == nil || *instanceData.DeploymentCellID == "" {
 		return nil, nil, fmt.Errorf("deployment cell ID not found for instance %s", instanceID)
 	}
 
 	deploymentCellID := *instanceData.DeploymentCellID
-	kubeConfig, err := dataaccess.GetKubeConfigForHostCluster(ctx, token, deploymentCellID, "cluster-admin")
+	dpConn, err := loader(ctx, token, deploymentCellID)
 	if err != nil {
-		return nil, nil, fmt.Errorf("failed to get kubeconfig for deployment cell %s: %w", deploymentCellID, err)
-	}
-
-	conn, err := newK8sConnectionFromKubeConfigResult(kubeConfig)
-	if err != nil {
-		return nil, nil, fmt.Errorf("failed to create Kubernetes client for deployment cell %s: %w", deploymentCellID, err)
+		return nil, nil, err
 	}
 
 	actualInstanceID := instanceID
@@ -59,12 +134,31 @@ func loadTerraformConfigMapIndexForInstance(ctx context.Context, token string, i
 		actualInstanceID = id
 	}
 
-	index, err := loadTerraformConfigMapIndex(ctx, conn.clientset, actualInstanceID)
+	index, err := loadTerraformConfigMapIndex(ctx, dpConn.clientset, actualInstanceID)
 	if err != nil {
 		return nil, nil, err
 	}
 
-	return index, conn, nil
+	conns := &k8sConnections{dataplane: dpConn}
+
+	// If a control plane deployment cell exists (for ControlPlane-targeted resources),
+	// also load ConfigMaps from that cluster and merge into the index.
+	if cpCellID := instanceData.GetControlPlaneDeploymentCellID(); cpCellID != "" && cpCellID != deploymentCellID {
+		cpConn, cpErr := loader(ctx, token, cpCellID)
+		if cpErr != nil {
+			return nil, nil, cpErr
+		}
+
+		cpIndex, cpErr := loadTerraformConfigMapIndex(ctx, cpConn.clientset, actualInstanceID)
+		if cpErr != nil {
+			return nil, nil, fmt.Errorf("failed to load terraform configmaps from control plane deployment cell %s: %w", cpCellID, cpErr)
+		}
+
+		index.merge(cpIndex)
+		conns.controlPlane = cpConn
+	}
+
+	return index, conns, nil
 }
 
 // newK8sConnectionFromKubeConfigResult writes a temp kubeconfig file from the API result and creates a k8s connection.
@@ -157,16 +251,39 @@ func loadTerraformConfigMapIndex(ctx context.Context, clientset kubernetes.Inter
 
 func newTerraformConfigMapIndex(instanceID string, configMaps []corev1.ConfigMap) *terraformConfigMapIndex {
 	index := &terraformConfigMapIndex{
-		instanceID:      instanceID,
-		instanceSuffix:  normalizeInstanceIDForConfigMap(instanceID),
-		stateByResource: make(map[string]*corev1.ConfigMap),
-		progress:        []*corev1.ConfigMap{},
+		instanceID:                 instanceID,
+		instanceSuffix:             normalizeInstanceIDForConfigMap(instanceID),
+		stateByResource:            make(map[string]*corev1.ConfigMap),
+		progress:                   []*corev1.ConfigMap{},
+		planPreviewByResource:      make(map[string][]planPreviewEntry),
+		planPreviewMultiByResource: make(map[string][]*corev1.ConfigMap),
 	}
 
 	for i := range configMaps {
 		cm := &configMaps[i]
 		if strings.HasPrefix(cm.Name, terraformProgressConfigMapPrefix) {
 			index.progress = append(index.progress, cm)
+			continue
+		}
+
+		// Match tf-plan-* ConfigMaps (dedicated per-operation plan previews)
+		if planMatches := terraformPlanConfigMapPattern.FindStringSubmatch(cm.Name); len(planMatches) == 3 {
+			resourceID := planMatches[1]
+			instanceAndOp := planMatches[2]
+
+			// instanceAndOp is "{instanceSuffix}-{opSuffix}" or just "{instanceSuffix}"
+			opSuffix := extractPlanPreviewOpSuffix(instanceAndOp, index.instanceSuffix, index.instanceID)
+			if opSuffix != "" {
+				// Format 1: per-operation CM (op suffix in CM name, data key is "plan-preview")
+				index.planPreviewByResource[resourceID] = append(index.planPreviewByResource[resourceID], planPreviewEntry{
+					cm:       cm,
+					opSuffix: opSuffix,
+				})
+			} else if isExactInstanceMatch(instanceAndOp, index.instanceSuffix, index.instanceID) {
+				// Format 2: multi-operation CM (no op suffix in CM name,
+				// data keys are "{opID}-plan-preview" and "{opID}-plan-preview-error")
+				index.planPreviewMultiByResource[resourceID] = append(index.planPreviewMultiByResource[resourceID], cm)
+			}
 			continue
 		}
 
@@ -187,6 +304,26 @@ func newTerraformConfigMapIndex(instanceID string, configMaps []corev1.ConfigMap
 	return index
 }
 
+// merge incorporates state, progress, and plan preview ConfigMaps from another index,
+// without overwriting entries already present in this index.
+func (index *terraformConfigMapIndex) merge(other *terraformConfigMapIndex) {
+	if other == nil {
+		return
+	}
+	for resourceID, cm := range other.stateByResource {
+		if _, exists := index.stateByResource[resourceID]; !exists {
+			index.stateByResource[resourceID] = cm
+		}
+	}
+	index.progress = append(index.progress, other.progress...)
+	for resourceID, entries := range other.planPreviewByResource {
+		index.planPreviewByResource[resourceID] = append(index.planPreviewByResource[resourceID], entries...)
+	}
+	for resourceID, cms := range other.planPreviewMultiByResource {
+		index.planPreviewMultiByResource[resourceID] = append(index.planPreviewMultiByResource[resourceID], cms...)
+	}
+}
+
 func (index *terraformConfigMapIndex) terraformDataForResource(resourceID string) *TerraformData {
 	terraformData := &TerraformData{
 		Files: make(map[string]string),
@@ -197,9 +334,12 @@ func (index *terraformConfigMapIndex) terraformDataForResource(resourceID string
 		return terraformData
 	}
 
-	if stateConfigMap, ok := index.stateByResource[resourceID]; ok {
-		for key, value := range stateConfigMap.Data {
-			terraformData.Files[normalizeTerraformFileKey(key)] = value
+	for _, cmKey := range resourceConfigMapKeys(resourceID) {
+		if stateConfigMap, ok := index.stateByResource[cmKey]; ok {
+			for key, value := range stateConfigMap.Data {
+				terraformData.Files[normalizeTerraformFileKey(key)] = value
+			}
+			break
 		}
 	}
 
@@ -344,6 +484,80 @@ func matchScoreFromData(data map[string]string, instanceID, instanceSuffix, reso
 	}
 
 	return score, hasResource, hasInstance
+}
+
+// planPreviewsForResource returns plan previews and plan preview errors from dedicated
+// tf-plan-* ConfigMaps for a given resource. The returned maps are keyed by operation suffix.
+// It handles both Format 1 (per-operation CMs with data key "plan-preview") and Format 2
+// (multi-operation CMs with data keys "{opID}-plan-preview").
+func (index *terraformConfigMapIndex) planPreviewsForResource(resourceID string) (map[string]string, map[string]string) {
+	previews := make(map[string]string)
+	previewErrors := make(map[string]string)
+	if index == nil {
+		return previews, previewErrors
+	}
+
+	for _, key := range resourceConfigMapKeys(resourceID) {
+		// Format 1: per-operation CMs (op suffix in CM name, data key is "plan-preview")
+		entries, ok := index.planPreviewByResource[key]
+		if ok {
+			for _, entry := range entries {
+				if v, ok := entry.cm.Data[planPreviewDataKey]; ok && v != "" {
+					previews[entry.opSuffix] = v
+				}
+				if v, ok := entry.cm.Data[planPreviewErrorDataKey]; ok && v != "" {
+					previewErrors[entry.opSuffix] = v
+				}
+			}
+		}
+
+		// Format 2: multi-operation CMs (no op suffix in CM name,
+		// data keys are "{opID}-plan-preview" and "{opID}-plan-preview-error")
+		multiCMs, multiOk := index.planPreviewMultiByResource[key]
+		if multiOk {
+			for _, cm := range multiCMs {
+				p, e := findAllPlanPreviews(cm.Data)
+				for opID, v := range p {
+					previews[opID] = v
+				}
+				for opID, v := range e {
+					previewErrors[opID] = v
+				}
+			}
+		}
+	}
+
+	return previews, previewErrors
+}
+
+// extractPlanPreviewOpSuffix extracts the operation suffix from the instance-and-operation
+// portion of a tf-plan-* ConfigMap name. The instanceAndOp string is the part after
+// "-instance-" in the ConfigMap name, which has the form "{instanceSuffix}-{opSuffix}".
+// Returns empty string if the ConfigMap doesn't match the given instance.
+func extractPlanPreviewOpSuffix(instanceAndOp, instanceSuffix, instanceID string) string {
+	// Try instanceSuffix first (normalized form, e.g. "abc123")
+	if instanceSuffix != "" {
+		prefix := instanceSuffix + "-"
+		if strings.HasPrefix(instanceAndOp, prefix) {
+			return instanceAndOp[len(prefix):]
+		}
+	}
+	// Try full instanceID (e.g. "instance-abc123")
+	if instanceID != "" {
+		prefix := instanceID + "-"
+		if strings.HasPrefix(instanceAndOp, prefix) {
+			return instanceAndOp[len(prefix):]
+		}
+	}
+	return ""
+}
+
+// isExactInstanceMatch returns true when instanceAndOp exactly matches the
+// instance suffix or full instance ID — meaning the tf-plan-* ConfigMap name
+// has no operation suffix appended (Format 2: multi-operation CM).
+func isExactInstanceMatch(instanceAndOp, instanceSuffix, instanceID string) bool {
+	return (instanceSuffix != "" && instanceAndOp == instanceSuffix) ||
+		(instanceID != "" && instanceAndOp == instanceID)
 }
 
 func isConfigMapNewer(candidate, existing *corev1.ConfigMap) bool {

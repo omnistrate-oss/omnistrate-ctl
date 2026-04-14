@@ -6,7 +6,6 @@ import (
 
 	"github.com/omnistrate-oss/omnistrate-ctl/cmd/common"
 
-	"github.com/chelnak/ysmrr"
 	"github.com/omnistrate-oss/omnistrate-ctl/internal/config"
 	"github.com/omnistrate-oss/omnistrate-ctl/internal/dataaccess"
 	"github.com/omnistrate-oss/omnistrate-ctl/internal/utils"
@@ -79,7 +78,7 @@ func runUpdate(cmd *cobra.Command, args []string) error {
 	}
 
 	// Initialize spinner
-	sm := ysmrr.NewSpinnerManager()
+	sm := utils.NewSpinnerManager()
 	spinner := sm.AddSpinner("Updating service plan version name...")
 	sm.Start()
 

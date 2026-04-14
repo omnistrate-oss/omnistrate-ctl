@@ -11,7 +11,7 @@ We provide CTL in the following formats:
 To run the CTL in your local environment, you can use the CTL binaries.
 To obtain the latest version of the CTL binaries, execute the following command in your terminal:
 
-```sh
+```bash
 curl -fsSL https://raw.githubusercontent.com/omnistrate-oss/omnistrate-ctl/main/install-ctl.sh | sh
 ```
 
@@ -19,7 +19,7 @@ This command will automatically download and install the latest version of the C
 
 Run the following command to verify the installation. If the installation was successful, you should see the version number of the CTL displayed in the terminal.
 
-```sh
+```bash
 omnistrate-ctl --version # or omnistrate-ctl -v
 ```
 
@@ -28,7 +28,7 @@ omnistrate-ctl --version # or omnistrate-ctl -v
 CTL can be installed using Homebrew. Homebrew can be installed on MacOS or Linux. It can be installed following the [Homebrew installation instructions](https://docs.brew.sh/Installation)
 To install the latest version of CTL using Homebrew, execute the following command in your terminal:
 
-```sh
+```bash
 brew tap omnistrate/tap
 brew install omnistrate/tap/omnistrate-ctl
 ```
@@ -47,13 +47,13 @@ Using the GitHub Action you can execute any command on the CTL to automate your 
 
 ## Login to Omnistrate
 
-Omnistrate provides flexible login options to accommodate different environments and workflows. Below are the methods you can use to log in when running CTL locally. To log in using the Docker image or GitHub Action, refer to the [Integrating with Omnistrate](integrating.md) guide.
+Omnistrate provides flexible login options to accommodate different environments and workflows. Below are the methods you can use to log in when running CTL locally. To log in using the Docker image or GitHub Action, refer to the [Integrating with Omnistrate](integrating.md) guide. For full details (including SSO), see [Authentication and SSO](authentication-and-sso.md).
 
 ### 1. Interactive Login with SSO or Email and Password
 
 This method is the most straightforward and allows you to log in using a single sign-on (SSO) provider or your email and password.
 
-```sh
+```bash
 omctl login
 ```
 
@@ -63,7 +63,7 @@ omctl login
 
 For a more automated approach, you can provide your email and password directly through the command line:
 
-```sh
+```bash
 omctl login --email your_email@example.com --password your_password
 ```
 
@@ -73,7 +73,7 @@ omctl login --email your_email@example.com --password your_password
 
 You can set your credentials as environment variables and use them to log in. This method is useful for scripting and automation:
 
-```sh
+```bash
 export OMNISTRATE_USER_NAME=your_email@example.com
 export OMNISTRATE_PASSWORD=your_password
 ./omnistrate-ctl-darwin-arm64 login --email "$OMNISTRATE_USER_NAME" --password "$OMNISTRATE_PASSWORD"
@@ -85,7 +85,7 @@ export OMNISTRATE_PASSWORD=your_password
 
 For added security, you can store your password in a file and pipe it to the `omnistrate-ctl` command:
 
-```sh
+```bash
 cat ~/omnistrate_pass.txt | omnistrate-ctl login --email your_email@example.com --password-stdin
 ```
 
@@ -95,7 +95,7 @@ cat ~/omnistrate_pass.txt | omnistrate-ctl login --email your_email@example.com 
 
 Alternatively, you can store your password in an environment variable and use `echo` to pass it to the `omnistrate-ctl` command:
 
-```sh
+```bash
 echo $OMNISTRATE_PASSWORD | omnistrate-ctl login --email your_email@example.com --password-stdin
 ```
 

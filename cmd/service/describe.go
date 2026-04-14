@@ -3,9 +3,9 @@ package service
 import (
 	"context"
 	"fmt"
+	"os"
 	"strings"
 
-	"github.com/chelnak/ysmrr"
 	"github.com/omnistrate-oss/omnistrate-ctl/cmd/common"
 	"github.com/omnistrate-oss/omnistrate-ctl/internal/config"
 	"github.com/omnistrate-oss/omnistrate-ctl/internal/dataaccess"
@@ -76,10 +76,10 @@ func runDescribe(cmd *cobra.Command, args []string) error {
 	}
 
 	// Initialize spinner if output is not JSON
-	var sm ysmrr.SpinnerManager
-	var spinner *ysmrr.Spinner
+	var sm utils.SpinnerManager
+	var spinner *utils.Spinner
 	if output != "json" {
-		sm = ysmrr.NewSpinnerManager()
+		sm = utils.NewSpinnerManager()
 		msg := "Describing service..."
 		spinner = sm.AddSpinner(msg)
 		sm.Start()
@@ -105,7 +105,7 @@ func runDescribe(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		// Don't fail the entire command if account info enhancement fails
 		// Just log a warning and continue
-		fmt.Printf("Warning: Could not enhance service plans with account information: %v\n", err)
+		fmt.Fprintf(os.Stderr, "Warning: Could not enhance service plans with account information: %v\n", err)
 	}
 
 	utils.HandleSpinnerSuccess(spinner, sm, "Successfully described service")

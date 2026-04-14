@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/base64"
 	"fmt"
-	"github.com/chelnak/ysmrr"
 	"github.com/omnistrate-oss/omnistrate-ctl/internal/model"
 	openapiclientfleet "github.com/omnistrate-oss/omnistrate-sdk-go/fleet"
 	"os"
@@ -118,7 +117,7 @@ func runUpdateKubeConfig(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	sm := ysmrr.NewSpinnerManager()
+	sm := utils.NewSpinnerManager()
 	spinner := sm.AddSpinner("Looking up deployment cell...")
 	sm.Start()
 

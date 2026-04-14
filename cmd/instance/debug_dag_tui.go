@@ -18,16 +18,20 @@ type backToDagMsg struct{}
 
 // tfProgressUpdateMsg carries updated terraform progress for DAG nodes
 type tfProgressUpdateMsg struct {
-	progressByID map[string]ResourceProgress
+	progressByID     map[string]ResourceProgress
+	breakpointByID   map[string]string
+	breakpointByKey  map[string]string
+	breakpointByName map[string]string
 }
 
 // wfProgressMsg carries workflow progress results
 type wfProgressMsg struct {
-	progressByID   map[string]ResourceProgress
-	progressByKey  map[string]ResourceProgress
-	progressByName map[string]ResourceProgress
-	workflowID     string
-	errors         []string
+	progressByID       map[string]ResourceProgress
+	progressByKey      map[string]ResourceProgress
+	progressByName     map[string]ResourceProgress
+	workflowID         string
+	errors             []string
+	workflowStepsByKey map[string]*ResourceWorkflowSteps
 }
 
 // dagRefreshTickMsg triggers a periodic DAG progress refresh
@@ -57,19 +61,28 @@ type dagModel struct {
 	nodeLevels      [][]string // nodes grouped by level (sorted within each level)
 	cursorIndex     int
 	showCursor      bool
+	expandedNodes   map[string]bool // nodes with expanded dependency checklist
+	highlightDeps   bool            // whether to highlight ancestor dependency chain
+
+	// Node placement metadata for auto-scrolling
+	nodePlacements map[string]planDAGPlacement
+	prefixRows     int // lines before the diagram (errors/warnings)
 
 	// Sub-view
 	detailModel tea.Model
 	inDetail    bool
 
 	// Progress loading
-	progressLoading bool
-	wfResolved      bool
-	tfResolved      bool
-	wfResult        *wfProgressMsg              // stored until both resolve
-	tfNodeProgress  map[string]ResourceProgress // terraform progress by node ID
-	refreshing      bool                        // true during periodic refresh
-	spinner         spinner.Model
+	progressLoading    bool
+	wfResolved         bool
+	tfResolved         bool
+	wfResult           *wfProgressMsg              // stored until both resolve
+	tfNodeProgress     map[string]ResourceProgress // terraform progress by node ID
+	tfBreakpointByID   map[string]string
+	tfBreakpointByKey  map[string]string
+	tfBreakpointByName map[string]string
+	refreshing         bool // true during periodic refresh
+	spinner            spinner.Model
 }
 
 func launchDebugTUI(data DebugData) error {
@@ -99,6 +112,8 @@ func newDagModel(data DebugData) dagModel {
 		selectableNodes: nodes,
 		nodeLevels:      levels,
 		showCursor:      len(nodes) > 0,
+		expandedNodes:   make(map[string]bool),
+		highlightDeps:   false,
 		progressLoading: hasNodes,
 		spinner:         s,
 	}
@@ -132,11 +147,12 @@ func (m dagModel) fetchWorkflowProgressForDAG() tea.Cmd {
 		tmpPlan := &PlanDAG{Nodes: m.plan.Nodes, Levels: m.plan.Levels}
 		attachWorkflowProgress(ctx, data.Token, data.ServiceID, data.EnvironmentID, data.InstanceID, tmpPlan)
 		return wfProgressMsg{
-			progressByID:   tmpPlan.ProgressByID,
-			progressByKey:  tmpPlan.ProgressByKey,
-			progressByName: tmpPlan.ProgressByName,
-			workflowID:     tmpPlan.WorkflowID,
-			errors:         tmpPlan.Errors,
+			progressByID:       tmpPlan.ProgressByID,
+			progressByKey:      tmpPlan.ProgressByKey,
+			progressByName:     tmpPlan.ProgressByName,
+			workflowID:         tmpPlan.WorkflowID,
+			errors:             tmpPlan.Errors,
+			workflowStepsByKey: tmpPlan.WorkflowStepsByKey,
 		}
 	}
 }
@@ -146,19 +162,30 @@ func (m dagModel) fetchTerraformProgressForDAG() tea.Cmd {
 		ctx := context.Background()
 		data := m.debugData
 
+		updateMsg := tfProgressUpdateMsg{
+			progressByID: make(map[string]ResourceProgress),
+		}
+
 		instanceData, err := fetchInstanceDataForResource(
 			ctx, data.Token, data.ServiceID, data.EnvironmentID, data.InstanceID,
 		)
 		if err != nil {
-			return tfProgressUpdateMsg{}
+			return updateMsg
+		}
+
+		if m.plan != nil {
+			tmpPlan := &PlanDAG{Nodes: m.plan.Nodes}
+			attachBreakpointStatuses(tmpPlan, instanceData)
+			updateMsg.breakpointByID = tmpPlan.BreakpointByID
+			updateMsg.breakpointByKey = tmpPlan.BreakpointByKey
+			updateMsg.breakpointByName = tmpPlan.BreakpointByName
 		}
 
 		index, _, err := loadTerraformConfigMapIndexForInstance(ctx, data.Token, instanceData, data.InstanceID)
 		if err != nil || index == nil {
-			return tfProgressUpdateMsg{}
+			return updateMsg
 		}
 
-		result := make(map[string]ResourceProgress)
 		normalizedInstanceID := strings.ToLower(data.InstanceID)
 
 		for nodeID, node := range m.plan.Nodes {
@@ -215,7 +242,7 @@ func (m dagModel) fetchTerraformProgressForDAG() tea.Cmd {
 				if total == 0 && pct == 0 && status != "completed" && status != "success" {
 					continue
 				}
-				result[nodeID] = ResourceProgress{
+				updateMsg.progressByID[nodeID] = ResourceProgress{
 					Percent:        pct,
 					Status:         status,
 					CompletedSteps: ready,
@@ -224,7 +251,7 @@ func (m dagModel) fetchTerraformProgressForDAG() tea.Cmd {
 			}
 		}
 
-		return tfProgressUpdateMsg{progressByID: result}
+		return updateMsg
 	}
 }
 
@@ -270,6 +297,9 @@ func (m dagModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// Capture terraform progress even while in detail view
 			m.tfResolved = true
 			m.tfNodeProgress = dmsg.progressByID
+			m.tfBreakpointByID = dmsg.breakpointByID
+			m.tfBreakpointByKey = dmsg.breakpointByKey
+			m.tfBreakpointByName = dmsg.breakpointByName
 			m.applyProgressIfReady()
 		case dagRefreshTickMsg:
 			// Handle DAG refresh even while in detail view
@@ -283,6 +313,9 @@ func (m dagModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.refreshing = false
 			m.wfResult = &dmsg.wf
 			m.tfNodeProgress = dmsg.tf.progressByID
+			m.tfBreakpointByID = dmsg.tf.breakpointByID
+			m.tfBreakpointByKey = dmsg.tf.breakpointByKey
+			m.tfBreakpointByName = dmsg.tf.breakpointByName
 			if m.plan != nil && dmsg.wf.workflowID != "" {
 				m.plan.WorkflowID = dmsg.wf.workflowID
 			}
@@ -348,6 +381,15 @@ func (m dagModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if m.showCursor && len(m.selectableNodes) > 0 {
 				return m.openNodeDetail()
 			}
+		case " ":
+			if m.showCursor && len(m.selectableNodes) > 0 {
+				nodeID := m.selectableNodes[m.cursorIndex]
+				m.expandedNodes[nodeID] = !m.expandedNodes[nodeID]
+				m.rebuildLayout()
+			}
+		case "d":
+			m.highlightDeps = !m.highlightDeps
+			m.rebuildLayout()
 		}
 		m.clampScroll()
 	case wfProgressMsg:
@@ -365,6 +407,9 @@ func (m dagModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tfProgressUpdateMsg:
 		m.tfResolved = true
 		m.tfNodeProgress = msg.progressByID
+		m.tfBreakpointByID = msg.breakpointByID
+		m.tfBreakpointByKey = msg.breakpointByKey
+		m.tfBreakpointByName = msg.breakpointByName
 		if cmd := m.applyProgressIfReady(); cmd != nil {
 			return m, cmd
 		}
@@ -377,6 +422,9 @@ func (m dagModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.refreshing = false
 		m.wfResult = &msg.wf
 		m.tfNodeProgress = msg.tf.progressByID
+		m.tfBreakpointByID = msg.tf.breakpointByID
+		m.tfBreakpointByKey = msg.tf.breakpointByKey
+		m.tfBreakpointByName = msg.tf.breakpointByName
 		if m.plan != nil {
 			if msg.wf.workflowID != "" {
 				m.plan.WorkflowID = msg.wf.workflowID
@@ -411,6 +459,15 @@ func (m *dagModel) applyProgressIfReady() tea.Cmd {
 		m.plan.ProgressByID = make(map[string]ResourceProgress)
 		m.plan.ProgressByKey = make(map[string]ResourceProgress)
 		m.plan.ProgressByName = make(map[string]ResourceProgress)
+		if m.tfBreakpointByID != nil {
+			m.plan.BreakpointByID = copyStringMap(m.tfBreakpointByID)
+		}
+		if m.tfBreakpointByKey != nil {
+			m.plan.BreakpointByKey = copyStringMap(m.tfBreakpointByKey)
+		}
+		if m.tfBreakpointByName != nil {
+			m.plan.BreakpointByName = copyStringMap(m.tfBreakpointByName)
+		}
 
 		// Apply workflow progress as base
 		if m.wfResult != nil {
@@ -422,6 +479,15 @@ func (m *dagModel) applyProgressIfReady() tea.Cmd {
 			}
 			for name, prog := range m.wfResult.progressByName {
 				m.plan.ProgressByName[name] = prog
+			}
+			// Merge workflow steps
+			if m.wfResult.workflowStepsByKey != nil {
+				if m.plan.WorkflowStepsByKey == nil {
+					m.plan.WorkflowStepsByKey = make(map[string]*ResourceWorkflowSteps)
+				}
+				for key, steps := range m.wfResult.workflowStepsByKey {
+					m.plan.WorkflowStepsByKey[key] = steps
+				}
 			}
 		}
 
@@ -447,6 +513,17 @@ func (m *dagModel) applyProgressIfReady() tea.Cmd {
 		return scheduleDagRefresh()
 	}
 	return nil
+}
+
+func copyStringMap(src map[string]string) map[string]string {
+	if src == nil {
+		return nil
+	}
+	dst := make(map[string]string, len(src))
+	for key, value := range src {
+		dst[key] = value
+	}
+	return dst
 }
 
 func (m dagModel) isAnyNodeInProgress() bool {
@@ -486,10 +563,11 @@ func (m dagModel) fetchDagRefresh() tea.Cmd {
 			tmpPlan := &PlanDAG{Nodes: m.plan.Nodes, Levels: m.plan.Levels}
 			attachWorkflowProgress(ctx, data.Token, data.ServiceID, data.EnvironmentID, data.InstanceID, tmpPlan)
 			wf = wfProgressMsg{
-				progressByID:   tmpPlan.ProgressByID,
-				progressByKey:  tmpPlan.ProgressByKey,
-				progressByName: tmpPlan.ProgressByName,
-				workflowID:     tmpPlan.WorkflowID,
+				progressByID:       tmpPlan.ProgressByID,
+				progressByKey:      tmpPlan.ProgressByKey,
+				progressByName:     tmpPlan.ProgressByName,
+				workflowID:         tmpPlan.WorkflowID,
+				workflowStepsByKey: tmpPlan.WorkflowStepsByKey,
 			}
 		}
 
@@ -497,6 +575,14 @@ func (m dagModel) fetchDagRefresh() tea.Cmd {
 		tf := tfProgressUpdateMsg{progressByID: make(map[string]ResourceProgress)}
 		instanceData, err := fetchInstanceDataForResource(ctx, data.Token, data.ServiceID, data.EnvironmentID, data.InstanceID)
 		if err == nil {
+			if m.plan != nil {
+				tmpPlan := &PlanDAG{Nodes: m.plan.Nodes}
+				attachBreakpointStatuses(tmpPlan, instanceData)
+				tf.breakpointByID = tmpPlan.BreakpointByID
+				tf.breakpointByKey = tmpPlan.BreakpointByKey
+				tf.breakpointByName = tmpPlan.BreakpointByName
+			}
+
 			index, _, err := loadTerraformConfigMapIndexForInstance(ctx, data.Token, instanceData, data.InstanceID)
 			if err == nil && index != nil {
 				normalizedInstanceID := strings.ToLower(data.InstanceID)
@@ -692,7 +778,12 @@ func (m dagModel) renderHeader() string {
 	style := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("230")).Background(lipgloss.Color("62")).Padding(0, 1)
 	text := fmt.Sprintf("Deployment Plan · %s", m.instanceID)
 	if m.plan != nil && m.plan.WorkflowID != "" {
-		text += fmt.Sprintf(" · workflow: %s", m.plan.WorkflowID)
+		workflowText := fmt.Sprintf("Workflow: %s", m.plan.WorkflowID)
+		if planHasHitBreakpoint(m.plan) {
+			pausedStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("15")).Background(lipgloss.Color("160")).Bold(true)
+			workflowText += " " + pausedStyle.Render(" PAUSED ")
+		}
+		text += " · " + workflowText
 	}
 	return lipgloss.Place(m.width, 1, lipgloss.Left, lipgloss.Top, style.Render(text))
 }
@@ -704,7 +795,11 @@ func (m dagModel) renderHelp() string {
 		nodeID := m.selectableNodes[m.cursorIndex]
 		node := m.plan.Nodes[nodeID]
 		selectedStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("230")).Bold(true)
-		text = fmt.Sprintf("tab/shift+tab: select resource  enter: open  arrows: scroll  q: quit  │  %s", selectedStyle.Render(nodeLabel(node)))
+		depGraphLabel := "show dep graph"
+		if m.highlightDeps {
+			depGraphLabel = "hide dep graph"
+		}
+		text = fmt.Sprintf("tab/shift+tab: select  space: deps  d: %s  enter: open  arrows: scroll  q: quit  │  %s", depGraphLabel, selectedStyle.Render(nodeLabel(node)))
 	} else {
 		text = "arrows: scroll  pgup/pgdn: page  home/end: jump  q: quit"
 	}
@@ -788,9 +883,50 @@ func (m *dagModel) rebuildLayout() {
 		m.plan.SpinnerTick++
 	}
 
-	m.lines = renderPlanDAGStyledWithSelection(m.plan, bodyWidth, selectedNodeID)
+	result := renderPlanDAGStyledWithSelection(m.plan, bodyWidth, selectedNodeID, m.expandedNodes, m.highlightDeps)
+	m.lines = result.lines
+	m.nodePlacements = result.placements
+	m.prefixRows = result.prefixRows
 	m.contentWidth = maxLineWidthANSI(m.lines)
+	m.ensureSelectedVisible()
 	m.clampScroll()
+}
+
+// ensureSelectedVisible adjusts scrollX/scrollY so the currently selected
+// node's card is within the visible viewport, with a small margin.
+func (m *dagModel) ensureSelectedVisible() {
+	if !m.showCursor || len(m.selectableNodes) == 0 {
+		return
+	}
+	nodeID := m.selectableNodes[m.cursorIndex]
+	p, ok := m.nodePlacements[nodeID]
+	if !ok {
+		return
+	}
+
+	bodyWidth, bodyHeight := m.bodySize()
+	margin := 2
+
+	// The placement y is relative to the diagram canvas; add prefixRows
+	// to get the absolute line index in m.lines.
+	nodeTop := p.y + m.prefixRows
+	nodeBottom := nodeTop + p.height
+	nodeLeft := p.x
+	nodeRight := nodeLeft + p.width
+
+	// Vertical auto-scroll
+	if nodeTop-margin < m.scrollY {
+		m.scrollY = maxInt(nodeTop-margin, 0)
+	} else if nodeBottom+margin > m.scrollY+bodyHeight {
+		m.scrollY = nodeBottom + margin - bodyHeight
+	}
+
+	// Horizontal auto-scroll
+	if nodeLeft-margin < m.scrollX {
+		m.scrollX = maxInt(nodeLeft-margin, 0)
+	} else if nodeRight+margin > m.scrollX+bodyWidth {
+		m.scrollX = nodeRight + margin - bodyWidth
+	}
 }
 
 func maxLineWidthANSI(lines []string) int {

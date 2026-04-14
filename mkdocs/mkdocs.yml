@@ -46,6 +46,7 @@ validation:
 
 nav:
   - Install CTL: "index.md"
+  - Authentication and SSO: "authentication-and-sso.md"
   - Integrate CTL: "integrating.md"
   - CTL Usage: "omnistrate-ctl.md"
   - Commands:
@@ -66,7 +67,6 @@ nav:
       - domain: "omnistrate-ctl_domain.md"
       - environment: "omnistrate-ctl_environment.md"
       - helm: "omnistrate-ctl_helm.md"
-      - inspect: "omnistrate-ctl_inspect.md"
       - instance: "omnistrate-ctl_instance.md"
       - operations: "omnistrate-ctl_operations.md"
       - secret: "omnistrate-ctl_secret.md"
@@ -110,8 +110,6 @@ markdown_extensions:
   - pymdownx.caret
   - pymdownx.mark
   - pymdownx.tilde
-  - pymdownx.highlight:
-      anchor_linenums: true
   - pymdownx.inlinehilite
   - pymdownx.snippets
   - admonition

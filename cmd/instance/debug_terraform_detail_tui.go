@@ -19,10 +19,17 @@ const (
 	tabTfOutput  = 2
 	tabLogs      = 3
 	tabOpHistory = 4
-	numTabs      = 5
+	tabWfErrors  = 5
+	numTabs      = 6
 )
 
-var tabNames = []string{"Progress", "Terraform Files", "Terraform Output", "Logs", "Operation History"}
+var tabNames = []string{"Progress", "Terraform Files", "Terraform Output", "Logs", "Operation History", "Workflow Events"}
+
+func init() {
+	if len(tabNames) != numTabs {
+		panic(fmt.Sprintf("tabNames length %d does not match numTabs %d", len(tabNames), numTabs))
+	}
+}
 
 // fileContentMsg is sent when file content has been fetched from the pod
 type fileContentMsg struct {
@@ -32,12 +39,14 @@ type fileContentMsg struct {
 
 // Messages
 type terraformDataMsg struct {
-	progress     *TerraformProgressData
-	history      []TerraformHistoryEntry
-	k8sConn      *k8sConnection
-	fileTree     *TerraformFileTree
-	tfOutputJSON string // latest terraform output JSON from configmap
-	err          error
+	progress             *TerraformProgressData
+	history              []TerraformHistoryEntry
+	k8sConn              *k8sConnections
+	fileTree             *TerraformFileTree
+	tfOutputJSON         string            // latest terraform output JSON from configmap
+	planPreviewByOpID    map[string]string // plan preview JSON keyed by operation ID
+	planPreviewErrByOpID map[string]string // plan preview errors keyed by operation ID
+	err                  error
 }
 
 // progressRefreshMsg is sent when auto-refresh fetches updated progress data
@@ -61,9 +70,10 @@ type terraformDetailModel struct {
 	scrollY   int
 
 	// Loading state
-	loading    bool
-	refreshing bool // true during auto-refresh (non-blocking)
-	spinner    spinner.Model
+	loading             bool
+	refreshing          bool // true during auto-refresh (non-blocking)
+	lastProgressRefresh time.Time
+	spinner             spinner.Model
 
 	// Progress tab data
 	tfProgress  *TerraformProgressData
@@ -72,7 +82,7 @@ type terraformDetailModel struct {
 	loadErr     error
 
 	// K8s connection for file operations
-	k8sConn *k8sConnection
+	k8sConn *k8sConnections
 
 	// Terraform Files tab data
 	fileTree       *TerraformFileTree
@@ -87,6 +97,15 @@ type terraformDetailModel struct {
 	tfOutputJSON string // raw JSON from the latest output.log
 	outputTree   []outputNode
 	outputCursor int
+
+	// Plan preview data keyed by operation ID (shown in operation history)
+	planPreviewByOpID    map[string]string
+	planPreviewErrByOpID map[string]string
+
+	// Plan preview modal (shown over operation history)
+	previewModalText   string // non-empty means modal is open
+	previewModalScroll int
+	previewModalOpID   string // operation ID for the modal title
 
 	// Logs tab data
 	logLines     []string
@@ -107,6 +126,9 @@ type terraformDetailModel struct {
 	errorModalText   string // raw error text; non-empty means modal is open
 	errorModalScroll int
 	errorModalOp     string // operation name for the modal title
+
+	// Workflow Errors tab
+	wfErrors *workflowErrorsState
 
 	// Clipboard flash message
 	clipboardMsg string
@@ -131,6 +153,7 @@ func newTerraformDetailModel(node PlanDAGNode, data DebugData) terraformDetailMo
 		progressBar: p,
 		logChan:     make(chan logLineMsg, 50),
 		logFollow:   true,
+		wfErrors:    &workflowErrorsState{},
 	}
 }
 
@@ -195,47 +218,78 @@ func (m terraformDetailModel) fetchData() tea.Cmd {
 			return terraformDataMsg{err: err}
 		}
 
-		// Fetch terraform output JSON from configmap Files (tf-state)
+		// Fetch terraform output JSON and plan preview from configmaps.
+		// Plan previews: dedicated tf-plan-* CMs first, then state CM fallback.
+		// All lookups are best-effort.
 		var tfOutputJSON string
-		if conn != nil {
-			index, indexErr := loadTerraformConfigMapIndex(ctx, conn.clientset, m.debugData.InstanceID)
-			if indexErr == nil && index != nil {
-				var tfData *TerraformData
-				for _, key := range resourceConfigMapKeys(m.node.ID) {
-					td := index.terraformDataForResource(key)
-					if td != nil && len(td.Files) > 0 {
-						tfData = td
-						break
-					}
+		var planPreviewByOpID, planPreviewErrByOpID map[string]string
+		if conn == nil {
+			return terraformDataMsg{
+				progress: progress,
+				history:  history,
+			}
+		}
+		for _, c := range []*k8sConnection{conn.dataplane, conn.controlPlane} {
+			if c == nil {
+				continue
+			}
+			index, indexErr := loadTerraformConfigMapIndex(ctx, c.clientset, m.debugData.InstanceID)
+			if indexErr != nil || index == nil {
+				continue
+			}
+			// Extract plan previews (dedicated tf-plan-* CMs first, state CM fallback)
+			stateData := extractTerraformStateData(index, m.debugData.InstanceID, m.node.ID)
+			if stateData != nil {
+				if len(stateData.PlanPreviews) > 0 {
+					planPreviewByOpID = stateData.PlanPreviews
 				}
-				if tfData != nil {
-					tfOutputJSON = findLatestOutputLog(tfData.Files, history)
+				if len(stateData.PreviewErrors) > 0 {
+					planPreviewErrByOpID = stateData.PreviewErrors
 				}
+			}
+			// Also try terraformDataForResource for output logs
+			tfData := index.terraformDataForResource(m.node.ID)
+			if tfData != nil && len(tfData.Files) > 0 {
+				tfOutputJSON = findLatestOutputLog(tfData.Files, history)
+				break
+			}
+			// If tfData.Files was empty but we got plan previews, still break
+			if len(planPreviewByOpID) > 0 || len(planPreviewErrByOpID) > 0 {
+				break
 			}
 		}
 
-		// Fetch file tree from the terraform executor pod
+		// Fetch file tree from the terraform executor pod.
+		// Try both dataplane and control-plane clusters.
 		var fileTree *TerraformFileTree
 		if progress != nil && conn != nil && progress.TerraformName != "" {
 			podName := terraformExecutorPodName(progress.TerraformName)
-			// Try apply directory first (most common), then diff
-			for _, op := range []string{"apply", "diff", "output"} {
-				basePath := terraformFilesBasePath(progress.TerraformName, progress.InstanceID, op)
-				tree, fetchErr := fetchTerraformFileTree(ctx, conn, terraformConfigMapNamespace, podName, basePath)
-				if fetchErr == nil && tree != nil && len(tree.Flat) > 0 {
-					fileTree = tree
-					break
+		fileTreeSearch:
+			for _, c := range []*k8sConnection{conn.dataplane, conn.controlPlane} {
+				if c == nil {
+					continue
+				}
+				for _, op := range []string{"apply", "diff", "output"} {
+					basePath := terraformFilesBasePath(progress.TerraformName, progress.InstanceID, op)
+					tree, fetchErr := fetchTerraformFileTree(ctx, c, terraformConfigMapNamespace, podName, basePath)
+					if fetchErr == nil && tree != nil && len(tree.Flat) > 0 {
+						tree.conn = c
+						fileTree = tree
+						break fileTreeSearch
+					}
 				}
 			}
 		}
 
 		return terraformDataMsg{
-			progress:     progress,
-			history:      history,
-			k8sConn:      conn,
-			fileTree:     fileTree,
-			tfOutputJSON: tfOutputJSON,
-			err:          err,
+			progress:             progress,
+			history:              history,
+			k8sConn:              conn,
+			fileTree:             fileTree,
+			tfOutputJSON:         tfOutputJSON,
+			planPreviewByOpID:    planPreviewByOpID,
+			planPreviewErrByOpID: planPreviewErrByOpID,
+			err:                  err,
 		}
 	}
 }
@@ -258,10 +312,22 @@ func (m terraformDetailModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			return m, tea.Quit
 		case "esc":
+			if m.wfErrors.modalText != "" {
+				m.wfErrors.modalText = ""
+				m.wfErrors.modalTitle = ""
+				m.wfErrors.modalScroll = 0
+				return m, nil
+			}
 			if m.errorModalText != "" {
 				m.errorModalText = ""
 				m.errorModalScroll = 0
 				m.errorModalOp = ""
+				return m, nil
+			}
+			if m.previewModalText != "" {
+				m.previewModalText = ""
+				m.previewModalOpID = ""
+				m.previewModalScroll = 0
 				return m, nil
 			}
 			if m.viewingFile {
@@ -278,7 +344,7 @@ func (m terraformDetailModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// Signal back to DAG view
 			return m, func() tea.Msg { return backToDagMsg{} }
 		case "tab", "right":
-			if m.errorModalText != "" {
+			if m.wfErrors.modalText != "" || m.errorModalText != "" || m.previewModalText != "" {
 				return m, nil // block tab switching while modal is open
 			}
 			if !m.viewingFile {
@@ -286,7 +352,7 @@ func (m terraformDetailModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.scrollY = 0
 			}
 		case "shift+tab", "left":
-			if m.errorModalText != "" {
+			if m.wfErrors.modalText != "" || m.errorModalText != "" || m.previewModalText != "" {
 				return m, nil
 			}
 			if !m.viewingFile {
@@ -294,9 +360,21 @@ func (m terraformDetailModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.scrollY = 0
 			}
 		case "up", "k":
+			if m.wfErrors.modalText != "" {
+				if m.wfErrors.modalScroll > 0 {
+					m.wfErrors.modalScroll--
+				}
+				return m, nil
+			}
 			if m.errorModalText != "" {
 				if m.errorModalScroll > 0 {
 					m.errorModalScroll--
+				}
+				return m, nil
+			}
+			if m.previewModalText != "" {
+				if m.previewModalScroll > 0 {
+					m.previewModalScroll--
 				}
 				return m, nil
 			}
@@ -309,7 +387,7 @@ func (m terraformDetailModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.outputCursor--
 				}
 			} else if m.activeTab == tabOpHistory && len(m.historyDates) > 0 {
-				rows := flattenTimeline(m.historyDates)
+				rows := flattenTimeline(m.historyDates, m.planPreviewByOpID, m.planPreviewErrByOpID)
 				if m.historyCursor > 0 {
 					m.historyCursor--
 				}
@@ -321,6 +399,12 @@ func (m terraformDetailModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				if m.logScroll > 0 {
 					m.logScroll--
 				}
+			} else if m.activeTab == tabWfErrors {
+				items := flattenWfEventItems(m.getTfWfEvents())
+				if m.wfErrors.cursor > 0 {
+					m.wfErrors.cursor--
+				}
+				_ = items
 			} else if m.viewingFile {
 				if m.fileScroll > 0 {
 					m.fileScroll--
@@ -331,11 +415,27 @@ func (m terraformDetailModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 			}
 		case "down", "j":
+			if m.wfErrors.modalText != "" {
+				m.wfErrors.modalScroll++
+				maxScroll := wfEventModalMaxScroll(m.wfErrors, m.width, m.height)
+				if m.wfErrors.modalScroll > maxScroll {
+					m.wfErrors.modalScroll = maxScroll
+				}
+				return m, nil
+			}
 			if m.errorModalText != "" {
 				m.errorModalScroll++
 				maxScroll := m.errorModalMaxScroll()
 				if m.errorModalScroll > maxScroll {
 					m.errorModalScroll = maxScroll
+				}
+				return m, nil
+			}
+			if m.previewModalText != "" {
+				m.previewModalScroll++
+				maxScroll := m.previewModalMaxScroll()
+				if m.previewModalScroll > maxScroll {
+					m.previewModalScroll = maxScroll
 				}
 				return m, nil
 			}
@@ -349,7 +449,7 @@ func (m terraformDetailModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.outputCursor++
 				}
 			} else if m.activeTab == tabOpHistory && len(m.historyDates) > 0 {
-				rows := flattenTimeline(m.historyDates)
+				rows := flattenTimeline(m.historyDates, m.planPreviewByOpID, m.planPreviewErrByOpID)
 				if m.historyCursor < len(rows)-1 {
 					m.historyCursor++
 				}
@@ -358,6 +458,11 @@ func (m terraformDetailModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.logScroll++
 				if m.logScroll > m.logMaxScroll() {
 					m.logScroll = m.logMaxScroll()
+				}
+			} else if m.activeTab == tabWfErrors {
+				items := flattenWfEventItems(m.getTfWfEvents())
+				if m.wfErrors.cursor < len(items)-1 {
+					m.wfErrors.cursor++
 				}
 			} else if m.viewingFile {
 				m.fileScroll++
@@ -380,7 +485,7 @@ func (m terraformDetailModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 						if m.fileCursor >= len(m.fileTree.Flat) {
 							m.fileCursor = len(m.fileTree.Flat) - 1
 						}
-					} else if m.k8sConn != nil {
+					} else if m.k8sConn != nil && m.k8sConn.dataplane != nil {
 						m.fileLoading = true
 						m.viewingFile = true
 						m.fileScroll = 0
@@ -390,43 +495,66 @@ func (m terraformDetailModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			} else if m.activeTab == tabTfOutput && len(m.outputTree) > 0 {
 				visibleNodes := flattenOutputTree(m.outputTree)
 				if m.outputCursor >= 0 && m.outputCursor < len(visibleNodes) {
-					node := visibleNodes[m.outputCursor]
-					if node.expandable {
-						node.expanded = !node.expanded
-					} else if node.sensitive {
-						node.sensitiveShown = !node.sensitiveShown
-						if node.sensitiveShown {
-							node.value = node.realValue
-						} else {
-							node.value = "••••••••  (sensitive, press enter to reveal)"
-						}
-					}
+					toggleOutputNode(visibleNodes[m.outputCursor])
 				}
 			} else if m.activeTab == tabOpHistory && len(m.historyDates) > 0 {
-				rows := flattenTimeline(m.historyDates)
+				rows := flattenTimeline(m.historyDates, m.planPreviewByOpID, m.planPreviewErrByOpID)
 				if m.historyCursor >= 0 && m.historyCursor < len(rows) {
 					row := rows[m.historyCursor]
 					if row.isDateHeader {
 						row.date.expanded = !row.date.expanded
 					} else if row.isGroupHeader {
 						row.group.expanded = !row.group.expanded
+					} else if row.isAttemptHeader {
+						row.attempt.expanded = !row.attempt.expanded
+					} else if row.isPlanPreviewRow {
+						// Open plan preview modal from the dedicated preview row
+						if content, _, found := m.planPreviewForOpID(row.planPreviewOpID); found {
+							m.previewModalText = content
+							m.previewModalOpID = row.planPreviewOpID
+							m.previewModalScroll = 0
+						}
 					} else if row.entry != nil && row.entry.Error != "" {
 						// Open error modal
 						m.errorModalText = strings.ReplaceAll(row.entry.Error, "\\n", "\n")
 						m.errorModalOp = row.entry.Operation
 						m.errorModalScroll = 0
 					}
-					newRows := flattenTimeline(m.historyDates)
+					newRows := flattenTimeline(m.historyDates, m.planPreviewByOpID, m.planPreviewErrByOpID)
 					if m.historyCursor >= len(newRows) {
 						m.historyCursor = len(newRows) - 1
 					}
 				}
+			} else if m.activeTab == tabWfErrors {
+				items := flattenWfEventItems(m.getTfWfEvents())
+				if m.wfErrors.cursor >= 0 && m.wfErrors.cursor < len(items) {
+					item := items[m.wfErrors.cursor]
+					if item.event != nil {
+						m.wfErrors.modalText = formatEventDetail(item.event)
+						m.wfErrors.modalTitle = extractEventAction(item.event.Message)
+						m.wfErrors.modalScroll = 0
+					}
+				}
 			}
 		case "pgup":
+			if m.wfErrors.modalText != "" {
+				m.wfErrors.modalScroll -= m.bodyHeight()
+				if m.wfErrors.modalScroll < 0 {
+					m.wfErrors.modalScroll = 0
+				}
+				return m, nil
+			}
 			if m.errorModalText != "" {
 				m.errorModalScroll -= m.bodyHeight()
 				if m.errorModalScroll < 0 {
 					m.errorModalScroll = 0
+				}
+				return m, nil
+			}
+			if m.previewModalText != "" {
+				m.previewModalScroll -= m.bodyHeight()
+				if m.previewModalScroll < 0 {
+					m.previewModalScroll = 0
 				}
 				return m, nil
 			}
@@ -436,6 +564,17 @@ func (m terraformDetailModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				if m.logScroll < 0 {
 					m.logScroll = 0
 				}
+			} else if m.activeTab == tabWfErrors {
+				items := flattenWfEventItems(m.getTfWfEvents())
+				pageItems := m.bodyHeight() / 2
+				if pageItems < 1 {
+					pageItems = 1
+				}
+				m.wfErrors.cursor -= pageItems
+				if m.wfErrors.cursor < 0 {
+					m.wfErrors.cursor = 0
+				}
+				_ = items
 			} else if m.viewingFile {
 				m.fileScroll -= m.bodyHeight()
 				if m.fileScroll < 0 {
@@ -448,6 +587,14 @@ func (m terraformDetailModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 			}
 		case "pgdown":
+			if m.wfErrors.modalText != "" {
+				m.wfErrors.modalScroll += m.bodyHeight()
+				maxScroll := wfEventModalMaxScroll(m.wfErrors, m.width, m.height)
+				if m.wfErrors.modalScroll > maxScroll {
+					m.wfErrors.modalScroll = maxScroll
+				}
+				return m, nil
+			}
 			if m.errorModalText != "" {
 				m.errorModalScroll += m.bodyHeight()
 				maxScroll := m.errorModalMaxScroll()
@@ -456,11 +603,32 @@ func (m terraformDetailModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 				return m, nil
 			}
+			if m.previewModalText != "" {
+				m.previewModalScroll += m.bodyHeight()
+				maxScroll := m.previewModalMaxScroll()
+				if m.previewModalScroll > maxScroll {
+					m.previewModalScroll = maxScroll
+				}
+				return m, nil
+			}
 			if m.activeTab == tabLogs {
 				m.logFollow = false
 				m.logScroll += m.bodyHeight()
 				if m.logScroll > m.logMaxScroll() {
 					m.logScroll = m.logMaxScroll()
+				}
+			} else if m.activeTab == tabWfErrors {
+				items := flattenWfEventItems(m.getTfWfEvents())
+				pageItems := m.bodyHeight() / 2
+				if pageItems < 1 {
+					pageItems = 1
+				}
+				m.wfErrors.cursor += pageItems
+				if m.wfErrors.cursor >= len(items) {
+					m.wfErrors.cursor = len(items) - 1
+				}
+				if m.wfErrors.cursor < 0 {
+					m.wfErrors.cursor = 0
 				}
 			} else if m.viewingFile {
 				m.fileScroll += m.bodyHeight()
@@ -517,19 +685,31 @@ func (m terraformDetailModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.tfOutputJSON != "" {
 			m.outputTree = buildOutputTreeFromJSON(msg.tfOutputJSON)
 		}
-		// Start log watcher for apply/destroy logs from configmap
+		m.planPreviewByOpID = msg.planPreviewByOpID
+		m.planPreviewErrByOpID = msg.planPreviewErrByOpID
+		// Start log watcher for apply/destroy logs from configmap.
+		// Try both dataplane and control-plane clusters to find which has the logs.
 		var cmds []tea.Cmd
 		if msg.k8sConn != nil {
-			ctx, cancel := context.WithCancel(context.Background())
-			m.logCancel = cancel
-			m.logStreaming = true
-			cmds = append(cmds,
-				watchApplyDestroyLogs(ctx, msg.k8sConn, m.debugData.InstanceID, m.node.ID, m.history, m.logChan),
-				waitForLogLines(m.logChan),
-			)
+			logConn := findConnectionWithStateConfigMap(msg.k8sConn, m.debugData.InstanceID, m.node.ID)
+			if logConn != nil {
+				ctx, cancel := context.WithCancel(context.Background())
+				m.logCancel = cancel
+				m.logStreaming = true
+				cmds = append(cmds,
+					watchApplyDestroyLogs(ctx, logConn, m.debugData.InstanceID, m.node.ID, m.history, m.logChan),
+					waitForLogLines(m.logChan),
+				)
+			}
 		}
 		if m.isProgressInFlight() {
 			cmds = append(cmds, scheduleProgressRefresh())
+		}
+		if isWorkflowInProgress(m.getTfWfEvents()) {
+			cmds = append(cmds, scheduleWfEventsRefresh())
+		}
+		if m.isProgressInFlight() || isWorkflowInProgress(m.getTfWfEvents()) {
+			cmds = append(cmds, scheduleWfCountdownTick())
 		}
 		if len(cmds) > 0 {
 			return m, tea.Batch(cmds...)
@@ -568,11 +748,13 @@ func (m terraformDetailModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.logChan = make(chan logLineMsg, 50)
 			m.logStreaming = true
 			m.logErr = nil
-			return m, tea.Batch(
-				tea.Tick(logPollInterval, func(time.Time) tea.Msg { return nil }),
-				watchApplyDestroyLogs(ctx, m.k8sConn, m.debugData.InstanceID, m.node.ID, m.history, m.logChan),
-				waitForLogLines(m.logChan),
-			)
+			if m.k8sConn != nil && m.k8sConn.dataplane != nil {
+				return m, tea.Batch(
+					tea.Tick(logPollInterval, func(time.Time) tea.Msg { return nil }),
+					watchApplyDestroyLogs(ctx, m.k8sConn.dataplane, m.debugData.InstanceID, m.node.ID, m.history, m.logChan),
+					waitForLogLines(m.logChan),
+				)
+			}
 		}
 		m.logDone = true
 	case progressTickMsg:
@@ -582,8 +764,11 @@ func (m terraformDetailModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 	case progressRefreshMsg:
 		m.refreshing = false
+		m.lastProgressRefresh = time.Now()
 		if msg.err == nil {
-			m.tfProgress = msg.progress
+			if msg.progress != nil {
+				m.tfProgress = msg.progress
+			}
 			m.history = msg.history
 			// Don't rebuild timeline while user is reading error modal
 			if m.errorModalText == "" {
@@ -593,12 +778,36 @@ func (m terraformDetailModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.isProgressInFlight() {
 			return m, scheduleProgressRefresh()
 		}
+	case wfEventsRefreshTickMsg:
+		steps := m.getTfWfEvents()
+		if isWorkflowInProgress(steps) && !m.wfErrors.refreshing {
+			m.wfErrors.refreshing = true
+			return m, fetchWfEventsForResource(m.debugData, m.node.Key)
+		}
+	case wfEventsRefreshMsg:
+		m.wfErrors.refreshing = false
+		m.wfErrors.lastRefresh = time.Now()
+		if msg.err == nil && msg.steps != nil {
+			if m.debugData.PlanDAG != nil {
+				if m.debugData.PlanDAG.WorkflowStepsByKey == nil {
+					m.debugData.PlanDAG.WorkflowStepsByKey = make(map[string]*ResourceWorkflowSteps)
+				}
+				m.debugData.PlanDAG.WorkflowStepsByKey[m.node.Key] = msg.steps
+			}
+		}
+		if isWorkflowInProgress(m.getTfWfEvents()) {
+			return m, tea.Batch(scheduleWfEventsRefresh(), scheduleWfCountdownTick())
+		}
+	case wfCountdownTickMsg:
+		if isWorkflowInProgress(m.getTfWfEvents()) || m.isProgressInFlight() {
+			return m, scheduleWfCountdownTick()
+		}
 	case fileContentMsg:
 		m.fileLoading = false
 		m.fileContent = msg.content
 		m.fileContentErr = msg.err
 	case spinner.TickMsg:
-		if m.loading || m.fileLoading || m.refreshing || m.isProgressInFlight() || m.logStreaming {
+		if m.loading || m.fileLoading || m.refreshing || m.isProgressInFlight() || m.logStreaming || m.wfErrors.refreshing || isWorkflowInProgress(m.getTfWfEvents()) {
 			var cmd tea.Cmd
 			m.spinner, cmd = m.spinner.Update(msg)
 			return m, cmd
@@ -612,7 +821,12 @@ func (m terraformDetailModel) logMaxScroll() int {
 	if bodyH < 1 {
 		bodyH = 1
 	}
-	maxScroll := len(m.logLines) - bodyH
+	maxCodeWidth := m.contentWidth() - 9
+	if maxCodeWidth < 20 {
+		maxCodeWidth = 20
+	}
+	vlines := expandLinesToVisual(m.logLines, maxCodeWidth)
+	maxScroll := len(vlines) - bodyH
 	if maxScroll < 0 {
 		maxScroll = 0
 	}
@@ -640,7 +854,12 @@ func (m terraformDetailModel) fileScrollMax() int {
 	if bodyH < 1 {
 		bodyH = 1
 	}
-	maxScroll := len(lines) - bodyH
+	maxCodeWidth := m.contentWidth() - 9
+	if maxCodeWidth < 20 {
+		maxCodeWidth = 20
+	}
+	vlines := expandLinesToVisual(lines, maxCodeWidth)
+	maxScroll := len(vlines) - bodyH
 	if maxScroll < 0 {
 		maxScroll = 0
 	}
@@ -675,7 +894,12 @@ func (m terraformDetailModel) errorModalMaxScroll() int {
 	if bodyH < 1 {
 		bodyH = 1
 	}
-	maxScroll := len(m.errorModalLines()) - bodyH
+	maxCodeWidth := m.width - 10
+	if maxCodeWidth < 20 {
+		maxCodeWidth = 20
+	}
+	vlines := expandLinesToVisual(m.errorModalLines(), maxCodeWidth)
+	maxScroll := len(vlines) - bodyH
 	if maxScroll < 0 {
 		maxScroll = 0
 	}
@@ -702,7 +926,10 @@ func (m terraformDetailModel) renderErrorModal() string {
 	}
 
 	lines := m.errorModalLines()
-	totalLines := len(lines)
+
+	// Expand lines with wrapping
+	vlines := expandLinesToVisual(lines, maxCodeWidth)
+	totalLines := len(vlines)
 
 	scroll := m.errorModalScroll
 	maxScroll := m.errorModalMaxScroll()
@@ -717,13 +944,13 @@ func (m terraformDetailModel) renderErrorModal() string {
 
 	var b strings.Builder
 	for i := scroll; i < end; i++ {
-		line := lines[i]
-		runes := []rune(line)
-		if len(runes) > maxCodeWidth {
-			line = string(runes[:maxCodeWidth-1]) + "…"
+		vl := vlines[i]
+		if vl.sourceNum > 0 {
+			lineNum := lineNumStyle.Render(fmt.Sprintf("%4d", vl.sourceNum))
+			fmt.Fprintf(&b, "  %s │ %s\n", lineNum, errStyle.Render(vl.text))
+		} else {
+			fmt.Fprintf(&b, "  %s   %s\n", "    ", errStyle.Render(vl.text))
 		}
-		lineNum := lineNumStyle.Render(fmt.Sprintf("%4d", i+1))
-		b.WriteString(fmt.Sprintf("  %s │ %s\n", lineNum, errStyle.Render(line)))
 	}
 	// Pad remaining lines
 	for i := end - scroll; i < bodyH; i++ {
@@ -767,6 +994,9 @@ func (m terraformDetailModel) copyableContent() string {
 	if m.errorModalText != "" {
 		return m.errorModalText
 	}
+	if m.previewModalText != "" {
+		return m.previewModalFormattedText()
+	}
 	if m.viewingFile && m.fileContent != "" {
 		return m.fileContent
 	}
@@ -779,6 +1009,8 @@ func (m terraformDetailModel) copyableContent() string {
 		if m.tfOutputJSON != "" {
 			return m.tfOutputJSON
 		}
+	case tabWfErrors:
+		return workflowEventsCopyText(m.getTfWfEvents())
 	}
 	return ""
 }
@@ -788,8 +1020,16 @@ func (m terraformDetailModel) View() string {
 		return "Loading..."
 	}
 
+	if m.wfErrors.modalText != "" {
+		return renderWfEventModal(m.wfErrors, m.width, m.height)
+	}
+
 	if m.errorModalText != "" {
 		return m.renderErrorModal()
+	}
+
+	if m.previewModalText != "" {
+		return m.renderPreviewModal()
 	}
 
 	header := m.renderHeader()
@@ -904,6 +1144,8 @@ func (m terraformDetailModel) getTabContent() string {
 	case tabOpHistory:
 		// History tab handles its own scrolling
 		return m.renderOperationHistoryTab()
+	case tabWfErrors:
+		return m.renderTfWfErrorsTab()
 	}
 
 	lines := strings.Split(content, "\n")
@@ -945,6 +1187,8 @@ func (m terraformDetailModel) renderFooter() string {
 		text = "↑↓/pgup/pgdn: scroll  f: toggle follow  y: copy  tab/shift+tab: switch tabs  esc: back  q: quit"
 	} else if m.activeTab == tabOpHistory && len(m.historyDates) > 0 {
 		text = "↑↓: navigate  enter: expand/collapse  tab/shift+tab: switch tabs  esc: back  q: quit"
+	} else if m.activeTab == tabWfErrors {
+		text = "↑↓/pgup/pgdn: scroll  y: copy  tab/shift+tab: switch tabs  esc: back  q: quit"
 	} else {
 		text = "tab/shift+tab: switch tabs  ↑↓: scroll  esc: back  q: quit"
 	}
@@ -975,16 +1219,16 @@ func (m terraformDetailModel) renderProgressTab() string {
 
 	// Overall status header
 	b.WriteString("\n")
+	if m.isProgressInFlight() {
+		b.WriteString(renderLiveIndicator(m.spinner.View(), m.refreshing, m.lastProgressRefresh, progressRefreshInterval) + "\n")
+	}
 	statusStyle := styleForStatus(p.Status)
 	statusLine := fmt.Sprintf("  Status: %s", statusStyle.Render(p.Status))
-	if m.isProgressInFlight() {
-		statusLine += fmt.Sprintf("  %s", m.spinner.View())
-	}
 	b.WriteString(statusLine + "\n")
 
 	if p.OperationID != "" {
 		subtleStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("245"))
-		b.WriteString(fmt.Sprintf("  Operation: %s\n", subtleStyle.Render(p.OperationID)))
+		fmt.Fprintf(&b, "  Operation: %s\n", subtleStyle.Render(p.OperationID))
 	}
 
 	// Progress bar
@@ -1001,18 +1245,18 @@ func (m terraformDetailModel) renderProgressTab() string {
 
 	bar := m.progressBar.ViewAs(percent)
 	readyText := fmt.Sprintf("%d/%d resources ready", ready, total)
-	b.WriteString(fmt.Sprintf("  %s  %s\n", bar, readyText))
+	fmt.Fprintf(&b, "  %s  %s\n", bar, readyText)
 
 	// Status counts
 	b.WriteString("\n")
 	counts := countResourceStates(p.Resources)
 	headerStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("255"))
-	b.WriteString(fmt.Sprintf("  %s\n", headerStyle.Render("Resource Status Summary")))
+	fmt.Fprintf(&b, "  %s\n", headerStyle.Render("Resource Status Summary"))
 
 	for _, entry := range counts {
 		icon := stateIcon(entry.state)
 		sStyle := styleForStatus(entry.state)
-		b.WriteString(fmt.Sprintf("    %s %s %d\n", icon, sStyle.Render(entry.state), entry.count))
+		fmt.Fprintf(&b, "    %s %s %d\n", icon, sStyle.Render(entry.state), entry.count)
 	}
 
 	// Timing
@@ -1020,16 +1264,16 @@ func (m terraformDetailModel) renderProgressTab() string {
 		b.WriteString("\n")
 		subtleStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("245"))
 		if p.StartedAt != "" {
-			b.WriteString(fmt.Sprintf("  Started:   %s\n", subtleStyle.Render(p.StartedAt)))
+			fmt.Fprintf(&b, "  Started:   %s\n", subtleStyle.Render(p.StartedAt))
 		}
 		if p.CompletedAt != "" {
-			b.WriteString(fmt.Sprintf("  Completed: %s\n", subtleStyle.Render(p.CompletedAt)))
+			fmt.Fprintf(&b, "  Completed: %s\n", subtleStyle.Render(p.CompletedAt))
 		}
 	}
 
 	// Resource list
 	b.WriteString("\n")
-	b.WriteString(fmt.Sprintf("  %s\n", headerStyle.Render(fmt.Sprintf("Resources (%d)", len(p.Resources)))))
+	fmt.Fprintf(&b, "  %s\n", headerStyle.Render(fmt.Sprintf("Resources (%d)", len(p.Resources))))
 	b.WriteString("\n")
 
 	// Table header
@@ -1042,7 +1286,7 @@ func (m terraformDetailModel) renderProgressTab() string {
 		stateStr := sStyle.Render(fmt.Sprintf("%-12s", res.State))
 		addr := addrStyle.Render(res.Address)
 		resType := typeStyle.Render(res.Type)
-		b.WriteString(fmt.Sprintf("  %s %s  %s  %s\n", icon, stateStr, addr, resType))
+		fmt.Fprintf(&b, "  %s %s  %s  %s\n", icon, stateStr, addr, resType)
 	}
 
 	return b.String()
@@ -1055,7 +1299,17 @@ type dateSection struct {
 }
 
 type operationGroup struct {
+	generationID string
+	attempts     []operationAttempt
+	status       string // overall status from latest attempt
+	startedAt    string
+	completedAt  string
+	expanded     bool
+}
+
+type operationAttempt struct {
 	operationID string
+	nonce       string
 	entries     []TerraformHistoryEntry
 	summary     string // "diff → apply → output"
 	status      string // overall status from last entry
@@ -1066,12 +1320,16 @@ type operationGroup struct {
 
 // timelineRow is a single renderable row in the flattened timeline
 type timelineRow struct {
-	isDateHeader  bool
-	isGroupHeader bool
-	date          *dateSection
-	group         *operationGroup
-	entry         *TerraformHistoryEntry
-	isLastChild   bool
+	isDateHeader     bool
+	isGroupHeader    bool
+	isAttemptHeader  bool
+	isPlanPreviewRow bool   // dedicated plan preview row inserted before "apply"
+	planPreviewOpID  string // operation ID for the plan preview (set when isPlanPreviewRow)
+	date             *dateSection
+	group            *operationGroup
+	attempt          *operationAttempt
+	entry            *TerraformHistoryEntry
+	isLastChild      bool
 }
 
 func dateFromTimestamp(ts string) string {
@@ -1081,59 +1339,111 @@ func dateFromTimestamp(ts string) string {
 	return "(unknown date)"
 }
 
+func parseOperationAttemptParts(operationID string) (generationID, nonce, canonicalID string) {
+	canonicalID = strings.TrimSpace(operationID)
+	if canonicalID == "" {
+		return "(unknown)", "(unknown)", "(unknown)"
+	}
+
+	generationID, nonce, found := strings.Cut(canonicalID, ".")
+	generationID = strings.TrimSpace(generationID)
+	if generationID == "" {
+		generationID = "(unknown)"
+	}
+	if !found {
+		return generationID, "(legacy)", canonicalID
+	}
+
+	nonce = strings.TrimSpace(nonce)
+	if nonce == "" {
+		nonce = "(unknown)"
+	}
+	return generationID, nonce, canonicalID
+}
+
 func buildTimelineSections(history []TerraformHistoryEntry) []dateSection {
 	if len(history) == 0 {
 		return nil
 	}
 
-	// First build operation groups (newest first)
-	groupMap := make(map[string]*operationGroup)
-	var order []string
+	// First build generation groups and operation attempts (newest first).
+	type mutableGeneration struct {
+		group        *operationGroup
+		attempts     map[string]*operationAttempt
+		attemptOrder []string
+	}
+	generationMap := make(map[string]*mutableGeneration)
+	var generationOrder []string
 
 	for i := len(history) - 1; i >= 0; i-- {
 		entry := history[i]
-		opID := entry.OperationID
-		if opID == "" {
-			opID = "(unknown)"
-		}
-		g, exists := groupMap[opID]
+		generationID, nonce, opID := parseOperationAttemptParts(entry.OperationID)
+
+		mg, exists := generationMap[generationID]
 		if !exists {
-			g = &operationGroup{operationID: opID}
-			groupMap[opID] = g
-			order = append(order, opID)
-		}
-		g.entries = append(g.entries, entry)
-	}
-
-	// Finalize each group
-	for _, opID := range order {
-		g := groupMap[opID]
-
-		// Reverse entries to chronological order
-		for i, j := 0, len(g.entries)-1; i < j; i, j = i+1, j-1 {
-			g.entries[i], g.entries[j] = g.entries[j], g.entries[i]
-		}
-
-		var ops []string
-		for _, e := range g.entries {
-			ops = append(ops, e.Operation)
-		}
-		g.summary = strings.Join(ops, " → ")
-		g.status = g.entries[len(g.entries)-1].Status
-		g.startedAt = g.entries[0].StartedAt
-		for _, e := range g.entries {
-			if e.CompletedAt != "" {
-				g.completedAt = e.CompletedAt
+			mg = &mutableGeneration{
+				group:    &operationGroup{generationID: generationID},
+				attempts: make(map[string]*operationAttempt),
 			}
+			generationMap[generationID] = mg
+			generationOrder = append(generationOrder, generationID)
+		}
+
+		attempt, exists := mg.attempts[opID]
+		if !exists {
+			attempt = &operationAttempt{
+				operationID: opID,
+				nonce:       nonce,
+			}
+			mg.attempts[opID] = attempt
+			mg.attemptOrder = append(mg.attemptOrder, opID)
+		}
+		attempt.entries = append(attempt.entries, entry)
+	}
+
+	// Finalize each generation and attempt.
+	for _, generationID := range generationOrder {
+		mg := generationMap[generationID]
+		g := mg.group
+
+		for _, opID := range mg.attemptOrder {
+			attempt := mg.attempts[opID]
+
+			// Reverse entries to chronological order within each attempt.
+			for i, j := 0, len(attempt.entries)-1; i < j; i, j = i+1, j-1 {
+				attempt.entries[i], attempt.entries[j] = attempt.entries[j], attempt.entries[i]
+			}
+
+			var ops []string
+			for _, e := range attempt.entries {
+				ops = append(ops, e.Operation)
+			}
+			attempt.summary = strings.Join(ops, " → ")
+			attempt.status = attempt.entries[len(attempt.entries)-1].Status
+			attempt.startedAt = attempt.entries[0].StartedAt
+			for _, e := range attempt.entries {
+				if e.CompletedAt != "" {
+					attempt.completedAt = e.CompletedAt
+				}
+			}
+
+			g.attempts = append(g.attempts, *attempt)
+		}
+
+		if len(g.attempts) > 0 {
+			latestAttempt := g.attempts[0]
+			g.status = latestAttempt.status
+			g.startedAt = latestAttempt.startedAt
+			g.completedAt = latestAttempt.completedAt
 		}
 	}
 
-	// Group operation groups by date (newest first)
+	// Group generation groups by date (newest first).
 	dateMap := make(map[string]*dateSection)
 	var dateOrder []string
 
-	for _, opID := range order {
-		g := groupMap[opID]
+	for _, generationID := range generationOrder {
+		g := generationMap[generationID].group
 		d := dateFromTimestamp(g.startedAt)
 		ds, exists := dateMap[d]
 		if !exists {
@@ -1147,9 +1457,12 @@ func buildTimelineSections(history []TerraformHistoryEntry) []dateSection {
 	var sections []dateSection
 	for _, d := range dateOrder {
 		ds := dateMap[d]
-		// Auto-expand first group of the newest date
+		// Auto-expand first generation and first attempt of the newest date.
 		if len(sections) == 0 && len(ds.groups) > 0 {
 			ds.groups[0].expanded = true
+			if len(ds.groups[0].attempts) > 0 {
+				ds.groups[0].attempts[0].expanded = true
+			}
 		}
 		sections = append(sections, *ds)
 	}
@@ -1157,7 +1470,39 @@ func buildTimelineSections(history []TerraformHistoryEntry) []dateSection {
 	return sections
 }
 
-func flattenTimeline(dates []dateSection) []timelineRow {
+// hasPlanPreview reports whether the given operation ID has a plan preview or plan preview error.
+// It tries both the full canonical operation ID (e.g. "genA.nonceA1") and the generation-only
+// prefix (e.g. "genA"), because dedicated tf-plan-* ConfigMap names only contain the generation ID.
+func hasPlanPreview(opID string, previews, previewErrors map[string]string) bool {
+	for _, key := range planPreviewLookupKeys(opID) {
+		if previews != nil {
+			if v, ok := previews[key]; ok && v != "" {
+				return true
+			}
+		}
+		if previewErrors != nil {
+			if v, ok := previewErrors[key]; ok && v != "" {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// planPreviewLookupKeys returns the keys to try when looking up a plan preview
+// for the given operation ID. It returns the full canonical ID first, then the
+// generation-only prefix (before the first dot) if different.
+// This is needed because dedicated tf-plan-* ConfigMap names encode only the
+// generation ID, not the full generation.nonce canonical ID.
+func planPreviewLookupKeys(opID string) []string {
+	keys := []string{opID}
+	if genID, _, found := strings.Cut(opID, "."); found && genID != opID {
+		keys = append(keys, genID)
+	}
+	return keys
+}
+
+func flattenTimeline(dates []dateSection, previews, previewErrors map[string]string) []timelineRow {
 	var rows []timelineRow
 	for i := range dates {
 		d := &dates[i]
@@ -1174,13 +1519,51 @@ func flattenTimeline(dates []dateSection) []timelineRow {
 					date:          d,
 				})
 				if g.expanded {
-					for k := range g.entries {
+					for a := range g.attempts {
+						attempt := &g.attempts[a]
 						rows = append(rows, timelineRow{
-							group:       g,
-							entry:       &g.entries[k],
-							isLastChild: k == len(g.entries)-1,
-							date:        d,
+							isAttemptHeader: true,
+							group:           g,
+							attempt:         attempt,
+							date:            d,
 						})
+						if attempt.expanded {
+							hasPreview := hasPlanPreview(attempt.operationID, previews, previewErrors)
+							previewInserted := false
+							entryCount := len(attempt.entries)
+							for k := range attempt.entries {
+								e := &attempt.entries[k]
+								// Insert plan preview row before the first "apply" entry
+								if hasPreview && !previewInserted && e.Operation == "apply" {
+									rows = append(rows, timelineRow{
+										isPlanPreviewRow: true,
+										planPreviewOpID:  attempt.operationID,
+										group:            g,
+										attempt:          attempt,
+										date:             d,
+									})
+									previewInserted = true
+								}
+								rows = append(rows, timelineRow{
+									group:       g,
+									attempt:     attempt,
+									entry:       e,
+									isLastChild: k == entryCount-1 && (previewInserted || !hasPreview),
+									date:        d,
+								})
+							}
+							// If there was no "apply" entry, append the preview row at the end
+							if hasPreview && !previewInserted {
+								rows = append(rows, timelineRow{
+									isPlanPreviewRow: true,
+									planPreviewOpID:  attempt.operationID,
+									group:            g,
+									attempt:          attempt,
+									isLastChild:      true,
+									date:             d,
+								})
+							}
+						}
 					}
 				}
 			}
@@ -1206,14 +1589,19 @@ func (m terraformDetailModel) renderOperationHistoryTab() string {
 	var b strings.Builder
 
 	headerStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("255"))
-	totalOps := 0
+	totalGenerations := 0
+	totalAttempts := 0
 	for _, d := range m.historyDates {
-		totalOps += len(d.groups)
+		totalGenerations += len(d.groups)
+		for _, g := range d.groups {
+			totalAttempts += len(g.attempts)
+		}
 	}
-	b.WriteString(fmt.Sprintf("  %s\n\n", headerStyle.Render(
-		fmt.Sprintf("Operation History (%d days, %d operations, %d entries)", len(m.historyDates), totalOps, len(m.history)))))
+	fmt.Fprintf(&b, "  %s\n\n", headerStyle.Render(
+		fmt.Sprintf("Operation History (%d days, %d generations, %d attempts, %d entries)",
+			len(m.historyDates), totalGenerations, totalAttempts, len(m.history))))
 
-	rows := flattenTimeline(m.historyDates)
+	rows := flattenTimeline(m.historyDates, m.planPreviewByOpID, m.planPreviewErrByOpID)
 
 	// Simple row-based viewport clipping (each row = 1 line, no inline expansion)
 	totalRows := len(rows)
@@ -1240,7 +1628,8 @@ func (m terraformDetailModel) renderOperationHistoryTab() string {
 
 	// Styles
 	dateStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("230"))
-	opIDStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("117"))
+	genIDStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("117"))
+	attemptIDStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("81"))
 	summaryStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("252"))
 	timeStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("245"))
 	selectedBg := lipgloss.NewStyle().Background(lipgloss.Color("236"))
@@ -1262,20 +1651,20 @@ func (m terraformDetailModel) renderOperationHistoryTab() string {
 			if d.expanded {
 				arrow = "▾"
 			}
-			countStr := dimStyle.Render(fmt.Sprintf("(%d operations)", len(d.groups)))
+			countStr := dimStyle.Render(fmt.Sprintf("(%d generations)", len(d.groups)))
 			line := fmt.Sprintf("%s %s  %s", arrow, dateStyle.Render(d.date), countStr)
 			if selected {
 				line = selectedBg.Render(line)
 			}
-			b.WriteString(fmt.Sprintf("  %s%s\n", cursor, line))
+			fmt.Fprintf(&b, "  %s%s\n", cursor, line)
 		} else if row.isGroupHeader {
 			g := row.group
 
 			statusIcon := timelineStatusIcon(g.status)
 
-			displayID := g.operationID
-			if len(displayID) > 8 {
-				displayID = displayID[:8] + "…"
+			displayGeneration := g.generationID
+			if len(displayGeneration) > 10 {
+				displayGeneration = displayGeneration[:10] + "…"
 			}
 
 			// Show only time portion since date is in the section header
@@ -1291,8 +1680,8 @@ func (m terraformDetailModel) renderOperationHistoryTab() string {
 
 			line := fmt.Sprintf("  %s %s %s  %s  %s  %s",
 				statusIcon, arrow,
-				opIDStyle.Render(displayID),
-				summaryStyle.Render(g.summary),
+				genIDStyle.Render("gen:"+displayGeneration),
+				dimStyle.Render(fmt.Sprintf("%d attempts", len(g.attempts))),
 				styleForStatus(g.status).Render(g.status),
 				timeStyle.Render(timeRange),
 			)
@@ -1301,13 +1690,63 @@ func (m terraformDetailModel) renderOperationHistoryTab() string {
 				line = selectedBg.Render(line)
 			}
 
-			b.WriteString(fmt.Sprintf("  %s%s\n", cursor, line))
+			fmt.Fprintf(&b, "  %s%s\n", cursor, line)
+		} else if row.isAttemptHeader {
+			attempt := row.attempt
+
+			statusIcon := timelineStatusIcon(attempt.status)
+
+			displayNonce := attempt.nonce
+			if len(displayNonce) > 10 {
+				displayNonce = displayNonce[:10] + "…"
+			}
+
+			timeRange := formatHistoryTimeOnly(attempt.startedAt)
+			if attempt.completedAt != "" && attempt.completedAt != attempt.startedAt {
+				timeRange += " → " + formatHistoryTimeOnly(attempt.completedAt)
+			}
+
+			arrow := "▸"
+			if attempt.expanded {
+				arrow = "▾"
+			}
+
+			line := fmt.Sprintf("  %s %s %s %s  %s  %s  %s",
+				dimStyle.Render("│"),
+				statusIcon,
+				arrow,
+				attemptIDStyle.Render("try:"+displayNonce),
+				summaryStyle.Render(attempt.summary),
+				styleForStatus(attempt.status).Render(attempt.status),
+				timeStyle.Render(timeRange),
+			)
+
+			if selected {
+				line = selectedBg.Render(line)
+			}
+
+			fmt.Fprintf(&b, "  %s%s\n", cursor, line)
+		} else if row.isPlanPreviewRow {
+			// Dedicated plan preview row inserted before "apply"
+			connector := "│   │   ├─"
+			if row.isLastChild {
+				connector = "│   │   └─"
+			}
+			previewStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("117"))
+			line := fmt.Sprintf("  %s %s",
+				dimStyle.Render(connector),
+				previewStyle.Render("▸ plan preview (enter to view)"),
+			)
+			if selected {
+				line = selectedBg.Render(line)
+			}
+			fmt.Fprintf(&b, "  %s%s\n", cursor, line)
 		} else {
 			// Child entry row
 			e := row.entry
-			connector := "│   ├─"
+			connector := "│   │   ├─"
 			if row.isLastChild {
-				connector = "│   └─"
+				connector = "│   │   └─"
 			}
 
 			sIcon := timelineStatusIcon(e.Status)
@@ -1337,7 +1776,7 @@ func (m terraformDetailModel) renderOperationHistoryTab() string {
 				line = selectedBg.Render(line)
 			}
 
-			b.WriteString(fmt.Sprintf("  %s%s\n", cursor, line))
+			fmt.Fprintf(&b, "  %s%s\n", cursor, line)
 		}
 	}
 
@@ -1356,8 +1795,8 @@ func (m terraformDetailModel) renderOperationHistoryTab() string {
 			pct := (scrollOffset * 100) / maxOffset
 			pos = fmt.Sprintf("%d%%", pct)
 		}
-		b.WriteString(fmt.Sprintf("\n  %s\n", dimStyle.Render(
-			fmt.Sprintf("↑↓: navigate  enter: expand/collapse  [%d/%d %s]", m.historyCursor+1, totalRows, pos))))
+		fmt.Fprintf(&b, "\n  %s\n", dimStyle.Render(
+			fmt.Sprintf("↑↓: navigate  enter: expand/collapse  [%d/%d %s]", m.historyCursor+1, totalRows, pos)))
 	}
 
 	return b.String()
@@ -1394,7 +1833,12 @@ func formatHistoryTimeOnly(t string) string {
 func (m terraformDetailModel) fetchFileContent(filePath string) tea.Cmd {
 	return tea.Batch(m.spinner.Tick, func() tea.Msg {
 		ctx := context.Background()
-		content, err := fetchFileContentFromPod(ctx, m.k8sConn, m.fileTree.Namespace, m.fileTree.PodName, filePath)
+		// Use the connection where the file tree was found
+		c := m.k8sConn.dataplane
+		if m.fileTree != nil && m.fileTree.conn != nil {
+			c = m.fileTree.conn
+		}
+		content, err := fetchFileContentFromPod(ctx, c, m.fileTree.Namespace, m.fileTree.PodName, filePath)
 		return fileContentMsg{content: content, err: err}
 	})
 }
@@ -1422,7 +1866,7 @@ func (m terraformDetailModel) renderTerraformFilesTab() string {
 	var b strings.Builder
 
 	headerStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("255"))
-	b.WriteString(fmt.Sprintf("  %s\n\n", headerStyle.Render(fmt.Sprintf("Files in %s", m.fileTree.BasePath))))
+	fmt.Fprintf(&b, "  %s\n\n", headerStyle.Render(fmt.Sprintf("Files in %s", m.fileTree.BasePath)))
 
 	dirStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("117")).Bold(true)
 	fileStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("252"))
@@ -1481,7 +1925,7 @@ func (m terraformDetailModel) renderTerraformFilesTab() string {
 			}
 		}
 
-		b.WriteString(fmt.Sprintf("  %s%s%s %s\n", cursor, indent, icon, name))
+		fmt.Fprintf(&b, "  %s%s%s %s\n", cursor, indent, icon, name)
 	}
 
 	// Scroll indicator
@@ -1496,9 +1940,9 @@ func (m terraformDetailModel) renderTerraformFilesTab() string {
 			pos = fmt.Sprintf("%d%%", pct)
 		}
 		dimStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("241"))
-		b.WriteString(fmt.Sprintf("\n  %s\n", dimStyle.Render(fmt.Sprintf("↑↓: navigate  enter: open/expand  esc: back  [%d/%d %s]", m.fileCursor+1, totalEntries, pos))))
+		fmt.Fprintf(&b, "\n  %s\n", dimStyle.Render(fmt.Sprintf("↑↓: navigate  enter: open/expand  esc: back  [%d/%d %s]", m.fileCursor+1, totalEntries, pos)))
 	} else {
-		b.WriteString(fmt.Sprintf("\n  %s\n", lipgloss.NewStyle().Foreground(lipgloss.Color("241")).Render("↑↓: navigate  enter: open/expand  esc: back")))
+		fmt.Fprintf(&b, "\n  %s\n", lipgloss.NewStyle().Foreground(lipgloss.Color("241")).Render("↑↓: navigate  enter: open/expand  esc: back"))
 	}
 
 	return b.String()
@@ -1518,8 +1962,8 @@ func (m terraformDetailModel) renderFileContent() string {
 	if m.fileTree != nil && m.fileCursor >= 0 && m.fileCursor < len(m.fileTree.Flat) {
 		entry := m.fileTree.Flat[m.fileCursor]
 		headerStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("117"))
-		b.WriteString(fmt.Sprintf("  %s\n", headerStyle.Render(entry.RelPath)))
-		b.WriteString(fmt.Sprintf("  %s\n\n", lipgloss.NewStyle().Foreground(lipgloss.Color("241")).Render("esc: back to file list  ↑↓/pgup/pgdn: scroll")))
+		fmt.Fprintf(&b, "  %s\n", headerStyle.Render(entry.RelPath))
+		fmt.Fprintf(&b, "  %s\n\n", lipgloss.NewStyle().Foreground(lipgloss.Color("241")).Render("esc: back to file list  ↑↓/pgup/pgdn: scroll"))
 		headerLines = 3
 	}
 
@@ -1543,8 +1987,12 @@ func (m terraformDetailModel) renderFileContent() string {
 		maxCodeWidth = 20
 	}
 
-	// Clamp file scroll
-	maxScroll := len(lines) - bodyH
+	// Expand source lines into visual lines with wrapping
+	vlines := expandLinesToVisual(lines, maxCodeWidth)
+
+	// Clamp file scroll against visual line count
+	totalVisual := len(vlines)
+	maxScroll := totalVisual - bodyH
 	if maxScroll < 0 {
 		maxScroll = 0
 	}
@@ -1554,21 +2002,19 @@ func (m terraformDetailModel) renderFileContent() string {
 	}
 
 	end := scroll + bodyH
-	if end > len(lines) {
-		end = len(lines)
+	if end > totalVisual {
+		end = totalVisual
 	}
 
 	for i := scroll; i < end; i++ {
-		line := lines[i]
-		// Truncate to fit window width
-		runes := []rune(line)
-		if len(runes) > maxCodeWidth {
-			runes = runes[:maxCodeWidth-1]
-			line = string(runes) + "…"
+		vl := vlines[i]
+		code := syntaxHighlightLine(vl.text, filename)
+		if vl.sourceNum > 0 {
+			lineNum := lineNumStyle.Render(fmt.Sprintf("%4d", vl.sourceNum))
+			fmt.Fprintf(&b, "  %s │ %s\n", lineNum, code)
+		} else {
+			fmt.Fprintf(&b, "  %s   %s\n", "    ", code)
 		}
-		lineNum := lineNumStyle.Render(fmt.Sprintf("%4d", i+1))
-		code := syntaxHighlightLine(line, filename)
-		b.WriteString(fmt.Sprintf("  %s │ %s\n", lineNum, code))
 	}
 
 	return b.String()
@@ -1665,4 +2111,154 @@ func styleForStatus(status string) lipgloss.Style {
 	default:
 		return lipgloss.NewStyle().Foreground(lipgloss.Color("245"))
 	}
+}
+
+func (m terraformDetailModel) getTfWfEvents() *ResourceWorkflowSteps {
+	if m.debugData.PlanDAG != nil && m.debugData.PlanDAG.WorkflowStepsByKey != nil {
+		return m.debugData.PlanDAG.WorkflowStepsByKey[m.node.Key]
+	}
+	return nil
+}
+
+func (m terraformDetailModel) renderTfWfErrorsTab() string {
+	loading := m.debugData.PlanDAG != nil && m.debugData.PlanDAG.ProgressLoading
+	steps := m.getTfWfEvents()
+	enrichBootstrapSteps(steps, m.node.Key, m.debugData.PlanDAG)
+	isLive := isWorkflowInProgress(steps)
+	return renderWorkflowEventsTab(steps, m.wfErrors, m.bodyHeight(), m.contentWidth(), loading, m.spinner.View(), isLive)
+}
+
+// planPreviewForOpID returns the plan preview content and whether it's an error for the given operation ID.
+// It tries both the full canonical operation ID and the generation-only prefix,
+// because dedicated tf-plan-* ConfigMap names only contain the generation ID.
+// Returns ("", false, false) if no plan preview exists.
+func (m terraformDetailModel) planPreviewForOpID(opID string) (content string, isError bool, found bool) {
+	for _, key := range planPreviewLookupKeys(opID) {
+		if m.planPreviewByOpID != nil {
+			if preview, ok := m.planPreviewByOpID[key]; ok && preview != "" {
+				return preview, false, true
+			}
+		}
+		if m.planPreviewErrByOpID != nil {
+			if errText, ok := m.planPreviewErrByOpID[key]; ok && errText != "" {
+				return errText, true, true
+			}
+		}
+	}
+	return "", false, false
+}
+
+// previewModalFormattedText returns the plan preview text formatted for display.
+// If the raw text is valid terraform plan JSON, it is rendered as a human-readable diff.
+// Otherwise, the raw text is returned unchanged.
+func (m terraformDetailModel) previewModalFormattedText() string {
+	return formatTerraformPlan(m.previewModalText)
+}
+
+func (m terraformDetailModel) previewModalMaxScroll() int {
+	bodyH := m.height - 4
+	if bodyH < 1 {
+		bodyH = 1
+	}
+	maxCodeWidth := m.width - 10
+	if maxCodeWidth < 20 {
+		maxCodeWidth = 20
+	}
+	formatted := m.previewModalFormattedText()
+	lines := strings.Split(formatted, "\n")
+	vlines := expandLinesToVisual(lines, maxCodeWidth)
+	maxScroll := len(vlines) - bodyH
+	if maxScroll < 0 {
+		maxScroll = 0
+	}
+	return maxScroll
+}
+
+func (m terraformDetailModel) renderPreviewModal() string {
+	titleStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("230")).Background(lipgloss.Color("62")).Padding(0, 1)
+	shortOpID := m.previewModalOpID
+	if len(shortOpID) > 20 {
+		shortOpID = shortOpID[:20] + "…"
+	}
+	title := fmt.Sprintf("Plan Preview · %s", shortOpID)
+	header := lipgloss.Place(m.width, 1, lipgloss.Left, lipgloss.Top, titleStyle.Render(title))
+
+	bodyH := m.height - 4
+	if bodyH < 1 {
+		bodyH = 1
+	}
+	maxCodeWidth := m.width - 10
+	if maxCodeWidth < 20 {
+		maxCodeWidth = 20
+	}
+
+	formatted := m.previewModalFormattedText()
+	lines := strings.Split(formatted, "\n")
+	vlines := expandLinesToVisual(lines, maxCodeWidth)
+	totalLines := len(vlines)
+
+	scroll := m.previewModalScroll
+	maxScroll := m.previewModalMaxScroll()
+	if scroll > maxScroll {
+		scroll = maxScroll
+	}
+
+	end := scroll + bodyH
+	if end > totalLines {
+		end = totalLines
+	}
+
+	// Diff-aware styles
+	addStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("114"))        // green for additions
+	removeStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("203"))     // red for removals
+	changeStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("178"))     // yellow for changes
+	commentStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("117"))    // blue for comments (#)
+	headerLineStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("245")) // dim for separators
+	defaultStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("252"))
+
+	var b strings.Builder
+	for i := scroll; i < end; i++ {
+		vl := vlines[i]
+		text := vl.text
+
+		// Pick style based on line prefix (diff-like coloring)
+		style := defaultStyle
+		trimmed := strings.TrimSpace(text)
+		if strings.HasPrefix(trimmed, "# ") {
+			style = commentStyle
+		} else if strings.HasPrefix(trimmed, "+ ") || strings.HasPrefix(trimmed, "+") && strings.HasPrefix(text, "  +") {
+			style = addStyle
+		} else if strings.HasPrefix(trimmed, "- ") || strings.HasPrefix(trimmed, "-/+") {
+			style = removeStyle
+		} else if strings.HasPrefix(trimmed, "~ ") {
+			style = changeStyle
+		} else if strings.HasPrefix(trimmed, "───") || strings.HasPrefix(trimmed, "Plan:") {
+			style = headerLineStyle
+		}
+
+		fmt.Fprintf(&b, "  %s\n", style.Render(text))
+	}
+	for i := end - scroll; i < bodyH; i++ {
+		b.WriteString("\n")
+	}
+
+	footerStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("241")).Padding(0, 1)
+	pos := ""
+	if totalLines <= bodyH {
+		pos = "all"
+	} else if scroll == 0 {
+		pos = "top"
+	} else if end >= totalLines {
+		pos = "end"
+	} else if maxScroll > 0 {
+		pos = fmt.Sprintf("%d%%", (scroll*100)/maxScroll)
+	}
+	footerText := fmt.Sprintf("↑↓/pgup/pgdn: scroll  y: copy  esc: close  [%d/%d %s]", end, totalLines, pos)
+	if m.clipboardMsg != "" {
+		clipStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("82"))
+		footerText = clipStyle.Render(m.clipboardMsg) + "  " + footerText
+	}
+	footer := lipgloss.Place(m.width, 1, lipgloss.Left, lipgloss.Top, footerStyle.Render(footerText))
+
+	return lipgloss.JoinVertical(lipgloss.Left, header, b.String(), footer)
 }

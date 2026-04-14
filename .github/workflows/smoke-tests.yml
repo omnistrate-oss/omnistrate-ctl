@@ -14,6 +14,9 @@ on:
         required: true
         type: string
         default: "Dev-us-west-2"
+concurrency:
+  group: ${{ github.workflow }}-${{ inputs.environment }}-${{ github.event.pull_request.number }}
+  cancel-in-progress: false
 
 jobs:
   smoke-tests:
@@ -23,7 +26,7 @@ jobs:
     permissions:
       contents: read
     concurrency:
-      group: ${{ github.workflow }}-${{ inputs.environment }}-${{ matrix.test-group }}
+      group: ${{ github.workflow }}-${{ inputs.environment }}-${{ matrix.test-group }}-${{ github.event.pull_request.number }}
       cancel-in-progress: false
 
     strategy:
@@ -32,7 +35,6 @@ jobs:
         test-group:
           [
             "account/...",
-            "auth/...",
             "build/compose/...",
             "build/image/...",
             "build/helm/...",
@@ -65,7 +67,7 @@ jobs:
       - name: Gotestsum installer
         uses: autero1/action-gotestsum@v2.0.0
         with:
-          gotestsum_version: 1.11.0
+          gotestsum_version: 1.13.0
 
       - name: Smoke test ${{ matrix.test-group }}
         timeout-minutes: 30
@@ -76,7 +78,58 @@ jobs:
           OMNISTRATE_ROOT_DOMAIN: ${{ vars.OMNISTRATE_ROOT_DOMAIN}}
           OMNISTRATE_LOG_LEVEL: debug
           OMNISTRATE_DRY_RUN: true
-        run: gotestsum --format github-actions -- ./test/smoke_test/${{ matrix.test-group }} -timeout 1800s -p 1 -p 1 -v
+          OMNISTRATE_RETRY_MAX: 8
+          OMNISTRATE_RETRY_WAIT_MIN_IN_SECONDS: 60
+          OMNISTRATE_RETRY_WAIT_MAX_IN_SECONDS: 600
+        run: gotestsum --format standard-verbose -- ./test/smoke_test/${{ matrix.test-group }} -timeout 1800s -p 1 -p 1 -v
+
+  smoke-tests-auth:
+    environment: ${{ inputs.environment }}
+    if: github.event_name != 'push'
+    permissions:
+      contents: read
+    concurrency:
+      group: ${{ github.workflow }}-${{ inputs.environment }}-auth-${{ matrix.os }}-${{ github.event.pull_request.number }}
+      cancel-in-progress: false
+
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - ubuntu-latest
+          - ubuntu-24.04-arm
+          - macos-latest
+          - windows-latest
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Set up go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: "go.mod"
+          cache-dependency-path: "**/go.sum"
+
+      - name: Get dependencies
+        timeout-minutes: 10
+        run: go mod tidy
+
+      - name: Smoke test auth (${{ matrix.os }})
+        timeout-minutes: 30
+        env:
+          ENABLE_SMOKE_TEST: true
+          TEST_EMAIL: ${{ secrets.SMOKE_TEST_EMAIL }}
+          TEST_PASSWORD: ${{ secrets.SMOKE_TEST_PASSWORD}}
+          OMNISTRATE_ROOT_DOMAIN: ${{ vars.OMNISTRATE_ROOT_DOMAIN}}
+          OMNISTRATE_LOG_LEVEL: debug
+          OMNISTRATE_DRY_RUN: true
+          OMNISTRATE_RETRY_MAX: 8
+          OMNISTRATE_RETRY_WAIT_MIN_IN_SECONDS: 60
+          OMNISTRATE_RETRY_WAIT_MAX_IN_SECONDS: 600
+        run: go test -v -timeout 1800s -p 1 ./test/smoke_test/auth/...
 
   smoke-tests-with-provisioning:
     environment: ${{ inputs.environment }}
@@ -85,7 +138,7 @@ jobs:
     permissions:
       contents: read
     concurrency:
-      group: ${{ github.workflow }}-${{ inputs.environment }}-${{ matrix.test-group }}
+      group: ${{ github.workflow }}-${{ inputs.environment }}-${{ matrix.test-group }}-${{ github.event.pull_request.number }}
       cancel-in-progress: false
 
     strategy:
@@ -115,7 +168,7 @@ jobs:
       - name: Gotestsum installer
         uses: autero1/action-gotestsum@v2.0.0
         with:
-          gotestsum_version: 1.11.0
+          gotestsum_version: 1.13.0
 
       - name: Smoke test ${{ matrix.test-group }}
         timeout-minutes: 30
@@ -126,5 +179,8 @@ jobs:
           OMNISTRATE_ROOT_DOMAIN: ${{ vars.OMNISTRATE_ROOT_DOMAIN}}
           OMNISTRATE_LOG_LEVEL: debug
           OMNISTRATE_DRY_RUN: true
-        run: gotestsum --format github-actions -- ./test/smoke_test/${{ matrix.test-group }} -timeout 1800s -p 1 -p 1 -v
+          OMNISTRATE_RETRY_MAX: 8
+          OMNISTRATE_RETRY_WAIT_MIN_IN_SECONDS: 60
+          OMNISTRATE_RETRY_WAIT_MAX_IN_SECONDS: 600
+        run: gotestsum --format standard-verbose -- ./test/smoke_test/${{ matrix.test-group }} -timeout 1800s -p 1 -p 1 -v
 

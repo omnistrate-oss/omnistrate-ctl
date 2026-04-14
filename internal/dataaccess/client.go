@@ -98,6 +98,9 @@ func getRetryableHttpClient() *http.Client {
 	httpClient.ErrorHandler = retryablehttp.PassthroughErrorHandler
 	httpClient.CheckRetry = retryPolicy
 	httpClient.Backoff = retryablehttp.DefaultBackoff
+	httpClient.RetryWaitMin = config.GetRetryWaitMin()
+	httpClient.RetryWaitMax = config.GetRetryWaitMax()
+	httpClient.RetryMax = config.GetRetryMax()
 	httpClient.HTTPClient.Timeout = config.GetClientTimeout()
 	httpClient.Logger = NewLeveledLogger()
 	httpClient.RequestLogHook = func(logger retryablehttp.Logger, req *http.Request, retryNumber int) {
@@ -147,12 +150,24 @@ func (l *LeveledLogger) Warn(msg string, keysAndValues ...interface{}) {
 }
 
 func retryPolicy(ctx context.Context, resp *http.Response, err error) (bool, error) {
-	shouldRetry, err := retryablehttp.ErrorPropagatedRetryPolicy(ctx, resp, err)
-	// Do not retry POST requests on error, except for 429 (rate limiting)
-	if err != nil && resp != nil && resp.Request != nil && resp.Request.Method == http.MethodPost {
-		if resp.StatusCode != http.StatusTooManyRequests {
+	shouldRetry, _ := retryablehttp.ErrorPropagatedRetryPolicy(ctx, resp, err)
+	// Do not retry POST requests unless the response is a known transient gateway/rate-limit failure.
+	if shouldRetry && resp != nil && resp.Request != nil && resp.Request.Method == http.MethodPost {
+		if !isRetriablePostStatus(resp.StatusCode) {
 			shouldRetry = false
 		}
 	}
 	return shouldRetry, nil
+}
+
+func isRetriablePostStatus(statusCode int) bool {
+	switch statusCode {
+	case http.StatusTooManyRequests,
+		http.StatusBadGateway,
+		http.StatusServiceUnavailable,
+		http.StatusGatewayTimeout:
+		return true
+	default:
+		return false
+	}
 }

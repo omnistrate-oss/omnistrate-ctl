@@ -21,7 +21,7 @@ omnistrate-ctl account describe [account-name or account-id]
 
 ```
   -h, --help            help for describe
-  -o, --output string   Output format. Only json is supported. (default "json")
+  -o, --output string   Output format (text|table|json). (default "json")
 ```
 
 ### Options inherited from parent commands

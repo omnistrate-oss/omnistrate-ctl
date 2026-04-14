@@ -9,7 +9,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/chelnak/ysmrr"
 	"github.com/omnistrate-oss/omnistrate-ctl/cmd/common"
 	"github.com/omnistrate-oss/omnistrate-ctl/internal/config"
 	"github.com/omnistrate-oss/omnistrate-ctl/internal/dataaccess"
@@ -65,7 +64,7 @@ func runGetInstaller(cmd *cobra.Command, args []string) error {
 	}
 
 	// Initialize spinner
-	sm := ysmrr.NewSpinnerManager()
+	sm := utils.NewSpinnerManager()
 	spinner := sm.AddSpinner("Getting installer information...")
 	sm.Start()
 
@@ -109,7 +108,7 @@ type ProgressReader struct {
 	io.Reader
 	Total      int64
 	Downloaded int64
-	Spinner    *ysmrr.Spinner
+	Spinner    *utils.Spinner
 	LastUpdate time.Time
 }
 
@@ -132,7 +131,7 @@ func (pr *ProgressReader) Read(p []byte) (int, error) {
 	return n, err
 }
 
-func downloadFile(url, filepath string, spinner *ysmrr.Spinner) error {
+func downloadFile(url, filepath string, spinner *utils.Spinner) error {
 	// Create the directory if it doesn't exist
 	dir := filepath_dirname(filepath)
 	if dir != "" {
@@ -149,7 +148,7 @@ func downloadFile(url, filepath string, spinner *ysmrr.Spinner) error {
 	defer func() {
 		if closeErr := out.Close(); closeErr != nil {
 			// Log the error but don't override the main error
-			fmt.Printf("Warning: failed to close file: %v\n", closeErr)
+			fmt.Fprintf(os.Stderr, "Warning: failed to close file: %v\n", closeErr)
 		}
 	}()
 
@@ -161,7 +160,7 @@ func downloadFile(url, filepath string, spinner *ysmrr.Spinner) error {
 	defer func() {
 		if closeErr := resp.Body.Close(); closeErr != nil {
 			// Log the error but don't override the main error
-			fmt.Printf("Warning: failed to close response body: %v\n", closeErr)
+			fmt.Fprintf(os.Stderr, "Warning: failed to close response body: %v\n", closeErr)
 		}
 	}()
 

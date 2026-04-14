@@ -8,6 +8,7 @@ import (
 
 	"github.com/omnistrate-oss/omnistrate-ctl/cmd/upgrade/status"
 	"github.com/omnistrate-oss/omnistrate-ctl/internal/model"
+	"github.com/rs/zerolog/log"
 
 	"github.com/google/uuid"
 	"github.com/omnistrate-oss/omnistrate-ctl/cmd/build"
@@ -35,6 +36,7 @@ func Test_upgrade_basic(t *testing.T) {
 	require.NoError(err)
 
 	// PASS: build service
+	log.Debug().Msg("Building service...")
 	serviceName := "mysql" + uuid.NewString()
 	cmd.RootCmd.SetArgs([]string{"build", "--file", "../composefiles/mysql.yaml", "--name", serviceName, "--environment=dev", "--environment-type=dev"})
 	err = cmd.RootCmd.ExecuteContext(ctx)
@@ -43,6 +45,7 @@ func Test_upgrade_basic(t *testing.T) {
 	productTierID := build.ProductTierID
 
 	// PASS: create instance with param
+	log.Debug().Msg("Creating instance...")
 	cmd.RootCmd.SetArgs([]string{"instance", "create",
 		fmt.Sprintf("--service=%s", serviceName),
 		"--environment=dev",
@@ -58,15 +61,18 @@ func Test_upgrade_basic(t *testing.T) {
 	require.NotEmpty(t, instanceID)
 
 	// PASS: wait for instance to reach running status
+	log.Debug().Msg("Waiting for instance to reach running status...")
 	err = testutils.WaitForInstanceToReachStatus(ctx, instanceID, instance.InstanceStatusRunning)
 	require.NoError(err)
 
 	// PASS: release mysql service plan
+	log.Debug().Msg("Releasing new version of the service plan...")
 	cmd.RootCmd.SetArgs([]string{"service-plan", "release", "--service-id", serviceID, "--plan-id", productTierID, "--release-as-preferred", "--release-description", "v1.0.0-alpha"})
 	err = cmd.RootCmd.ExecuteContext(ctx)
 	require.NoError(err)
 
 	// PASS: upgrade instance with latest version
+	log.Debug().Msg("Upgrading instance to latest version...")
 	cmd.RootCmd.SetArgs([]string{"upgrade", instanceID, "--version", "latest"})
 	err = cmd.RootCmd.ExecuteContext(ctx)
 	require.NoError(err)
@@ -89,29 +95,35 @@ func Test_upgrade_basic(t *testing.T) {
 	err = cmd.RootCmd.ExecuteContext(ctx)
 	require.NoError(err)
 
-	// PASS: wait for instance to reach running status
-	err = testutils.WaitForInstanceToReachStatus(ctx, instanceID, instance.InstanceStatusRunning)
+	// PASS: wait for upgrade completion and version 2.0 convergence
+	log.Debug().Msg("Waiting for upgrade to complete and instance to converge to version 2.0...")
+	err = testutils.WaitForInstanceUpgradeToComplete(ctx, upgradeID, instanceID, "2.0")
 	require.NoError(err)
 
 	// PASS: upgrade instance to version 1.0
+	log.Debug().Msg("Upgrading instance to version 1.0...")
 	cmd.RootCmd.SetArgs([]string{"upgrade", instanceID, "--version", "1.0"})
 	err = cmd.RootCmd.ExecuteContext(ctx)
 	require.NoError(err)
 	require.Len(upgrade.UpgradePathIDs, 1)
+	upgradeID = upgrade.UpgradePathIDs[0]
 
-	// PASS: wait for instance to reach running status
-	time.Sleep(5 * time.Second)
-	err = testutils.WaitForInstanceToReachStatus(ctx, instanceID, instance.InstanceStatusRunning)
+	// PASS: wait for upgrade completion and version 1.0 convergence
+	log.Debug().Msg("Waiting for upgrade to complete and instance to converge to version 1.0...")
+	err = testutils.WaitForInstanceUpgradeToComplete(ctx, upgradeID, instanceID, "1.0")
 	require.NoError(err)
 
 	// PASS: upgrade instance to preferred version
+	log.Debug().Msg("Upgrading instance to preferred version...")
 	cmd.RootCmd.SetArgs([]string{"upgrade", instanceID, "--version", "preferred"})
 	err = cmd.RootCmd.ExecuteContext(ctx)
 	require.NoError(err)
+	require.Len(upgrade.UpgradePathIDs, 1)
+	upgradeID = upgrade.UpgradePathIDs[0]
 
-	// PASS: wait for instance to reach running status
-	time.Sleep(5 * time.Second)
-	err = testutils.WaitForInstanceToReachStatus(ctx, instanceID, instance.InstanceStatusRunning)
+	// PASS: wait for upgrade completion and version 2.0 convergence
+	log.Debug().Msg("Waiting for preferred upgrade to complete and instance to converge to version 2.0...")
+	err = testutils.WaitForInstanceUpgradeToComplete(ctx, upgradeID, instanceID, "2.0")
 	require.NoError(err)
 	// PASS: scheduled upgrade
 	err = validateScheduledAndCancel(ctx, instanceID, "1.0", false)
@@ -123,17 +135,25 @@ func Test_upgrade_basic(t *testing.T) {
 	err = cmd.RootCmd.ExecuteContext(ctx)
 	require.NoError(err)
 	require.Len(upgrade.UpgradePathIDs, 1)
+	upgradeID = upgrade.UpgradePathIDs[0]
 
-	// PASS: wait for instance to reach running status
-	time.Sleep(5 * time.Second)
-	err = testutils.WaitForInstanceToReachStatus(ctx, instanceID, instance.InstanceStatusRunning)
+	// PASS: wait for upgrade completion and version 1.0 convergence
+	log.Debug().Msg("Waiting for upgrade to complete and instance to converge to version 1.0...")
+	err = testutils.WaitForInstanceUpgradeToComplete(ctx, upgradeID, instanceID, "1.0")
 	require.NoError(err)
 
 	// PASS: upgrade instance to "v1.0.0-alpha"
+	log.Debug().Msg("Upgrading instance to v1.0.0-alpha...")
 	cmd.RootCmd.SetArgs([]string{"upgrade", instanceID, "--version-name", "v1.0.0-alpha"})
 	err = cmd.RootCmd.ExecuteContext(ctx)
 	require.NoError(err)
 	require.Len(upgrade.UpgradePathIDs, 1)
+	upgradeID = upgrade.UpgradePathIDs[0]
+
+	// PASS: wait for upgrade completion and version 2.0 convergence
+	log.Debug().Msg("Waiting for version-name upgrade to complete and instance to converge to version 2.0...")
+	err = testutils.WaitForInstanceUpgradeToComplete(ctx, upgradeID, instanceID, "2.0")
+	require.NoError(err)
 
 	// PASS: delete instance
 	cmd.RootCmd.SetArgs([]string{"instance", "delete", instanceID, "--yes"})
@@ -142,6 +162,7 @@ func Test_upgrade_basic(t *testing.T) {
 
 	// Wait for the instances to be deleted
 	for {
+		log.Debug().Msg("Waiting for instance to be deleted...")
 		cmd.RootCmd.SetArgs([]string{"instance", "describe", instanceID})
 		err1 := cmd.RootCmd.ExecuteContext(ctx)
 
@@ -149,7 +170,7 @@ func Test_upgrade_basic(t *testing.T) {
 			break
 		}
 
-		time.Sleep(5 * time.Second)
+		time.Sleep(60 * time.Second)
 	}
 
 	// PASS: delete service
@@ -170,6 +191,27 @@ func Test_upgrade_basic(t *testing.T) {
 	require.Contains(err.Error(), "upgrade-invalid not found")
 }
 
+func Test_upgrade_invalid_instance(t *testing.T) {
+	testutils.SmokeTest(t)
+
+	ctx := context.TODO()
+
+	require := require.New(t)
+	defer testutils.Cleanup()
+
+	testEmail, testPassword, err := testutils.GetTestAccount()
+	require.NoError(err)
+	cmd.RootCmd.SetArgs([]string{"login", fmt.Sprintf("--email=%s", testEmail), fmt.Sprintf("--password=%s", testPassword)})
+	err = cmd.RootCmd.ExecuteContext(ctx)
+	require.NoError(err)
+
+	// FAIL: upgrade create with invalid instance ID
+	log.Debug().Msg("Upgrading instance with invalid instance ID...")
+	cmd.RootCmd.SetArgs([]string{"upgrade", "create", "instance-invalid", "--version", "latest"})
+	err = cmd.RootCmd.ExecuteContext(ctx)
+	require.Error(err)
+	require.Contains(err.Error(), "instance-invalid not found. Please check the instance ID and try again")
+}
 func validateScheduledAndCancel(ctx context.Context, instanceID string, targetVersion string, shouldSkipInstance bool) error {
 	// Upgrade instance with latest version
 	scheduledDate := time.Now().Add(3 * time.Hour).Truncate(time.Hour).Format(time.RFC3339)
@@ -198,6 +240,7 @@ func validateScheduledAndCancel(ctx context.Context, instanceID string, targetVe
 	}
 
 	for {
+		log.Debug().Msg("Waiting for upgrade to be scheduled...")
 		cmd.RootCmd.SetArgs([]string{"upgrade", "status", upgradeID})
 		if err = cmd.RootCmd.ExecuteContext(ctx); err != nil {
 			return err
@@ -206,7 +249,7 @@ func validateScheduledAndCancel(ctx context.Context, instanceID string, targetVe
 		if status.LastUpgradeStatus.Status != model.InProgress.String() {
 			break
 		}
-		time.Sleep(5 * time.Second)
+		time.Sleep(60 * time.Second)
 	}
 	if status.LastUpgradeStatus.NotifyCustomer != true {
 		return fmt.Errorf("expected notify customer to be true, got %v", status.LastUpgradeStatus.NotifyCustomer)
@@ -231,6 +274,7 @@ func validateScheduledAndCancel(ctx context.Context, instanceID string, targetVe
 	}
 
 	for {
+		log.Debug().Msg("Waiting for upgrade to be cancelled...")
 		cmd.RootCmd.SetArgs([]string{"upgrade", "status", upgradeID})
 		if err = cmd.RootCmd.ExecuteContext(ctx); err != nil {
 			return err
@@ -239,7 +283,7 @@ func validateScheduledAndCancel(ctx context.Context, instanceID string, targetVe
 		if status.LastUpgradeStatus.Status != model.Scheduled.String() {
 			break
 		}
-		time.Sleep(5 * time.Second)
+		time.Sleep(60 * time.Second)
 	}
 	expectedStatus := model.Cancelled.String()
 	if shouldSkipInstance {
@@ -337,7 +381,8 @@ func Test_upgrade_concurrent(t *testing.T) {
 			status.LastUpgradeStatus.Status == model.Cancelled.String() {
 			break
 		}
-		time.Sleep(10 * time.Second)
+		log.Debug().Msg("Waiting for instances to be upgraded...")
+		time.Sleep(60 * time.Second)
 	}
 
 	// PASS: delete both instances
@@ -358,7 +403,8 @@ func Test_upgrade_concurrent(t *testing.T) {
 		if err1 != nil && err2 != nil {
 			break
 		}
-		time.Sleep(5 * time.Second)
+		log.Debug().Msg("Waiting for instances to be deleted...")
+		time.Sleep(60 * time.Second)
 	}
 
 	// PASS: delete service

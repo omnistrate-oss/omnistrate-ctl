@@ -16,6 +16,7 @@ You can search through documentation content.`,
 func init() {
 	Cmd.AddCommand(searchCmd)
 	Cmd.AddCommand(composeSpecCmd)
+	Cmd.AddCommand(planSpecCmd)
 	Cmd.AddCommand(systemParametersCmd)
 }
 

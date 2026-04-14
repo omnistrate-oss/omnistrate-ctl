@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/chelnak/ysmrr"
 	"github.com/omnistrate-oss/omnistrate-ctl/cmd/common"
 	"github.com/omnistrate-oss/omnistrate-ctl/internal/config"
 	"github.com/omnistrate-oss/omnistrate-ctl/internal/dataaccess"
@@ -70,10 +69,10 @@ func runListEndpoints(cmd *cobra.Command, args []string) error {
 	}
 
 	// Initialize spinner if output is not JSON
-	var sm ysmrr.SpinnerManager
-	var spinner *ysmrr.Spinner
+	var sm utils.SpinnerManager
+	var spinner *utils.Spinner
 	if output != common.OutputTypeJson {
-		sm = ysmrr.NewSpinnerManager()
+		sm = utils.NewSpinnerManager()
 		spinner = sm.AddSpinner("Fetching endpoint information...")
 		sm.Start()
 	}
@@ -86,7 +85,7 @@ func runListEndpoints(cmd *cobra.Command, args []string) error {
 	}
 
 	// Get detailed instance information
-	detailedInstance, err := dataaccess.DescribeResourceInstance(cmd.Context(), token, serviceID, environmentID, instanceID, true)
+	detailedInstance, err := dataaccess.DescribeResourceInstance(cmd.Context(), token, serviceID, environmentID, instanceID)
 	if err != nil {
 		utils.HandleSpinnerError(spinner, sm, err)
 		return err
@@ -163,6 +162,10 @@ func extractEndpoints(instance *openapiclientfleet.ResourceInstance) (resourceEn
 	}
 
 	for _, resource := range *instance.ConsumptionResourceInstanceResult.DetailedNetworkTopology {
+		if shouldHideObservabilityEndpoints(resource) {
+			continue
+		}
+
 		if resource.ClusterEndpoint == "" {
 			if resource.AdditionalEndpoints == nil || len(*resource.AdditionalEndpoints) == 0 {
 				// If both clusterEndpoint and additionalEndpoints are empty, skip this resource
@@ -184,6 +187,14 @@ func extractEndpoints(instance *openapiclientfleet.ResourceInstance) (resourceEn
 	}
 
 	return resourceEndpoints
+}
+
+func shouldHideObservabilityEndpoints(resource openapiclientfleet.ResourceNetworkTopologyResult) bool {
+	if resource.ResourceKey == "omnistrateobserv" {
+		return true
+	}
+
+	return strings.EqualFold(strings.TrimSpace(resource.ResourceName), "Omnistrate Observability")
 }
 
 // convertToTableRows converts the nested endpoint structure to a flat table format
