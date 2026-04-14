@@ -29,14 +29,11 @@ func terminateDeploymentCellWorkflow(cmd *cobra.Command, args []string) error {
 	skipConfirm, _ := cmd.Flags().GetBool("confirm")
 
 	if !skipConfirm {
-		fmt.Printf("Are you sure you want to terminate workflow %s? (y/N): ", workflowID)
-		var response string
-		_, err := fmt.Scanln(&response)
+		confirmed, err := utils.ConfirmAction(fmt.Sprintf("Are you sure you want to terminate workflow %s?", workflowID))
 		if err != nil {
-			fmt.Println("Operation cancelled")
 			return err
 		}
-		if response != "y" && response != "Y" && response != "yes" && response != "YES" {
+		if !confirmed {
 			fmt.Println("Operation cancelled")
 			return nil
 		}

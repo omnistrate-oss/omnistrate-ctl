@@ -57,14 +57,11 @@ func runDelete(cmd *cobra.Command, args []string) error {
 	}
 
 	if !force {
-		fmt.Printf("Are you sure you want to delete deployment cell '%s'? This action cannot be undone.\n", id)
-		fmt.Print("Type 'yes' to confirm: ")
-		var confirmation string
-		if _, err := fmt.Scanln(&confirmation); err != nil {
-			utils.PrintError(fmt.Errorf("failed to read confirmation: %w", err))
+		confirmed, err := utils.ConfirmAction(fmt.Sprintf("Are you sure you want to delete deployment cell '%s'? This action cannot be undone.", id))
+		if err != nil {
 			return err
 		}
-		if confirmation != "yes" {
+		if !confirmed {
 			fmt.Println("Delete operation cancelled.")
 			return nil
 		}
