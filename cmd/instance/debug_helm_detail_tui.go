@@ -249,7 +249,7 @@ func (m helmDetailModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 			}
 			// Start log polling
-			ctx, cancel := context.WithCancel(context.Background())
+			ctx, cancel := context.WithCancel(context.Background()) //nolint:gosec // cancel stored in m.logCancel for later use
 			m.logCancel = cancel
 			m.logStreaming = true
 			cmds = append(cmds,
@@ -290,7 +290,7 @@ func (m helmDetailModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if m.logCancel != nil {
 				m.logCancel()
 			}
-			ctx, cancel := context.WithCancel(context.Background())
+			ctx, cancel := context.WithCancel(context.Background()) //nolint:gosec // cancel stored in m.logCancel for later use
 			m.logCancel = cancel
 			m.logChan = make(chan logLineMsg, 50)
 			m.logStreaming = true

@@ -23,7 +23,7 @@ type refreshTokenResponse struct {
 // RefreshToken exchanges a refresh token for a new JWT + refresh token pair.
 // Uses raw HTTP because the SDK does not yet include this endpoint.
 func RefreshToken(ctx context.Context, refreshToken string) (LoginResult, error) {
-	reqBody, err := json.Marshal(refreshTokenRequest{RefreshToken: refreshToken})
+	reqBody, err := json.Marshal(refreshTokenRequest{RefreshToken: refreshToken}) //nolint:gosec // not a secret leak, serializing for API call
 	if err != nil {
 		return LoginResult{}, fmt.Errorf("failed to marshal refresh request: %w", err)
 	}
