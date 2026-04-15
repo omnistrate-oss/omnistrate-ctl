@@ -37,6 +37,7 @@ omnistrate-ctl account create [account-name] --nebius-tenant-id=[tenant-id] --ne
   -h, --help                           help for create
       --nebius-bindings-file string    Path to a YAML file describing Nebius bindings
       --nebius-tenant-id string        Nebius tenant ID
+      --private-link                   Enable AWS PrivateLink connectivity for services deployed in this account
       --skip-wait                      Skip waiting for the account to become READY
 ```
 

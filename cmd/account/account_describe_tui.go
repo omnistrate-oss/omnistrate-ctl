@@ -642,7 +642,7 @@ func buildOverviewNode(account *openapiclient.DescribeAccountConfigResult, provi
 		fmt.Sprintf("Status Message: %s", displayValue(account.StatusMessage)),
 	)
 	if account.PrivateOnly != nil {
-		lines = append(lines, fmt.Sprintf("Private Only: %t", utils.FromPtr(account.PrivateOnly)))
+		lines = append(lines, fmt.Sprintf("Private Link: %t", utils.FromPtr(account.PrivateOnly)))
 	}
 	if len(account.ByoaInstanceIDs) > 0 {
 		lines = append(lines, fmt.Sprintf("Linked BYOA Instances: %d", len(account.ByoaInstanceIDs)))
@@ -684,7 +684,7 @@ func buildAWSIdentityNode(account *openapiclient.DescribeAccountConfigResult) *a
 		fmt.Sprintf("CloudFormation No-LB Template URL: %s", displayValue(utils.FromPtr(account.AwsCloudFormationNoLBTemplateURL))),
 	}
 	if account.PrivateOnly != nil {
-		lines = append(lines, fmt.Sprintf("Private Only: %t", utils.FromPtr(account.PrivateOnly)))
+		lines = append(lines, fmt.Sprintf("Private Link: %t", utils.FromPtr(account.PrivateOnly)))
 	}
 	return &accountDescribeNode{
 		key:         "identity",
@@ -704,7 +704,7 @@ func buildGCPIdentityNode(account *openapiclient.DescribeAccountConfigResult) *a
 		fmt.Sprintf("Service Account Email: %s", displayValue(utils.FromPtr(account.GcpServiceAccountEmail))),
 	}
 	if account.PrivateOnly != nil {
-		lines = append(lines, fmt.Sprintf("Private Only: %t", utils.FromPtr(account.PrivateOnly)))
+		lines = append(lines, fmt.Sprintf("Private Link: %t", utils.FromPtr(account.PrivateOnly)))
 	}
 	return &accountDescribeNode{
 		key:         "identity",
@@ -723,7 +723,7 @@ func buildAzureIdentityNode(account *openapiclient.DescribeAccountConfigResult) 
 		fmt.Sprintf("Tenant ID: %s", displayValue(utils.FromPtr(account.AzureTenantID))),
 	}
 	if account.PrivateOnly != nil {
-		lines = append(lines, fmt.Sprintf("Private Only: %t", utils.FromPtr(account.PrivateOnly)))
+		lines = append(lines, fmt.Sprintf("Private Link: %t", utils.FromPtr(account.PrivateOnly)))
 	}
 	return &accountDescribeNode{
 		key:         "identity",
@@ -742,7 +742,7 @@ func buildOCIIdentityNode(account *openapiclient.DescribeAccountConfigResult) *a
 		fmt.Sprintf("Domain OCID: %s", displayValue(utils.FromPtr(account.OciDomainID))),
 	}
 	if account.PrivateOnly != nil {
-		lines = append(lines, fmt.Sprintf("Private Only: %t", utils.FromPtr(account.PrivateOnly)))
+		lines = append(lines, fmt.Sprintf("Private Link: %t", utils.FromPtr(account.PrivateOnly)))
 	}
 	return &accountDescribeNode{
 		key:         "identity",
