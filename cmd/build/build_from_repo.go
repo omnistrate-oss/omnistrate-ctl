@@ -928,7 +928,7 @@ func BuildServiceFromRepository(cmd *cobra.Command, ctx context.Context, token, 
 					dockerfileData = append(dockerfileData, []byte(fmt.Sprintf("\nLABEL org.opencontainers.image.source=\"https://github.com/%s/%s\"\n", repoOwner, repoName))...)
 
 					// Write the Dockerfile back
-					err = os.WriteFile(dockerfilePath, dockerfileData, 0600)
+					err = os.WriteFile(filepath.Clean(dockerfilePath), dockerfileData, 0600) //nolint:gosec // dockerfilePath is from the user's local repo
 					if err != nil {
 						utils.HandleSpinnerError(spinner, sm, err)
 						return "", "", "", nil, err
@@ -1199,7 +1199,7 @@ func BuildServiceFromRepository(cmd *cobra.Command, ctx context.Context, token, 
 			}
 
 			// Write the compose spec to a file
-			err = os.WriteFile(file, fileData, 0600)
+			err = os.WriteFile(filepath.Clean(file), fileData, 0600) //nolint:gosec // file path from user's local project
 			if err != nil {
 				utils.HandleSpinnerError(spinner, sm, err)
 				return "", "", "", nil, err
@@ -1254,7 +1254,7 @@ x-omnistrate-image-registry-attributes:
 			}
 
 			// Write the compose spec to a file
-			err = os.WriteFile(file, fileData, 0600)
+			err = os.WriteFile(filepath.Clean(file), fileData, 0600) //nolint:gosec // file path from user's local project
 			if err != nil {
 				utils.HandleSpinnerError(spinner, sm, err)
 				return "", "", "", nil, err
@@ -1312,7 +1312,7 @@ x-omnistrate-image-registry-attributes:
 		dryRunFile := fmt.Sprintf("%s-dry-run%s", baseName, fileExt)
 
 		// Write the compose spec to the dry-run file
-		err = os.WriteFile(dryRunFile, fileData, 0600)
+		err = os.WriteFile(filepath.Clean(dryRunFile), fileData, 0600) //nolint:gosec // derived from user's local file path
 		if err != nil {
 			utils.HandleSpinnerError(spinner, sm, err)
 			return "", "", "", nil, err
@@ -1527,7 +1527,7 @@ func renderEnvFileAndInterpolateVariables(
 
 	// Write the compose spec to a temporary file
 	tempFile := filepath.Join(rootDir, filepath.Base(file)+".tmp")
-	err = os.WriteFile(tempFile, fileData, 0600)
+	err = os.WriteFile(tempFile, fileData, 0600) //nolint:gosec // tempFile is constructed from local rootDir + base filename
 	if err != nil {
 		utils.HandleSpinnerError(spinner, sm, err)
 		return

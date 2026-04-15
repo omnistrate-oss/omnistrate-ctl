@@ -29,4 +29,7 @@ omnistrate-ctl deployment-cell workflow [flags]
 * [omnistrate-ctl deployment-cell workflow describe](omnistrate-ctl_deployment-cell_workflow_describe.md)	 - Describe a specific deployment cell workflow
 * [omnistrate-ctl deployment-cell workflow events](omnistrate-ctl_deployment-cell_workflow_events.md)	 - Get events for a deployment cell workflow
 * [omnistrate-ctl deployment-cell workflow list](omnistrate-ctl_deployment-cell_workflow_list.md)	 - List workflows for a deployment cell
+* [omnistrate-ctl deployment-cell workflow resume](omnistrate-ctl_deployment-cell_workflow_resume.md)	 - Resume a paused deployment cell workflow
+* [omnistrate-ctl deployment-cell workflow retry](omnistrate-ctl_deployment-cell_workflow_retry.md)	 - Retry a failed deployment cell workflow
+* [omnistrate-ctl deployment-cell workflow terminate](omnistrate-ctl_deployment-cell_workflow_terminate.md)	 - Terminate a running deployment cell workflow
 

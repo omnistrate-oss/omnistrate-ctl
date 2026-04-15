@@ -241,7 +241,7 @@ func getDirectoryContents(dirPath string) (map[string][]byte, error) {
 		}
 
 		// Read file contents
-		fileContent, err := os.ReadFile(path)
+		fileContent, err := os.ReadFile(filepath.Clean(path)) //nolint:gosec // path comes from filepath.Walk on a local directory
 		if err != nil {
 			return fmt.Errorf("failed to read file %s: %v", path, err)
 		}
