@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 
 	"github.com/omnistrate-oss/omnistrate-ctl/internal/config"
 	openapiclient "github.com/omnistrate-oss/omnistrate-sdk-go/v1"
@@ -58,7 +59,7 @@ type BulkImportVPCsRequestBody struct {
 // vpcBaseURL returns the base URL for VPC API calls.
 func vpcBaseURL(accountConfigID string) string {
 	return fmt.Sprintf("%s://%s/2022-09-01-00/accountconfig/%s/cloud-native-networks",
-		config.GetHostScheme(), config.GetHost(), accountConfigID)
+		config.GetHostScheme(), config.GetHost(), url.PathEscape(accountConfigID))
 }
 
 // doVPCRequest performs an authenticated HTTP request and decodes the response.
@@ -83,9 +84,10 @@ func doVPCRequest(ctx context.Context, method, url string, body any) (*ListAccou
 	}
 	req.Header.Set("Authorization", "Bearer "+token)
 	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("User-Agent", config.GetUserAgent())
 
 	httpClient := getRetryableHttpClient()
-	resp, err := httpClient.Do(req)
+	resp, err := httpClient.Do(req) //nolint:gosec // the CLI intentionally targets the configured Omnistrate API host
 	if err != nil {
 		return nil, fmt.Errorf("VPC request failed: %w", err)
 	}
@@ -125,14 +127,14 @@ func ListAccountConfigVPCs(ctx context.Context, token, accountConfigID string) (
 // ImportAccountConfigVPC imports a VPC, setting its status to READY.
 func ImportAccountConfigVPC(ctx context.Context, token, accountConfigID, vpcID string) (*ListAccountConfigVPCsResult, error) {
 	ctxWithToken := context.WithValue(ctx, openapiclient.ContextAccessToken, token)
-	url := fmt.Sprintf("%s/%s/import", vpcBaseURL(accountConfigID), vpcID)
+	url := fmt.Sprintf("%s/%s/import", vpcBaseURL(accountConfigID), url.PathEscape(vpcID))
 	return doVPCRequest(ctxWithToken, http.MethodPost, url, nil)
 }
 
 // UnimportAccountConfigVPC reverts a VPC back to AVAILABLE.
 func UnimportAccountConfigVPC(ctx context.Context, token, accountConfigID, vpcID string) (*ListAccountConfigVPCsResult, error) {
 	ctxWithToken := context.WithValue(ctx, openapiclient.ContextAccessToken, token)
-	url := fmt.Sprintf("%s/%s/unimport", vpcBaseURL(accountConfigID), vpcID)
+	url := fmt.Sprintf("%s/%s/unimport", vpcBaseURL(accountConfigID), url.PathEscape(vpcID))
 	return doVPCRequest(ctxWithToken, http.MethodPost, url, nil)
 }
 

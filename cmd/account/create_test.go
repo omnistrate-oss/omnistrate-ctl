@@ -7,6 +7,7 @@ import (
 
 	"github.com/omnistrate-oss/omnistrate-ctl/internal/model"
 	openapiclient "github.com/omnistrate-oss/omnistrate-sdk-go/v1"
+	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -209,6 +210,27 @@ func TestBuildCreateAccountOutput(t *testing.T) {
 		require.NoError(t, err)
 		require.Same(t, account, output)
 	})
+}
+
+func TestPrivateLinkFlagParsing(t *testing.T) {
+	cmd := &cobra.Command{}
+	addCloudAccountProviderFlags(cmd)
+
+	// Default is false
+	require.NoError(t, cmd.Flags().Set(awsAccountIDFlag, "123456789012"))
+	params, err := cloudAccountParamsFromFlags(cmd, "test-account")
+	require.NoError(t, err)
+	assert.False(t, params.PrivateLink)
+
+	// Set to true
+	require.NoError(t, cmd.Flags().Set(privateLinkFlag, "true"))
+	params, err = cloudAccountParamsFromFlags(cmd, "test-account")
+	require.NoError(t, err)
+	assert.True(t, params.PrivateLink)
+}
+
+func TestPrivateLinkFlagRegistered(t *testing.T) {
+	require.NotNil(t, createCmd.Flags().Lookup(privateLinkFlag))
 }
 
 func ptr[T any](v T) *T {
