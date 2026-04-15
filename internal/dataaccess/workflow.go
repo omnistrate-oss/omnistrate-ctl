@@ -528,6 +528,89 @@ func DescribeDeploymentCellWorkflow(ctx context.Context, token string, hostClust
 	return
 }
 
+// TerminateDeploymentCellWorkflow terminates a deployment cell workflow
+func TerminateDeploymentCellWorkflow(ctx context.Context, token string, hostClusterID, workflowID string) (res *openapiclientfleet.DeploymentCellWorkflow, err error) {
+	ctxWithToken := context.WithValue(ctx, openapiclientfleet.ContextAccessToken, token)
+	apiClient := getFleetClient()
+
+	req := apiClient.HostclusterApiAPI.HostclusterApiTerminateDeploymentCellWorkflow(
+		ctxWithToken,
+		hostClusterID,
+		workflowID,
+	)
+
+	var r *http.Response
+	defer func() {
+		if r != nil {
+			_ = r.Body.Close()
+		}
+	}()
+
+	res, r, err = req.Execute()
+	if err != nil {
+		return nil, handleFleetError(err)
+	}
+	return
+}
+
+// ResumeDeploymentCellWorkflow resumes a paused deployment cell workflow
+func ResumeDeploymentCellWorkflow(ctx context.Context, token string, hostClusterID, workflowID string) (res *openapiclientfleet.DeploymentCellWorkflow, err error) {
+	ctxWithToken := context.WithValue(ctx, openapiclientfleet.ContextAccessToken, token)
+	apiClient := getFleetClient()
+
+	reqBody := openapiclientfleet.UpdateDeploymentCellWorkflowRequest2{
+		Status: "resume",
+	}
+
+	req := apiClient.HostclusterApiAPI.HostclusterApiUpdateDeploymentCellWorkflow(
+		ctxWithToken,
+		hostClusterID,
+		workflowID,
+	).UpdateDeploymentCellWorkflowRequest2(reqBody)
+
+	var r *http.Response
+	defer func() {
+		if r != nil {
+			_ = r.Body.Close()
+		}
+	}()
+
+	res, r, err = req.Execute()
+	if err != nil {
+		return nil, handleFleetError(err)
+	}
+	return
+}
+
+// RetryDeploymentCellWorkflow retries a failed deployment cell workflow
+func RetryDeploymentCellWorkflow(ctx context.Context, token string, hostClusterID, workflowID string) (res *openapiclientfleet.DeploymentCellWorkflow, err error) {
+	ctxWithToken := context.WithValue(ctx, openapiclientfleet.ContextAccessToken, token)
+	apiClient := getFleetClient()
+
+	reqBody := openapiclientfleet.UpdateDeploymentCellWorkflowRequest2{
+		Status: "retry",
+	}
+
+	req := apiClient.HostclusterApiAPI.HostclusterApiUpdateDeploymentCellWorkflow(
+		ctxWithToken,
+		hostClusterID,
+		workflowID,
+	).UpdateDeploymentCellWorkflowRequest2(reqBody)
+
+	var r *http.Response
+	defer func() {
+		if r != nil {
+			_ = r.Body.Close()
+		}
+	}()
+
+	res, r, err = req.Execute()
+	if err != nil {
+		return nil, handleFleetError(err)
+	}
+	return
+}
+
 // GetDeploymentCellWorkflowEvents gets events for a deployment cell workflow
 func GetDeploymentCellWorkflowEvents(ctx context.Context, token string, hostClusterID, workflowID string) (res *openapiclientfleet.GetDeploymentCellWorkflowEventsResult, err error) {
 	ctxWithToken := context.WithValue(ctx, openapiclientfleet.ContextAccessToken, token)
