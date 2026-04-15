@@ -14,7 +14,7 @@ func printVPCOutput(output string, result *dataaccess.ListAccountConfigVPCsResul
 		return utils.PrintTextTableJsonOutput(output, result)
 	}
 
-	if len(result.VPCs) == 0 {
+	if len(result.CloudNativeNetworks) == 0 {
 		fmt.Println("No VPCs found.")
 		return nil
 	}
@@ -23,9 +23,9 @@ func printVPCOutput(output string, result *dataaccess.ListAccountConfigVPCsResul
 	fmt.Fprintln(w, "VPC ID\tREGION\tNAME\tCIDR\tSTATUS\tPRIVATE SUBNETS\tPUBLIC SUBNETS")
 	fmt.Fprintln(w, "------\t------\t----\t----\t------\t---------------\t--------------")
 
-	for _, vpc := range result.VPCs {
+	for _, vpc := range result.CloudNativeNetworks {
 		fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%d\t%d\n",
-			vpc.VPCID,
+			vpc.CloudNativeNetworkID,
 			vpc.Region,
 			vpc.Name,
 			vpc.CIDR,

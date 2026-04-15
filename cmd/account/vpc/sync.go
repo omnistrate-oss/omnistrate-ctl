@@ -51,7 +51,7 @@ func runSync(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	utils.HandleSpinnerSuccess(spinner, sm, fmt.Sprintf("Discovered %d VPC(s)", len(result.VPCs)))
+	utils.HandleSpinnerSuccess(spinner, sm, fmt.Sprintf("Discovered %d VPC(s)", len(result.CloudNativeNetworks)))
 
 	return printVPCOutput(output, result)
 }
