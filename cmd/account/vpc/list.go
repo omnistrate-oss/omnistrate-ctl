@@ -51,7 +51,7 @@ func runList(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	utils.HandleSpinnerSuccess(spinner, sm, fmt.Sprintf("Found %d VPC(s)", len(result.VPCs)))
+	utils.HandleSpinnerSuccess(spinner, sm, fmt.Sprintf("Found %d VPC(s)", len(result.CloudNativeNetworks)))
 
 	return printVPCOutput(output, result)
 }

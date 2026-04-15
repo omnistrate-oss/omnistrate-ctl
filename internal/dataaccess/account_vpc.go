@@ -12,11 +12,11 @@ import (
 	openapiclient "github.com/omnistrate-oss/omnistrate-sdk-go/v1"
 )
 
-// AccountConfigVPC represents a VPC registered with an account configuration.
+// AccountConfigVPC represents a cloud native network registered with an account configuration.
 type AccountConfigVPC struct {
 	ID                        string         `json:"id"`
 	AccountConfigID           string         `json:"accountConfigId"`
-	VPCID                     string         `json:"vpcId"`
+	CloudNativeNetworkID      string         `json:"cloudNativeNetworkId"`
 	Region                    string         `json:"region"`
 	Name                      string         `json:"name,omitempty"`
 	CIDR                      string         `json:"cidr,omitempty"`
@@ -30,26 +30,34 @@ type AccountConfigVPC struct {
 	UpdatedAt                 string         `json:"updatedAt"`
 }
 
-// SubnetDetail represents a subnet within a VPC.
+// SubnetDetail represents a subnet within a cloud native network.
 type SubnetDetail struct {
-	SubnetID         string `json:"subnetId"`
-	AvailabilityZone string `json:"availabilityZone,omitempty"`
-	CIDR             string `json:"cidr,omitempty"`
+	ID       string `json:"id"`
+	AZ       string `json:"az,omitempty"`
+	CIDR     string `json:"cidr,omitempty"`
+	IsPublic bool   `json:"isPublic"`
+	IsTagged bool   `json:"isTagged"`
 }
 
-// ListAccountConfigVPCsResult is the response for VPC list/import/unimport/sync operations.
+// ListAccountConfigVPCsResult is the response for cloud native network list/import/unimport/sync operations.
 type ListAccountConfigVPCsResult struct {
-	VPCs []AccountConfigVPC `json:"vpcs"`
+	CloudNativeNetworks []AccountConfigVPC `json:"cloudNativeNetworks"`
+}
+
+// CloudNativeNetworkOperation is a single import/unimport operation for bulk requests.
+type CloudNativeNetworkOperation struct {
+	CloudNativeNetworkID string `json:"cloudNativeNetworkId"`
+	Import               bool   `json:"import"`
 }
 
 // BulkImportVPCsRequestBody is the request body for bulk import.
 type BulkImportVPCsRequestBody struct {
-	VPCIDs []string `json:"vpcIds"`
+	CloudNativeNetworks []CloudNativeNetworkOperation `json:"cloudNativeNetworks"`
 }
 
 // vpcBaseURL returns the base URL for VPC API calls.
 func vpcBaseURL(accountConfigID string) string {
-	return fmt.Sprintf("%s://%s/2022-09-01-00/accountconfig/%s/vpcs",
+	return fmt.Sprintf("%s://%s/2022-09-01-00/accountconfig/%s/cloud-native-networks",
 		config.GetHostScheme(), config.GetHost(), accountConfigID)
 }
 
@@ -132,6 +140,10 @@ func UnimportAccountConfigVPC(ctx context.Context, token, accountConfigID, vpcID
 func BulkImportAccountConfigVPCs(ctx context.Context, token, accountConfigID string, vpcIDs []string) (*ListAccountConfigVPCsResult, error) {
 	ctxWithToken := context.WithValue(ctx, openapiclient.ContextAccessToken, token)
 	url := vpcBaseURL(accountConfigID) + "/import"
-	body := BulkImportVPCsRequestBody{VPCIDs: vpcIDs}
+	ops := make([]CloudNativeNetworkOperation, len(vpcIDs))
+	for i, id := range vpcIDs {
+		ops[i] = CloudNativeNetworkOperation{CloudNativeNetworkID: id, Import: true}
+	}
+	body := BulkImportVPCsRequestBody{CloudNativeNetworks: ops}
 	return doVPCRequest(ctxWithToken, http.MethodPost, url, body)
 }
