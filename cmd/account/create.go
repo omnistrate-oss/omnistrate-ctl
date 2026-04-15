@@ -132,6 +132,7 @@ type CloudAccountParams struct {
 	AzureTenantID       string
 	NebiusTenantID      string
 	NebiusBindings      []openapiclient.NebiusAccountBindingInput
+	PrivateLink         bool
 }
 
 // CreateCloudAccount creates a cloud provider account and returns the account config ID and account details
@@ -199,6 +200,10 @@ func CreateCloudAccount(ctx context.Context, token string, params CloudAccountPa
 		request.Description = "Nebius Account " + params.NebiusTenantID
 	} else {
 		return nil, fmt.Errorf("no cloud provider credentials provided")
+	}
+
+	if params.PrivateLink {
+		request.PrivateOnly = utils.ToPtr(true)
 	}
 
 	// Create account

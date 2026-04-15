@@ -13,6 +13,7 @@ const (
 	nebiusTenantIDFlag      = "nebius-tenant-id"
 	nebiusBindingsFileFlag  = "nebius-bindings-file"
 	skipWaitFlag            = "skip-wait"
+	privateLinkFlag         = "private-link"
 )
 
 func addCloudAccountProviderFlags(cmd *cobra.Command) {
@@ -24,6 +25,7 @@ func addCloudAccountProviderFlags(cmd *cobra.Command) {
 	cmd.Flags().String(nebiusTenantIDFlag, "", "Nebius tenant ID")
 	cmd.Flags().String(nebiusBindingsFileFlag, "", "Path to a YAML file describing Nebius bindings")
 	cmd.Flags().Bool(skipWaitFlag, false, "Skip waiting for the account to become READY")
+	cmd.Flags().Bool(privateLinkFlag, false, "Enable AWS PrivateLink connectivity for services deployed in this account")
 
 	cmd.MarkFlagsOneRequired(
 		awsAccountIDFlag,
@@ -45,6 +47,7 @@ func cloudAccountParamsFromFlags(cmd *cobra.Command, name string) (CloudAccountP
 	azureTenantID, _ := cmd.Flags().GetString(azureTenantIDFlag)
 	nebiusTenantID, _ := cmd.Flags().GetString(nebiusTenantIDFlag)
 	nebiusBindingsFile, _ := cmd.Flags().GetString(nebiusBindingsFileFlag)
+	privateLink, _ := cmd.Flags().GetBool(privateLinkFlag)
 
 	params := CloudAccountParams{
 		Name:                name,
@@ -54,6 +57,7 @@ func cloudAccountParamsFromFlags(cmd *cobra.Command, name string) (CloudAccountP
 		AzureSubscriptionID: azureSubscriptionID,
 		AzureTenantID:       azureTenantID,
 		NebiusTenantID:      nebiusTenantID,
+		PrivateLink:         privateLink,
 	}
 
 	if nebiusBindingsFile != "" {
