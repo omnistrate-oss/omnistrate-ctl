@@ -1031,6 +1031,9 @@ func executeDeploymentWorkflow(cmd *cobra.Command, sm utils.SpinnerManager, toke
 		fmt.Printf("    ID:          %s\n", finalInstanceID)
 	}
 	fmt.Println()
+	if finalInstanceID != "" {
+		fmt.Printf("ℹ️  For step-by-step details, run: omnistrate-ctl instance debug %s\n", finalInstanceID)
+	}
 	fmt.Println("🔄 Deployment progress...")
 
 	// Optionally display workflow progress if desired
