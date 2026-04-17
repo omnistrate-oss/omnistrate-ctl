@@ -202,10 +202,6 @@ func CreateCloudAccount(ctx context.Context, token string, params CloudAccountPa
 		return nil, fmt.Errorf("no cloud provider credentials provided")
 	}
 
-	if params.PrivateLink {
-		request.PrivateOnly = utils.ToPtr(true)
-	}
-
 	// Create account
 	accountConfigID, err := dataaccess.CreateAccount(ctx, token, request)
 	if err != nil {
