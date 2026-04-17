@@ -1,0 +1,52 @@
+## omnistrate-ctl account create
+
+Create a Cloud Provider Account
+
+### Synopsis
+
+This command helps you create a Cloud Provider Account in your account list.
+
+```text
+omnistrate-ctl account create [account-name] [--aws-account-id=account-id] [--gcp-project-id=project-id] [--gcp-project-number=project-number] [--azure-subscription-id=subscription-id] [--azure-tenant-id=tenant-id] [--nebius-tenant-id=tenant-id] [--nebius-bindings-file=file] [flags]
+```
+
+### Examples
+
+```text
+# Create aws account
+omnistrate-ctl account create [account-name] --aws-account-id=[account-id]
+
+# Create gcp account
+omnistrate-ctl account create [account-name] --gcp-project-id=[project-id] --gcp-project-number=[project-number]
+
+# Create azure account
+omnistrate-ctl account create [account-name] --azure-subscription-id=[subscription-id] --azure-tenant-id=[tenant-id]
+
+# Create Nebius account
+omnistrate-ctl account create [account-name] --nebius-tenant-id=[tenant-id] --nebius-bindings-file=[bindings-file]
+```
+
+### Options
+
+```text
+      --aws-account-id string          AWS account ID
+      --azure-subscription-id string   Azure subscription ID
+      --azure-tenant-id string         Azure tenant ID
+      --gcp-project-id string          GCP project ID
+      --gcp-project-number string      GCP project number
+  -h, --help                           help for create
+      --nebius-bindings-file string    Path to a YAML file describing Nebius bindings
+      --nebius-tenant-id string        Nebius tenant ID
+      --skip-wait                      Skip waiting for the account to become READY
+```
+
+### Options inherited from parent commands
+
+```text
+  -o, --output string   Output format (text|table|json) (default "table")
+  -v, --version         Print the version number of omnistrate-ctl
+```
+
+### SEE ALSO
+
+- [omnistrate-ctl account](../omnistrate-ctl_account/) - Manage your Cloud Provider Accounts

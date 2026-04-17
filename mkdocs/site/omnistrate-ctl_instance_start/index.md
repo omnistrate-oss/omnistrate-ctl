@@ -1,0 +1,35 @@
+## omnistrate-ctl instance start
+
+Start an instance deployment for your service
+
+### Synopsis
+
+This command helps you start the instance for your service.
+
+```text
+omnistrate-ctl instance start [instance-id] [flags]
+```
+
+### Examples
+
+```text
+# Start an instance deployment
+omnistrate-ctl instance start instance-abcd1234
+```
+
+### Options
+
+```text
+  -h, --help   help for start
+```
+
+### Options inherited from parent commands
+
+```text
+  -o, --output string   Output format (text|table|json) (default "table")
+  -v, --version         Print the version number of omnistrate-ctl
+```
+
+### SEE ALSO
+
+- [omnistrate-ctl instance](../omnistrate-ctl_instance/) - Manage Instance Deployments for your service

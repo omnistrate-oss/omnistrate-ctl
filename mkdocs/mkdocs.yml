@@ -109,6 +109,8 @@ markdown_extensions:
   - pymdownx.caret
   - pymdownx.mark
   - pymdownx.tilde
+  - pymdownx.highlight:
+      pygments_lang_class: true
   - pymdownx.inlinehilite
   - pymdownx.snippets
   - admonition

@@ -1,0 +1,35 @@
+## omnistrate-ctl instance list-snapshots
+
+List all snapshots for an instance
+
+### Synopsis
+
+This command helps you list all snapshots available for your instance.
+
+```text
+omnistrate-ctl instance list-snapshots [instance-id] [flags]
+```
+
+### Examples
+
+```text
+# List snapshots for an instance
+omnistrate-ctl instance list-snapshots instance-abcd1234"
+```
+
+### Options
+
+```text
+  -h, --help   help for list-snapshots
+```
+
+### Options inherited from parent commands
+
+```text
+  -o, --output string   Output format (text|table|json) (default "table")
+  -v, --version         Print the version number of omnistrate-ctl
+```
+
+### SEE ALSO
+
+- [omnistrate-ctl instance](../omnistrate-ctl_instance/) - Manage Instance Deployments for your service
