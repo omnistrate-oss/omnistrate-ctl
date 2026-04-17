@@ -1,8 +1,8 @@
 name: Redis Server # Service Plan Name
 deployment:
   byoaDeployment:
-    AwsAccountId: "339713121445"
-    AwsBootstrapRoleAccountArn: "arn:aws:iam::339713121445:role/omnistrate-bootstrap-role"
+    AwsAccountId: "${OMCTL_AWS_ACCOUNT_ID}"
+    AwsBootstrapRoleAccountArn: "arn:aws:iam::${OMCTL_AWS_ACCOUNT_ID}:role/omnistrate-bootstrap-role"
 
 services:
   - name: Redis Cluster

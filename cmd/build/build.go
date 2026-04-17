@@ -399,6 +399,10 @@ func runBuild(cmd *cobra.Command, args []string) error {
 		if err != nil {
 			return err
 		}
+		fileData, err = ExpandOmctlEnvVars(fileData)
+		if err != nil {
+			return err
+		}
 	}
 
 	// Validate user is currently logged in

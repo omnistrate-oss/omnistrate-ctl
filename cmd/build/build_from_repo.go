@@ -665,6 +665,10 @@ func BuildServiceFromRepository(cmd *cobra.Command, ctx context.Context, token, 
 		if err != nil {
 			return "", "", "", nil, err
 		}
+		fileData, err = ExpandOmctlEnvVars(fileData)
+		if err != nil {
+			return "", "", "", nil, err
+		}
 
 		// Load the YAML content
 		parsedYaml, err = loader.ParseYAML(fileData)
