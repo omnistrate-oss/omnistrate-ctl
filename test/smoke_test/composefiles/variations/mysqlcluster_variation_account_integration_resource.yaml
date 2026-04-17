@@ -5,8 +5,8 @@ x-omnistrate-service-plan:
   tenancyType: "OMNISTRATE_DEDICATED_TENANCY"
   deployment:
     hostedDeployment:
-      GcpProjectId: "omnistrate-dataplane-host-dev"
-      GcpProjectNumber: "61114262792"
+      GcpProjectId: "${OMCTL_GCP_PROJECT_ID}"
+      GcpProjectNumber: "${OMCTL_GCP_PROJECT_NUMBER}"
       GcpServiceAccountEmail: "bootstrap.getservice@gcp.test.iam"
 x-omnistrate-integrations:
   - omnistrateMetrics:
