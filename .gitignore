@@ -22,3 +22,4 @@ __debug_bin*
 mcp-tools.json
 *.tmp
 results.json
+mkdocs/site/
