@@ -28,7 +28,7 @@ jobs:
     steps:
       - name: Set release to pre release
         timeout-minutes: 2
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2.6.2
         with:
           prerelease: true
           token: ${{ secrets.GITHUB_TOKEN }}
@@ -47,11 +47,11 @@ jobs:
     steps:
       - name: Checkout repository
         timeout-minutes: 5
-        uses: actions/checkout@v6
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
       - name: Set up go
         timeout-minutes: 10
-        uses: actions/setup-go@v6
+        uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6.4.0
         with:
           go-version-file: "go.mod"
           token: ${{ secrets.GITHUB_TOKEN }}
@@ -89,7 +89,7 @@ jobs:
 
       - name: Upload compressed artifacts
         timeout-minutes: 5
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: ${{ steps.calc_binary_name.outputs.binary_name }}-compressed
           path: |
@@ -111,7 +111,7 @@ jobs:
     steps:
       - name: Download build artifacts
         timeout-minutes: 5
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
 
       - name: Display structure of downloaded files
         timeout-minutes: 1
@@ -210,14 +210,14 @@ jobs:
     steps:
       - name: Set release to pre release
         timeout-minutes: 2
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2.6.2
         with:
           prerelease: true
           token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Download build artifacts
         timeout-minutes: 5
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
 
       - name: Display structure of downloaded files
         timeout-minutes: 1
@@ -225,7 +225,7 @@ jobs:
 
       - name: Upload compressed files to triggering release
         timeout-minutes: 5
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2.6.2
         with:
           files: |
             omnistrate-ctl-darwin-amd64-compressed/omnistrate-ctl-darwin-amd64.tar.gz
@@ -239,7 +239,7 @@ jobs:
 
       - name: Publish release
         timeout-minutes: 2
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2.6.2
         with:
           draft: false
           prerelease: false
@@ -270,7 +270,7 @@ jobs:
 
       - name: Download build artifacts
         timeout-minutes: 5
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
 
       - name: Display structure of downloaded files
         timeout-minutes: 1
@@ -289,7 +289,7 @@ jobs:
 
       - name: Checkout Homebrew Tap repository
         timeout-minutes: 5
-        uses: actions/checkout@v6
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           repository: omnistrate/homebrew-tap
           token: ${{ secrets.PUBLISH_CTL_PAT }}
@@ -311,7 +311,7 @@ jobs:
       - name: Create Pull Request
         timeout-minutes: 5
         id: cpr
-        uses: peter-evans/create-pull-request@v8
+        uses: peter-evans/create-pull-request@5f6978faf089d4d20b00c7766989d076bb2fc7f1 # v8.1.1
         with:
           token: ${{ secrets.PUBLISH_CTL_PAT }}
           title: Update Omnistrate CTL Formula to ${{ steps.get_version.outputs.version }}
@@ -323,7 +323,7 @@ jobs:
           signoff: true
           draft: false
 
-      - uses: peter-evans/enable-pull-request-automerge@v3
+      - uses: peter-evans/enable-pull-request-automerge@a660677d5469627102a1c1e11409dd063606628d # v3.0.0
         timeout-minutes: 5
         with:
           repository: omnistrate/homebrew-tap
@@ -349,27 +349,27 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
       # https://github.com/sigstore/cosign-installer
       - name: Install cosign
-        uses: sigstore/cosign-installer@v4.1.1
+        uses: sigstore/cosign-installer@cad07c2e89fa2edd6e2d7bab4c1aa38e53f76003 # v4.1.1
 
       - name: Check install!
         run: cosign version
 
       - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
+        uses: docker/setup-qemu-action@c7c53464625b32c7a7e944ae62b3e17d2b600130 # v3.7.0
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v4
+        uses: docker/setup-buildx-action@4d04d5d9486b7bd6fa91e7baf45bbb4f8b9deedd # v4.0.0
         with:
           platforms: ${{ env.PLATFORMS }}
 
       # Login against a Docker registry
       # https://github.com/docker/login-action
       - name: Log into registry ${{ env.REGISTRY }}
-        uses: docker/login-action@v4
+        uses: docker/login-action@4907a6ddec9925e35a0a9e82d7399ccc52663121 # v4.1.0
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
@@ -379,7 +379,7 @@ jobs:
       # https://github.com/docker/metadata-action
       - name: Extract Docker metadata
         id: meta
-        uses: docker/metadata-action@v5
+        uses: docker/metadata-action@c299e40c65443455700f0fdfc63efafe5b349051 # v5.10.0
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           tags: |
@@ -392,7 +392,7 @@ jobs:
       - name: Build and push multi-arch
         timeout-minutes: 60
         id: build-and-push
-        uses: docker/build-push-action@v7
+        uses: docker/build-push-action@bcafcacb16a39f128d818304e6c9c0c18556b85f # v7.1.0
         with:
           context: .
           file: ./build/Dockerfile
