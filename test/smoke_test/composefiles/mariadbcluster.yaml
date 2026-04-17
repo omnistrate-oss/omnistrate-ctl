@@ -5,10 +5,10 @@ x-omnistrate-service-plan:
   tenancyType: "OMNISTRATE_DEDICATED_TENANCY"
   deployment:
     hostedDeployment:
-      AwsAccountId: "339713121445"
-      AwsBootstrapRoleAccountArn: "arn:aws:iam::339713121445:role/omnistrate-bootstrap-role"
-      GcpProjectId: "omnistrate-dataplane-host-dev"
-      GcpProjectNumber: "61114262792"
+      AwsAccountId: "${OMCTL_AWS_ACCOUNT_ID}"
+      AwsBootstrapRoleAccountArn: "arn:aws:iam::${OMCTL_AWS_ACCOUNT_ID}:role/omnistrate-bootstrap-role"
+      GcpProjectId: "${OMCTL_GCP_PROJECT_ID}"
+      GcpProjectNumber: "${OMCTL_GCP_PROJECT_NUMBER}"
       GcpServiceAccountEmail: "bootstrap.getservice@gcp.test.iam"
 x-omnistrate-integrations:
   - omnistrateLogging

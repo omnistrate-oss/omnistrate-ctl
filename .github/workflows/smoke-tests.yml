@@ -81,6 +81,9 @@ jobs:
           OMNISTRATE_RETRY_MAX: 8
           OMNISTRATE_RETRY_WAIT_MIN_IN_SECONDS: 60
           OMNISTRATE_RETRY_WAIT_MAX_IN_SECONDS: 600
+          OMCTL_AWS_ACCOUNT_ID: ${{ secrets.OMCTL_AWS_ACCOUNT_ID }}
+          OMCTL_GCP_PROJECT_ID: ${{ secrets.OMCTL_GCP_PROJECT_ID }}
+          OMCTL_GCP_PROJECT_NUMBER: ${{ secrets.OMCTL_GCP_PROJECT_NUMBER }}
         run: gotestsum --format standard-verbose -- ./test/smoke_test/${{ matrix.test-group }} -timeout 1800s -p 1 -p 1 -v
 
   smoke-tests-auth:
@@ -129,6 +132,9 @@ jobs:
           OMNISTRATE_RETRY_MAX: 8
           OMNISTRATE_RETRY_WAIT_MIN_IN_SECONDS: 60
           OMNISTRATE_RETRY_WAIT_MAX_IN_SECONDS: 600
+          OMCTL_AWS_ACCOUNT_ID: ${{ secrets.OMCTL_AWS_ACCOUNT_ID }}
+          OMCTL_GCP_PROJECT_ID: ${{ secrets.OMCTL_GCP_PROJECT_ID }}
+          OMCTL_GCP_PROJECT_NUMBER: ${{ secrets.OMCTL_GCP_PROJECT_NUMBER }}
         run: go test -v -timeout 1800s -p 1 ./test/smoke_test/auth/...
 
   smoke-tests-with-provisioning:
@@ -182,5 +188,8 @@ jobs:
           OMNISTRATE_RETRY_MAX: 8
           OMNISTRATE_RETRY_WAIT_MIN_IN_SECONDS: 60
           OMNISTRATE_RETRY_WAIT_MAX_IN_SECONDS: 600
+          OMCTL_AWS_ACCOUNT_ID: ${{ secrets.OMCTL_AWS_ACCOUNT_ID }}
+          OMCTL_GCP_PROJECT_ID: ${{ secrets.OMCTL_GCP_PROJECT_ID }}
+          OMCTL_GCP_PROJECT_NUMBER: ${{ secrets.OMCTL_GCP_PROJECT_NUMBER }}
         run: gotestsum --format standard-verbose -- ./test/smoke_test/${{ matrix.test-group }} -timeout 1800s -p 1 -p 1 -v
 

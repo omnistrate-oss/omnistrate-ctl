@@ -10,6 +10,8 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"regexp"
+	"sort"
 	"strings"
 	"time"
 
@@ -464,4 +466,31 @@ func waitForArtifactsReady(ctx context.Context, token string, artifactIDs []stri
 func isCurrentDirPath(artifactPath string) bool {
 	cleaned := filepath.Clean(artifactPath)
 	return cleaned == "." || cleaned == "/" || artifactPath == "./"
+}
+
+// ExpandOmctlEnvVars expands environment variable references prefixed with OMCTL_
+// in the given data. Only ${OMCTL_*} patterns are expanded to avoid interfering
+// with other $var or $sys references used in Omnistrate spec files.
+// Returns an error listing all unresolved OMCTL_ placeholders.
+func ExpandOmctlEnvVars(data []byte) ([]byte, error) {
+	re := regexp.MustCompile(`\$\{(OMCTL_[A-Za-z0-9_]+)\}`)
+	missing := make(map[string]struct{})
+	result := re.ReplaceAllFunc(data, func(match []byte) []byte {
+		key := string(re.FindSubmatch(match)[1])
+		if val, ok := os.LookupEnv(key); ok {
+			return []byte(val)
+		}
+		missing[key] = struct{}{}
+		return match
+	})
+	if len(missing) > 0 {
+		keys := make([]string, 0, len(missing))
+		for k := range missing {
+			keys = append(keys, k)
+		}
+		sort.Strings(keys)
+		return result, fmt.Errorf("unresolved environment variables in spec file: %s. "+
+			"Set them before running the build command", strings.Join(keys, ", "))
+	}
+	return result, nil
 }

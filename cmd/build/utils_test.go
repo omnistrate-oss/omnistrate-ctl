@@ -415,3 +415,82 @@ func TestArchiveArtifactPaths_NestedDirectories(t *testing.T) {
 	require.NoError(t, err)
 	assert.NotEmpty(t, decoded)
 }
+
+func TestExpandOmctlEnvVars(t *testing.T) {
+	tests := []struct {
+		name          string
+		input         string
+		envVars       map[string]string
+		expected      string
+		expectError   bool
+		errorContains string
+	}{
+		{
+			name:  "expands OMCTL_ prefixed vars",
+			input: `AwsAccountId: "${OMCTL_AWS_ACCOUNT_ID}"`,
+			envVars: map[string]string{
+				"OMCTL_AWS_ACCOUNT_ID": "123456789012",
+			},
+			expected: `AwsAccountId: "123456789012"`,
+		},
+		{
+			name:  "leaves non-OMCTL vars unchanged",
+			input: `password: $var.password`,
+			expected: `password: $var.password`,
+		},
+		{
+			name:  "leaves $sys references unchanged",
+			input: `host: $sys.network.externalClusterEndpoint`,
+			expected: `host: $sys.network.externalClusterEndpoint`,
+		},
+		{
+			name:  "mixed OMCTL and non-OMCTL vars",
+			input: "AwsAccountId: \"${OMCTL_AWS_ACCOUNT_ID}\"\npassword: $var.password\nGcpProjectId: \"${OMCTL_GCP_PROJECT_ID}\"",
+			envVars: map[string]string{
+				"OMCTL_AWS_ACCOUNT_ID": "111222333444",
+				"OMCTL_GCP_PROJECT_ID": "my-project",
+			},
+			expected: "AwsAccountId: \"111222333444\"\npassword: $var.password\nGcpProjectId: \"my-project\"",
+		},
+		{
+			name:        "unset OMCTL var returns error",
+			input:       `AwsAccountId: "${OMCTL_AWS_ACCOUNT_ID}"`,
+			expected:    `AwsAccountId: "${OMCTL_AWS_ACCOUNT_ID}"`,
+			expectError: true,
+			errorContains: "OMCTL_AWS_ACCOUNT_ID",
+		},
+		{
+			name:  "expands in ARN patterns",
+			input: `AwsBootstrapRoleAccountArn: "arn:aws:iam::${OMCTL_AWS_ACCOUNT_ID}:role/omnistrate-bootstrap-role"`,
+			envVars: map[string]string{
+				"OMCTL_AWS_ACCOUNT_ID": "339713121445",
+			},
+			expected: `AwsBootstrapRoleAccountArn: "arn:aws:iam::339713121445:role/omnistrate-bootstrap-role"`,
+		},
+		{
+			name:        "multiple unset vars lists all in error",
+			input:       `AwsAccountId: "${OMCTL_AWS_ACCOUNT_ID}" GcpProjectId: "${OMCTL_GCP_PROJECT_ID}"`,
+			expected:    `AwsAccountId: "${OMCTL_AWS_ACCOUNT_ID}" GcpProjectId: "${OMCTL_GCP_PROJECT_ID}"`,
+			expectError: true,
+			errorContains: "OMCTL_AWS_ACCOUNT_ID, OMCTL_GCP_PROJECT_ID",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Set env vars
+			for k, v := range tt.envVars {
+				t.Setenv(k, v)
+			}
+
+			result, err := ExpandOmctlEnvVars([]byte(tt.input))
+			assert.Equal(t, tt.expected, string(result))
+			if tt.expectError {
+				assert.Error(t, err)
+				assert.Contains(t, err.Error(), tt.errorContains)
+			} else {
+				assert.NoError(t, err)
+			}
+		})
+	}
+}
