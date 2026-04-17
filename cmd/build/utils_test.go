@@ -468,6 +468,22 @@ func TestExpandOmctlEnvVars(t *testing.T) {
 			expected: `AwsBootstrapRoleAccountArn: "arn:aws:iam::339713121445:role/omnistrate-bootstrap-role"`,
 		},
 		{
+			name:          "empty env var treated as unresolved",
+			input:         `AwsAccountId: "${OMCTL_AWS_ACCOUNT_ID}"`,
+			envVars:       map[string]string{"OMCTL_AWS_ACCOUNT_ID": ""},
+			expected:      `AwsAccountId: "${OMCTL_AWS_ACCOUNT_ID}"`,
+			expectError:   true,
+			errorContains: "OMCTL_AWS_ACCOUNT_ID",
+		},
+		{
+			name:          "whitespace-only env var treated as unresolved",
+			input:         `AwsAccountId: "${OMCTL_AWS_ACCOUNT_ID}"`,
+			envVars:       map[string]string{"OMCTL_AWS_ACCOUNT_ID": "  "},
+			expected:      `AwsAccountId: "${OMCTL_AWS_ACCOUNT_ID}"`,
+			expectError:   true,
+			errorContains: "OMCTL_AWS_ACCOUNT_ID",
+		},
+		{
 			name:        "multiple unset vars lists all in error",
 			input:       `AwsAccountId: "${OMCTL_AWS_ACCOUNT_ID}" GcpProjectId: "${OMCTL_GCP_PROJECT_ID}"`,
 			expected:    `AwsAccountId: "${OMCTL_AWS_ACCOUNT_ID}" GcpProjectId: "${OMCTL_GCP_PROJECT_ID}"`,

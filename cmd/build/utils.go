@@ -477,7 +477,7 @@ func ExpandOmctlEnvVars(data []byte) ([]byte, error) {
 	missing := make(map[string]struct{})
 	result := re.ReplaceAllFunc(data, func(match []byte) []byte {
 		key := string(re.FindSubmatch(match)[1])
-		if val, ok := os.LookupEnv(key); ok {
+		if val, ok := os.LookupEnv(key); ok && strings.TrimSpace(val) != "" {
 			return []byte(val)
 		}
 		missing[key] = struct{}{}
