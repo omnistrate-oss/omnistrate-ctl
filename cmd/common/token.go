@@ -11,6 +11,8 @@ import (
 	"github.com/rs/zerolog/log"
 )
 
+const tokenRefreshMargin = 5 * time.Minute
+
 func GetTokenWithLogin() (token string, err error) {
 	token, err = config.GetToken()
 	if err != nil && !errors.Is(err, config.ErrAuthConfigNotFound) && !errors.Is(err, config.ErrConfigFileNotFound) {
@@ -21,7 +23,7 @@ func GetTokenWithLogin() (token string, err error) {
 
 	// If token is present, check if it's expired locally before making a network call
 	if token != "" {
-		if config.IsTokenExpired(token, 30*time.Second) {
+		if shouldRefreshToken(token) {
 			// Token expired or about to expire — try refresh
 			newToken, refreshErr := tryRefreshToken(ctx)
 			if refreshErr == nil {
@@ -59,6 +61,10 @@ func GetTokenWithLogin() (token string, err error) {
 	}
 
 	return
+}
+
+func shouldRefreshToken(token string) bool {
+	return config.IsTokenExpired(token, tokenRefreshMargin)
 }
 
 // tryRefreshToken attempts to exchange the stored refresh token for a new JWT.
