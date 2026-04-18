@@ -434,13 +434,13 @@ func TestExpandOmctlEnvVars(t *testing.T) {
 			expected: `AwsAccountId: "123456789012"`,
 		},
 		{
-			name:  "leaves non-OMCTL vars unchanged",
-			input: `password: $var.password`,
+			name:     "leaves non-OMCTL vars unchanged",
+			input:    `password: $var.password`,
 			expected: `password: $var.password`,
 		},
 		{
-			name:  "leaves $sys references unchanged",
-			input: `host: $sys.network.externalClusterEndpoint`,
+			name:     "leaves $sys references unchanged",
+			input:    `host: $sys.network.externalClusterEndpoint`,
 			expected: `host: $sys.network.externalClusterEndpoint`,
 		},
 		{
@@ -453,10 +453,10 @@ func TestExpandOmctlEnvVars(t *testing.T) {
 			expected: "AwsAccountId: \"111222333444\"\npassword: $var.password\nGcpProjectId: \"my-project\"",
 		},
 		{
-			name:        "unset OMCTL var returns error",
-			input:       `AwsAccountId: "${OMCTL_AWS_ACCOUNT_ID}"`,
-			expected:    `AwsAccountId: "${OMCTL_AWS_ACCOUNT_ID}"`,
-			expectError: true,
+			name:          "unset OMCTL var returns error",
+			input:         `AwsAccountId: "${OMCTL_AWS_ACCOUNT_ID}"`,
+			expected:      `AwsAccountId: "${OMCTL_AWS_ACCOUNT_ID}"`,
+			expectError:   true,
 			errorContains: "OMCTL_AWS_ACCOUNT_ID",
 		},
 		{
@@ -484,10 +484,10 @@ func TestExpandOmctlEnvVars(t *testing.T) {
 			errorContains: "OMCTL_AWS_ACCOUNT_ID",
 		},
 		{
-			name:        "multiple unset vars lists all in error",
-			input:       `AwsAccountId: "${OMCTL_AWS_ACCOUNT_ID}" GcpProjectId: "${OMCTL_GCP_PROJECT_ID}"`,
-			expected:    `AwsAccountId: "${OMCTL_AWS_ACCOUNT_ID}" GcpProjectId: "${OMCTL_GCP_PROJECT_ID}"`,
-			expectError: true,
+			name:          "multiple unset vars lists all in error",
+			input:         `AwsAccountId: "${OMCTL_AWS_ACCOUNT_ID}" GcpProjectId: "${OMCTL_GCP_PROJECT_ID}"`,
+			expected:      `AwsAccountId: "${OMCTL_AWS_ACCOUNT_ID}" GcpProjectId: "${OMCTL_GCP_PROJECT_ID}"`,
+			expectError:   true,
 			errorContains: "OMCTL_AWS_ACCOUNT_ID, OMCTL_GCP_PROJECT_ID",
 		},
 	}

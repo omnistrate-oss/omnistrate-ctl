@@ -481,7 +481,7 @@ func (m helmDetailModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.logScroll = maxSc
 				}
 			}
-		case "enter", "right", "l":
+		case "enter":
 			if m.activeTab == helmTabWfErrors {
 				items := flattenWfEventItems(m.getWfEvents())
 				if m.wfErrors.cursor >= 0 && m.wfErrors.cursor < len(items) {
@@ -493,6 +493,13 @@ func (m helmDetailModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					}
 				}
 			} else if m.activeTab == helmTabValues && len(m.valuesTree) > 0 {
+				visibleNodes := flattenOutputTree(m.valuesTree)
+				if m.valuesCursor >= 0 && m.valuesCursor < len(visibleNodes) {
+					toggleOutputNode(visibleNodes[m.valuesCursor])
+				}
+			}
+		case "right", "l":
+			if m.activeTab == helmTabValues && len(m.valuesTree) > 0 {
 				visibleNodes := flattenOutputTree(m.valuesTree)
 				if m.valuesCursor >= 0 && m.valuesCursor < len(visibleNodes) {
 					node := visibleNodes[m.valuesCursor]
@@ -816,6 +823,12 @@ func (m helmDetailModel) renderHelmValuesTab() string {
 	nullStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("241"))
 	braceStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("245"))
 	selectedBg := lipgloss.NewStyle().Background(lipgloss.Color("236"))
+	maxLineWidth := m.helmContentWidth() - 4 // leading indent + cursor
+	if maxLineWidth < 1 {
+		maxLineWidth = 1
+	}
+	rowStyle := lipgloss.NewStyle().MaxWidth(maxLineWidth)
+	selectedRowStyle := selectedBg.MaxWidth(maxLineWidth)
 
 	for idx := scrollOffset; idx < end; idx++ {
 		node := visibleNodes[idx]
@@ -858,7 +871,9 @@ func (m helmDetailModel) renderHelmValuesTab() string {
 		}
 
 		if idx == m.valuesCursor {
-			line = selectedBg.Render(line)
+			line = selectedRowStyle.Render(line)
+		} else {
+			line = rowStyle.Render(line)
 		}
 
 		fmt.Fprintf(&b, "  %s%s\n", cursor, line)
