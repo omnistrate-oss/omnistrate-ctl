@@ -343,7 +343,7 @@ func (m terraformDetailModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			// Signal back to DAG view
 			return m, func() tea.Msg { return backToDagMsg{} }
-		case "tab", "right":
+		case "tab":
 			if m.wfErrors.modalText != "" || m.errorModalText != "" || m.previewModalText != "" {
 				return m, nil // block tab switching while modal is open
 			}
@@ -351,7 +351,7 @@ func (m terraformDetailModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.activeTab = (m.activeTab + 1) % numTabs
 				m.scrollY = 0
 			}
-		case "shift+tab", "left":
+		case "shift+tab":
 			if m.wfErrors.modalText != "" || m.errorModalText != "" || m.previewModalText != "" {
 				return m, nil
 			}
