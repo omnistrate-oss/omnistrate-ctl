@@ -239,6 +239,43 @@ func flattenOutputNode(node *outputNode, flat *[]*outputNode) {
 	}
 }
 
+func normalizeViewport(cursor, scroll, totalEntries, visibleRows int) (int, int) {
+	if totalEntries <= 0 {
+		return 0, 0
+	}
+	if visibleRows < 1 {
+		visibleRows = 1
+	}
+	if cursor < 0 {
+		cursor = 0
+	}
+	if cursor >= totalEntries {
+		cursor = totalEntries - 1
+	}
+
+	maxScroll := totalEntries - visibleRows
+	if maxScroll < 0 {
+		maxScroll = 0
+	}
+	if scroll < 0 {
+		scroll = 0
+	}
+	if scroll > maxScroll {
+		scroll = maxScroll
+	}
+	if cursor < scroll {
+		scroll = cursor
+	}
+	if cursor >= scroll+visibleRows {
+		scroll = cursor - visibleRows + 1
+	}
+	if scroll > maxScroll {
+		scroll = maxScroll
+	}
+
+	return cursor, scroll
+}
+
 // toggleOutputNode expands/collapses an expandable node, or reveals/hides a sensitive value.
 func toggleOutputNode(node *outputNode) {
 	if node.expandable {

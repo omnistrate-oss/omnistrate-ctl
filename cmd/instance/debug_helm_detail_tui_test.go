@@ -89,3 +89,52 @@ func TestRenderHelmValuesTabClampsLongRows(t *testing.T) {
 		}
 	}
 }
+
+func TestHelmValuesUpFromBottomKeepsViewportFixed(t *testing.T) {
+	model := helmDetailModel{
+		activeTab: helmTabValues,
+		width:     72,
+		height:    15, // yields 3 visible value rows
+		wfErrors:  &workflowErrorsState{},
+		valuesTree: buildHelmValuesTree(map[string]interface{}{
+			"a": 1,
+			"b": 2,
+			"c": 3,
+			"d": 4,
+			"e": 5,
+			"f": 6,
+		}, ""),
+	}
+
+	for range 5 {
+		updatedAny, cmd := model.Update(tea.KeyMsg{Type: tea.KeyDown})
+		if cmd != nil {
+			t.Fatalf("expected nil cmd while moving down, got %v", cmd)
+		}
+		updated, ok := updatedAny.(helmDetailModel)
+		if !ok {
+			t.Fatalf("expected helmDetailModel, got %T", updatedAny)
+		}
+		model = updated
+	}
+
+	if model.valuesCursor != 5 || model.valuesScroll != 3 {
+		t.Fatalf("expected cursor/scroll at bottom to be 5/3, got %d/%d", model.valuesCursor, model.valuesScroll)
+	}
+
+	updatedAny, cmd := model.Update(tea.KeyMsg{Type: tea.KeyUp})
+	if cmd != nil {
+		t.Fatalf("expected nil cmd while moving up, got %v", cmd)
+	}
+	updated, ok := updatedAny.(helmDetailModel)
+	if !ok {
+		t.Fatalf("expected helmDetailModel, got %T", updatedAny)
+	}
+
+	if updated.valuesCursor != 4 {
+		t.Fatalf("expected cursor to move to 4, got %d", updated.valuesCursor)
+	}
+	if updated.valuesScroll != 3 {
+		t.Fatalf("expected viewport to stay anchored at scroll 3, got %d", updated.valuesScroll)
+	}
+}

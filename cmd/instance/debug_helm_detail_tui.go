@@ -57,6 +57,7 @@ type helmDetailModel struct {
 	// Values tab (tree explorer)
 	valuesTree   []outputNode
 	valuesCursor int
+	valuesScroll int
 
 	// Workflow Errors tab
 	wfErrors *workflowErrorsState
@@ -375,7 +376,12 @@ func (m helmDetailModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				if m.valuesCursor > 0 {
 					m.valuesCursor--
 				}
-				_ = visibleNodes
+				m.valuesCursor, m.valuesScroll = normalizeViewport(
+					m.valuesCursor,
+					m.valuesScroll,
+					len(visibleNodes),
+					m.helmValuesVisibleRows(),
+				)
 			} else if m.activeTab == helmTabWfErrors {
 				items := flattenWfEventItems(m.getWfEvents())
 				if m.wfErrors.cursor > 0 {
@@ -403,6 +409,12 @@ func (m helmDetailModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				if m.valuesCursor < len(visibleNodes)-1 {
 					m.valuesCursor++
 				}
+				m.valuesCursor, m.valuesScroll = normalizeViewport(
+					m.valuesCursor,
+					m.valuesScroll,
+					len(visibleNodes),
+					m.helmValuesVisibleRows(),
+				)
 			} else if m.activeTab == helmTabWfErrors {
 				items := flattenWfEventItems(m.getWfEvents())
 				if m.wfErrors.cursor < len(items)-1 {
@@ -496,6 +508,13 @@ func (m helmDetailModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				visibleNodes := flattenOutputTree(m.valuesTree)
 				if m.valuesCursor >= 0 && m.valuesCursor < len(visibleNodes) {
 					toggleOutputNode(visibleNodes[m.valuesCursor])
+					visibleNodes = flattenOutputTree(m.valuesTree)
+					m.valuesCursor, m.valuesScroll = normalizeViewport(
+						m.valuesCursor,
+						m.valuesScroll,
+						len(visibleNodes),
+						m.helmValuesVisibleRows(),
+					)
 				}
 			}
 		case "right", "l":
@@ -505,6 +524,13 @@ func (m helmDetailModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					node := visibleNodes[m.valuesCursor]
 					if node.expandable && !node.expanded {
 						node.expanded = true
+						visibleNodes = flattenOutputTree(m.valuesTree)
+						m.valuesCursor, m.valuesScroll = normalizeViewport(
+							m.valuesCursor,
+							m.valuesScroll,
+							len(visibleNodes),
+							m.helmValuesVisibleRows(),
+						)
 					}
 				}
 			}
@@ -515,6 +541,13 @@ func (m helmDetailModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					node := visibleNodes[m.valuesCursor]
 					if node.expandable && node.expanded {
 						node.expanded = false
+						visibleNodes = flattenOutputTree(m.valuesTree)
+						m.valuesCursor, m.valuesScroll = normalizeViewport(
+							m.valuesCursor,
+							m.valuesScroll,
+							len(visibleNodes),
+							m.helmValuesVisibleRows(),
+						)
 					}
 				}
 			}
@@ -799,17 +832,7 @@ func (m helmDetailModel) renderHelmValuesTab() string {
 	}
 
 	totalEntries := len(visibleNodes)
-
-	scrollOffset := 0
-	if m.valuesCursor >= visibleRows {
-		scrollOffset = m.valuesCursor - visibleRows + 1
-	}
-	if scrollOffset > totalEntries-visibleRows {
-		scrollOffset = totalEntries - visibleRows
-	}
-	if scrollOffset < 0 {
-		scrollOffset = 0
-	}
+	cursorIndex, scrollOffset := normalizeViewport(m.valuesCursor, m.valuesScroll, totalEntries, visibleRows)
 
 	end := scrollOffset + visibleRows
 	if end > totalEntries {
@@ -834,9 +857,9 @@ func (m helmDetailModel) renderHelmValuesTab() string {
 		node := visibleNodes[idx]
 		indent := strings.Repeat("  ", node.depth)
 
-		cursor := "  "
-		if idx == m.valuesCursor {
-			cursor = "▶ "
+		cursorMarker := "  "
+		if idx == cursorIndex {
+			cursorMarker = "▶ "
 		}
 
 		var line string
@@ -870,13 +893,13 @@ func (m helmDetailModel) renderHelmValuesTab() string {
 			line = fmt.Sprintf("%s  %s: %s", indent, keyStyle.Render(node.key), styledVal)
 		}
 
-		if idx == m.valuesCursor {
+		if idx == cursorIndex {
 			line = selectedRowStyle.Render(line)
 		} else {
 			line = rowStyle.Render(line)
 		}
 
-		fmt.Fprintf(&b, "  %s%s\n", cursor, line)
+		fmt.Fprintf(&b, "  %s%s\n", cursorMarker, line)
 	}
 
 	// Scroll indicator
@@ -891,7 +914,7 @@ func (m helmDetailModel) renderHelmValuesTab() string {
 			pct := (scrollOffset * 100) / (totalEntries - visibleRows)
 			pos = fmt.Sprintf("%d%%", pct)
 		}
-		fmt.Fprintf(&b, "\n  %s\n", dimStyle.Render(fmt.Sprintf("↑↓: navigate  enter: expand/collapse  [%d/%d %s]", m.valuesCursor+1, totalEntries, pos)))
+		fmt.Fprintf(&b, "\n  %s\n", dimStyle.Render(fmt.Sprintf("↑↓: navigate  enter: expand/collapse  [%d/%d %s]", cursorIndex+1, totalEntries, pos)))
 	} else {
 		fmt.Fprintf(&b, "\n  %s\n", lipgloss.NewStyle().Foreground(lipgloss.Color("241")).Render("↑↓: navigate  enter: expand/collapse"))
 	}
@@ -949,6 +972,14 @@ func (m helmDetailModel) helmBodyHeight() int {
 		h = 1
 	}
 	return h
+}
+
+func (m helmDetailModel) helmValuesVisibleRows() int {
+	rows := m.helmBodyHeight() - 4
+	if rows < 1 {
+		rows = 1
+	}
+	return rows
 }
 
 func (m helmDetailModel) helmContentWidth() int {
