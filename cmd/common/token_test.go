@@ -11,15 +11,34 @@ import (
 )
 
 func TestShouldRefreshToken(t *testing.T) {
-	t.Run("refreshes token expiring within five minutes", func(t *testing.T) {
-		token := makeJWT(time.Now().Add(4 * time.Minute).Unix())
-		assert.True(t, shouldRefreshToken(token))
-	})
+	tests := []struct {
+		name      string
+		expiresIn time.Duration
+		expected  bool
+	}{
+		{
+			name:      "refreshes token expiring before margin",
+			expiresIn: tokenRefreshMargin - time.Second,
+			expected:  true,
+		},
+		{
+			name:      "refreshes token expiring exactly at margin",
+			expiresIn: tokenRefreshMargin,
+			expected:  true,
+		},
+		{
+			name:      "keeps token expiring after margin",
+			expiresIn: tokenRefreshMargin + time.Second,
+			expected:  false,
+		},
+	}
 
-	t.Run("keeps token with more than five minutes remaining", func(t *testing.T) {
-		token := makeJWT(time.Now().Add(10 * time.Minute).Unix())
-		assert.False(t, shouldRefreshToken(token))
-	})
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			token := makeJWT(time.Now().Add(tt.expiresIn).Unix())
+			assert.Equal(t, tt.expected, shouldRefreshToken(token))
+		})
+	}
 }
 
 func makeJWT(exp int64) string {
