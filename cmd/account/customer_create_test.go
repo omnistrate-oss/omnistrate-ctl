@@ -150,6 +150,8 @@ func TestCustomerAccountInputParameters(t *testing.T) {
 	assert.Equal(t, "azure_tenant_id", keysByName[customerAccountAzureTenantIDName])
 	assert.Equal(t, "nebius_tenant_id", keysByName[customerAccountNebiusTenantIDName])
 	assert.Equal(t, "nebius_bindings", keysByName[customerAccountNebiusBindingsName])
+	assert.Equal(t, "private_link", keysByName[customerAccountPrivateLinkName])
+	assert.Equal(t, "allow_new_cloud_native_network_creation", keysByName[customerAccountAllowCreateNewName])
 }
 
 func TestExtractCustomerAccountConfigID(t *testing.T) {
@@ -163,6 +165,68 @@ func TestExtractCustomerAccountConfigID(t *testing.T) {
 
 	assert.Equal(t, "ac-123", extractCustomerAccountConfigID(instance))
 	assert.Equal(t, "", extractCustomerAccountConfigID(nil))
+}
+
+func TestBuildCustomerAccountRequestParamsWithDerivedValues_PrivateLinkAndAllowCreateNew(t *testing.T) {
+	params := CloudAccountParams{
+		Name:           "customer-aws",
+		AwsAccountID:   "123456789012",
+		PrivateLink:    true,
+		AllowCreateNew: true,
+	}
+
+	inputParameters := []openapiclient.DescribeInputParameterResult{
+		{Name: customerAccountIacToolName, Key: "account_configuration_method"},
+		{Name: customerAccountAWSAccountIDName, Key: "aws_account_id"},
+		{Name: customerAccountAWSBootstrapRoleName, Key: "aws_bootstrap_role_arn"},
+		{Name: customerAccountPrivateLinkName, Key: "private_link"},
+		{Name: customerAccountAllowCreateNewName, Key: "allow_new_cloud_native_network_creation"},
+	}
+
+	requestParams, err := buildCustomerAccountRequestParamsWithDerivedValues(params, inputParameters, "")
+	require.NoError(t, err)
+	assert.Equal(t, true, requestParams["private_link"])
+	assert.Equal(t, true, requestParams["allow_new_cloud_native_network_creation"])
+}
+
+func TestBuildCustomerAccountRequestParamsWithDerivedValues_PrivateLinkMissingErrors(t *testing.T) {
+	params := CloudAccountParams{
+		Name:         "customer-aws",
+		AwsAccountID: "123456789012",
+		PrivateLink:  true,
+	}
+
+	inputParameters := []openapiclient.DescribeInputParameterResult{
+		{Name: customerAccountIacToolName, Key: "account_configuration_method"},
+		{Name: customerAccountAWSAccountIDName, Key: "aws_account_id"},
+		{Name: customerAccountAWSBootstrapRoleName, Key: "aws_bootstrap_role_arn"},
+	}
+
+	_, err := buildCustomerAccountRequestParamsWithDerivedValues(params, inputParameters, "")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), customerAccountPrivateLinkName)
+}
+
+func TestBuildCustomerAccountRequestParamsWithDerivedValues_FlagsOmittedDoesNotSetParams(t *testing.T) {
+	params := CloudAccountParams{
+		Name:         "customer-aws",
+		AwsAccountID: "123456789012",
+	}
+
+	inputParameters := []openapiclient.DescribeInputParameterResult{
+		{Name: customerAccountIacToolName, Key: "account_configuration_method"},
+		{Name: customerAccountAWSAccountIDName, Key: "aws_account_id"},
+		{Name: customerAccountAWSBootstrapRoleName, Key: "aws_bootstrap_role_arn"},
+		{Name: customerAccountPrivateLinkName, Key: "private_link"},
+		{Name: customerAccountAllowCreateNewName, Key: "allow_new_cloud_native_network_creation"},
+	}
+
+	requestParams, err := buildCustomerAccountRequestParamsWithDerivedValues(params, inputParameters, "")
+	require.NoError(t, err)
+	_, hasPrivateLink := requestParams["private_link"]
+	_, hasAllowCreate := requestParams["allow_new_cloud_native_network_creation"]
+	assert.False(t, hasPrivateLink)
+	assert.False(t, hasAllowCreate)
 }
 
 func TestResolveCustomerAccountSubscription_NonProductionUsesProvidedSubscription(t *testing.T) {
