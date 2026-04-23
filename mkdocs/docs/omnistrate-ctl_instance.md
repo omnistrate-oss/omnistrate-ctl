@@ -30,7 +30,7 @@ omnistrate-ctl instance [operation] [flags]
 * [omnistrate-ctl instance breakpoint](omnistrate-ctl_instance_breakpoint.md)	 - Manage instance workflow breakpoints
 * [omnistrate-ctl instance continue-deployment](omnistrate-ctl_instance_continue-deployment.md)	 - Continue instance deployment
 * [omnistrate-ctl instance copy-snapshot](omnistrate-ctl_instance_copy-snapshot.md)	 - Copy an instance snapshot to another region
-* [omnistrate-ctl instance create](omnistrate-ctl_instance_create.md)	 - Create an instance deployment
+* [omnistrate-ctl instance create](omnistrate-ctl_instance_create.md)	 - Create or restore an instance deployment
 * [omnistrate-ctl instance dashboard](omnistrate-ctl_instance_dashboard.md)	 - Get Grafana dashboard access details for an instance
 * [omnistrate-ctl instance debug](omnistrate-ctl_instance_debug.md)	 - Visualize the instance plan DAG
 * [omnistrate-ctl instance delete](omnistrate-ctl_instance_delete.md)	 - Delete an instance deployment
@@ -48,7 +48,7 @@ omnistrate-ctl instance [operation] [flags]
 * [omnistrate-ctl instance modify](omnistrate-ctl_instance_modify.md)	 - Modify an instance deployment for your service
 * [omnistrate-ctl instance patch-deployment](omnistrate-ctl_instance_patch-deployment.md)	 - Patch deployment for an instance deployment
 * [omnistrate-ctl instance restart](omnistrate-ctl_instance_restart.md)	 - Restart an instance deployment for your service
-* [omnistrate-ctl instance restore](omnistrate-ctl_instance_restore.md)	 - Create a new instance by restoring from a snapshot
+* [omnistrate-ctl instance restore](omnistrate-ctl_instance_restore.md)	 - Restore an instance from a snapshot
 * [omnistrate-ctl instance start](omnistrate-ctl_instance_start.md)	 - Start an instance deployment for your service
 * [omnistrate-ctl instance stop](omnistrate-ctl_instance_stop.md)	 - Stop an instance deployment for your service
 * [omnistrate-ctl instance trigger-backup](omnistrate-ctl_instance_trigger-backup.md)	 - Trigger an automatic backup for your instance

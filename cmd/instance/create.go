@@ -45,9 +45,9 @@ omnistrate-ctl instance create --service=mysql --environment=dev --plan=mysql --
 var InstanceID string
 
 var createCmd = &cobra.Command{
-	Use:          "create --service=[service] --environment=[environment] --plan=[plan] --version=[version] --resource=[resource] --cloud-provider=[aws|gcp|azure|nebius] --region=[region] [--param=param] [--param-file=file-path] [--customer-account-id=instance-id] [--tags key=value,key2=value2] [--breakpoints id-or-key,id-or-key]",
-	Short:        "Create an instance deployment",
-	Long:         `This command helps you create an instance deployment for your service.`,
+	Use:          "create --service=[service] --environment=[environment] --plan=[plan] --version=[version] --resource=[resource] --cloud-provider=[aws|gcp|azure|nebius] --region=[region] [--param=param] [--param-file=file-path] [--instance-id=id] [--customer-account-id=account-instance-id] [--tags key=value,key2=value2] [--breakpoints id-or-key,id-or-key]",
+	Short:        "Create or restore an instance deployment",
+	Long:         `This command helps you create an instance deployment for your service. When --instance-id is provided, it restores a previously deleted instance using the specified ID, preserving the original instance ID and endpoint.`,
 	Example:      createExample,
 	RunE:         runCreate,
 	SilenceUsage: true,

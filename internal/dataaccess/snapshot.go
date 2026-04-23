@@ -136,7 +136,7 @@ func DeleteSnapshot(ctx context.Context, token, serviceID, environmentID, snapsh
 	return
 }
 
-// RestoreSnapshot restores a snapshot to a new instance (no instance ID required).
+// RestoreSnapshot restores a snapshot either to a new instance or, when restoreToSource is true, to the original source instance.
 func RestoreSnapshot(ctx context.Context, token, serviceID, environmentID, snapshotID string, formattedParams map[string]any, tierVersionOverride string, networkType string, restoreToSource bool) (res *openapiclientfleet.FleetRestoreResourceInstanceResult, err error) {
 	ctxWithToken := context.WithValue(ctx, openapiclientfleet.ContextAccessToken, token)
 	apiClient := getFleetClient()
