@@ -39,6 +39,8 @@ const (
 	customerAccountAzureTenantIDName     = "Azure Tenant ID"
 	customerAccountNebiusTenantIDName    = "Nebius Tenant ID"
 	customerAccountNebiusBindingsName    = "Nebius Bindings"
+	customerAccountPrivateLinkName       = "Private Link"
+	customerAccountAllowCreateNewName    = "Allow New Cloud Native Network Creation"
 	customerAccountReadyTimeout          = 10 * time.Minute
 	customerAccountReadyPollInterval     = 10 * time.Second
 	customerEmailFlag                    = "customer-email"
@@ -493,6 +495,8 @@ func customerAccountInputParameters() []openapiclient.DescribeInputParameterResu
 		{Name: customerAccountAzureTenantIDName, Key: "azure_tenant_id"},
 		{Name: customerAccountNebiusTenantIDName, Key: "nebius_tenant_id"},
 		{Name: customerAccountNebiusBindingsName, Key: "nebius_bindings"},
+		{Name: customerAccountPrivateLinkName, Key: "private_link"},
+		{Name: customerAccountAllowCreateNewName, Key: "allow_new_cloud_native_network_creation"},
 	}
 }
 
@@ -657,6 +661,30 @@ func buildCustomerAccountRequestParamsWithDerivedValues(
 		}
 	default:
 		return nil, fmt.Errorf("unsupported cloud provider request")
+	}
+
+	// Optional cross-provider input parameters. Only set them when the user
+	// explicitly opted in via the corresponding flag; if the BYOA account-config
+	// resource does not declare the input parameter, surface an explicit error
+	// so the user knows the plan does not support the option.
+	setOptionalParam := func(displayName string, value any) error {
+		key, exists := keysByName[displayName]
+		if !exists || strings.TrimSpace(key) == "" {
+			return fmt.Errorf("BYOA account-config resource does not declare input parameter %q; the selected service plan does not support this option", displayName)
+		}
+		requestParams[key] = value
+		return nil
+	}
+
+	if params.PrivateLink {
+		if err := setOptionalParam(customerAccountPrivateLinkName, true); err != nil {
+			return nil, err
+		}
+	}
+	if params.AllowCreateNew {
+		if err := setOptionalParam(customerAccountAllowCreateNewName, true); err != nil {
+			return nil, err
+		}
 	}
 
 	return requestParams, nil

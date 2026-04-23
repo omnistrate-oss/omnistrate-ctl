@@ -26,6 +26,7 @@ omnistrate-ctl account customer create --service=[service] --environment=[enviro
 ### Options
 
 ```
+      --allow-create-new               Allow the platform to create new cloud-native networks (VPCs) in this account on demand
       --aws-account-id string          AWS account ID
       --azure-subscription-id string   Azure subscription ID
       --azure-tenant-id string         Azure tenant ID

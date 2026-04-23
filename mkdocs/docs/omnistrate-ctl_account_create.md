@@ -29,6 +29,7 @@ omnistrate-ctl account create [account-name] --nebius-tenant-id=[tenant-id] --ne
 ### Options
 
 ```
+      --allow-create-new               Allow the platform to create new cloud-native networks (VPCs) in this account on demand
       --aws-account-id string          AWS account ID
       --azure-subscription-id string   Azure subscription ID
       --azure-tenant-id string         Azure tenant ID

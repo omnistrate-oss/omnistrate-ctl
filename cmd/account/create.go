@@ -133,6 +133,7 @@ type CloudAccountParams struct {
 	NebiusTenantID      string
 	NebiusBindings      []openapiclient.NebiusAccountBindingInput
 	PrivateLink         bool
+	AllowCreateNew      bool
 }
 
 // CreateCloudAccount creates a cloud provider account and returns the account config ID and account details
