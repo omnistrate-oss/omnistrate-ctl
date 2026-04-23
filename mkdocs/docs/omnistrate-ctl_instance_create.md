@@ -30,6 +30,9 @@ omnistrate-ctl instance create --service=mysql --environment=dev --plan=mysql --
 
 # Create a BYOA instance deployment using a customer account onboarding instance
 omnistrate-ctl instance create --service=Nebius --environment=dev --plan='Nebius BYOA Compute Variants' --resource=NebiusRedis --cloud-provider=nebius --region=eu-north1 --customer-account-id instance-cg1tthkj0
+
+# Restore a previously deleted instance
+omnistrate-ctl instance create --service=mysql --environment=dev --plan=mysql --version=latest --resource=mySQL --cloud-provider=aws --region=ca-central-1 --instance-id instance-abcd1234
 ```
 
 ### Options
@@ -40,6 +43,7 @@ omnistrate-ctl instance create --service=Nebius --environment=dev --plan='Nebius
       --customer-account-id string   Customer BYOA account onboarding instance ID to inject as the cloud account. Use 'omnistrate-ctl account customer list' or 'omnistrate-ctl account customer describe <instance-id>' to find it.
       --environment string           Environment name
   -h, --help                         help for create
+      --instance-id string           ID of a previously deleted instance to restore
       --param string                 Parameters for the instance deployment
       --param-file string            Json file containing parameters for the instance deployment
       --plan string                  Service plan name

@@ -18,6 +18,9 @@ omnistrate-ctl snapshot restore --service-id service-abcd --environment-id env-1
 
 # Restore using parameters from a file
 omnistrate-ctl snapshot restore --service-id service-abcd --environment-id env-1234 --snapshot-id snapshot-xyz789 --param-file /path/to/params.json
+
+# Restore to the original source instance (preserving its ID and endpoint)
+omnistrate-ctl snapshot restore --service-id service-abcd --environment-id env-1234 --snapshot-id snapshot-xyz789 --restore-to-source
 ```
 
 ### Options
@@ -28,6 +31,7 @@ omnistrate-ctl snapshot restore --service-id service-abcd --environment-id env-1
       --network-type string           Optional network type change for the instance deployment (PUBLIC / INTERNAL)
       --param string                  Parameters override for the instance deployment
       --param-file string             Json file containing parameters override for the instance deployment
+      --restore-to-source             Restore to the original source instance, preserving its ID and endpoint
       --service-id string             The ID of the service (required)
       --snapshot-id string            The ID of the snapshot to restore from (required)
       --tierversion-override string   Override the tier version for the restored instance

@@ -33,7 +33,10 @@ omnistrate-ctl instance create --service=mysql --environment=dev --plan=mysql --
 omnistrate-ctl instance create --service=mysql --environment=dev --plan=mysql --version=latest --resource=mySQL --cloud-provider=aws --region=ca-central-1 --param-file /path/to/params.json --breakpoints writer,reader
 
 # Create a BYOA instance deployment using a customer account onboarding instance
-omnistrate-ctl instance create --service=Nebius --environment=dev --plan='Nebius BYOA Compute Variants' --resource=NebiusRedis --cloud-provider=nebius --region=eu-north1 --customer-account-id instance-cg1tthkj0`
+omnistrate-ctl instance create --service=Nebius --environment=dev --plan='Nebius BYOA Compute Variants' --resource=NebiusRedis --cloud-provider=nebius --region=eu-north1 --customer-account-id instance-cg1tthkj0
+
+# Restore a previously deleted instance
+omnistrate-ctl instance create --service=mysql --environment=dev --plan=mysql --version=latest --resource=mySQL --cloud-provider=aws --region=ca-central-1 --instance-id instance-abcd1234`
 
 	customerAccountConfigIDParamKey = "cloud_provider_account_config_id"
 	serviceModelTypeBYOA            = "BYOA"
@@ -64,6 +67,7 @@ func init() {
 	createCmd.Flags().String("tags", "", "Custom tags to add to the instance deployment (format: key=value,key2=value2)")
 	createCmd.Flags().String("breakpoints", "", "Workflow breakpoint resource IDs or resource keys (comma-separated)")
 	createCmd.Flags().StringP("subscription-id", "", "", "Subscription ID to use for the instance deployment. If not provided, instance deployment will be created in your own subscription.")
+	createCmd.Flags().String("instance-id", "", "ID of a previously deleted instance to restore")
 	createCmd.Flags().Bool("wait", false, "Wait for deployment to complete and show progress")
 
 	if err := createCmd.MarkFlagRequired("service"); err != nil {
@@ -151,6 +155,11 @@ func runCreate(cmd *cobra.Command, args []string) error {
 		utils.PrintError(err)
 		return err
 	}
+	instanceID, err := cmd.Flags().GetString("instance-id")
+	if err != nil {
+		utils.PrintError(err)
+		return err
+	}
 	waitFlag, err := cmd.Flags().GetBool("wait")
 	if err != nil {
 		utils.PrintError(err)
@@ -190,6 +199,9 @@ func runCreate(cmd *cobra.Command, args []string) error {
 	if output != "json" {
 		sm = utils.NewSpinnerManager()
 		msg := "Creating instance..."
+		if instanceID != "" {
+			msg = "Restoring instance..."
+		}
 		spinner = sm.AddSpinner(msg)
 		sm.Start()
 	}
@@ -278,6 +290,9 @@ func runCreate(cmd *cobra.Command, args []string) error {
 	if subscriptionID != "" {
 		request.SubscriptionId = utils.ToPtr(subscriptionID)
 	}
+	if instanceID != "" {
+		request.InstanceId = utils.ToPtr(instanceID)
+	}
 	instance, err := dataaccess.CreateResourceInstance(cmd.Context(), token,
 		res.ConsumptionDescribeServiceOfferingResult.ServiceProviderId,
 		res.ConsumptionDescribeServiceOfferingResult.ServiceURLKey,
@@ -298,7 +313,11 @@ func runCreate(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	utils.HandleSpinnerSuccess(spinner, sm, "Successfully created instance")
+	successMsg := "Successfully created instance"
+	if instanceID != "" {
+		successMsg = "Successfully restored instance"
+	}
+	utils.HandleSpinnerSuccess(spinner, sm, successMsg)
 
 	// Search for the instance
 	searchRes, err := dataaccess.SearchInventory(cmd.Context(), token, fmt.Sprintf("resourceinstance:%s", *instance.Id))
