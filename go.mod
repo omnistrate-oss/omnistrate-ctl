@@ -20,7 +20,7 @@ require (
 	github.com/mitchellh/go-homedir v1.1.0
 	github.com/mitchellh/go-wordwrap v1.0.1
 	github.com/njayp/ophis v1.1.4
-	github.com/omnistrate-oss/omnistrate-sdk-go v0.0.106
+	github.com/omnistrate-oss/omnistrate-sdk-go v0.0.107
 	github.com/pkg/browser v0.0.0-20240102092130-5ac0b6a4141c
 	github.com/pkg/errors v0.9.1
 	github.com/rs/zerolog v1.35.0
@@ -140,5 +140,3 @@ require (
 	sigs.k8s.io/structured-merge-diff/v6 v6.3.0 // indirect
 	sigs.k8s.io/yaml v1.6.0 // indirect
 )
-
-replace github.com/omnistrate-oss/omnistrate-sdk-go => /Volumes/EXT3/Workspace/omnistrate-sdk-go
