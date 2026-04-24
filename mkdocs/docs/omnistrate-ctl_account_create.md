@@ -29,7 +29,6 @@ omnistrate-ctl account create [account-name] --nebius-tenant-id=[tenant-id] --ne
 ### Options
 
 ```
-      --allow-create-new               Allow the platform to create new cloud-native networks (VPCs) in this account on demand
       --aws-account-id string          AWS account ID
       --azure-subscription-id string   Azure subscription ID
       --azure-tenant-id string         Azure tenant ID
@@ -38,7 +37,6 @@ omnistrate-ctl account create [account-name] --nebius-tenant-id=[tenant-id] --ne
   -h, --help                           help for create
       --nebius-bindings-file string    Path to a YAML file describing Nebius bindings
       --nebius-tenant-id string        Nebius tenant ID
-      --private-link                   Enable AWS PrivateLink connectivity for services deployed in this account
       --skip-wait                      Skip waiting for the account to become READY
 ```
 

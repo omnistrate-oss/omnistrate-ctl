@@ -101,6 +101,10 @@ func init() {
 	customerCreateCmd.Args = cobra.NoArgs
 
 	addCloudAccountProviderFlags(customerCreateCmd)
+	// BYOA-customer-only flags: these map to injected input parameters on the
+	// account-config resource and have no effect on the provider create path.
+	customerCreateCmd.Flags().Bool(privateLinkFlag, false, "Enable AWS PrivateLink connectivity for services deployed in this account")
+	customerCreateCmd.Flags().Bool(allowCreateNewFlag, false, "Allow the platform to create new cloud-native networks (VPCs) in this account on demand")
 
 	customerCreateCmd.Flags().String("service", "", "Service name or ID")
 	customerCreateCmd.Flags().String("environment", "", "Environment name or ID")

@@ -215,6 +215,8 @@ func TestBuildCreateAccountOutput(t *testing.T) {
 func TestPrivateLinkFlagParsing(t *testing.T) {
 	cmd := &cobra.Command{}
 	addCloudAccountProviderFlags(cmd)
+	cmd.Flags().Bool(privateLinkFlag, false, "")
+	cmd.Flags().Bool(allowCreateNewFlag, false, "")
 
 	// Default is false
 	require.NoError(t, cmd.Flags().Set(awsAccountIDFlag, "123456789012"))
@@ -230,7 +232,15 @@ func TestPrivateLinkFlagParsing(t *testing.T) {
 }
 
 func TestPrivateLinkFlagRegistered(t *testing.T) {
-	require.NotNil(t, createCmd.Flags().Lookup(privateLinkFlag))
+	// --private-link is BYOA-customer-only; provider create should NOT expose it.
+	assert.Nil(t, createCmd.Flags().Lookup(privateLinkFlag),
+		"--private-link must not be registered on provider account create (it is ignored by CreateCloudAccount)")
+	assert.Nil(t, createCmd.Flags().Lookup(allowCreateNewFlag),
+		"--allow-create-new must not be registered on provider account create")
+
+	// Customer create owns these flags.
+	assert.NotNil(t, customerCreateCmd.Flags().Lookup(privateLinkFlag))
+	assert.NotNil(t, customerCreateCmd.Flags().Lookup(allowCreateNewFlag))
 }
 
 func ptr[T any](v T) *T {

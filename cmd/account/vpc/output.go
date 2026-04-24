@@ -5,16 +5,26 @@ import (
 	"os"
 	"text/tabwriter"
 
-	"github.com/omnistrate-oss/omnistrate-ctl/internal/dataaccess"
+	openapiclientv1 "github.com/omnistrate-oss/omnistrate-sdk-go/v1"
+
 	"github.com/omnistrate-oss/omnistrate-ctl/internal/utils"
 )
 
-func printVPCOutput(output string, result *dataaccess.ListAccountConfigVPCsResult) error {
-	if output == "json" {
+func printVPCOutput(output string, result *openapiclientv1.ListAccountConfigCloudNativeNetworksResult) error {
+	switch output {
+	case "json":
+		return utils.PrintTextTableJsonOutput(output, result)
+	case "table", "":
+		return printVPCTable(result)
+	default:
+		// Delegate "text" and any unknown values to the shared printer so the
+		// repo's "text|table|json" output contract is honored consistently.
 		return utils.PrintTextTableJsonOutput(output, result)
 	}
+}
 
-	if len(result.CloudNativeNetworks) == 0 {
+func printVPCTable(result *openapiclientv1.ListAccountConfigCloudNativeNetworksResult) error {
+	if result == nil || len(result.CloudNativeNetworks) == 0 {
 		fmt.Println("No VPCs found.")
 		return nil
 	}
@@ -25,10 +35,10 @@ func printVPCOutput(output string, result *dataaccess.ListAccountConfigVPCsResul
 
 	for _, vpc := range result.CloudNativeNetworks {
 		fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%d\t%d\n",
-			vpc.CloudNativeNetworkID,
+			vpc.CloudNativeNetworkId,
 			vpc.Region,
-			vpc.Name,
-			vpc.CIDR,
+			derefString(vpc.Name),
+			derefString(vpc.Cidr),
 			vpc.Status,
 			len(vpc.PrivateSubnets),
 			len(vpc.PublicSubnets),
@@ -36,4 +46,11 @@ func printVPCOutput(output string, result *dataaccess.ListAccountConfigVPCsResul
 	}
 
 	return w.Flush()
+}
+
+func derefString(s *string) string {
+	if s == nil {
+		return ""
+	}
+	return *s
 }
