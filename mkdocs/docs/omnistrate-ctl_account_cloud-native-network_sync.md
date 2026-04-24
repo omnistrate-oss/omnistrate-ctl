@@ -20,7 +20,8 @@ omnistrate-ctl account cloud-native-network sync [account-id]
 ### Options
 
 ```
-  -h, --help   help for sync
+  -h, --help              help for sync
+      --regions strings   Cloud regions to discover networks in (comma-separated). Defaults to all regions from the service plan.
 ```
 
 ### Options inherited from parent commands
