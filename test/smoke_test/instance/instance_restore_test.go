@@ -182,7 +182,7 @@ func TestSnapshotRestoreToSource(t *testing.T) {
 
 	// Restore from snapshot with --restore-to-source
 	log.Debug().Msgf("Restoring from snapshot %s with --restore-to-source...", snapshotID)
-	restoreWithRetry(t, ctx, func() error {
+	restoreWithRetry(t, func() error {
 		cmd.RootCmd.SetArgs([]string{"snapshot", "restore",
 			"--service-id", serviceID,
 			"--environment-id", environmentID,
@@ -282,7 +282,7 @@ func TestInstanceRestoreToSource(t *testing.T) {
 
 	// Restore using instance restore with --restore-to-source
 	log.Debug().Msgf("Restoring instance %s from snapshot %s with --restore-to-source...", originalInstanceID, snapshotID)
-	restoreWithRetry(t, ctx, func() error {
+	restoreWithRetry(t, func() error {
 		cmd.RootCmd.SetArgs([]string{"instance", "restore", originalInstanceID,
 			"--snapshot-id", snapshotID,
 			"--restore-to-source",
@@ -382,7 +382,7 @@ func waitForSnapshotCompletion(t *testing.T, ctx context.Context, token, service
 
 // restoreWithRetry retries a restore operation to handle eventual consistency
 // where a snapshot may not be immediately queryable after instance deletion.
-func restoreWithRetry(t *testing.T, ctx context.Context, restoreFn func() error) {
+func restoreWithRetry(t *testing.T, restoreFn func() error) {
 	t.Helper()
 	timeout := 3 * time.Minute
 	b := &backoff.ExponentialBackOff{
