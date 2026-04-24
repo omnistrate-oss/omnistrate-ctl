@@ -136,8 +136,8 @@ func DeleteSnapshot(ctx context.Context, token, serviceID, environmentID, snapsh
 	return
 }
 
-// RestoreSnapshot restores a snapshot to a new instance (no instance ID required).
-func RestoreSnapshot(ctx context.Context, token, serviceID, environmentID, snapshotID string, formattedParams map[string]any, tierVersionOverride string, networkType string) (res *openapiclientfleet.FleetRestoreResourceInstanceResult, err error) {
+// RestoreSnapshot restores a snapshot either to a new instance or, when restoreToSource is true, to the original source instance.
+func RestoreSnapshot(ctx context.Context, token, serviceID, environmentID, snapshotID string, formattedParams map[string]any, tierVersionOverride string, networkType string, restoreToSource bool) (res *openapiclientfleet.FleetRestoreResourceInstanceResult, err error) {
 	ctxWithToken := context.WithValue(ctx, openapiclientfleet.ContextAccessToken, token)
 	apiClient := getFleetClient()
 
@@ -152,6 +152,10 @@ func RestoreSnapshot(ctx context.Context, token, serviceID, environmentID, snaps
 
 	if tierVersionOverride != "" {
 		reqBody.ProductTierVersionOverride = &tierVersionOverride
+	}
+
+	if restoreToSource {
+		reqBody.RestoreToSourceInstance = utils.ToPtr(true)
 	}
 
 	req := apiClient.InventoryApiAPI.InventoryApiRestoreResourceInstanceFromSnapshot(

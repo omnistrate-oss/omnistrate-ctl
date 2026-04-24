@@ -1,13 +1,13 @@
 ## omnistrate-ctl instance create
 
-Create an instance deployment
+Create or restore an instance deployment
 
 ### Synopsis
 
-This command helps you create an instance deployment for your service.
+This command helps you create an instance deployment for your service. When --instance-id is provided, it restores a previously deleted instance using the specified ID, preserving the original instance ID and endpoint.
 
 ```
-omnistrate-ctl instance create --service=[service] --environment=[environment] --plan=[plan] --version=[version] --resource=[resource] --cloud-provider=[aws|gcp|azure|nebius] --region=[region] [--param=param] [--param-file=file-path] [--customer-account-id=instance-id] [--tags key=value,key2=value2] [--breakpoints id-or-key,id-or-key] [flags]
+omnistrate-ctl instance create --service=[service] --environment=[environment] --plan=[plan] --version=[version] --resource=[resource] --cloud-provider=[aws|gcp|azure|nebius] --region=[region] [--param=param] [--param-file=file-path] [--instance-id=id] [--customer-account-id=account-instance-id] [--tags key=value,key2=value2] [--breakpoints id-or-key,id-or-key] [flags]
 ```
 
 ### Examples
@@ -30,6 +30,9 @@ omnistrate-ctl instance create --service=mysql --environment=dev --plan=mysql --
 
 # Create a BYOA instance deployment using a customer account onboarding instance
 omnistrate-ctl instance create --service=Nebius --environment=dev --plan='Nebius BYOA Compute Variants' --resource=NebiusRedis --cloud-provider=nebius --region=eu-north1 --customer-account-id instance-cg1tthkj0
+
+# Restore a previously deleted instance
+omnistrate-ctl instance create --service=mysql --environment=dev --plan=mysql --version=latest --resource=mySQL --cloud-provider=aws --region=ca-central-1 --instance-id instance-abcd1234
 ```
 
 ### Options
@@ -40,6 +43,7 @@ omnistrate-ctl instance create --service=Nebius --environment=dev --plan='Nebius
       --customer-account-id string   Customer BYOA account onboarding instance ID to inject as the cloud account. Use 'omnistrate-ctl account customer list' or 'omnistrate-ctl account customer describe <instance-id>' to find it.
       --environment string           Environment name
   -h, --help                         help for create
+      --instance-id string           ID of a previously deleted instance to restore
       --param string                 Parameters for the instance deployment
       --param-file string            Json file containing parameters for the instance deployment
       --plan string                  Service plan name
