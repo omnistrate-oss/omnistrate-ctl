@@ -25,11 +25,16 @@ var syncCmd = &cobra.Command{
 	SilenceUsage: true,
 }
 
+func init() {
+	syncCmd.Flags().StringSlice("regions", nil, "Cloud regions to discover networks in (comma-separated). Defaults to all regions from the service plan.")
+}
+
 func runSync(cmd *cobra.Command, args []string) error {
 	defer config.CleanupArgsAndFlags(cmd, &args)
 
 	accountID := args[0]
 	output, _ := cmd.Flags().GetString("output")
+	regions, _ := cmd.Flags().GetStringSlice("regions")
 
 	token, err := common.GetTokenWithLogin()
 	if err != nil {
@@ -45,7 +50,7 @@ func runSync(cmd *cobra.Command, args []string) error {
 		sm.Start()
 	}
 
-	result, err := dataaccess.SyncAccountConfigCloudNativeNetworks(cmd.Context(), token, accountID)
+	result, err := dataaccess.SyncAccountConfigCloudNativeNetworks(cmd.Context(), token, accountID, regions)
 	if err != nil {
 		utils.HandleSpinnerError(spinner, sm, err)
 		return err
