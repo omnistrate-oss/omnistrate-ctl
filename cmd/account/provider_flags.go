@@ -14,7 +14,7 @@ const (
 	nebiusBindingsFileFlag  = "nebius-bindings-file"
 	skipWaitFlag            = "skip-wait"
 	privateLinkFlag         = "private-link"
-	allowCreateNewFlag      = "allow-create-new"
+	allowCreateNewFlag      = "allow-create-new-cloud-native-network"
 )
 
 func addCloudAccountProviderFlags(cmd *cobra.Command) {
