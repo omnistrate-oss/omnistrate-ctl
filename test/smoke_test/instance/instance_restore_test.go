@@ -3,9 +3,11 @@ package instance
 import (
 	"context"
 	"fmt"
+	"strings"
 	"testing"
 	"time"
 
+	"github.com/cenkalti/backoff/v4"
 	"github.com/google/uuid"
 	"github.com/rs/zerolog/log"
 
@@ -179,15 +181,16 @@ func TestSnapshotRestoreToSource(t *testing.T) {
 	waitForInstanceDeletion(t, ctx, originalInstanceID)
 
 	// Restore from snapshot with --restore-to-source
-	log.Debug().Msg("Restoring from snapshot with --restore-to-source...")
-	cmd.RootCmd.SetArgs([]string{"snapshot", "restore",
-		"--service-id", serviceID,
-		"--environment-id", environmentID,
-		"--snapshot-id", snapshotID,
-		"--restore-to-source",
+	log.Debug().Msgf("Restoring from snapshot %s with --restore-to-source...", snapshotID)
+	restoreWithRetry(t, ctx, func() error {
+		cmd.RootCmd.SetArgs([]string{"snapshot", "restore",
+			"--service-id", serviceID,
+			"--environment-id", environmentID,
+			"--snapshot-id", snapshotID,
+			"--restore-to-source",
+		})
+		return cmd.RootCmd.ExecuteContext(ctx)
 	})
-	err = cmd.RootCmd.ExecuteContext(ctx)
-	require.NoError(t, err)
 
 	// Wait for restored instance to reach RUNNING
 	log.Debug().Msg("Waiting for restored instance to reach RUNNING...")
@@ -278,13 +281,14 @@ func TestInstanceRestoreToSource(t *testing.T) {
 	waitForInstanceDeletion(t, ctx, originalInstanceID)
 
 	// Restore using instance restore with --restore-to-source
-	log.Debug().Msg("Restoring with instance restore --restore-to-source...")
-	cmd.RootCmd.SetArgs([]string{"instance", "restore", originalInstanceID,
-		"--snapshot-id", snapshotID,
-		"--restore-to-source",
+	log.Debug().Msgf("Restoring instance %s from snapshot %s with --restore-to-source...", originalInstanceID, snapshotID)
+	restoreWithRetry(t, ctx, func() error {
+		cmd.RootCmd.SetArgs([]string{"instance", "restore", originalInstanceID,
+			"--snapshot-id", snapshotID,
+			"--restore-to-source",
+		})
+		return cmd.RootCmd.ExecuteContext(ctx)
 	})
-	err = cmd.RootCmd.ExecuteContext(ctx)
-	require.NoError(t, err)
 
 	// Wait for restored instance to reach RUNNING
 	log.Debug().Msg("Waiting for restored instance to reach RUNNING...")
@@ -301,36 +305,112 @@ func TestInstanceRestoreToSource(t *testing.T) {
 	_ = cmd.RootCmd.ExecuteContext(ctx)
 }
 
-// waitForInstanceDeletion waits until the instance is no longer found via describe.
+// waitForInstanceDeletion waits until the instance is no longer found via describe,
+// using exponential backoff consistent with testutils.WaitForInstanceToReachStatus.
 func waitForInstanceDeletion(t *testing.T, ctx context.Context, instanceID string) {
 	t.Helper()
-	for i := 0; i < 30; i++ {
+	timeout := 15 * time.Minute
+	b := &backoff.ExponentialBackOff{
+		InitialInterval:     30 * time.Second,
+		RandomizationFactor: backoff.DefaultRandomizationFactor,
+		Multiplier:          backoff.DefaultMultiplier,
+		MaxInterval:         120 * time.Second,
+		MaxElapsedTime:      timeout,
+		Stop:                backoff.Stop,
+		Clock:               backoff.SystemClock,
+	}
+	b.Reset()
+	ticker := backoff.NewTicker(b)
+
+	for range ticker.C {
 		cmd.RootCmd.SetArgs([]string{"instance", "describe", instanceID})
 		err := cmd.RootCmd.ExecuteContext(ctx)
 		if err != nil {
-			return // Instance no longer found
+			if strings.Contains(err.Error(), "not found") {
+				ticker.Stop()
+				return
+			}
+			// Transient error (network, auth, etc.) — keep retrying
+			log.Debug().Msgf("Transient error while waiting for deletion of %s: %v", instanceID, err)
+			continue
 		}
-		time.Sleep(60 * time.Second)
+		log.Debug().Msgf("Instance %s still exists, waiting for deletion...", instanceID)
 	}
-	t.Fatalf("instance %s was not deleted within the timeout", instanceID)
+
+	t.Fatalf("instance %s was not deleted within %s", instanceID, timeout)
 }
 
-// waitForSnapshotCompletion polls snapshot status until it reaches "Complete".
+// waitForSnapshotCompletion polls snapshot status until it reaches "Complete",
+// using exponential backoff and tolerating transient errors.
 func waitForSnapshotCompletion(t *testing.T, ctx context.Context, token, serviceID, environmentID, instanceID, snapshotID string) {
 	t.Helper()
-	for i := 0; i < 30; i++ {
+	timeout := 10 * time.Minute
+	b := &backoff.ExponentialBackOff{
+		InitialInterval:     15 * time.Second,
+		RandomizationFactor: backoff.DefaultRandomizationFactor,
+		Multiplier:          backoff.DefaultMultiplier,
+		MaxInterval:         60 * time.Second,
+		MaxElapsedTime:      timeout,
+		Stop:                backoff.Stop,
+		Clock:               backoff.SystemClock,
+	}
+	b.Reset()
+	ticker := backoff.NewTicker(b)
+
+	for range ticker.C {
 		result, err := dataaccess.DescribeResourceInstanceSnapshot(ctx, token, serviceID, environmentID, instanceID, snapshotID)
-		require.NoError(t, err)
+		if err != nil {
+			// Transient error — keep retrying
+			log.Debug().Msgf("Transient error polling snapshot %s: %v", snapshotID, err)
+			continue
+		}
 
 		status := result.GetStatus()
 		log.Debug().Msgf("Snapshot %s status: %s", snapshotID, status)
 		if status == "Complete" {
+			ticker.Stop()
 			return
 		}
 		if status == "Failed" {
+			ticker.Stop()
 			t.Fatalf("snapshot %s failed", snapshotID)
 		}
-		time.Sleep(30 * time.Second)
 	}
-	t.Fatalf("snapshot %s did not complete within the timeout", snapshotID)
+
+	t.Fatalf("snapshot %s did not complete within %s", snapshotID, timeout)
+}
+
+// restoreWithRetry retries a restore operation to handle eventual consistency
+// where a snapshot may not be immediately queryable after instance deletion.
+func restoreWithRetry(t *testing.T, ctx context.Context, restoreFn func() error) {
+	t.Helper()
+	timeout := 3 * time.Minute
+	b := &backoff.ExponentialBackOff{
+		InitialInterval:     10 * time.Second,
+		RandomizationFactor: backoff.DefaultRandomizationFactor,
+		Multiplier:          backoff.DefaultMultiplier,
+		MaxInterval:         30 * time.Second,
+		MaxElapsedTime:      timeout,
+		Stop:                backoff.Stop,
+		Clock:               backoff.SystemClock,
+	}
+	b.Reset()
+	ticker := backoff.NewTicker(b)
+
+	var lastErr error
+	for range ticker.C {
+		lastErr = restoreFn()
+		if lastErr == nil {
+			ticker.Stop()
+			return
+		}
+		// Only retry on "snapshot not found" errors (eventual consistency)
+		if !strings.Contains(lastErr.Error(), "not found") {
+			ticker.Stop()
+			break
+		}
+		log.Debug().Msgf("Restore returned transient 'not found', retrying: %v", lastErr)
+	}
+
+	require.NoError(t, lastErr, "restore failed after retries")
 }
