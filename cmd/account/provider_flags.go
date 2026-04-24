@@ -26,8 +26,6 @@ func addCloudAccountProviderFlags(cmd *cobra.Command) {
 	cmd.Flags().String(nebiusTenantIDFlag, "", "Nebius tenant ID")
 	cmd.Flags().String(nebiusBindingsFileFlag, "", "Path to a YAML file describing Nebius bindings")
 	cmd.Flags().Bool(skipWaitFlag, false, "Skip waiting for the account to become READY")
-	cmd.Flags().Bool(privateLinkFlag, false, "Enable AWS PrivateLink connectivity for services deployed in this account")
-	cmd.Flags().Bool(allowCreateNewFlag, false, "Allow the platform to create new cloud-native networks (VPCs) in this account on demand")
 
 	cmd.MarkFlagsOneRequired(
 		awsAccountIDFlag,
@@ -49,8 +47,6 @@ func cloudAccountParamsFromFlags(cmd *cobra.Command, name string) (CloudAccountP
 	azureTenantID, _ := cmd.Flags().GetString(azureTenantIDFlag)
 	nebiusTenantID, _ := cmd.Flags().GetString(nebiusTenantIDFlag)
 	nebiusBindingsFile, _ := cmd.Flags().GetString(nebiusBindingsFileFlag)
-	privateLink, _ := cmd.Flags().GetBool(privateLinkFlag)
-	allowCreateNew, _ := cmd.Flags().GetBool(allowCreateNewFlag)
 
 	params := CloudAccountParams{
 		Name:                name,
@@ -60,8 +56,19 @@ func cloudAccountParamsFromFlags(cmd *cobra.Command, name string) (CloudAccountP
 		AzureSubscriptionID: azureSubscriptionID,
 		AzureTenantID:       azureTenantID,
 		NebiusTenantID:      nebiusTenantID,
-		PrivateLink:         privateLink,
-		AllowCreateNew:      allowCreateNew,
+	}
+
+	// --private-link / --allow-create-new are only meaningful for the BYOA
+	// customer onboarding flow (they map to injected input parameters on the
+	// account-config resource). They are registered conditionally by the
+	// caller, so only read them when present on the command.
+	if cmd.Flags().Lookup(privateLinkFlag) != nil {
+		privateLink, _ := cmd.Flags().GetBool(privateLinkFlag)
+		params.PrivateLink = privateLink
+	}
+	if cmd.Flags().Lookup(allowCreateNewFlag) != nil {
+		allowCreateNew, _ := cmd.Flags().GetBool(allowCreateNewFlag)
+		params.AllowCreateNew = allowCreateNew
 	}
 
 	if nebiusBindingsFile != "" {
