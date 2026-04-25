@@ -1,27 +1,31 @@
 ## omnistrate-ctl account cloud-native-network import
 
-Import an AVAILABLE cloud-native network for deployments
+Import one or more AVAILABLE cloud-native networks for deployments
 
 ### Synopsis
 
-Imports a discovered cloud-native network, changing its status from AVAILABLE to READY so it can be used for service deployments.
+Imports discovered cloud-native networks, changing their status from AVAILABLE to READY so they can be used for service deployments. Use --network-id for a single network or --network-ids for bulk import.
 
 ```
-omnistrate-ctl account cloud-native-network import [account-id] --network-id=[network-id] [flags]
+omnistrate-ctl account cloud-native-network import [account-id] [flags]
 ```
 
 ### Examples
 
 ```
-# Import a cloud-native network to make it available for deployments
+# Import a single cloud-native network
 omnistrate-ctl account cloud-native-network import [account-id] --network-id=[network-id]
+
+# Import multiple cloud-native networks at once
+omnistrate-ctl account cloud-native-network import [account-id] --network-ids=vpc-abc123,vpc-def456
 ```
 
 ### Options
 
 ```
-  -h, --help                help for import
-      --network-id string   The cloud-native network ID to import (required)
+  -h, --help                 help for import
+      --network-id string    The cloud-native network ID to import
+      --network-ids string   Comma-separated list of cloud-native network IDs to import
 ```
 
 ### Options inherited from parent commands

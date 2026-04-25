@@ -17,8 +17,7 @@ func init() {
 	Cmd.AddCommand(syncCmd)
 	Cmd.AddCommand(listCmd)
 	Cmd.AddCommand(importCmd)
-	Cmd.AddCommand(unimportCmd)
-	Cmd.AddCommand(bulkImportCmd)
+	Cmd.AddCommand(removeCmd)
 }
 
 func run(cmd *cobra.Command, args []string) {
