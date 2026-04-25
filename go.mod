@@ -140,3 +140,6 @@ require (
 	sigs.k8s.io/structured-merge-diff/v6 v6.3.0 // indirect
 	sigs.k8s.io/yaml v1.6.0 // indirect
 )
+
+// TODO: drop after SDK PR https://github.com/omnistrate-oss/omnistrate-sdk-go/pull/107 is released as v0.0.108.
+replace github.com/omnistrate-oss/omnistrate-sdk-go => /Volumes/EXT3/Workspace/omnistrate-sdk-go
