@@ -8,7 +8,7 @@ import (
 	"io"
 	"net/http"
 
-	openapiclientv1 "github.com/omnistrate-oss/omnistrate-sdk-go/v1"
+	openapiclientfleet "github.com/omnistrate-oss/omnistrate-sdk-go/fleet"
 
 	"github.com/omnistrate-oss/omnistrate-ctl/internal/config"
 )
@@ -27,7 +27,7 @@ func cnnFleetURL(accountConfigID string, suffix ...string) string {
 	return base
 }
 
-func doCNNRequest(ctx context.Context, token, method, url string, body any) (*openapiclientv1.ListAccountConfigCloudNativeNetworksResult, error) {
+func doCNNRequest(ctx context.Context, token, method, url string, body any) (*openapiclientfleet.FleetListAccountConfigCloudNativeNetworksResult, error) {
 	var reqBody io.Reader
 	if body != nil {
 		b, err := json.Marshal(body)
@@ -60,7 +60,7 @@ func doCNNRequest(ctx context.Context, token, method, url string, body any) (*op
 		return nil, fmt.Errorf("cloud-native-network API returned %d: %s", resp.StatusCode, string(respBody))
 	}
 
-	var result openapiclientv1.ListAccountConfigCloudNativeNetworksResult
+	var result openapiclientfleet.FleetListAccountConfigCloudNativeNetworksResult
 	if len(respBody) > 0 {
 		if err := json.Unmarshal(respBody, &result); err != nil {
 			return nil, fmt.Errorf("failed to decode response: %w (body: %s)", err, string(respBody))
@@ -71,31 +71,42 @@ func doCNNRequest(ctx context.Context, token, method, url string, body any) (*op
 
 // SyncAccountConfigCloudNativeNetworks triggers cloud-native network discovery for an account configuration.
 // Optional regions narrow the discovery; when empty the platform uses all regions from the service plan.
-func SyncAccountConfigCloudNativeNetworks(ctx context.Context, token, accountConfigID string, regions []string) (*openapiclientv1.ListAccountConfigCloudNativeNetworksResult, error) {
+// The request body uses the cloudNativeNetworks[{region, cloudNativeNetworkId?}] shape so individual VPC
+// IDs can be re-validated. When only regions are passed we send a target per region with cloudNativeNetworkId
+// omitted, which sweeps every VPC in that region.
+func SyncAccountConfigCloudNativeNetworks(ctx context.Context, token, accountConfigID string, regions []string) (*openapiclientfleet.FleetListAccountConfigCloudNativeNetworksResult, error) {
+	type target struct {
+		Region               string `json:"region"`
+		CloudNativeNetworkID string `json:"cloudNativeNetworkId,omitempty"`
+	}
 	body := map[string]any{}
 	if len(regions) > 0 {
-		body["regions"] = regions
+		targets := make([]target, len(regions))
+		for i, r := range regions {
+			targets[i] = target{Region: r}
+		}
+		body["cloudNativeNetworks"] = targets
 	}
 	return doCNNRequest(ctx, token, http.MethodPost, cnnFleetURL(accountConfigID, "sync"), body)
 }
 
 // ListAccountConfigCloudNativeNetworks lists registered cloud-native networks for an account configuration.
-func ListAccountConfigCloudNativeNetworks(ctx context.Context, token, accountConfigID string) (*openapiclientv1.ListAccountConfigCloudNativeNetworksResult, error) {
+func ListAccountConfigCloudNativeNetworks(ctx context.Context, token, accountConfigID string) (*openapiclientfleet.FleetListAccountConfigCloudNativeNetworksResult, error) {
 	return doCNNRequest(ctx, token, http.MethodGet, cnnFleetURL(accountConfigID), nil)
 }
 
 // ImportAccountConfigCloudNativeNetwork marks a cloud-native network as READY for deployments.
-func ImportAccountConfigCloudNativeNetwork(ctx context.Context, token, accountConfigID, networkID string) (*openapiclientv1.ListAccountConfigCloudNativeNetworksResult, error) {
+func ImportAccountConfigCloudNativeNetwork(ctx context.Context, token, accountConfigID, networkID string) (*openapiclientfleet.FleetListAccountConfigCloudNativeNetworksResult, error) {
 	return doCNNRequest(ctx, token, http.MethodPost, cnnFleetURL(accountConfigID, networkID, "import"), nil)
 }
 
 // UnimportAccountConfigCloudNativeNetwork reverts a cloud-native network back to AVAILABLE.
-func UnimportAccountConfigCloudNativeNetwork(ctx context.Context, token, accountConfigID, networkID string) (*openapiclientv1.ListAccountConfigCloudNativeNetworksResult, error) {
+func UnimportAccountConfigCloudNativeNetwork(ctx context.Context, token, accountConfigID, networkID string) (*openapiclientfleet.FleetListAccountConfigCloudNativeNetworksResult, error) {
 	return doCNNRequest(ctx, token, http.MethodPost, cnnFleetURL(accountConfigID, networkID, "unimport"), nil)
 }
 
 // BulkImportAccountConfigCloudNativeNetworks imports multiple cloud-native networks in a single request.
-func BulkImportAccountConfigCloudNativeNetworks(ctx context.Context, token, accountConfigID string, networkIDs []string) (*openapiclientv1.ListAccountConfigCloudNativeNetworksResult, error) {
+func BulkImportAccountConfigCloudNativeNetworks(ctx context.Context, token, accountConfigID string, networkIDs []string) (*openapiclientfleet.FleetListAccountConfigCloudNativeNetworksResult, error) {
 	type op struct {
 		CloudNativeNetworkID string `json:"cloudNativeNetworkId"`
 		Import               bool   `json:"import"`
