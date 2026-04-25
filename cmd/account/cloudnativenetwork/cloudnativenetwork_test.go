@@ -66,20 +66,19 @@ func TestCloudNativeNetworkCommandStructure(t *testing.T) {
 	assert.True(t, subCmds["sync"], "expected sync subcommand")
 	assert.True(t, subCmds["list"], "expected list subcommand")
 	assert.True(t, subCmds["import"], "expected import subcommand")
-	assert.True(t, subCmds["unimport"], "expected unimport subcommand")
-	assert.True(t, subCmds["bulk-import"], "expected bulk-import subcommand")
+	assert.True(t, subCmds["remove"], "expected remove subcommand")
 }
 
 func TestImportCommandRequiresNetworkIDFlag(t *testing.T) {
 	require.NotNil(t, importCmd.Flags().Lookup("network-id"))
 }
 
-func TestUnimportCommandRequiresNetworkIDFlag(t *testing.T) {
-	require.NotNil(t, unimportCmd.Flags().Lookup("network-id"))
+func TestRemoveCommandRequiresNetworkIDFlag(t *testing.T) {
+	require.NotNil(t, removeCmd.Flags().Lookup("network-id"))
 }
 
-func TestBulkImportCommandRequiresNetworkIDsFlag(t *testing.T) {
-	require.NotNil(t, bulkImportCmd.Flags().Lookup("network-ids"))
+func TestImportCommandAcceptsNetworkIDsFlag(t *testing.T) {
+	require.NotNil(t, importCmd.Flags().Lookup("network-ids"))
 }
 
 func TestSyncCommandRequiresExactlyOneArg(t *testing.T) {

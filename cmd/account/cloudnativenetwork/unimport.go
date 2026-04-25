@@ -9,26 +9,26 @@ import (
 )
 
 const (
-	unimportExample = `# Unimport a cloud-native network (revert to AVAILABLE)
-omnistrate-ctl account cloud-native-network unimport [account-id] --network-id=[network-id]`
+	removeExample = `# Remove a cloud-native network (revert to AVAILABLE)
+omnistrate-ctl account cloud-native-network remove [account-id] --network-id=[network-id]`
 )
 
-var unimportCmd = &cobra.Command{
-	Use:          "unimport [account-id] --network-id=[network-id]",
-	Short:        "Unimport a cloud-native network (revert to AVAILABLE)",
+var removeCmd = &cobra.Command{
+	Use:          "remove [account-id] --network-id=[network-id]",
+	Short:        "Remove an imported cloud-native network (revert to AVAILABLE)",
 	Long:         `Reverts a previously imported cloud-native network from READY back to AVAILABLE status, removing it from the deployment target pool.`,
-	Example:      unimportExample,
+	Example:      removeExample,
 	Args:         cobra.ExactArgs(1),
-	RunE:         runUnimport,
+	RunE:         runRemove,
 	SilenceUsage: true,
 }
 
 func init() {
-	unimportCmd.Flags().String("network-id", "", "The cloud-native network ID to unimport (required)")
-	_ = unimportCmd.MarkFlagRequired("network-id")
+	removeCmd.Flags().String("network-id", "", "The cloud-native network ID to remove (required)")
+	_ = removeCmd.MarkFlagRequired("network-id")
 }
 
-func runUnimport(cmd *cobra.Command, args []string) error {
+func runRemove(cmd *cobra.Command, args []string) error {
 	defer config.CleanupArgsAndFlags(cmd, &args)
 
 	accountID := args[0]
@@ -45,7 +45,7 @@ func runUnimport(cmd *cobra.Command, args []string) error {
 	var spinner *utils.Spinner
 	if output != "json" {
 		sm = utils.NewSpinnerManager()
-		spinner = sm.AddSpinner("Unimporting cloud-native network...")
+		spinner = sm.AddSpinner("Removing cloud-native network...")
 		sm.Start()
 	}
 
@@ -55,7 +55,7 @@ func runUnimport(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	utils.HandleSpinnerSuccess(spinner, sm, "Cloud-native network unimported successfully")
+	utils.HandleSpinnerSuccess(spinner, sm, "Cloud-native network removed successfully")
 
 	return printCloudNativeNetworkOutput(output, result)
 }

@@ -26,9 +26,8 @@ omnistrate-ctl account cloud-native-network [operation] [flags]
 ### SEE ALSO
 
 * [omnistrate-ctl account](omnistrate-ctl_account.md)	 - Manage your Cloud Provider Accounts
-* [omnistrate-ctl account cloud-native-network bulk-import](omnistrate-ctl_account_cloud-native-network_bulk-import.md)	 - Import multiple cloud-native networks at once
-* [omnistrate-ctl account cloud-native-network import](omnistrate-ctl_account_cloud-native-network_import.md)	 - Import an AVAILABLE cloud-native network for deployments
+* [omnistrate-ctl account cloud-native-network import](omnistrate-ctl_account_cloud-native-network_import.md)	 - Import one or more AVAILABLE cloud-native networks for deployments
 * [omnistrate-ctl account cloud-native-network list](omnistrate-ctl_account_cloud-native-network_list.md)	 - List cloud-native networks for a BYOA Cloud Provider Account
+* [omnistrate-ctl account cloud-native-network remove](omnistrate-ctl_account_cloud-native-network_remove.md)	 - Remove an imported cloud-native network (revert to AVAILABLE)
 * [omnistrate-ctl account cloud-native-network sync](omnistrate-ctl_account_cloud-native-network_sync.md)	 - Discover and sync cloud-native networks from the cloud provider
-* [omnistrate-ctl account cloud-native-network unimport](omnistrate-ctl_account_cloud-native-network_unimport.md)	 - Unimport a cloud-native network (revert to AVAILABLE)
 

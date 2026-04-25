@@ -7,11 +7,15 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 
 	openapiclientfleet "github.com/omnistrate-oss/omnistrate-sdk-go/fleet"
 
 	"github.com/omnistrate-oss/omnistrate-ctl/internal/config"
 )
+
+// CloudNativeNetworkResult is a convenience alias for the fleet response type.
+type CloudNativeNetworkResult = openapiclientfleet.FleetListAccountConfigCloudNativeNetworksResult
 
 // The cloud-native-network endpoints are exposed by consumption-service under the
 // fleet path so that ingress routes them correctly. The v1 SDK currently only
@@ -20,9 +24,9 @@ import (
 // openapiclientv1.ListAccountConfigCloudNativeNetworksResult.
 func cnnFleetURL(accountConfigID string, suffix ...string) string {
 	base := fmt.Sprintf("%s://%s/2022-09-01-00/fleet/account-config/%s/cloud-native-networks",
-		config.GetHostScheme(), config.GetHost(), accountConfigID)
+		config.GetHostScheme(), config.GetHost(), url.PathEscape(accountConfigID))
 	for _, s := range suffix {
-		base += "/" + s
+		base += "/" + url.PathEscape(s)
 	}
 	return base
 }
