@@ -13,6 +13,8 @@ const (
 	nebiusTenantIDFlag      = "nebius-tenant-id"
 	nebiusBindingsFileFlag  = "nebius-bindings-file"
 	skipWaitFlag            = "skip-wait"
+	privateLinkFlag         = "private-link"
+	allowCreateNewFlag      = "allow-create-new-cloud-native-network"
 )
 
 func addCloudAccountProviderFlags(cmd *cobra.Command) {
@@ -54,6 +56,19 @@ func cloudAccountParamsFromFlags(cmd *cobra.Command, name string) (CloudAccountP
 		AzureSubscriptionID: azureSubscriptionID,
 		AzureTenantID:       azureTenantID,
 		NebiusTenantID:      nebiusTenantID,
+	}
+
+	// --private-link / --allow-create-new are only meaningful for the BYOA
+	// customer onboarding flow (they map to injected input parameters on the
+	// account-config resource). They are registered conditionally by the
+	// caller, so only read them when present on the command.
+	if cmd.Flags().Lookup(privateLinkFlag) != nil {
+		privateLink, _ := cmd.Flags().GetBool(privateLinkFlag)
+		params.PrivateLink = privateLink
+	}
+	if cmd.Flags().Lookup(allowCreateNewFlag) != nil {
+		allowCreateNew, _ := cmd.Flags().GetBool(allowCreateNewFlag)
+		params.AllowCreateNew = allowCreateNew
 	}
 
 	if nebiusBindingsFile != "" {

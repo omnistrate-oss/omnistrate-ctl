@@ -1,0 +1,62 @@
+package cloudnativenetwork
+
+import (
+	"fmt"
+
+	"github.com/omnistrate-oss/omnistrate-ctl/cmd/common"
+	"github.com/omnistrate-oss/omnistrate-ctl/internal/config"
+	"github.com/omnistrate-oss/omnistrate-ctl/internal/dataaccess"
+	"github.com/omnistrate-oss/omnistrate-ctl/internal/utils"
+	"github.com/spf13/cobra"
+)
+
+const (
+	syncExample = `# Sync cloud-native networks for an account
+omnistrate-ctl account cloud-native-network sync [account-id]`
+)
+
+var syncCmd = &cobra.Command{
+	Use:          "sync [account-id]",
+	Short:        "Discover and sync cloud-native networks from the cloud provider",
+	Long:         `Triggers cloud-native network discovery for a BYOA cloud provider account. Discovered networks will appear with AVAILABLE status and can then be imported.`,
+	Example:      syncExample,
+	Args:         cobra.ExactArgs(1),
+	RunE:         runSync,
+	SilenceUsage: true,
+}
+
+func init() {
+	syncCmd.Flags().StringSlice("regions", nil, "Cloud regions to discover networks in (comma-separated). Defaults to all regions from the service plan.")
+}
+
+func runSync(cmd *cobra.Command, args []string) error {
+	defer config.CleanupArgsAndFlags(cmd, &args)
+
+	accountID := args[0]
+	output, _ := cmd.Flags().GetString("output")
+	regions, _ := cmd.Flags().GetStringSlice("regions")
+
+	token, err := common.GetTokenWithLogin()
+	if err != nil {
+		utils.PrintError(err)
+		return err
+	}
+
+	var sm utils.SpinnerManager
+	var spinner *utils.Spinner
+	if output != "json" {
+		sm = utils.NewSpinnerManager()
+		spinner = sm.AddSpinner("Syncing cloud-native networks...")
+		sm.Start()
+	}
+
+	result, err := dataaccess.SyncAccountConfigCloudNativeNetworks(cmd.Context(), token, accountID, regions)
+	if err != nil {
+		utils.HandleSpinnerError(spinner, sm, err)
+		return err
+	}
+
+	utils.HandleSpinnerSuccess(spinner, sm, fmt.Sprintf("Discovered %d cloud-native network(s)", len(result.CloudNativeNetworks)))
+
+	return printCloudNativeNetworkOutput(output, result)
+}

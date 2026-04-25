@@ -23,3 +23,4 @@ mcp-tools.json
 *.tmp
 results.json
 mkdocs/site/
+omctl

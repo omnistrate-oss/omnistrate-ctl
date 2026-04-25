@@ -78,6 +78,9 @@ func formatDeploymentCell(cluster *openapiclientfleet.HostCluster) model.Deploym
 		Role:      cluster.Role,
 		ModelType: cluster.ModelType,
 
+		// Network topology
+		PrivateLinkEnabled: cluster.PrivateLinkEnabled,
+
 		// Customer metadata
 		CustomerEmail:            cluster.CustomerEmail,
 		CustomerOrganizationName: cluster.CustomerOrganizationName,
