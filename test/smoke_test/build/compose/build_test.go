@@ -314,7 +314,7 @@ func Test_build_create_no_name(t *testing.T) {
 	cmd.RootCmd.SetArgs([]string{"build", "-f", "../../composefiles/postgresql.yaml", "--description", "My Service Description", "--service-logo-url", "https://freepnglogos.com/uploads/server-png/server-computer-database-network-vector-graphic-pixabay-31.png"})
 	err = cmd.RootCmd.ExecuteContext(ctx)
 	require.Error(err)
-	require.Contains(err.Error(), "name is required")
+	require.Contains(err.Error(), "at least one of the flags in the group [name product-name] is required")
 }
 
 func Test_build_create_no_description(t *testing.T) {

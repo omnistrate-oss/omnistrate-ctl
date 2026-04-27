@@ -69,7 +69,7 @@ func CreateInstanceSnapshot(ctx context.Context, token, serviceID, environmentID
 		serviceID,
 		environmentID,
 		instanceID,
-	)
+	).FleetCreateInstanceSnapshotRequest2(*openapiclientfleet.NewFleetCreateInstanceSnapshotRequest2())
 
 	var r *http.Response
 	defer func() {
