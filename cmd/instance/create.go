@@ -43,6 +43,7 @@ omnistrate-ctl instance create --service=mysql --environment=dev --plan=mysql --
 )
 
 var InstanceID string
+var SubscriptionID string
 
 var createCmd = &cobra.Command{
 	Use:          "create --service=[service] --environment=[environment] --plan=[plan] --version=[version] --resource=[resource] --cloud-provider=[aws|gcp|azure|nebius] --region=[region] [--param=param] [--param-file=file-path] [--instance-id=id] [--customer-account-id=account-instance-id] [--tags key=value,key2=value2] [--breakpoints id-or-key,id-or-key]",
@@ -335,6 +336,7 @@ func runCreate(cmd *cobra.Command, args []string) error {
 	// Format instance
 	formattedInstance := formatInstance(&searchRes.ResourceInstanceResults[0], false)
 	InstanceID = formattedInstance.InstanceID
+	SubscriptionID = formattedInstance.SubscriptionID
 
 	// Print output
 	if err = utils.PrintTextTableJsonOutput(output, formattedInstance); err != nil {

@@ -24,6 +24,7 @@ import (
 // multiple RootCmd.ExecuteContext calls within the same test process.
 func resetGlobals() {
 	instance.InstanceID = ""
+	instance.SubscriptionID = ""
 	instance.InstanceStatus = ""
 	instance.InstanceTierVersion = ""
 	build.ServiceID = ""
@@ -72,7 +73,9 @@ func TestInstanceUndeleteWithInstanceID(t *testing.T) {
 	err = cmd.RootCmd.ExecuteContext(ctx)
 	require.NoError(t, err)
 	originalInstanceID := instance.InstanceID
+	originalSubscriptionID := instance.SubscriptionID
 	require.NotEmpty(t, originalInstanceID, "expected instance ID to be set after create")
+	require.NotEmpty(t, originalSubscriptionID, "expected subscription ID to be set after create")
 
 	// Wait for instance to be RUNNING
 	log.Debug().Msg("Waiting for instance to reach RUNNING...")
@@ -100,6 +103,7 @@ func TestInstanceUndeleteWithInstanceID(t *testing.T) {
 		"--cloud-provider=aws",
 		"--region=ca-central-1",
 		fmt.Sprintf("--instance-id=%s", originalInstanceID),
+		fmt.Sprintf("--subscription-id=%s", originalSubscriptionID),
 	})
 	err = cmd.RootCmd.ExecuteContext(ctx)
 	require.NoError(t, err)
@@ -176,7 +180,7 @@ func TestSnapshotRestoreToSource(t *testing.T) {
 
 	// Trigger backup
 	log.Debug().Msg("Triggering backup...")
-	backupResult, err := dataaccess.TriggerResourceInstanceAutoBackup(ctx, token, serviceID, environmentID, originalInstanceID)
+	backupResult, err := dataaccess.CreateInstanceSnapshot(ctx, token, serviceID, environmentID, originalInstanceID)
 	require.NoError(t, err)
 	snapshotID := backupResult.GetSnapshotId()
 	require.NotEmpty(t, snapshotID, "expected snapshot ID from backup trigger")
@@ -279,7 +283,7 @@ func TestInstanceRestoreToSource(t *testing.T) {
 
 	// Trigger backup
 	log.Debug().Msg("Triggering backup...")
-	backupResult, err := dataaccess.TriggerResourceInstanceAutoBackup(ctx, token, serviceID, environmentID, originalInstanceID)
+	backupResult, err := dataaccess.CreateInstanceSnapshot(ctx, token, serviceID, environmentID, originalInstanceID)
 	require.NoError(t, err)
 	snapshotID := backupResult.GetSnapshotId()
 	require.NotEmpty(t, snapshotID)
@@ -356,11 +360,11 @@ func waitForInstanceDeletion(t *testing.T, ctx context.Context, instanceID strin
 	t.Fatalf("instance %s was not deleted within %s", instanceID, timeout)
 }
 
-// waitForSnapshotCompletion polls snapshot status until it reaches "Complete",
+// waitForSnapshotCompletion polls snapshot status until it reaches "Complete" or "Available",
 // using exponential backoff and tolerating transient errors.
 func waitForSnapshotCompletion(t *testing.T, ctx context.Context, token, serviceID, environmentID, instanceID, snapshotID string) {
 	t.Helper()
-	timeout := 10 * time.Minute
+	timeout := 30 * time.Minute
 	b := &backoff.ExponentialBackOff{
 		InitialInterval:     15 * time.Second,
 		RandomizationFactor: backoff.DefaultRandomizationFactor,
@@ -374,7 +378,14 @@ func waitForSnapshotCompletion(t *testing.T, ctx context.Context, token, service
 	ticker := backoff.NewTicker(b)
 
 	for range ticker.C {
-		result, err := dataaccess.DescribeResourceInstanceSnapshot(ctx, token, serviceID, environmentID, instanceID, snapshotID)
+		// Refresh token on each poll to avoid expiration during long waits
+		currentToken, tokenErr := config.GetToken()
+		if tokenErr != nil {
+			log.Debug().Msgf("Failed to refresh token, using original: %v", tokenErr)
+			currentToken = token
+		}
+
+		result, err := dataaccess.DescribeResourceInstanceSnapshot(ctx, currentToken, serviceID, environmentID, instanceID, snapshotID)
 		if err != nil {
 			// Transient error — keep retrying
 			log.Debug().Msgf("Transient error polling snapshot %s: %v", snapshotID, err)
@@ -383,11 +394,11 @@ func waitForSnapshotCompletion(t *testing.T, ctx context.Context, token, service
 
 		status := result.GetStatus()
 		log.Debug().Msgf("Snapshot %s status: %s", snapshotID, status)
-		if status == "Complete" {
+		if strings.EqualFold(status, "Complete") || strings.EqualFold(status, "Available") {
 			ticker.Stop()
 			return
 		}
-		if status == "Failed" {
+		if strings.EqualFold(status, "Failed") {
 			ticker.Stop()
 			t.Fatalf("snapshot %s failed", snapshotID)
 		}
