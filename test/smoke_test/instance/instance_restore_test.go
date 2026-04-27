@@ -20,6 +20,17 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// resetGlobals clears package-level variables that persist across
+// multiple RootCmd.ExecuteContext calls within the same test process.
+func resetGlobals() {
+	instance.InstanceID = ""
+	instance.InstanceStatus = ""
+	instance.InstanceTierVersion = ""
+	build.ServiceID = ""
+	build.EnvironmentID = ""
+	build.ProductTierID = ""
+}
+
 // TestInstanceUndeleteWithInstanceID tests the --instance-id flag on instance create.
 // It creates an instance, deletes it, then restores it using create --instance-id,
 // verifying the same instance ID is returned.
@@ -28,6 +39,7 @@ func TestInstanceUndeleteWithInstanceID(t *testing.T) {
 
 	ctx := context.TODO()
 	defer testutils.Cleanup()
+	resetGlobals()
 
 	// Login
 	testEmail, testPassword, err := testutils.GetTestAccount()
@@ -117,6 +129,7 @@ func TestSnapshotRestoreToSource(t *testing.T) {
 
 	ctx := context.TODO()
 	defer testutils.Cleanup()
+	resetGlobals()
 
 	// Login
 	testEmail, testPassword, err := testutils.GetTestAccount()
@@ -219,6 +232,7 @@ func TestInstanceRestoreToSource(t *testing.T) {
 
 	ctx := context.TODO()
 	defer testutils.Cleanup()
+	resetGlobals()
 
 	// Login
 	testEmail, testPassword, err := testutils.GetTestAccount()
@@ -285,6 +299,8 @@ func TestInstanceRestoreToSource(t *testing.T) {
 	restoreWithRetry(t, func() error {
 		cmd.RootCmd.SetArgs([]string{"instance", "restore", originalInstanceID,
 			"--snapshot-id", snapshotID,
+			"--service-id", serviceID,
+			"--environment-id", environmentID,
 			"--restore-to-source",
 		})
 		return cmd.RootCmd.ExecuteContext(ctx)

@@ -205,10 +205,12 @@ func GetUserAgent() string {
 }
 
 func CleanupArgsAndFlags(cmd *cobra.Command, args *[]string) {
-	// Clean up flags
+	// Clean up flags: reset values to defaults and clear the Changed marker
+	// so subsequent ExecuteContext calls see flags as unset.
 	cmd.Flags().VisitAll(
 		func(f *pflag.Flag) {
 			_ = cmd.Flags().Set(f.Name, f.DefValue)
+			f.Changed = false
 		})
 
 	// Clean up arguments by resetting the slice to nil or an empty slice
