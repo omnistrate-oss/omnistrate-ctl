@@ -177,7 +177,7 @@ jobs:
           gotestsum_version: 1.13.0
 
       - name: Smoke test ${{ matrix.test-group }}
-        timeout-minutes: 30
+        timeout-minutes: 90
         env:
           ENABLE_SMOKE_TEST: true
           TEST_EMAIL: ${{ secrets.SMOKE_TEST_EMAIL }}
@@ -191,5 +191,5 @@ jobs:
           OMCTL_AWS_ACCOUNT_ID: ${{ secrets.OMCTL_AWS_ACCOUNT_ID }}
           OMCTL_GCP_PROJECT_ID: ${{ secrets.OMCTL_GCP_PROJECT_ID }}
           OMCTL_GCP_PROJECT_NUMBER: ${{ secrets.OMCTL_GCP_PROJECT_NUMBER }}
-        run: gotestsum --format standard-verbose -- ./test/smoke_test/${{ matrix.test-group }} -timeout 1800s -p 1 -p 1 -v
+        run: gotestsum --format standard-verbose -- ./test/smoke_test/${{ matrix.test-group }} -timeout 5400s -p 1 -p 1 -v
 

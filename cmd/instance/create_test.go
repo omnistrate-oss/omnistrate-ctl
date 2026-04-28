@@ -16,6 +16,30 @@ func TestCreateCommandFlags(t *testing.T) {
 	assert.Contains(t, flag.Usage, "account customer list")
 }
 
+func TestCreateCommandFlags_InstanceID(t *testing.T) {
+	flag := createCmd.Flags().Lookup("instance-id")
+	require.NotNil(t, flag, "Expected flag 'instance-id' to be registered")
+	assert.Contains(t, flag.Usage, "previously deleted instance")
+	assert.Equal(t, "", flag.DefValue, "instance-id should default to empty string")
+}
+
+func TestCreateCommandFlags_AllExpectedFlags(t *testing.T) {
+	expectedFlags := []string{
+		"service", "environment", "plan", "version", "resource",
+		"cloud-provider", "region", "param", "param-file",
+		"customer-account-id", "tags", "breakpoints",
+		"subscription-id", "instance-id", "wait",
+	}
+	for _, flagName := range expectedFlags {
+		flag := createCmd.Flags().Lookup(flagName)
+		assert.NotNil(t, flag, "Expected flag '%s' not found", flagName)
+	}
+}
+
+func TestCreateCommandUse_IncludesInstanceID(t *testing.T) {
+	assert.Contains(t, createCmd.Use, "--instance-id")
+}
+
 func TestApplyCustomerAccountIDParam_NoCustomerAccountID(t *testing.T) {
 	params := map[string]any{"existing": "value"}
 
