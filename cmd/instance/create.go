@@ -33,10 +33,7 @@ omnistrate-ctl instance create --service=mysql --environment=dev --plan=mysql --
 omnistrate-ctl instance create --service=mysql --environment=dev --plan=mysql --version=latest --resource=mySQL --cloud-provider=aws --region=ca-central-1 --param-file /path/to/params.json --breakpoints writer,reader
 
 # Create a BYOA instance deployment using a customer account onboarding instance
-omnistrate-ctl instance create --service=Nebius --environment=dev --plan='Nebius BYOA Compute Variants' --resource=NebiusRedis --cloud-provider=nebius --region=eu-north1 --customer-account-id instance-cg1tthkj0
-
-# Restore a previously deleted instance
-omnistrate-ctl instance create --service=mysql --environment=dev --plan=mysql --version=latest --resource=mySQL --cloud-provider=aws --region=ca-central-1 --instance-id instance-abcd1234`
+omnistrate-ctl instance create --service=Nebius --environment=dev --plan='Nebius BYOA Compute Variants' --resource=NebiusRedis --cloud-provider=nebius --region=eu-north1 --customer-account-id instance-cg1tthkj0`
 
 	customerAccountConfigIDParamKey = "cloud_provider_account_config_id"
 	serviceModelTypeBYOA            = "BYOA"
@@ -200,9 +197,6 @@ func runCreate(cmd *cobra.Command, args []string) error {
 	if output != "json" {
 		sm = utils.NewSpinnerManager()
 		msg := "Creating instance..."
-		if instanceID != "" {
-			msg = "Restoring instance..."
-		}
 		spinner = sm.AddSpinner(msg)
 		sm.Start()
 	}
@@ -314,11 +308,7 @@ func runCreate(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	successMsg := "Successfully created instance"
-	if instanceID != "" {
-		successMsg = "Successfully restored instance"
-	}
-	utils.HandleSpinnerSuccess(spinner, sm, successMsg)
+	utils.HandleSpinnerSuccess(spinner, sm, "Successfully created instance")
 
 	// Search for the instance
 	searchRes, err := dataaccess.SearchInventory(cmd.Context(), token, fmt.Sprintf("resourceinstance:%s", *instance.Id))

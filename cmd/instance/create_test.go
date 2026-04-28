@@ -40,10 +40,6 @@ func TestCreateCommandUse_IncludesInstanceID(t *testing.T) {
 	assert.Contains(t, createCmd.Use, "--instance-id")
 }
 
-func TestCreateCommandExample_IncludesInstanceID(t *testing.T) {
-	assert.Contains(t, createExample, "--instance-id")
-}
-
 func TestApplyCustomerAccountIDParam_NoCustomerAccountID(t *testing.T) {
 	params := map[string]any{"existing": "value"}
 
