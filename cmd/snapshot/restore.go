@@ -23,8 +23,8 @@ omnistrate-ctl snapshot restore --service-id service-abcd --environment-id env-1
 
 var restoreCmd = &cobra.Command{
 	Use:          "restore --service-id <service-id> --environment-id <environment-id> --snapshot-id <snapshot-id> [--restore-to-source]",
-	Short:        "Restore an instance from a snapshot",
-	Long:         `This command helps you restore an instance from a snapshot. By default, a new instance is created. When --restore-to-source is set, the snapshot is restored to the original source instance, preserving its ID and endpoint.`,
+	Short:        "Create an instance by restoring from a snapshot",
+	Long:         `This command helps you create an instance by restoring from a snapshot.`,
 	Example:      restoreExample,
 	RunE:         runRestore,
 	SilenceUsage: true,

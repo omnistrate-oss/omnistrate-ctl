@@ -75,8 +75,7 @@ func TestRestoreCommandFlags_RestoreToSource(t *testing.T) {
 }
 
 func TestRestoreCommandHelpText(t *testing.T) {
-	assert.Equal(t, "Restore an instance from a snapshot", restoreCmd.Short)
-	assert.Contains(t, restoreCmd.Long, "restore-to-source")
+	assert.Equal(t, "Create an instance by restoring from a snapshot", restoreCmd.Short)
 }
 
 func TestRestoreCommandExample_ContainsRestoreToSource(t *testing.T) {

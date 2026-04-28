@@ -9,7 +9,7 @@ import (
 )
 
 func TestCreateCommandFlags(t *testing.T) {
-	require.Equal(t, "Create or restore an instance deployment", createCmd.Short)
+	require.Equal(t, "Create an instance deployment", createCmd.Short)
 
 	flag := createCmd.Flags().Lookup("customer-account-id")
 	require.NotNil(t, flag)

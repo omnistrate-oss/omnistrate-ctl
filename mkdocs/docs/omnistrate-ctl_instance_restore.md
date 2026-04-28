@@ -1,13 +1,13 @@
 ## omnistrate-ctl instance restore
 
-Restore an instance from a snapshot
+Create a new instance by restoring from a snapshot
 
 ### Synopsis
 
-This command helps you restore an instance from a snapshot. By default, a new instance is created. When --restore-to-source is set, the snapshot is restored to the original source instance, preserving its ID and endpoint. Use --service-id and --environment-id when restoring a deleted instance that can no longer be looked up in inventory.
+This command helps you create a new instance by restoring from a snapshot using an existing instance for context.
 
 ```
-omnistrate-ctl instance restore [instance-id] --snapshot-id <snapshot-id> [--service-id <service-id>] [--environment-id <environment-id>] [--param=param] [--param-file=file-path] [--restore-to-source] [--tierversion-override <tier-version>] [--network-type PUBLIC / INTERNAL] [flags]
+omnistrate-ctl instance restore [instance-id] --snapshot-id <snapshot-id> [--param=param] [--param-file=file-path] --tierversion-override <tier-version> --network-type PUBLIC / INTERNAL [flags]
 ```
 
 ### Examples
@@ -18,21 +18,15 @@ omnistrate-ctl instance restore instance-abcd1234 --snapshot-id snapshot-xyz789 
 
 # Restore using parameters from a file
 omnistrate-ctl instance restore instance-abcd1234 --snapshot-id snapshot-xyz789 --param-file /path/to/params.json
-
-# Restore to the original source instance (preserving its ID and endpoint)
-omnistrate-ctl instance restore instance-abcd1234 --snapshot-id snapshot-xyz789 --restore-to-source --service-id service-xyz --environment-id env-abc
 ```
 
 ### Options
 
 ```
-      --environment-id string         The ID of the environment (required when the instance has been deleted)
   -h, --help                          help for restore
       --network-type string           Optional network type change for the instance deployment (PUBLIC / INTERNAL)
       --param string                  Parameters override for the instance deployment
       --param-file string             Json file containing parameters override for the instance deployment
-      --restore-to-source             Restore to the original source instance, preserving its ID and endpoint
-      --service-id string             The ID of the service (required when the instance has been deleted)
       --snapshot-id string            The ID of the snapshot to restore from
       --tierversion-override string   Override the tier version for the restored instance
 ```

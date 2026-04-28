@@ -42,7 +42,7 @@ func CreateResourceInstance(ctx context.Context, token string,
 	return
 }
 
-func RestoreResourceInstanceSnapshot(ctx context.Context, token string, serviceID, environmentID, snapshotID string, formattedParams map[string]any, tierVersionOverride string, networkType string, restoreToSource bool) (res *openapiclientfleet.FleetRestoreResourceInstanceResult, err error) {
+func RestoreResourceInstanceSnapshot(ctx context.Context, token string, serviceID, environmentID, snapshotID string, formattedParams map[string]any, tierVersionOverride string, networkType string) (res *openapiclientfleet.FleetRestoreResourceInstanceResult, err error) {
 	ctxWithToken := context.WithValue(ctx, openapiclientfleet.ContextAccessToken, token)
 	apiClient := getFleetClient()
 
@@ -57,10 +57,6 @@ func RestoreResourceInstanceSnapshot(ctx context.Context, token string, serviceI
 
 	if tierVersionOverride != "" {
 		reqBody.ProductTierVersionOverride = &tierVersionOverride
-	}
-
-	if restoreToSource {
-		reqBody.RestoreToSourceInstance = utils.ToPtr(true)
 	}
 
 	req := apiClient.InventoryApiAPI.InventoryApiRestoreResourceInstanceFromSnapshot(

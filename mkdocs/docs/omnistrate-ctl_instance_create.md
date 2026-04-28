@@ -1,10 +1,10 @@
 ## omnistrate-ctl instance create
 
-Create or restore an instance deployment
+Create an instance deployment
 
 ### Synopsis
 
-This command helps you create an instance deployment for your service. When --instance-id is provided, it restores a previously deleted instance using the specified ID, preserving the original instance ID and endpoint.
+This command helps you create an instance deployment for your service.
 
 ```
 omnistrate-ctl instance create --service=[service] --environment=[environment] --plan=[plan] --version=[version] --resource=[resource] --cloud-provider=[aws|gcp|azure|nebius] --region=[region] [--param=param] [--param-file=file-path] [--instance-id=id] [--customer-account-id=account-instance-id] [--tags key=value,key2=value2] [--breakpoints id-or-key,id-or-key] [flags]

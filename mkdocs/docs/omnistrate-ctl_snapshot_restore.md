@@ -1,10 +1,10 @@
 ## omnistrate-ctl snapshot restore
 
-Restore an instance from a snapshot
+Create an instance by restoring from a snapshot
 
 ### Synopsis
 
-This command helps you restore an instance from a snapshot. By default, a new instance is created. When --restore-to-source is set, the snapshot is restored to the original source instance, preserving its ID and endpoint.
+This command helps you create an instance by restoring from a snapshot.
 
 ```
 omnistrate-ctl snapshot restore --service-id <service-id> --environment-id <environment-id> --snapshot-id <snapshot-id> [--restore-to-source] [flags]
