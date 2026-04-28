@@ -30,9 +30,6 @@ omnistrate-ctl instance create --service=mysql --environment=dev --plan=mysql --
 
 # Create a BYOA instance deployment using a customer account onboarding instance
 omnistrate-ctl instance create --service=Nebius --environment=dev --plan='Nebius BYOA Compute Variants' --resource=NebiusRedis --cloud-provider=nebius --region=eu-north1 --customer-account-id instance-cg1tthkj0
-
-# Restore a previously deleted instance
-omnistrate-ctl instance create --service=mysql --environment=dev --plan=mysql --version=latest --resource=mySQL --cloud-provider=aws --region=ca-central-1 --instance-id instance-abcd1234
 ```
 
 ### Options

@@ -18,9 +18,6 @@ omnistrate-ctl snapshot restore --service-id service-abcd --environment-id env-1
 
 # Restore using parameters from a file
 omnistrate-ctl snapshot restore --service-id service-abcd --environment-id env-1234 --snapshot-id snapshot-xyz789 --param-file /path/to/params.json
-
-# Restore to the original source instance (preserving its ID and endpoint)
-omnistrate-ctl snapshot restore --service-id service-abcd --environment-id env-1234 --snapshot-id snapshot-xyz789 --restore-to-source
 ```
 
 ### Options
