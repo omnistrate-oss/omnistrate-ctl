@@ -40,9 +40,10 @@ omnistrate-ctl instance create --service=Nebius --environment=dev --plan='Nebius
 )
 
 var InstanceID string
+var SubscriptionID string
 
 var createCmd = &cobra.Command{
-	Use:          "create --service=[service] --environment=[environment] --plan=[plan] --version=[version] --resource=[resource] --cloud-provider=[aws|gcp|azure|nebius] --region=[region] [--param=param] [--param-file=file-path] [--customer-account-id=instance-id] [--tags key=value,key2=value2] [--breakpoints id-or-key,id-or-key]",
+	Use:          "create --service=[service] --environment=[environment] --plan=[plan] --version=[version] --resource=[resource] --cloud-provider=[aws|gcp|azure|nebius] --region=[region] [--param=param] [--param-file=file-path] [--instance-id=id] [--customer-account-id=account-instance-id] [--tags key=value,key2=value2] [--breakpoints id-or-key,id-or-key]",
 	Short:        "Create an instance deployment",
 	Long:         `This command helps you create an instance deployment for your service.`,
 	Example:      createExample,
@@ -64,6 +65,7 @@ func init() {
 	createCmd.Flags().String("tags", "", "Custom tags to add to the instance deployment (format: key=value,key2=value2)")
 	createCmd.Flags().String("breakpoints", "", "Workflow breakpoint resource IDs or resource keys (comma-separated)")
 	createCmd.Flags().StringP("subscription-id", "", "", "Subscription ID to use for the instance deployment. If not provided, instance deployment will be created in your own subscription.")
+	createCmd.Flags().String("instance-id", "", "ID of a previously deleted instance to restore")
 	createCmd.Flags().Bool("wait", false, "Wait for deployment to complete and show progress")
 
 	if err := createCmd.MarkFlagRequired("service"); err != nil {
@@ -147,6 +149,11 @@ func runCreate(cmd *cobra.Command, args []string) error {
 		return err
 	}
 	subscriptionID, err := cmd.Flags().GetString("subscription-id")
+	if err != nil {
+		utils.PrintError(err)
+		return err
+	}
+	instanceID, err := cmd.Flags().GetString("instance-id")
 	if err != nil {
 		utils.PrintError(err)
 		return err
@@ -278,6 +285,9 @@ func runCreate(cmd *cobra.Command, args []string) error {
 	if subscriptionID != "" {
 		request.SubscriptionId = utils.ToPtr(subscriptionID)
 	}
+	if instanceID != "" {
+		request.InstanceId = utils.ToPtr(instanceID)
+	}
 	instance, err := dataaccess.CreateResourceInstance(cmd.Context(), token,
 		res.ConsumptionDescribeServiceOfferingResult.ServiceProviderId,
 		res.ConsumptionDescribeServiceOfferingResult.ServiceURLKey,
@@ -316,6 +326,7 @@ func runCreate(cmd *cobra.Command, args []string) error {
 	// Format instance
 	formattedInstance := formatInstance(&searchRes.ResourceInstanceResults[0], false)
 	InstanceID = formattedInstance.InstanceID
+	SubscriptionID = formattedInstance.SubscriptionID
 
 	// Print output
 	if err = utils.PrintTextTableJsonOutput(output, formattedInstance); err != nil {

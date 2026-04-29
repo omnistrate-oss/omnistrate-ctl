@@ -7,7 +7,7 @@ Create an instance deployment
 This command helps you create an instance deployment for your service.
 
 ```
-omnistrate-ctl instance create --service=[service] --environment=[environment] --plan=[plan] --version=[version] --resource=[resource] --cloud-provider=[aws|gcp|azure|nebius] --region=[region] [--param=param] [--param-file=file-path] [--customer-account-id=instance-id] [--tags key=value,key2=value2] [--breakpoints id-or-key,id-or-key] [flags]
+omnistrate-ctl instance create --service=[service] --environment=[environment] --plan=[plan] --version=[version] --resource=[resource] --cloud-provider=[aws|gcp|azure|nebius] --region=[region] [--param=param] [--param-file=file-path] [--instance-id=id] [--customer-account-id=account-instance-id] [--tags key=value,key2=value2] [--breakpoints id-or-key,id-or-key] [flags]
 ```
 
 ### Examples
@@ -40,6 +40,7 @@ omnistrate-ctl instance create --service=Nebius --environment=dev --plan='Nebius
       --customer-account-id string   Customer BYOA account onboarding instance ID to inject as the cloud account. Use 'omnistrate-ctl account customer list' or 'omnistrate-ctl account customer describe <instance-id>' to find it.
       --environment string           Environment name
   -h, --help                         help for create
+      --instance-id string           ID of a previously deleted instance to restore
       --param string                 Parameters for the instance deployment
       --param-file string            Json file containing parameters for the instance deployment
       --plan string                  Service plan name
