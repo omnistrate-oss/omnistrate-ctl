@@ -20,3 +20,16 @@ omnistrate-ctl
 __debug_bin*
 **/.claude/settings.local.json
 mcp-tools.json
+
+# Speed up Docker context transfer: exclude items not needed for `go build`.
+.git/
+.github/
+.vscode/
+mkdocs/
+doc-gen/
+test/
+build/Dockerfile.docs*
+**/*_test.go
+**/testdata/
+coverage*
+*.md
