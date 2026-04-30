@@ -31,7 +31,7 @@ func cnnFleetURL(accountConfigID string, suffix ...string) string {
 	return base
 }
 
-func doCNNRequest(ctx context.Context, token, method, url string, body any) (*openapiclientfleet.FleetListAccountConfigCloudNativeNetworksResult, error) {
+func doCNNRequest(ctx context.Context, token, method, requestURL string, body any) (*openapiclientfleet.FleetListAccountConfigCloudNativeNetworksResult, error) {
 	var reqBody io.Reader
 	if body != nil {
 		b, err := json.Marshal(body)
@@ -41,7 +41,7 @@ func doCNNRequest(ctx context.Context, token, method, url string, body any) (*op
 		reqBody = bytes.NewReader(b)
 	}
 
-	req, err := http.NewRequestWithContext(ctx, method, url, reqBody)
+	req, err := http.NewRequestWithContext(ctx, method, requestURL, reqBody)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}

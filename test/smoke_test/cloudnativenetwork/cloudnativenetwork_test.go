@@ -122,6 +122,7 @@ func createThrowawayAccount(t *testing.T, ctx context.Context) string {
 	token, err := config.GetToken()
 	require.NoError(t, err)
 	id := lookupAccountConfigID(t, ctx, token, awsAccountName)
+	require.NotEmpty(t, id, "failed to resolve account-config ID for %s", awsAccountName)
 	t.Cleanup(func() {
 		// Snapshot the token before testutils.Cleanup wipes the config dir.
 		if delErr := dataaccess.DeleteAccount(ctx, token, id); delErr != nil {
