@@ -416,6 +416,133 @@ func TestArchiveArtifactPaths_NestedDirectories(t *testing.T) {
 	assert.NotEmpty(t, decoded)
 }
 
+func TestIsHelmChartDir(t *testing.T) {
+	// Create a directory with Chart.yaml
+	helmDir, err := os.MkdirTemp("", "test-helm-chart-*")
+	require.NoError(t, err)
+	defer os.RemoveAll(helmDir)
+
+	// Before creating Chart.yaml - should return false
+	assert.False(t, IsHelmChartDir(helmDir))
+
+	// Create Chart.yaml
+	err = os.WriteFile(filepath.Join(helmDir, "Chart.yaml"), []byte("apiVersion: v2\nname: test-chart\nversion: 0.1.0\n"), 0600)
+	require.NoError(t, err)
+
+	// Now should return true
+	assert.True(t, IsHelmChartDir(helmDir))
+
+	// Non-existent directory should return false
+	assert.False(t, IsHelmChartDir("/non/existent/path"))
+
+	// A file (not directory) should return false
+	tmpFile, err := os.CreateTemp("", "test-not-helm-*")
+	require.NoError(t, err)
+	defer os.Remove(tmpFile.Name())
+	tmpFile.Close()
+	assert.False(t, IsHelmChartDir(tmpFile.Name()))
+}
+
+func TestIsHelmChartDir_ChartYamlIsDirectory(t *testing.T) {
+	// Edge case: Chart.yaml is a directory, not a file
+	helmDir, err := os.MkdirTemp("", "test-helm-edge-*")
+	require.NoError(t, err)
+	defer os.RemoveAll(helmDir)
+
+	err = os.MkdirAll(filepath.Join(helmDir, "Chart.yaml"), 0755)
+	require.NoError(t, err)
+
+	assert.False(t, IsHelmChartDir(helmDir))
+}
+
+func TestSpecHasHelmChartConfiguration(t *testing.T) {
+	tests := []struct {
+		name     string
+		yaml     map[string]interface{}
+		expected bool
+	}{
+		{
+			name: "has helmChartConfiguration at service level",
+			yaml: map[string]interface{}{
+				"name": "Redis",
+				"services": []interface{}{
+					map[string]interface{}{
+						"name": "redis",
+						"helmChartConfiguration": map[string]interface{}{
+							"chartName": "redis",
+						},
+					},
+				},
+			},
+			expected: true,
+		},
+		{
+			name: "no helmChartConfiguration",
+			yaml: map[string]interface{}{
+				"name": "My Service",
+				"services": []interface{}{
+					map[string]interface{}{
+						"name": "web",
+					},
+				},
+			},
+			expected: false,
+		},
+		{
+			name:     "empty yaml",
+			yaml:     map[string]interface{}{},
+			expected: false,
+		},
+		{
+			name: "has terraform but not helm",
+			yaml: map[string]interface{}{
+				"services": []interface{}{
+					map[string]interface{}{
+						"terraformConfigurations": map[string]interface{}{},
+					},
+				},
+			},
+			expected: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := SpecHasHelmChartConfiguration(tt.yaml)
+			assert.Equal(t, tt.expected, result)
+		})
+	}
+}
+
+func TestArchiveArtifactPaths_HelmChartDir_NoHelmInstalled(t *testing.T) {
+	// Create a directory that looks like a Helm chart
+	sourceDir, err := os.MkdirTemp("", "test-helm-archive-*")
+	require.NoError(t, err)
+	defer os.RemoveAll(sourceDir)
+
+	chartDir := filepath.Join(sourceDir, "mychart")
+	err = os.MkdirAll(chartDir, 0755)
+	require.NoError(t, err)
+
+	err = os.WriteFile(filepath.Join(chartDir, "Chart.yaml"), []byte("apiVersion: v2\nname: mychart\nversion: 0.1.0\n"), 0600)
+	require.NoError(t, err)
+
+	// Without helm mode, should create a generic tar.gz (not fail)
+	result, err := ArchiveArtifactPaths(sourceDir, []string{"mychart"})
+	require.NoError(t, err)
+	assert.Contains(t, result, "mychart")
+
+	// With helm mode but helm not in PATH, should fail with a helpful message
+	// (only if helm is not installed in the test environment)
+	origPath := os.Getenv("PATH")
+	t.Setenv("PATH", "/nonexistent")
+	defer os.Setenv("PATH", origPath) //nolint:tenv // we want to restore PATH after the test
+
+	_, err = ArchiveArtifactPaths(sourceDir, []string{"mychart"}, true)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "helm CLI not found")
+}
+
 func TestExpandOmctlEnvVars(t *testing.T) {
 	tests := []struct {
 		name          string

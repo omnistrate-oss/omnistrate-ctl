@@ -548,14 +548,21 @@ func runBuild(cmd *cobra.Command, args []string) error {
 	}
 
 	if specType == ServicePlanSpecType {
-		// Extract plan name from YAML for display purposes
-		if spinner1 != nil {
-			var yamlContent map[string]interface{}
-			if parseErr := yaml.Unmarshal(fileData, &yamlContent); parseErr == nil {
-				if planName, ok := yamlContent["name"].(string); ok && planName != "" {
+		// Parse YAML to detect helm chart configuration and extract plan name
+		var specYamlContent map[string]interface{}
+		hasHelmChart := false
+		if parseErr := yaml.Unmarshal(fileData, &specYamlContent); parseErr == nil {
+			// Extract plan name for display purposes
+			if spinner1 != nil {
+				if planName, ok := specYamlContent["name"].(string); ok && planName != "" {
 					spinner1.UpdateMessage(fmt.Sprintf("Building service '%s' with plan '%s'...", name, planName))
 				}
 			}
+			// Detect if the spec uses helmChartConfiguration (for local chart packaging)
+			hasHelmChart = SpecHasHelmChartConfiguration(specYamlContent)
+		} else if spinner1 != nil {
+			// Fallback: just show generic message
+			_ = parseErr
 		}
 
 		// Step 1: Prepare service build - find or create service hierarchy and get upload tasks
@@ -609,7 +616,9 @@ func runBuild(cmd *cobra.Command, args []string) error {
 			}
 
 			// Archive all unique artifact paths (gzip + tar + base64 encode)
-			artifactArchives, archiveErr := ArchiveArtifactPaths(cwd, uniquePaths)
+			// When the spec has helmChartConfiguration, directories with Chart.yaml
+			// will be packaged using `helm package` to produce proper Helm archives.
+			artifactArchives, archiveErr := ArchiveArtifactPaths(cwd, uniquePaths, hasHelmChart)
 			if archiveErr != nil {
 				if sm1 != nil {
 					sm1.Stop()
