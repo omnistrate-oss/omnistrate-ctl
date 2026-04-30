@@ -74,8 +74,29 @@ func Test_login_with_api_key(t *testing.T) {
 		t.Skip("api keys disabled for org (List); skipping smoke test")
 	}
 
-	// Step 2: create one api-key per non-root role.
-	roles := []string{"admin", "editor", "reader"}
+	// Negative path: the platform must refuse to mint an api-key
+	// bound to the org-root role. Run before the positive mints so a
+	// regression here fails fast and we never end up with a root-
+	// privileged machine credential in the test org.
+	rootDesc := "smoke negative test — must be rejected"
+	rootName := fmt.Sprintf("ctl-smoke-root-negative-%s", testutils.RandomTestSuffix())
+	if rootRes, rootErr := dataaccess.CreateAPIKey(ctx, adminToken, rootName, "root", &rootDesc, nil); rootErr == nil {
+		// SECURITY: scrub immediately so the leaked credential does not
+		// outlive the failing assertion.
+		if rootRes != nil && rootRes.Id != "" {
+			_ = dataaccess.RevokeAPIKey(ctx, adminToken, rootRes.Id)
+			_ = dataaccess.DeleteAPIKey(ctx, adminToken, rootRes.Id)
+		}
+		require.FailNowf("root role must not be assignable to api keys",
+			"CreateAPIKey(role=root) unexpectedly succeeded (id=%s)", rootRes.Id)
+	}
+
+	// Step 2: create one api-key per non-root role. service_editor
+	// and service_operator are included alongside admin/editor/reader
+	// so the smoke covers every role assignable to a machine
+	// credential. The org root role is intentionally excluded — the
+	// platform rejects it (verified separately below).
+	roles := []string{"admin", "editor", "reader", "service_editor", "service_operator"}
 	type createdKey struct {
 		ID        string
 		Name      string

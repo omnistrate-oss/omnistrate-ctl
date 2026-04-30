@@ -46,6 +46,20 @@ func TestAPIKeyLifecycle(t *testing.T) {
 		t.Skip("api keys disabled for org (List); skipping integration test")
 	}
 
+	// Negative: the platform must refuse to mint an api-key bound to
+	// the org-root role. Scrub aggressively if a regression accidentally
+	// creates one — a leaked root-privileged credential would persist
+	// in the test org until manually revoked.
+	rootDesc := "integration negative test — must be rejected"
+	rootName := "ctl-integ-root-negative-" + testutils.RandomTestSuffix()
+	if rootRes, rootErr := dataaccess.CreateAPIKey(ctx, adminToken, rootName, "root", &rootDesc, nil); rootErr == nil {
+		if rootRes != nil && rootRes.Id != "" {
+			_ = dataaccess.RevokeAPIKey(ctx, adminToken, rootRes.Id)
+			_ = dataaccess.DeleteAPIKey(ctx, adminToken, rootRes.Id)
+		}
+		t.Fatalf("CreateAPIKey(role=root) must be rejected; platform unexpectedly minted id=%s", rootRes.Id)
+	}
+
 	name := "ctl-integ-" + testutils.RandomTestSuffix()
 	desc := "ephemeral key created by TestAPIKeyLifecycle; safe to delete"
 
