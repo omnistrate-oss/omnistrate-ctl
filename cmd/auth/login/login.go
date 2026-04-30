@@ -100,7 +100,7 @@ func RunLogin(cmd *cobra.Command, args []string) error {
 
 	// Login with API key if any of the api-key flags are set
 	if len(apiKey) > 0 || apiKeyStdin {
-		return apiKeyLogin(cmd)
+		return apiKeyLogin(cmd, false)
 	}
 
 	if gh {
@@ -149,7 +149,7 @@ func RunLogin(cmd *cobra.Command, args []string) error {
 			utils.PrintError(err)
 			return err
 		}
-		return apiKeyLogin(cmd)
+		return apiKeyLogin(cmd, true)
 	case string(loginWithGoogle):
 		return ssoLogin(cmd.Context(), identityProviderGoogle)
 	case string(loginWithGitHub):
