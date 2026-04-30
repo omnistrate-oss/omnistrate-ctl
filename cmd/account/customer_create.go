@@ -669,7 +669,7 @@ func buildCustomerAccountRequestParamsWithDerivedValues(
 		if err := setParam(customerAccountNebiusBindingsName, toCustomerNebiusBindingParams(params.NebiusBindings)); err != nil {
 			return nil, err
 		}
-	case "byoc-anywhere":
+	case "byoc-onprem":
 		if err := setParam(customerAccountClusterNameName, params.ClusterName); err != nil {
 			return nil, err
 		}
@@ -738,7 +738,7 @@ func requestedCloudProvider(params CloudAccountParams) string {
 	case params.NebiusTenantID != "":
 		return "nebius"
 	case params.ClusterName != "":
-		return "byoc-anywhere"
+		return "byoc-onprem"
 	default:
 		return ""
 	}

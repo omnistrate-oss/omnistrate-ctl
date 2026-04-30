@@ -27,7 +27,7 @@ omnistrate-ctl account create [account-name] --azure-subscription-id=[subscripti
 # Create Nebius account
 omnistrate-ctl account create [account-name] --nebius-tenant-id=[tenant-id] --nebius-bindings-file=[bindings-file]
 
-# Create byoc-anywhere account (customer-provided Kubernetes cluster)
+# Create byoc-onprem account (customer-provided Kubernetes cluster)
 omnistrate-ctl account create [account-name] --cluster-name=[cluster-name] --cluster-region=[region] --cluster-description=[description]`
 )
 
@@ -206,14 +206,14 @@ func CreateCloudAccount(ctx context.Context, token string, params CloudAccountPa
 		request.NebiusBindings = params.NebiusBindings
 		request.Description = "Nebius Account " + params.NebiusTenantID
 	} else if params.ClusterName != "" {
-		cloudProviderID, err := dataaccess.GetCloudProviderByName(ctx, token, "byoc-anywhere")
+		cloudProviderID, err := dataaccess.GetCloudProviderByName(ctx, token, "byoc-onprem")
 		if err != nil {
 			utils.HandleSpinnerError(spinner, sm, err)
 			return nil, err
 		}
 
 		request.CloudProviderId = cloudProviderID
-		desc := "BYOC Anywhere Cluster " + params.ClusterName
+		desc := "BYOC OnPrem Cluster " + params.ClusterName
 		if params.ClusterDescription != "" {
 			desc = params.ClusterDescription
 		}

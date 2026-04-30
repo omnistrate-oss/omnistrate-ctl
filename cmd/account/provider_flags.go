@@ -28,9 +28,9 @@ func addCloudAccountProviderFlags(cmd *cobra.Command) {
 	cmd.Flags().String(azureTenantIDFlag, "", "Azure tenant ID")
 	cmd.Flags().String(nebiusTenantIDFlag, "", "Nebius tenant ID")
 	cmd.Flags().String(nebiusBindingsFileFlag, "", "Path to a YAML file describing Nebius bindings")
-	cmd.Flags().String(clusterNameFlag, "", "Name of the customer-provided Kubernetes cluster (byoc-anywhere)")
-	cmd.Flags().String(clusterRegionFlag, "", "Region or location label for the cluster (byoc-anywhere)")
-	cmd.Flags().String(clusterDescriptionFlag, "", "Free-form description of the cluster (byoc-anywhere)")
+	cmd.Flags().String(clusterNameFlag, "", "Name of the customer-provided Kubernetes cluster (byoc-onprem)")
+	cmd.Flags().String(clusterRegionFlag, "", "Region or location label for the cluster (byoc-onprem)")
+	cmd.Flags().String(clusterDescriptionFlag, "", "Free-form description of the cluster (byoc-onprem)")
 	cmd.Flags().Bool(skipWaitFlag, false, "Skip waiting for the account to become READY")
 
 	cmd.MarkFlagsOneRequired(
