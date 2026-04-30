@@ -107,6 +107,44 @@ func Test_api_key_authorization_lifecycle(t *testing.T) {
 		roleKeys[role] = struct{ ID, Plaintext string }{id, pt}
 	}
 
+	// Capture the bootstrap user's OrgID once. The api-key principal
+	// signin must always resolve to the SAME org as the user that
+	// created the keys — this is the single most security-critical
+	// invariant of the api-key signin path. We assert it explicitly
+	// in the org_binding subtest below and any time we verify a
+	// session principal downstream.
+	bootstrapMe, err := dataaccess.DescribeUser(ctx, adminToken)
+	require.NoError(err)
+	require.NotNil(bootstrapMe.OrgId, "bootstrap user must report a non-nil OrgId")
+	require.NotEmpty(*bootstrapMe.OrgId, "bootstrap user must report a non-empty OrgId")
+	bootstrapOrgID := *bootstrapMe.OrgId
+
+	t.Run("org_binding", func(t *testing.T) {
+		// SECURITY-CRITICAL: an api-key signin must NEVER produce a
+		// session that touches a different org from the one the key
+		// was created in. We exchange each role's plaintext for a
+		// session JWT, call DescribeUser as that principal, and
+		// require the returned OrgId to equal the bootstrap user's
+		// OrgId. A mismatch here would indicate the signin-exchange
+		// path is leaking cross-org access — fail the test loudly.
+		for _, role := range []string{"admin", "editor", "reader"} {
+			role := role
+			t.Run(role, func(t *testing.T) {
+				session, err := dataaccess.LoginWithAPIKey(ctx, roleKeys[role].Plaintext)
+				require_pkg.NoErrorf(t, err, "signin-exchange must succeed for %s key", role)
+				require_pkg.NotEmpty(t, session.JWTToken)
+
+				me, err := dataaccess.DescribeUser(ctx, session.JWTToken)
+				require_pkg.NoErrorf(t, err, "DescribeUser must succeed for %s api-key session", role)
+				require_pkg.NotNilf(t, me.OrgId,
+					"api-key %s session must resolve to a user with a non-nil OrgId", role)
+				require_pkg.Equalf(t, bootstrapOrgID, *me.OrgId,
+					"api-key %s session resolved to org %q but key was created in org %q — cross-org leak",
+					role, derefOr(me.OrgId, "<nil>"), bootstrapOrgID)
+			})
+		}
+	})
+
 	t.Run("cross_org_isolation", func(t *testing.T) {
 		// A random uuid is overwhelmingly likely to either not exist
 		// or live in a different org. Either way the design says we
@@ -320,4 +358,14 @@ func assertAuthFailure(t *testing.T, err error, label string) {
 		}
 	}
 	t.Fatalf("expected auth-failure shape for %s key; got: %v", label, err)
+}
+
+// derefOr returns the dereferenced string or fallback if p is nil.
+// Used in failure messages so we never panic while formatting an
+// org-binding mismatch.
+func derefOr(p *string, fallback string) string {
+	if p == nil {
+		return fallback
+	}
+	return *p
 }
