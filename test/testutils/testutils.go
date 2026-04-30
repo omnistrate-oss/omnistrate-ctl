@@ -1,6 +1,8 @@
 package testutils
 
 import (
+	"crypto/rand"
+	"encoding/hex"
 	"os"
 	"testing"
 
@@ -53,4 +55,17 @@ func IntegrationTest(t *testing.T) {
 	if !config.GetEnvAsBoolean("ENABLE_INTEGRATION_TEST", "false") {
 		t.Skip("skipping integration tests, set environment variable ENABLE_INTEGRATION_TEST")
 	}
+}
+
+// RandomTestSuffix returns an 8-char lowercase hex string suitable for
+// suffixing test-scoped resource names so concurrent or repeated runs
+// of the same test don't collide on uniqueness constraints.
+func RandomTestSuffix() string {
+	var b [4]byte
+	if _, err := rand.Read(b[:]); err != nil {
+		// crypto/rand failing is exceptional; fall back to a fixed
+		// label so the test still produces a stable diagnostic.
+		return "norandom"
+	}
+	return hex.EncodeToString(b[:])
 }
