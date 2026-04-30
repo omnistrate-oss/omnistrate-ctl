@@ -145,6 +145,52 @@ func Test_api_key_authorization_lifecycle(t *testing.T) {
 		}
 	})
 
+	t.Run("root_role_creation_is_rejected", func(t *testing.T) {
+		// SECURITY-CRITICAL: the Root role MUST never be assignable to
+		// an api-key. Root is the org-owner principal and exists only
+		// for human bootstrapping; allowing it on an api-key would let
+		// any leaked key destroy or transfer the org. The backend
+		// rejects this at create time (CompareRolePriorities + an
+		// explicit Root guard in the api-key create path) and we pin
+		// the contract end-to-end here so any future regression that
+		// silently downgrades or accepts Root is caught.
+		name := fmt.Sprintf("ctl-authz-root-reject-%s", runID)
+		desc := "must be rejected; root role is never allowed on api-keys"
+		res, err := dataaccess.CreateAPIKey(ctx, adminToken, name, "root", &desc, nil)
+		if err == nil {
+			// Track the id so cleanup removes it even though we are
+			// about to fail the test — leaving stray root-role keys
+			// in a shared smoke env would be the worst possible
+			// outcome of this assertion failing.
+			if res != nil && res.Id != "" {
+				createdIDs = append(createdIDs, res.Id)
+			}
+			t.Fatalf("CreateAPIKey with role=root must be rejected; got success id=%q", func() string {
+				if res == nil {
+					return "<nil>"
+				}
+				return res.Id
+			}())
+		}
+		// Backend collapses the rejection to a 400/403 with a message
+		// that mentions either "root" specifically or the generic
+		// "bad request"/"denied"/"forbidden" shape depending on which
+		// guard fires first. We accept any of those so the test is
+		// resilient to refinements in the error surface, but we
+		// require the rejection itself.
+		msg := strings.ToLower(err.Error())
+		matched := false
+		for _, kw := range []string{"root", "bad request", "denied", "forbidden", "not allowed", "400", "403"} {
+			if strings.Contains(msg, kw) {
+				matched = true
+				break
+			}
+		}
+		if !matched {
+			t.Fatalf("CreateAPIKey with role=root rejected, but with an unexpected error shape: %v", err)
+		}
+	})
+
 	t.Run("cross_org_isolation", func(t *testing.T) {
 		// A random uuid is overwhelmingly likely to either not exist
 		// or live in a different org. Either way the design says we
