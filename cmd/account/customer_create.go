@@ -41,6 +41,9 @@ const (
 	customerAccountNebiusBindingsName    = "Nebius Bindings"
 	customerAccountPrivateLinkName       = "Private Link"
 	customerAccountAllowCreateNewName    = "Allow New Cloud Native Network Creation"
+	customerAccountClusterNameName       = "Cluster Name"
+	customerAccountClusterRegionName     = "Cluster Region"
+	customerAccountClusterDescriptionName = "Cluster Description"
 	customerAccountReadyTimeout          = 10 * time.Minute
 	customerAccountReadyPollInterval     = 10 * time.Second
 	customerEmailFlag                    = "customer-email"
@@ -501,6 +504,9 @@ func customerAccountInputParameters() []openapiclient.DescribeInputParameterResu
 		{Name: customerAccountNebiusBindingsName, Key: "nebius_bindings"},
 		{Name: customerAccountPrivateLinkName, Key: "private_link"},
 		{Name: customerAccountAllowCreateNewName, Key: "allow_new_cloud_native_network_creation"},
+		{Name: customerAccountClusterNameName, Key: "cluster_name"},
+		{Name: customerAccountClusterRegionName, Key: "cluster_region"},
+		{Name: customerAccountClusterDescriptionName, Key: "cluster_description"},
 	}
 }
 
@@ -663,6 +669,20 @@ func buildCustomerAccountRequestParamsWithDerivedValues(
 		if err := setParam(customerAccountNebiusBindingsName, toCustomerNebiusBindingParams(params.NebiusBindings)); err != nil {
 			return nil, err
 		}
+	case "byoc-anywhere":
+		if err := setParam(customerAccountClusterNameName, params.ClusterName); err != nil {
+			return nil, err
+		}
+		if params.ClusterRegion != "" {
+			if err := setParam(customerAccountClusterRegionName, params.ClusterRegion); err != nil {
+				return nil, err
+			}
+		}
+		if params.ClusterDescription != "" {
+			if err := setParam(customerAccountClusterDescriptionName, params.ClusterDescription); err != nil {
+				return nil, err
+			}
+		}
 	default:
 		return nil, fmt.Errorf("unsupported cloud provider request")
 	}
@@ -717,6 +737,8 @@ func requestedCloudProvider(params CloudAccountParams) string {
 		return "azure"
 	case params.NebiusTenantID != "":
 		return "nebius"
+	case params.ClusterName != "":
+		return "byoc-anywhere"
 	default:
 		return ""
 	}

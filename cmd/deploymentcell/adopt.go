@@ -26,7 +26,7 @@ var adoptCmd = &cobra.Command{
 
 func init() {
 	adoptCmd.Flags().StringP("id", "i", "", "Deployment cell ID (required)")
-	adoptCmd.Flags().StringP("cloud-provider", "c", "", "Cloud provider name (required, e.g. aws, azure, gcp, nebius)")
+	adoptCmd.Flags().StringP("cloud-provider", "c", "", "Cloud provider name (required, e.g. aws, azure, gcp, nebius, byoc-anywhere)")
 	adoptCmd.Flags().StringP("region", "r", "", "Region name (required)")
 	adoptCmd.Flags().StringP("description", "d", "Deployment cell adopted via CLI", "Description for the deployment cell")
 	adoptCmd.Flags().StringP("customer-email", "u", "", "Customer email to adopt the deployment cell for (optional)")

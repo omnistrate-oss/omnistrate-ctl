@@ -25,7 +25,10 @@ omnistrate-ctl account create [account-name] --gcp-project-id=[project-id] --gcp
 omnistrate-ctl account create [account-name] --azure-subscription-id=[subscription-id] --azure-tenant-id=[tenant-id]
 
 # Create Nebius account
-omnistrate-ctl account create [account-name] --nebius-tenant-id=[tenant-id] --nebius-bindings-file=[bindings-file]`
+omnistrate-ctl account create [account-name] --nebius-tenant-id=[tenant-id] --nebius-bindings-file=[bindings-file]
+
+# Create byoc-anywhere account (customer-provided Kubernetes cluster)
+omnistrate-ctl account create [account-name] --cluster-name=[cluster-name] --cluster-region=[region] --cluster-description=[description]`
 )
 
 var createCmd = &cobra.Command{
@@ -132,6 +135,9 @@ type CloudAccountParams struct {
 	AzureTenantID       string
 	NebiusTenantID      string
 	NebiusBindings      []openapiclient.NebiusAccountBindingInput
+	ClusterName         string
+	ClusterRegion       string
+	ClusterDescription  string
 	PrivateLink         bool
 	AllowCreateNew      bool
 }
@@ -199,6 +205,19 @@ func CreateCloudAccount(ctx context.Context, token string, params CloudAccountPa
 		request.NebiusTenantID = &params.NebiusTenantID
 		request.NebiusBindings = params.NebiusBindings
 		request.Description = "Nebius Account " + params.NebiusTenantID
+	} else if params.ClusterName != "" {
+		cloudProviderID, err := dataaccess.GetCloudProviderByName(ctx, token, "byoc-anywhere")
+		if err != nil {
+			utils.HandleSpinnerError(spinner, sm, err)
+			return nil, err
+		}
+
+		request.CloudProviderId = cloudProviderID
+		desc := "BYOC Anywhere Cluster " + params.ClusterName
+		if params.ClusterDescription != "" {
+			desc = params.ClusterDescription
+		}
+		request.Description = desc
 	} else {
 		return nil, fmt.Errorf("no cloud provider credentials provided")
 	}
@@ -245,12 +264,15 @@ func validateCloudAccountParams(params CloudAccountParams) error {
 	if params.NebiusTenantID != "" || len(params.NebiusBindings) > 0 {
 		providerCount++
 	}
+	if params.ClusterName != "" {
+		providerCount++
+	}
 
 	if providerCount == 0 {
 		return fmt.Errorf("one cloud provider account configuration must be provided")
 	}
 	if providerCount > 1 {
-		return fmt.Errorf("only one of --aws-account-id, --gcp-project-id, --azure-subscription-id, or --nebius-tenant-id can be used at a time")
+		return fmt.Errorf("only one of --aws-account-id, --gcp-project-id, --azure-subscription-id, --nebius-tenant-id, or --cluster-name can be used at a time")
 	}
 
 	if (params.GcpProjectID != "" && params.GcpProjectNumber == "") || (params.GcpProjectID == "" && params.GcpProjectNumber != "") {

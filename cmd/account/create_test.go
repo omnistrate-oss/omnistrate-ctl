@@ -49,7 +49,7 @@ func TestValidateCloudAccountParams_Nebius(t *testing.T) {
 				NebiusTenantID: "tenant-1",
 				NebiusBindings: []openapiclient.NebiusAccountBindingInput{validBinding},
 			},
-			wantErr: "only one of --aws-account-id, --gcp-project-id, --azure-subscription-id, or --nebius-tenant-id can be used at a time",
+			wantErr: "only one of --aws-account-id, --gcp-project-id, --azure-subscription-id, --nebius-tenant-id, or --cluster-name can be used at a time",
 		},
 	}
 

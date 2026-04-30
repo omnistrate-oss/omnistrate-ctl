@@ -5,16 +5,19 @@ import (
 )
 
 const (
-	awsAccountIDFlag        = "aws-account-id"
-	gcpProjectIDFlag        = "gcp-project-id"
-	gcpProjectNumberFlag    = "gcp-project-number"
-	azureSubscriptionIDFlag = "azure-subscription-id"
-	azureTenantIDFlag       = "azure-tenant-id"
-	nebiusTenantIDFlag      = "nebius-tenant-id"
-	nebiusBindingsFileFlag  = "nebius-bindings-file"
-	skipWaitFlag            = "skip-wait"
-	privateLinkFlag         = "private-link"
-	allowCreateNewFlag      = "allow-create-new-cloud-native-network"
+	awsAccountIDFlag           = "aws-account-id"
+	gcpProjectIDFlag           = "gcp-project-id"
+	gcpProjectNumberFlag       = "gcp-project-number"
+	azureSubscriptionIDFlag    = "azure-subscription-id"
+	azureTenantIDFlag          = "azure-tenant-id"
+	nebiusTenantIDFlag         = "nebius-tenant-id"
+	nebiusBindingsFileFlag     = "nebius-bindings-file"
+	clusterNameFlag            = "cluster-name"
+	clusterRegionFlag          = "cluster-region"
+	clusterDescriptionFlag     = "cluster-description"
+	skipWaitFlag               = "skip-wait"
+	privateLinkFlag            = "private-link"
+	allowCreateNewFlag         = "allow-create-new-cloud-native-network"
 )
 
 func addCloudAccountProviderFlags(cmd *cobra.Command) {
@@ -25,6 +28,9 @@ func addCloudAccountProviderFlags(cmd *cobra.Command) {
 	cmd.Flags().String(azureTenantIDFlag, "", "Azure tenant ID")
 	cmd.Flags().String(nebiusTenantIDFlag, "", "Nebius tenant ID")
 	cmd.Flags().String(nebiusBindingsFileFlag, "", "Path to a YAML file describing Nebius bindings")
+	cmd.Flags().String(clusterNameFlag, "", "Name of the customer-provided Kubernetes cluster (byoc-anywhere)")
+	cmd.Flags().String(clusterRegionFlag, "", "Region or location label for the cluster (byoc-anywhere)")
+	cmd.Flags().String(clusterDescriptionFlag, "", "Free-form description of the cluster (byoc-anywhere)")
 	cmd.Flags().Bool(skipWaitFlag, false, "Skip waiting for the account to become READY")
 
 	cmd.MarkFlagsOneRequired(
@@ -32,6 +38,7 @@ func addCloudAccountProviderFlags(cmd *cobra.Command) {
 		gcpProjectIDFlag,
 		azureSubscriptionIDFlag,
 		nebiusTenantIDFlag,
+		clusterNameFlag,
 	)
 	cmd.MarkFlagsRequiredTogether(gcpProjectIDFlag, gcpProjectNumberFlag)
 	cmd.MarkFlagsRequiredTogether(azureSubscriptionIDFlag, azureTenantIDFlag)
@@ -48,6 +55,10 @@ func cloudAccountParamsFromFlags(cmd *cobra.Command, name string) (CloudAccountP
 	nebiusTenantID, _ := cmd.Flags().GetString(nebiusTenantIDFlag)
 	nebiusBindingsFile, _ := cmd.Flags().GetString(nebiusBindingsFileFlag)
 
+	clusterName, _ := cmd.Flags().GetString(clusterNameFlag)
+	clusterRegion, _ := cmd.Flags().GetString(clusterRegionFlag)
+	clusterDescription, _ := cmd.Flags().GetString(clusterDescriptionFlag)
+
 	params := CloudAccountParams{
 		Name:                name,
 		AwsAccountID:        awsAccountID,
@@ -56,6 +67,9 @@ func cloudAccountParamsFromFlags(cmd *cobra.Command, name string) (CloudAccountP
 		AzureSubscriptionID: azureSubscriptionID,
 		AzureTenantID:       azureTenantID,
 		NebiusTenantID:      nebiusTenantID,
+		ClusterName:         clusterName,
+		ClusterRegion:       clusterRegion,
+		ClusterDescription:  clusterDescription,
 	}
 
 	// --private-link / --allow-create-new are only meaningful for the BYOA
