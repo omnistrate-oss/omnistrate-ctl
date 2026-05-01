@@ -5,14 +5,17 @@ import (
 )
 
 const (
-	awsAccountIDFlag        = "aws-account-id"
-	gcpProjectIDFlag        = "gcp-project-id"
-	gcpProjectNumberFlag    = "gcp-project-number"
-	azureSubscriptionIDFlag = "azure-subscription-id"
-	azureTenantIDFlag       = "azure-tenant-id"
-	nebiusTenantIDFlag      = "nebius-tenant-id"
-	nebiusBindingsFileFlag  = "nebius-bindings-file"
-	skipWaitFlag            = "skip-wait"
+	awsAccountIDFlag           = "aws-account-id"
+	gcpProjectIDFlag           = "gcp-project-id"
+	gcpProjectNumberFlag       = "gcp-project-number"
+	azureSubscriptionIDFlag    = "azure-subscription-id"
+	azureTenantIDFlag          = "azure-tenant-id"
+	nebiusTenantIDFlag         = "nebius-tenant-id"
+	nebiusBindingsFileFlag     = "nebius-bindings-file"
+	skipWaitFlag               = "skip-wait"
+	privateLinkFlag            = "private-link"
+	allowCreateNewFlag         = "allow-create-new-cloud-native-network"
+	cloudNativeNetworksFlag    = "cloud-native-networks"
 )
 
 func addCloudAccountProviderFlags(cmd *cobra.Command) {
@@ -54,6 +57,25 @@ func cloudAccountParamsFromFlags(cmd *cobra.Command, name string) (CloudAccountP
 		AzureSubscriptionID: azureSubscriptionID,
 		AzureTenantID:       azureTenantID,
 		NebiusTenantID:      nebiusTenantID,
+	}
+
+	// --private-link / --allow-create-new are only meaningful for the BYOA
+	// customer onboarding flow (they map to injected input parameters on the
+	// account-config resource). They are registered conditionally by the
+	// caller, so only read them when present on the command.
+	if cmd.Flags().Lookup(privateLinkFlag) != nil {
+		privateLink, _ := cmd.Flags().GetBool(privateLinkFlag)
+		params.PrivateLink = privateLink
+	}
+	if cmd.Flags().Lookup(allowCreateNewFlag) != nil {
+		allowCreateNew, _ := cmd.Flags().GetBool(allowCreateNewFlag)
+		params.AllowCreateNew = allowCreateNew
+	}
+
+	// --cloud-native-networks is registered only on customer create.
+	if cmd.Flags().Lookup(cloudNativeNetworksFlag) != nil {
+		cloudNativeNetworks, _ := cmd.Flags().GetStringSlice(cloudNativeNetworksFlag)
+		params.CloudNativeNetworks = cloudNativeNetworks
 	}
 
 	if nebiusBindingsFile != "" {

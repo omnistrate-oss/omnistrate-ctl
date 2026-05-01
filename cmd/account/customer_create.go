@@ -24,7 +24,15 @@ const (
 	  --plan=customer-hosted \
 	  --customer-email=customer@example.com \
 	  --nebius-tenant-id=tenant-xxxx \
-	  --nebius-bindings-file=./nebius-bindings.yaml`
+	  --nebius-bindings-file=./nebius-bindings.yaml
+
+# Onboard an AWS BYOA account and import specific VPCs
+	omnistrate-ctl account customer create \
+	  --service=postgres \
+	  --environment=prod \
+	  --plan=customer-hosted \
+	  --aws-account-id=123456789012 \
+	  --cloud-native-networks=us-east-1:vpc-abc123,eu-west-1:vpc-def456`
 
 	customerAccountResourceName          = "Cloud Provider Account"
 	customerAccountResourceKey           = "omnistrateCloudAccountConfig"
@@ -39,6 +47,8 @@ const (
 	customerAccountAzureTenantIDName     = "Azure Tenant ID"
 	customerAccountNebiusTenantIDName    = "Nebius Tenant ID"
 	customerAccountNebiusBindingsName    = "Nebius Bindings"
+	customerAccountPrivateLinkName       = "Private Link"
+	customerAccountAllowCreateNewName    = "Allow New Cloud Native Network Creation"
 	customerAccountReadyTimeout          = 10 * time.Minute
 	customerAccountReadyPollInterval     = 10 * time.Second
 	customerEmailFlag                    = "customer-email"
@@ -99,6 +109,11 @@ func init() {
 	customerCreateCmd.Args = cobra.NoArgs
 
 	addCloudAccountProviderFlags(customerCreateCmd)
+	// BYOA-customer-only flags: these map to injected input parameters on the
+	// account-config resource and have no effect on the provider create path.
+	customerCreateCmd.Flags().Bool(privateLinkFlag, false, "Enable AWS PrivateLink connectivity for services deployed in this account")
+	customerCreateCmd.Flags().Bool(allowCreateNewFlag, false, "Allow the platform to create new cloud-native networks (VPCs) in this account on demand")
+	customerCreateCmd.Flags().StringSlice(cloudNativeNetworksFlag, nil, "Cloud-native networks to sync and import after account creation (format: region:network-id, e.g. us-east-1:vpc-abc123)")
 
 	customerCreateCmd.Flags().String("service", "", "Service name or ID")
 	customerCreateCmd.Flags().String("environment", "", "Environment name or ID")
@@ -126,6 +141,18 @@ func runCustomerCreate(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		utils.PrintError(err)
 		return err
+	}
+
+	// Early validation: parse cloud-native-network targets and check flag compatibility.
+	var cnnTargets []dataaccess.CloudNativeNetworkTarget
+	if len(params.CloudNativeNetworks) > 0 {
+		if skipWait {
+			return fmt.Errorf("--cloud-native-networks requires waiting for account READY (cannot use --skip-wait)")
+		}
+		cnnTargets, err = parseCloudNativeNetworkTargets(params.CloudNativeNetworks)
+		if err != nil {
+			return err
+		}
 	}
 
 	token, err := common.GetTokenWithLogin()
@@ -258,6 +285,15 @@ func runCustomerCreate(cmd *cobra.Command, args []string) error {
 
 	if output != "json" && backingAccount != nil && backingAccount.Status != "READY" {
 		dataaccess.PrintNextStepVerifyAccountMsg(backingAccount)
+	}
+
+	// If cloud-native networks were requested, sync and import them now.
+	if len(cnnTargets) > 0 && accountConfigID != "" {
+		err = syncAndImportCloudNativeNetworks(cmd.Context(), token, accountConfigID, cnnTargets, output)
+		if err != nil {
+			utils.PrintError(err)
+			return err
+		}
 	}
 
 	return nil
@@ -493,6 +529,8 @@ func customerAccountInputParameters() []openapiclient.DescribeInputParameterResu
 		{Name: customerAccountAzureTenantIDName, Key: "azure_tenant_id"},
 		{Name: customerAccountNebiusTenantIDName, Key: "nebius_tenant_id"},
 		{Name: customerAccountNebiusBindingsName, Key: "nebius_bindings"},
+		{Name: customerAccountPrivateLinkName, Key: "private_link"},
+		{Name: customerAccountAllowCreateNewName, Key: "allow_new_cloud_native_network_creation"},
 	}
 }
 
@@ -657,6 +695,30 @@ func buildCustomerAccountRequestParamsWithDerivedValues(
 		}
 	default:
 		return nil, fmt.Errorf("unsupported cloud provider request")
+	}
+
+	// Optional cross-provider input parameters. Only set them when the user
+	// explicitly opted in via the corresponding flag; if the BYOA account-config
+	// resource does not declare the input parameter, surface an explicit error
+	// so the user knows the plan does not support the option.
+	setOptionalParam := func(displayName string, value any) error {
+		key, exists := keysByName[displayName]
+		if !exists || strings.TrimSpace(key) == "" {
+			return fmt.Errorf("BYOA account-config resource does not declare input parameter %q; the selected service plan does not support this option", displayName)
+		}
+		requestParams[key] = value
+		return nil
+	}
+
+	if params.PrivateLink {
+		if err := setOptionalParam(customerAccountPrivateLinkName, true); err != nil {
+			return nil, err
+		}
+	}
+	if params.AllowCreateNew {
+		if err := setOptionalParam(customerAccountAllowCreateNewName, true); err != nil {
+			return nil, err
+		}
 	}
 
 	return requestParams, nil
