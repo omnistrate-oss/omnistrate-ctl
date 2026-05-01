@@ -223,7 +223,7 @@ func Test_account_customer_create_cloud_native_networks(t *testing.T) {
 	accounts, _ := dataaccess.ListAccounts(ctx, token, "all")
 	if accounts != nil {
 		for _, account := range accounts.AccountConfigs {
-			if account.TargetAccountId == awsAccountID {
+			if account.AwsAccountID != nil && *account.AwsAccountID == awsAccountID {
 				t.Cleanup(func() {
 					_, _ = dataaccess.UnimportAccountConfigCloudNativeNetwork(ctx, token, account.Id, networkID)
 					if delErr := dataaccess.DeleteAccount(ctx, token, account.Id); delErr != nil {
