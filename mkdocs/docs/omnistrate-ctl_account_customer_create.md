@@ -21,6 +21,14 @@ omnistrate-ctl account customer create --service=[service] --environment=[enviro
 	  --customer-email=customer@example.com \
 	  --nebius-tenant-id=tenant-xxxx \
 	  --nebius-bindings-file=./nebius-bindings.yaml
+
+# Onboard an AWS BYOA account and import specific VPCs
+	omnistrate-ctl account customer create \
+	  --service=postgres \
+	  --environment=prod \
+	  --plan=customer-hosted \
+	  --aws-account-id=123456789012 \
+	  --cloud-native-networks=us-east-1:vpc-abc123,eu-west-1:vpc-def456
 ```
 
 ### Options

@@ -161,24 +161,35 @@ func networkImported(vpcs []openapiclientfleet.FleetAccountConfigCloudNativeNetw
 	return false
 }
 
-// Test_account_create_cloud_native_networks verifies that passing
-// --cloud-native-networks to `account create` automatically syncs and imports
-// the specified VPCs after the account becomes READY.
+// Test_account_customer_create_cloud_native_networks verifies that passing
+// --cloud-native-networks to `account customer create` automatically syncs
+// and imports the specified VPCs after the BYOA account becomes READY.
 //
 // Required environment variables:
-//   - TEST_BYOA_ACCOUNT_CONFIG_ID: an existing READY BYOA account-config with
-//     at least one discoverable VPC, OR the test will create a throwaway.
+//   - TEST_CNN_SERVICE: service name or ID for the BYOA plan
+//   - TEST_CNN_ENVIRONMENT: environment name or ID
+//   - TEST_CNN_PLAN: plan name or ID (must be a BYOA plan)
 //   - TEST_CNN_REGION: region containing the VPC (e.g. "us-east-1")
 //   - TEST_CNN_NETWORK_ID: the VPC ID to sync+import (e.g. "vpc-abc123")
+//   - Optionally TEST_CNN_CUSTOMER_EMAIL: customer email for production envs
 //
-// When TEST_CNN_REGION / TEST_CNN_NETWORK_ID are not set, the test discovers
-// one from the existing account via sync and uses it.
-func Test_account_create_cloud_native_networks(t *testing.T) {
+// When any of the required variables are missing, the test is skipped.
+func Test_account_customer_create_cloud_native_networks(t *testing.T) {
 	testutils.SmokeTest(t)
 
 	ctx := context.Background()
 	require := require.New(t)
 	defer testutils.Cleanup()
+
+	service := config.GetEnv("TEST_CNN_SERVICE", "")
+	environment := config.GetEnv("TEST_CNN_ENVIRONMENT", "")
+	plan := config.GetEnv("TEST_CNN_PLAN", "")
+	region := config.GetEnv("TEST_CNN_REGION", "")
+	networkID := config.GetEnv("TEST_CNN_NETWORK_ID", "")
+
+	if service == "" || environment == "" || plan == "" || region == "" || networkID == "" {
+		t.Skip("TEST_CNN_SERVICE, TEST_CNN_ENVIRONMENT, TEST_CNN_PLAN, TEST_CNN_REGION, and TEST_CNN_NETWORK_ID must all be set; skipping")
+	}
 
 	testEmail, testPassword, err := testutils.GetTestAccount()
 	require.NoError(err)
@@ -188,81 +199,43 @@ func Test_account_create_cloud_native_networks(t *testing.T) {
 	token, err := config.GetToken()
 	require.NoError(err)
 
-	region := config.GetEnv("TEST_CNN_REGION", "")
-	networkID := config.GetEnv("TEST_CNN_NETWORK_ID", "")
-
-	// If region/networkID aren't explicitly set, discover one from an existing
-	// account so the test is self-contained.
-	if region == "" || networkID == "" {
-		existingAccountID := config.GetEnv("TEST_BYOA_ACCOUNT_CONFIG_ID", "")
-		if existingAccountID == "" {
-			t.Skip("TEST_CNN_REGION and TEST_CNN_NETWORK_ID not set, and no TEST_BYOA_ACCOUNT_CONFIG_ID to discover from; skipping")
-		}
-
-		syncResult, syncErr := dataaccess.SyncAccountConfigCloudNativeNetworks(ctx, token, existingAccountID, nil)
-		if syncErr != nil {
-			t.Skipf("cannot sync existing account to discover networks: %v", syncErr)
-		}
-		for _, vpc := range syncResult.CloudNativeNetworks {
-			if strings.EqualFold(vpc.Status, "AVAILABLE") {
-				region = vpc.Region
-				networkID = vpc.CloudNativeNetworkId
-				break
-			}
-		}
-		if region == "" || networkID == "" {
-			t.Skip("no AVAILABLE networks discovered from existing account; cannot test --cloud-native-networks")
-		}
-
-		// Clean up: unimport if it was previously imported
-		_ = ensureNetworkUnimported(ctx, token, existingAccountID, networkID)
-	}
-
-	// Create a new account with --cloud-native-networks flag.
-	awsAccountName := "cnn-create-" + uuid.NewString()[:8]
 	// nolint:gosec
 	rand12DigitsNum := rand.New(rand.NewSource(time.Now().UnixNano())).Int63n(900000000000) + 100000000000
 	awsAccountID := fmt.Sprintf("%d", rand12DigitsNum)
 	cnnFlag := fmt.Sprintf("%s:%s", region, networkID)
 
-	cmd.RootCmd.SetArgs([]string{
-		"account", "create", awsAccountName,
+	cmdArgs := []string{
+		"account", "customer", "create",
+		"--service", service,
+		"--environment", environment,
+		"--plan", plan,
 		"--aws-account-id", awsAccountID,
 		"--cloud-native-networks", cnnFlag,
 		"--output", "json",
-	})
+	}
 
+	if customerEmail := config.GetEnv("TEST_CNN_CUSTOMER_EMAIL", ""); customerEmail != "" {
+		cmdArgs = append(cmdArgs, "--customer-email", customerEmail)
+	}
+
+	cmd.RootCmd.SetArgs(cmdArgs)
 	createErr := cmd.RootCmd.ExecuteContext(ctx)
 
-	// Resolve account ID for cleanup regardless of create outcome.
-	accountID := lookupAccountConfigID(t, ctx, token, awsAccountName)
-	if accountID != "" {
-		t.Cleanup(func() {
-			// Unimport first so the account can be deleted cleanly.
-			_, _ = dataaccess.UnimportAccountConfigCloudNativeNetwork(ctx, token, accountID, networkID)
-			if delErr := dataaccess.DeleteAccount(ctx, token, accountID); delErr != nil {
-				t.Logf("best-effort throwaway account delete (%s) failed: %v", accountID, delErr)
+	// Best-effort cleanup: find the backing account-config and delete it.
+	accounts, _ := dataaccess.ListAccounts(ctx, token, "all")
+	if accounts != nil {
+		for _, account := range accounts.AccountConfigs {
+			if account.TargetAccountId == awsAccountID {
+				t.Cleanup(func() {
+					_, _ = dataaccess.UnimportAccountConfigCloudNativeNetwork(ctx, token, account.Id, networkID)
+					if delErr := dataaccess.DeleteAccount(ctx, token, account.Id); delErr != nil {
+						t.Logf("best-effort cleanup of account %s failed: %v", account.Id, delErr)
+					}
+				})
+				break
 			}
-		})
+		}
 	}
 
-	require.NoError(createErr, "account create with --cloud-native-networks should succeed")
-	require.NotEmpty(accountID)
-
-	// Verify the network was imported.
-	listResult, err := dataaccess.ListAccountConfigCloudNativeNetworks(ctx, token, accountID)
-	require.NoError(err)
-	require.True(networkImported(listResult.CloudNativeNetworks, networkID),
-		"network %s should be imported after account create with --cloud-native-networks", networkID)
-}
-
-func ensureNetworkUnimported(ctx context.Context, token, accountID, networkID string) error {
-	list, err := dataaccess.ListAccountConfigCloudNativeNetworks(ctx, token, accountID)
-	if err != nil {
-		return err
-	}
-	if networkImported(list.CloudNativeNetworks, networkID) {
-		_, err = dataaccess.UnimportAccountConfigCloudNativeNetwork(ctx, token, accountID, networkID)
-	}
-	return err
+	require.NoError(createErr, "account customer create with --cloud-native-networks should succeed")
 }

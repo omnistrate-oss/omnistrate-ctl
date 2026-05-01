@@ -19,9 +19,6 @@ const (
 	createExample = `# Create aws account
 omnistrate-ctl account create [account-name] --aws-account-id=[account-id]
 
-# Create aws account and import specific VPCs
-omnistrate-ctl account create [account-name] --aws-account-id=[account-id] --cloud-native-networks=us-east-1:vpc-abc123,eu-west-1:vpc-def456
-
 # Create gcp account
 omnistrate-ctl account create [account-name] --gcp-project-id=[project-id] --gcp-project-number=[project-number]
 
@@ -62,18 +59,6 @@ func runCreate(cmd *cobra.Command, args []string) error {
 	params, err := cloudAccountParamsFromFlags(cmd, name)
 	if err != nil {
 		return err
-	}
-
-	// Early validation: parse cloud-native-network targets and check flag compatibility.
-	var cnnTargets []dataaccess.CloudNativeNetworkTarget
-	if len(params.CloudNativeNetworks) > 0 {
-		if skipWait {
-			return fmt.Errorf("--cloud-native-networks requires waiting for account READY (cannot use --skip-wait)")
-		}
-		cnnTargets, err = parseCloudNativeNetworkTargets(params.CloudNativeNetworks)
-		if err != nil {
-			return err
-		}
 	}
 
 	// Validate user login
@@ -135,15 +120,6 @@ func runCreate(cmd *cobra.Command, args []string) error {
 		utils.HandleSpinnerSuccess(waitSpinner, sm, "Account is now READY")
 	}
 
-	// If cloud-native networks were requested, sync and import them now.
-	if len(cnnTargets) > 0 {
-		err = syncAndImportCloudNativeNetworks(cmd.Context(), token, account.Id, cnnTargets, output)
-		if err != nil {
-			utils.PrintError(err)
-			return err
-		}
-	}
-
 	return nil
 }
 
@@ -159,7 +135,7 @@ type CloudAccountParams struct {
 	NebiusBindings      []openapiclient.NebiusAccountBindingInput
 	PrivateLink         bool
 	AllowCreateNew      bool
-	CloudNativeNetworks []string // region:network-id pairs
+	CloudNativeNetworks []string // region:network-id pairs (only for customer create)
 }
 
 // CreateCloudAccount creates a cloud provider account and returns the account config ID and account details

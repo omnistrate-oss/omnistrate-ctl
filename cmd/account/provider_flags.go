@@ -27,7 +27,6 @@ func addCloudAccountProviderFlags(cmd *cobra.Command) {
 	cmd.Flags().String(nebiusTenantIDFlag, "", "Nebius tenant ID")
 	cmd.Flags().String(nebiusBindingsFileFlag, "", "Path to a YAML file describing Nebius bindings")
 	cmd.Flags().Bool(skipWaitFlag, false, "Skip waiting for the account to become READY")
-	cmd.Flags().StringSlice(cloudNativeNetworksFlag, nil, "Cloud-native networks to sync and import after account creation (format: region:network-id, e.g. us-east-1:vpc-abc123)")
 
 	cmd.MarkFlagsOneRequired(
 		awsAccountIDFlag,
@@ -73,8 +72,7 @@ func cloudAccountParamsFromFlags(cmd *cobra.Command, name string) (CloudAccountP
 		params.AllowCreateNew = allowCreateNew
 	}
 
-	// --cloud-native-networks is registered by addCloudAccountProviderFlags
-	// but only consumed during account create (not customer create).
+	// --cloud-native-networks is registered only on customer create.
 	if cmd.Flags().Lookup(cloudNativeNetworksFlag) != nil {
 		cloudNativeNetworks, _ := cmd.Flags().GetStringSlice(cloudNativeNetworksFlag)
 		params.CloudNativeNetworks = cloudNativeNetworks
