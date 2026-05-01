@@ -237,10 +237,13 @@ func TestPrivateLinkFlagRegistered(t *testing.T) {
 		"--private-link must not be registered on provider account create (it is ignored by CreateCloudAccount)")
 	assert.Nil(t, createCmd.Flags().Lookup(allowCreateNewFlag),
 		"--allow-create-new-cloud-native-network must not be registered on provider account create")
+	assert.Nil(t, createCmd.Flags().Lookup(cloudNativeNetworksFlag),
+		"--cloud-native-networks must not be registered on provider account create")
 
 	// Customer create owns these flags.
 	assert.NotNil(t, customerCreateCmd.Flags().Lookup(privateLinkFlag))
 	assert.NotNil(t, customerCreateCmd.Flags().Lookup(allowCreateNewFlag))
+	assert.NotNil(t, customerCreateCmd.Flags().Lookup(cloudNativeNetworksFlag))
 }
 
 func ptr[T any](v T) *T {

@@ -24,11 +24,11 @@ import (
 //  1. logs in with the smoke-test account,
 //  2. resolves a BYOA AWS account-config (env TEST_BYOA_ACCOUNT_CONFIG_ID,
 //     or a freshly created throwaway account),
-//  3. runs `account cloud-native-network sync` to trigger discovery,
+//  3. triggers discovery via dataaccess.SyncAccountConfigCloudNativeNetworks,
 //  4. lists the discovered networks and asserts the fleet response carries the
 //     new IMPORTED / IN USE fields,
 //  5. imports one network and verifies Imported flips to true,
-//  6. unimports it and verifies the flag clears,
+//  6. removes it via the CLI and verifies the flag clears,
 //  7. cleans up the throwaway account-config (when it created one).
 //
 // The discovery + import/unimport phases are skipped when:
@@ -61,10 +61,8 @@ func Test_cloud_native_network_discovery(t *testing.T) {
 	if envRegions := config.GetEnv("TEST_BYOA_REGIONS", ""); envRegions != "" {
 		syncRegions = strings.Split(envRegions, ",")
 	}
-	// Call the dataaccess layer directly so we can recognize the "no regions
-	// resolved" 400 and skip cleanly. The cobra sync command spins up a TUI
-	// spinner and calls os.Exit(1) on error, which would deadlock or kill the
-	// test process.
+	// Call the dataaccess layer directly so we can inspect the error and
+	// skip cleanly without going through interactive CLI behavior.
 	if _, err := dataaccess.SyncAccountConfigCloudNativeNetworks(ctx, token, accountConfigID, syncRegions); err != nil {
 		if strings.Contains(err.Error(), "regions") {
 			t.Skipf("sync requires a service-plan-registered account; set TEST_BYOA_ACCOUNT_CONFIG_ID to a registered account: %v", err)
@@ -80,8 +78,8 @@ func Test_cloud_native_network_discovery(t *testing.T) {
 		require.NotNil(vpc.InUse, "fleet response missing 'inUse' for %s", vpc.CloudNativeNetworkId)
 	}
 
-	// Also exercise the user-facing remove command via the data access layer
-	// (list and import CLI commands were removed; they are now internal).
+	// Exercise the user-facing remove CLI command.
+	// Sync, list, and import are internal-only and exercised through the dataaccess layer above.
 
 	available := firstAvailableNetwork(listResult.CloudNativeNetworks)
 	if available == "" {
