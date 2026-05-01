@@ -7,6 +7,17 @@ import (
 	openapiclient "github.com/omnistrate-oss/omnistrate-sdk-go/v1"
 )
 
+// APIKeySigninEmail is the bare sentinel email value the signin
+// endpoint recognizes to route a request into the api-key
+// signin-exchange path. Mirrors security.APIKeySigninEmailBare in
+// omnistrate/commons; redefined here because ctl is a separate module
+// and cannot import the platform-internal commons package. The bare
+// `"apikey"` form is the public/documented contract — the platform
+// also accepts the RFC 5321-shaped `apikey@apikeys.invalid`, but the
+// short form is preferred for CLI/SDK callers and what we publish in
+// docs. Keep both constants in sync when touching either side.
+const APIKeySigninEmail = "apikey"
+
 // LoginResult holds both the JWT and optional refresh token from a login response.
 type LoginResult struct {
 	JWTToken     string //nolint:gosec
@@ -31,6 +42,18 @@ func LoginWithPassword(ctx context.Context, email string, pass string) (LoginRes
 
 	result := LoginResult{JWTToken: resp.JwtToken, RefreshToken: utils.FromPtr(resp.RefreshToken)}
 	return result, nil
+}
+
+// LoginWithAPIKey exchanges an org-bounded API key plaintext for a JWT
+// session. It uses the same signin endpoint as password login, with
+// the sentinel APIKeySigninEmail in the email field and the API key
+// plaintext in the password field; the platform recognizes the
+// sentinel and routes the request into the api-key signin-exchange
+// path. The returned session is bound to the api-key's backing user
+// and inherits the key's role; the JWT MUST NOT be persisted any
+// longer than the calling session needs it.
+func LoginWithAPIKey(ctx context.Context, apiKey string) (LoginResult, error) {
+	return LoginWithPassword(ctx, APIKeySigninEmail, apiKey)
 }
 
 func LoginWithIdentityProvider(ctx context.Context, deviceCode, identityProviderName string) (LoginResult, error) {

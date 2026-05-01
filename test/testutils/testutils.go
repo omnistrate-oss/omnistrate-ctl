@@ -4,6 +4,7 @@ import (
 	"os"
 	"testing"
 
+	"github.com/google/uuid"
 	"github.com/pkg/errors"
 
 	"github.com/omnistrate-oss/omnistrate-ctl/internal/config"
@@ -53,4 +54,12 @@ func IntegrationTest(t *testing.T) {
 	if !config.GetEnvAsBoolean("ENABLE_INTEGRATION_TEST", "false") {
 		t.Skip("skipping integration tests, set environment variable ENABLE_INTEGRATION_TEST")
 	}
+}
+
+// RandomTestSuffix returns an 8-char lowercase hex slice of a fresh
+// UUIDv4 suitable for suffixing test-scoped resource names so
+// concurrent or repeated runs of the same test don't collide on
+// uniqueness constraints.
+func RandomTestSuffix() string {
+	return uuid.NewString()[:8]
 }
