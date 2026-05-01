@@ -16,6 +16,9 @@ omnistrate-ctl account create [account-name] [--aws-account-id=account-id] [--gc
 # Create aws account
 omnistrate-ctl account create [account-name] --aws-account-id=[account-id]
 
+# Create aws account and import specific VPCs
+omnistrate-ctl account create [account-name] --aws-account-id=[account-id] --cloud-native-networks=us-east-1:vpc-abc123,eu-west-1:vpc-def456
+
 # Create gcp account
 omnistrate-ctl account create [account-name] --gcp-project-id=[project-id] --gcp-project-number=[project-number]
 
@@ -29,15 +32,16 @@ omnistrate-ctl account create [account-name] --nebius-tenant-id=[tenant-id] --ne
 ### Options
 
 ```
-      --aws-account-id string          AWS account ID
-      --azure-subscription-id string   Azure subscription ID
-      --azure-tenant-id string         Azure tenant ID
-      --gcp-project-id string          GCP project ID
-      --gcp-project-number string      GCP project number
-  -h, --help                           help for create
-      --nebius-bindings-file string    Path to a YAML file describing Nebius bindings
-      --nebius-tenant-id string        Nebius tenant ID
-      --skip-wait                      Skip waiting for the account to become READY
+      --aws-account-id string           AWS account ID
+      --azure-subscription-id string    Azure subscription ID
+      --azure-tenant-id string          Azure tenant ID
+      --cloud-native-networks strings   Cloud-native networks to sync and import after account creation (format: region:network-id, e.g. us-east-1:vpc-abc123)
+      --gcp-project-id string           GCP project ID
+      --gcp-project-number string       GCP project number
+  -h, --help                            help for create
+      --nebius-bindings-file string     Path to a YAML file describing Nebius bindings
+      --nebius-tenant-id string         Nebius tenant ID
+      --skip-wait                       Skip waiting for the account to become READY
 ```
 
 ### Options inherited from parent commands

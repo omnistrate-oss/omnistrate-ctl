@@ -73,6 +73,12 @@ func doCNNRequest(ctx context.Context, token, method, requestURL string, body an
 	return &result, nil
 }
 
+// CloudNativeNetworkTarget identifies a specific cloud-native network by region and optional network ID.
+type CloudNativeNetworkTarget struct {
+	Region    string
+	NetworkID string
+}
+
 // SyncAccountConfigCloudNativeNetworks triggers cloud-native network discovery for an account configuration.
 // Optional regions narrow the discovery; when empty the platform uses all regions from the service plan.
 // The request body uses the cloudNativeNetworks[{region, cloudNativeNetworkId?}] shape so individual VPC
@@ -90,6 +96,25 @@ func SyncAccountConfigCloudNativeNetworks(ctx context.Context, token, accountCon
 			targets[i] = target{Region: r}
 		}
 		body["cloudNativeNetworks"] = targets
+	}
+	return doCNNRequest(ctx, token, http.MethodPost, cnnFleetURL(accountConfigID, "sync"), body)
+}
+
+// SyncAccountConfigCloudNativeNetworksByTarget triggers cloud-native network discovery for specific
+// region+networkId pairs. Each target must have a Region; NetworkID is optional (when omitted,
+// all networks in that region are discovered).
+func SyncAccountConfigCloudNativeNetworksByTarget(ctx context.Context, token, accountConfigID string, targets []CloudNativeNetworkTarget) (*openapiclientfleet.FleetListAccountConfigCloudNativeNetworksResult, error) {
+	type syncTarget struct {
+		Region               string `json:"region"`
+		CloudNativeNetworkID string `json:"cloudNativeNetworkId,omitempty"`
+	}
+	body := map[string]any{}
+	if len(targets) > 0 {
+		st := make([]syncTarget, len(targets))
+		for i, t := range targets {
+			st[i] = syncTarget{Region: t.Region, CloudNativeNetworkID: t.NetworkID}
+		}
+		body["cloudNativeNetworks"] = st
 	}
 	return doCNNRequest(ctx, token, http.MethodPost, cnnFleetURL(accountConfigID, "sync"), body)
 }

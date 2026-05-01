@@ -5,16 +5,17 @@ import (
 )
 
 const (
-	awsAccountIDFlag        = "aws-account-id"
-	gcpProjectIDFlag        = "gcp-project-id"
-	gcpProjectNumberFlag    = "gcp-project-number"
-	azureSubscriptionIDFlag = "azure-subscription-id"
-	azureTenantIDFlag       = "azure-tenant-id"
-	nebiusTenantIDFlag      = "nebius-tenant-id"
-	nebiusBindingsFileFlag  = "nebius-bindings-file"
-	skipWaitFlag            = "skip-wait"
-	privateLinkFlag         = "private-link"
-	allowCreateNewFlag      = "allow-create-new-cloud-native-network"
+	awsAccountIDFlag           = "aws-account-id"
+	gcpProjectIDFlag           = "gcp-project-id"
+	gcpProjectNumberFlag       = "gcp-project-number"
+	azureSubscriptionIDFlag    = "azure-subscription-id"
+	azureTenantIDFlag          = "azure-tenant-id"
+	nebiusTenantIDFlag         = "nebius-tenant-id"
+	nebiusBindingsFileFlag     = "nebius-bindings-file"
+	skipWaitFlag               = "skip-wait"
+	privateLinkFlag            = "private-link"
+	allowCreateNewFlag         = "allow-create-new-cloud-native-network"
+	cloudNativeNetworksFlag    = "cloud-native-networks"
 )
 
 func addCloudAccountProviderFlags(cmd *cobra.Command) {
@@ -26,6 +27,7 @@ func addCloudAccountProviderFlags(cmd *cobra.Command) {
 	cmd.Flags().String(nebiusTenantIDFlag, "", "Nebius tenant ID")
 	cmd.Flags().String(nebiusBindingsFileFlag, "", "Path to a YAML file describing Nebius bindings")
 	cmd.Flags().Bool(skipWaitFlag, false, "Skip waiting for the account to become READY")
+	cmd.Flags().StringSlice(cloudNativeNetworksFlag, nil, "Cloud-native networks to sync and import after account creation (format: region:network-id, e.g. us-east-1:vpc-abc123)")
 
 	cmd.MarkFlagsOneRequired(
 		awsAccountIDFlag,
@@ -69,6 +71,13 @@ func cloudAccountParamsFromFlags(cmd *cobra.Command, name string) (CloudAccountP
 	if cmd.Flags().Lookup(allowCreateNewFlag) != nil {
 		allowCreateNew, _ := cmd.Flags().GetBool(allowCreateNewFlag)
 		params.AllowCreateNew = allowCreateNew
+	}
+
+	// --cloud-native-networks is registered by addCloudAccountProviderFlags
+	// but only consumed during account create (not customer create).
+	if cmd.Flags().Lookup(cloudNativeNetworksFlag) != nil {
+		cloudNativeNetworks, _ := cmd.Flags().GetStringSlice(cloudNativeNetworksFlag)
+		params.CloudNativeNetworks = cloudNativeNetworks
 	}
 
 	if nebiusBindingsFile != "" {

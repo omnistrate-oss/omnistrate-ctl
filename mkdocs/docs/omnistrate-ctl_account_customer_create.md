@@ -30,6 +30,7 @@ omnistrate-ctl account customer create --service=[service] --environment=[enviro
       --aws-account-id string                   AWS account ID
       --azure-subscription-id string            Azure subscription ID
       --azure-tenant-id string                  Azure tenant ID
+      --cloud-native-networks strings           Cloud-native networks to sync and import after account creation (format: region:network-id, e.g. us-east-1:vpc-abc123)
       --customer-email string                   Customer email to onboard on behalf of in production environments
       --environment string                      Environment name or ID
       --gcp-project-id string                   GCP project ID

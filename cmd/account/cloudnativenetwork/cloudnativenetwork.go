@@ -8,15 +8,12 @@ import (
 var Cmd = &cobra.Command{
 	Use:          "cloud-native-network [operation] [flags]",
 	Short:        "Manage cloud-native networks (VPCs) for a BYOA Cloud Provider Account",
-	Long:         `This command helps you discover, import, and manage cloud-native networks (VPCs) associated with your BYOA cloud provider accounts.`,
+	Long:         `This command helps you manage cloud-native networks (VPCs) associated with your BYOA cloud provider accounts.`,
 	Run:          run,
 	SilenceUsage: true,
 }
 
 func init() {
-	Cmd.AddCommand(syncCmd)
-	Cmd.AddCommand(listCmd)
-	Cmd.AddCommand(importCmd)
 	Cmd.AddCommand(removeCmd)
 }
 
