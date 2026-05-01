@@ -1,11 +1,10 @@
 package testutils
 
 import (
-	"crypto/rand"
-	"encoding/hex"
 	"os"
 	"testing"
 
+	"github.com/google/uuid"
 	"github.com/pkg/errors"
 
 	"github.com/omnistrate-oss/omnistrate-ctl/internal/config"
@@ -57,15 +56,10 @@ func IntegrationTest(t *testing.T) {
 	}
 }
 
-// RandomTestSuffix returns an 8-char lowercase hex string suitable for
-// suffixing test-scoped resource names so concurrent or repeated runs
-// of the same test don't collide on uniqueness constraints.
+// RandomTestSuffix returns an 8-char lowercase hex slice of a fresh
+// UUIDv4 suitable for suffixing test-scoped resource names so
+// concurrent or repeated runs of the same test don't collide on
+// uniqueness constraints.
 func RandomTestSuffix() string {
-	var b [4]byte
-	if _, err := rand.Read(b[:]); err != nil {
-		// crypto/rand failing is exceptional; fall back to a fixed
-		// label so the test still produces a stable diagnostic.
-		return "norandom"
-	}
-	return hex.EncodeToString(b[:])
+	return uuid.NewString()[:8]
 }

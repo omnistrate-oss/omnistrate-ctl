@@ -1,11 +1,13 @@
 # Authentication and SSO
 
-`omnistrate-ctl` supports both password-based authentication and SSO sign-in using a browser device flow.
+`omnistrate-ctl` supports password-based authentication, org-bounded API key login, and SSO sign-in using a browser device flow.
 
 ## Authentication methods
 
 - Email + password (`--email` and `--password`)
 - Email + password from stdin (`--password-stdin`)
+- Org-bounded API key (`--api-key`)
+- Org-bounded API key from stdin (`--api-key-stdin`)
 - SSO with Google (`--google`)
 - SSO with GitHub (`--gh`)
 - SSO with Microsoft Entra (`--entra`)
@@ -25,6 +27,25 @@ Recommended for scripts (avoid putting passwords in shell history):
 ```sh
 echo "$OMNISTRATE_PASSWORD" | omnistrate-ctl login --email your_email@example.com --password-stdin
 ```
+
+## API key authentication
+
+Org-bounded API keys provisioned by an admin (or root) of your organization can be used in place of a password. The CLI exchanges the plaintext key for a short-lived JWT via the signin endpoint and persists it like any other login session — every subsequent `omnistrate-ctl` call is then authenticated as the api-key's backing user, scoped to the role assigned at create time.
+
+Direct (insecure — appears in shell history and process listings):
+
+```sh
+omnistrate-ctl login --api-key om_…
+```
+
+Recommended for scripts and CI:
+
+```sh
+cat ~/omnistrate_apikey.txt | omnistrate-ctl login --api-key-stdin
+echo "$OMNISTRATE_API_KEY"   | omnistrate-ctl login --api-key-stdin
+```
+
+The two flags are mutually exclusive with each other and with all other login methods (`--email`, `--password`, `--password-stdin`, `--google`, `--gh`, `--entra`). Passing more than one is rejected by the CLI before any credential is sent.
 
 ## SSO authentication (Google, GitHub, Microsoft Entra)
 

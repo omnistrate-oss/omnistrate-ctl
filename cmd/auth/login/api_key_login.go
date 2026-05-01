@@ -24,9 +24,17 @@ import (
 // `omnistrate-ctl login --api-key …` (or pipe via --api-key-stdin)
 // from automation to obtain a fresh JWT rather than persisting the
 // JWT longer than its TTL.
-func apiKeyLogin(cmd *cobra.Command) error {
+//
+// calledByInteractiveMode is true when invoked from the interactive
+// prompt flow (where the user pasted the key into a hidden prompt).
+// In that case we suppress the "--api-key is insecure" warning
+// because the user did NOT pass the value on the command line and
+// the warning would be misleading.
+func apiKeyLogin(cmd *cobra.Command, calledByInteractiveMode bool) error {
 	if len(apiKey) > 0 {
-		ctlutils.PrintWarning("Notice: Using the --api-key flag is insecure. Please consider using the --api-key-stdin flag instead. Refer to the help documentation for examples.")
+		if !calledByInteractiveMode {
+			ctlutils.PrintWarning("Notice: Using the --api-key flag is insecure. Please consider using the --api-key-stdin flag instead. Refer to the help documentation for examples.")
+		}
 
 		if apiKeyStdin {
 			err := fmt.Errorf("--api-key and --api-key-stdin are mutually exclusive")
