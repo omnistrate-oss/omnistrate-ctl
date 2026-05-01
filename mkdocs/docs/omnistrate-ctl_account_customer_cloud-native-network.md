@@ -1,4 +1,4 @@
-## omnistrate-ctl account cloud-native-network
+## omnistrate-ctl account customer cloud-native-network
 
 Manage cloud-native networks (VPCs) for a BYOA Cloud Provider Account
 
@@ -7,7 +7,7 @@ Manage cloud-native networks (VPCs) for a BYOA Cloud Provider Account
 This command helps you manage cloud-native networks (VPCs) associated with your BYOA cloud provider accounts.
 
 ```
-omnistrate-ctl account cloud-native-network [operation] [flags]
+omnistrate-ctl account customer cloud-native-network [operation] [flags]
 ```
 
 ### Options
@@ -25,6 +25,6 @@ omnistrate-ctl account cloud-native-network [operation] [flags]
 
 ### SEE ALSO
 
-* [omnistrate-ctl account](omnistrate-ctl_account.md)	 - Manage your Cloud Provider Accounts
-* [omnistrate-ctl account cloud-native-network remove](omnistrate-ctl_account_cloud-native-network_remove.md)	 - Remove an imported cloud-native network (revert to AVAILABLE)
+* [omnistrate-ctl account customer](omnistrate-ctl_account_customer.md)	 - Manage customer BYOA account onboarding
+* [omnistrate-ctl account customer cloud-native-network remove](omnistrate-ctl_account_customer_cloud-native-network_remove.md)	 - Remove an imported cloud-native network (revert to AVAILABLE)
 

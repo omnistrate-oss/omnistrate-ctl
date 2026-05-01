@@ -1,7 +1,6 @@
 package account
 
 import (
-	"github.com/omnistrate-oss/omnistrate-ctl/cmd/account/cloudnativenetwork"
 	"github.com/spf13/cobra"
 )
 
@@ -20,7 +19,6 @@ func init() {
 	Cmd.AddCommand(listCmd)
 	Cmd.AddCommand(describeCmd)
 	Cmd.AddCommand(deleteCmd)
-	Cmd.AddCommand(cloudnativenetwork.Cmd)
 }
 
 func run(cmd *cobra.Command, args []string) {

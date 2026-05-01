@@ -94,7 +94,7 @@ func Test_cloud_native_network_discovery(t *testing.T) {
 	require.NoError(err)
 	require.True(networkImported(postImport.CloudNativeNetworks, available), "network %s should be imported after import call", available)
 
-	cmd.RootCmd.SetArgs([]string{"account", "cloud-native-network", "remove", accountConfigID, "--network-id", available, "--output", "json"})
+	cmd.RootCmd.SetArgs([]string{"account", "customer", "cloud-native-network", "remove", accountConfigID, "--network-id", available, "--output", "json"})
 	require.NoError(cmd.RootCmd.ExecuteContext(ctx))
 
 	postUnimport, err := dataaccess.ListAccountConfigCloudNativeNetworks(ctx, token, accountConfigID)

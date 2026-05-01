@@ -1,4 +1,4 @@
-## omnistrate-ctl account cloud-native-network remove
+## omnistrate-ctl account customer cloud-native-network remove
 
 Remove an imported cloud-native network (revert to AVAILABLE)
 
@@ -7,14 +7,14 @@ Remove an imported cloud-native network (revert to AVAILABLE)
 Reverts a previously imported cloud-native network from READY back to AVAILABLE status, removing it from the deployment target pool.
 
 ```
-omnistrate-ctl account cloud-native-network remove [account-id] --network-id=[network-id] [flags]
+omnistrate-ctl account customer cloud-native-network remove [account-id] --network-id=[network-id] [flags]
 ```
 
 ### Examples
 
 ```
 # Remove a cloud-native network (revert to AVAILABLE)
-omnistrate-ctl account cloud-native-network remove [account-id] --network-id=[network-id]
+omnistrate-ctl account customer cloud-native-network remove [account-id] --network-id=[network-id]
 ```
 
 ### Options
@@ -33,5 +33,5 @@ omnistrate-ctl account cloud-native-network remove [account-id] --network-id=[ne
 
 ### SEE ALSO
 
-* [omnistrate-ctl account cloud-native-network](omnistrate-ctl_account_cloud-native-network.md)	 - Manage cloud-native networks (VPCs) for a BYOA Cloud Provider Account
+* [omnistrate-ctl account customer cloud-native-network](omnistrate-ctl_account_customer_cloud-native-network.md)	 - Manage cloud-native networks (VPCs) for a BYOA Cloud Provider Account
 

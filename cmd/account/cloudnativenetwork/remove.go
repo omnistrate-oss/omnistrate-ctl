@@ -10,7 +10,7 @@ import (
 
 const (
 	removeExample = `# Remove a cloud-native network (revert to AVAILABLE)
-omnistrate-ctl account cloud-native-network remove [account-id] --network-id=[network-id]`
+omnistrate-ctl account customer cloud-native-network remove [account-id] --network-id=[network-id]`
 )
 
 var removeCmd = &cobra.Command{
