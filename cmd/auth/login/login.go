@@ -34,9 +34,6 @@ omnistrate-ctl login --email email --password password
   export OMNISTRATE_API_KEY=om_…
   omnistrate-ctl login
 
-# Login with an org-bounded API key (insecure; prefer env var or --api-key-stdin)
-  omnistrate-ctl login --api-key om_…
-
 # Login with an API key from stdin
   cat ~/omnistrate_apikey.txt | omnistrate-ctl login --api-key-stdin
   echo $OMNISTRATE_API_KEY | omnistrate-ctl login --api-key-stdin
