@@ -7,6 +7,7 @@ import (
 
 	"github.com/omnistrate-oss/omnistrate-ctl/internal/model"
 	openapiclient "github.com/omnistrate-oss/omnistrate-sdk-go/v1"
+	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -48,7 +49,7 @@ func TestValidateCloudAccountParams_Nebius(t *testing.T) {
 				NebiusTenantID: "tenant-1",
 				NebiusBindings: []openapiclient.NebiusAccountBindingInput{validBinding},
 			},
-			wantErr: "only one of --aws-account-id, --gcp-project-id, --azure-subscription-id, or --nebius-tenant-id can be used at a time",
+			wantErr: "only one of --aws-account-id, --gcp-project-id, --azure-subscription-id, --nebius-tenant-id, or --cluster-name can be used at a time",
 		},
 	}
 
@@ -209,6 +210,37 @@ func TestBuildCreateAccountOutput(t *testing.T) {
 		require.NoError(t, err)
 		require.Same(t, account, output)
 	})
+}
+
+func TestPrivateLinkFlagParsing(t *testing.T) {
+	cmd := &cobra.Command{}
+	addCloudAccountProviderFlags(cmd)
+	cmd.Flags().Bool(privateLinkFlag, false, "")
+	cmd.Flags().Bool(allowCreateNewFlag, false, "")
+
+	// Default is false
+	require.NoError(t, cmd.Flags().Set(awsAccountIDFlag, "123456789012"))
+	params, err := cloudAccountParamsFromFlags(cmd, "test-account")
+	require.NoError(t, err)
+	assert.False(t, params.PrivateLink)
+
+	// Set to true
+	require.NoError(t, cmd.Flags().Set(privateLinkFlag, "true"))
+	params, err = cloudAccountParamsFromFlags(cmd, "test-account")
+	require.NoError(t, err)
+	assert.True(t, params.PrivateLink)
+}
+
+func TestPrivateLinkFlagRegistered(t *testing.T) {
+	// --private-link is BYOA-customer-only; provider create should NOT expose it.
+	assert.Nil(t, createCmd.Flags().Lookup(privateLinkFlag),
+		"--private-link must not be registered on provider account create (it is ignored by CreateCloudAccount)")
+	assert.Nil(t, createCmd.Flags().Lookup(allowCreateNewFlag),
+		"--allow-create-new must not be registered on provider account create")
+
+	// Customer create owns these flags.
+	assert.NotNil(t, customerCreateCmd.Flags().Lookup(privateLinkFlag))
+	assert.NotNil(t, customerCreateCmd.Flags().Lookup(allowCreateNewFlag))
 }
 
 func ptr[T any](v T) *T {
