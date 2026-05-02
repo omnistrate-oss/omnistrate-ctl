@@ -3,12 +3,11 @@ package login
 import (
 	"os"
 
+	"github.com/omnistrate-oss/omnistrate-ctl/internal/config"
 	"github.com/omnistrate-oss/omnistrate-ctl/internal/utils"
 	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
 )
-
-const omnistrateAPIKeyEnv = "OMNISTRATE_API_KEY"
 
 type loginMethod string
 
@@ -112,15 +111,7 @@ func RunLogin(cmd *cobra.Command, args []string) error {
 		return apiKeyLogin(cmd, source)
 	}
 
-	// Auto-detect OMNISTRATE_API_KEY from environment when no explicit
-	// flags are provided. This enables zero-flag CI/CD login:
-	//   export OMNISTRATE_API_KEY=om_…
-	//   omnistrate-ctl login
-	if envKey := os.Getenv(omnistrateAPIKeyEnv); envKey != "" {
-		apiKey = envKey
-		return apiKeyLogin(cmd, apiKeyFromEnv)
-	}
-
+	// SSO login flags take precedence over env var auto-detection
 	if gh {
 		return ssoLogin(cmd.Context(), identityProviderGitHub)
 	}
@@ -131,6 +122,15 @@ func RunLogin(cmd *cobra.Command, args []string) error {
 
 	if entra {
 		return ssoLogin(cmd.Context(), identityProviderMicrosoftEntra)
+	}
+
+	// Auto-detect OMNISTRATE_API_KEY from environment when no explicit
+	// flags are provided. This enables zero-flag CI/CD login:
+	//   export OMNISTRATE_API_KEY=om_…
+	//   omnistrate-ctl login
+	if envKey := os.Getenv(config.OmnistrateAPIKeyEnv); envKey != "" {
+		apiKey = envKey
+		return apiKeyLogin(cmd, apiKeyFromEnv)
 	}
 
 	// Login interactively

@@ -34,6 +34,9 @@ const (
 	retryWaitMin         = "OMNISTRATE_RETRY_WAIT_MIN_IN_SECONDS"
 	retryWaitMax         = "OMNISTRATE_RETRY_WAIT_MAX_IN_SECONDS"
 	retryMax             = "OMNISTRATE_RETRY_MAX"
+
+	// OmnistrateAPIKeyEnv is the environment variable for API key authentication.
+	OmnistrateAPIKeyEnv = "OMNISTRATE_API_KEY"
 )
 
 func GetComposeSpecUrl() string {

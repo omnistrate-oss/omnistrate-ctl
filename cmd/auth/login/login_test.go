@@ -8,6 +8,7 @@ import (
 	"net/url"
 	"testing"
 
+	"github.com/omnistrate-oss/omnistrate-ctl/internal/config"
 	"github.com/omnistrate-oss/omnistrate-ctl/internal/dataaccess"
 	"github.com/stretchr/testify/require"
 )
@@ -79,7 +80,7 @@ func TestLoginCommandAPIKeyMutuallyExclusive(t *testing.T) {
 // TestLoginCommandOmnistrateAPIKeyEnvConst asserts the environment
 // variable name is defined and matches the documented value.
 func TestLoginCommandOmnistrateAPIKeyEnvConst(t *testing.T) {
-	require.Equal(t, "OMNISTRATE_API_KEY", omnistrateAPIKeyEnv)
+	require.Equal(t, "OMNISTRATE_API_KEY", config.OmnistrateAPIKeyEnv)
 }
 
 // TestLoginCommandExampleDocumentsEnvVar ensures the help/example text
