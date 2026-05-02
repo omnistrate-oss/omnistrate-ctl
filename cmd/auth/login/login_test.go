@@ -1,8 +1,14 @@
 package login
 
 import (
+	"encoding/json"
+	"io"
+	"net/http"
+	"net/http/httptest"
+	"net/url"
 	"testing"
 
+	"github.com/omnistrate-oss/omnistrate-ctl/internal/dataaccess"
 	"github.com/stretchr/testify/require"
 )
 
@@ -88,6 +94,9 @@ func TestLoginCommandExampleDocumentsEnvVar(t *testing.T) {
 // message. When the key comes from the interactive prompt the message
 // must not instruct the user to supply flags or env vars.
 func TestAPIKeyLoginEmptyKeyErrorMessageBySource(t *testing.T) {
+	// PrintError calls os.Exit(1) unless dry-run mode is enabled.
+	t.Setenv("OMNISTRATE_DRY_RUN", "true")
+
 	tests := []struct {
 		name            string
 		source          apiKeySource
@@ -135,57 +144,121 @@ func TestAPIKeyLoginEmptyKeyErrorMessageBySource(t *testing.T) {
 	})
 }
 
-// TestRunLoginPicksUpEnvVar validates that RunLogin uses
-// OMNISTRATE_API_KEY when no flags are provided. We set the env var to
-// an invalid key so the request fails at the HTTP layer, but we can
-// confirm that the code path attempted to use the env var (error
-// message won't say "must provide a non-empty API key").
-func TestRunLoginPicksUpEnvVar(t *testing.T) {
-	t.Setenv("OMNISTRATE_API_KEY", "om_test_fake_key_for_unit_test")
-	t.Setenv("OMNISTRATE_DRY_RUN", "true")
+// signinCapture records the fields from the most recent captured signin
+// request body.
+type signinCapture struct {
+	Email    string
+	Password string
+}
 
-	// Reset all flags to default so no flag-based path triggers.
+// newFakeSigninServer starts an httptest.Server that:
+//   - handles any POST request by reading the JSON body and capturing
+//     the "email" and "password" fields,
+//   - returns a canned successful signin response so the caller's SDK
+//     can parse it without error.
+//
+// The server is automatically stopped when the test ends.
+func newFakeSigninServer(t *testing.T) (*httptest.Server, *signinCapture) {
+	t.Helper()
+	captured := &signinCapture{}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, err := io.ReadAll(r.Body)
+		if err != nil {
+			http.Error(w, "read error", http.StatusInternalServerError)
+			return
+		}
+		var req struct {
+			Email    string `json:"email"`
+			Password string `json:"password"`
+		}
+		if err = json.Unmarshal(body, &req); err != nil {
+			http.Error(w, "bad JSON", http.StatusBadRequest)
+			t.Errorf("newFakeSigninServer: failed to unmarshal request body: %v", err)
+			return
+		}
+		captured.Email = req.Email
+		captured.Password = req.Password
+
+		w.Header().Set("Content-Type", "application/json")
+		if _, err = io.WriteString(w, `{"jwtToken":"fake-jwt-for-testing"}`); err != nil {
+			t.Errorf("newFakeSigninServer: failed to write response: %v", err)
+		}
+	}))
+	t.Cleanup(srv.Close)
+	return srv, captured
+}
+
+// pointClientAt redirects all dataaccess HTTP calls to the given
+// httptest server for the duration of the current test. It also:
+//   - disables retries so tests do not wait on backoff delays,
+//   - redirects HOME to a throwaway temp dir to prevent any config
+//     writes from reaching the developer's real ~/.omnistrate,
+//   - enables dry-run mode so that PrintError does not call os.Exit(1)
+//     if an unexpected error occurs during the test.
+func pointClientAt(t *testing.T, srv *httptest.Server) {
+	t.Helper()
+	u, err := url.Parse(srv.URL)
+	require.NoError(t, err)
+	t.Setenv("OMNISTRATE_HOST", u.Host)
+	t.Setenv("OMNISTRATE_HOST_SCHEME", u.Scheme)
+	t.Setenv("OMNISTRATE_RETRY_MAX", "0")
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("OMNISTRATE_DRY_RUN", "true")
+}
+
+// TestRunLoginPicksUpEnvVar validates that RunLogin uses
+// OMNISTRATE_API_KEY when no flags are provided. The fake signin server
+// captures the request body so we can assert that the env var value
+// was forwarded as the password field.
+func TestRunLoginPicksUpEnvVar(t *testing.T) {
+	srv, captured := newFakeSigninServer(t)
+	pointClientAt(t, srv)
+	t.Setenv("OMNISTRATE_API_KEY", "om_test_env_key")
+
 	resetLogin()
 
 	err := RunLogin(LoginCmd, nil)
-	// The call will fail (no real server / invalid key), but it should
-	// NOT be the "must provide a non-empty API key" error — proving
-	// the env var was read and passed to the signin exchange.
-	require.Error(t, err)
-	require.NotContains(t, err.Error(), "must provide a non-empty API key",
-		"env var should have been picked up; empty-key guard should not fire")
+	require.NoError(t, err)
+	require.Equal(t, dataaccess.APIKeySigninEmail, captured.Email,
+		"env-var login must use the API-key sentinel email")
+	require.Equal(t, "om_test_env_key", captured.Password,
+		"env var value must be forwarded as the request password")
 }
 
-// TestRunLoginFlagTakesPrecedenceOverEnv verifies that --api-key flag
-// takes priority over the OMNISTRATE_API_KEY env var.
+// TestRunLoginFlagTakesPrecedenceOverEnv verifies that the --api-key
+// flag value is sent to the signin endpoint even when OMNISTRATE_API_KEY
+// is also set, proving the flag takes priority over the env var.
 func TestRunLoginFlagTakesPrecedenceOverEnv(t *testing.T) {
+	srv, captured := newFakeSigninServer(t)
+	pointClientAt(t, srv)
 	t.Setenv("OMNISTRATE_API_KEY", "om_env_should_be_ignored")
-	t.Setenv("OMNISTRATE_DRY_RUN", "true")
 
 	resetLogin()
 	apiKey = "om_flag_value"
 
 	err := RunLogin(LoginCmd, nil)
-	// Will fail at HTTP layer, but the env var value should not be
-	// used — the flag value is what gets sent. We can't easily assert
-	// which value was sent without mocking, but we confirm it doesn't
-	// hit the empty-key guard.
-	require.Error(t, err)
-	require.NotContains(t, err.Error(), "must provide a non-empty API key")
+	require.NoError(t, err)
+	require.Equal(t, "om_flag_value", captured.Password,
+		"--api-key flag value must take precedence over the env var")
 }
 
 // TestRunLoginEnvVarNotUsedWhenOtherFlagsSet verifies that the env var
-// is NOT consulted when email/password flags are present.
+// is NOT consulted when email/password flags are present. The fake
+// server captures the request so we can assert the correct email and
+// password were sent rather than the API-key sentinel.
 func TestRunLoginEnvVarNotUsedWhenOtherFlagsSet(t *testing.T) {
+	srv, captured := newFakeSigninServer(t)
+	pointClientAt(t, srv)
 	t.Setenv("OMNISTRATE_API_KEY", "om_should_not_be_used")
-	t.Setenv("OMNISTRATE_DRY_RUN", "true")
 
 	resetLogin()
 	email = "test@example.com"
 	password = "fake_password"
 
 	err := RunLogin(LoginCmd, nil)
-	// Should attempt password login (will fail at HTTP), not api-key login.
-	require.Error(t, err)
-	require.NotContains(t, err.Error(), "must provide a non-empty API key")
+	require.NoError(t, err)
+	require.Equal(t, "test@example.com", captured.Email,
+		"email/password path must send the user's email, not the API-key sentinel")
+	require.Equal(t, "fake_password", captured.Password,
+		"email/password path must send the password flag, not the env var API key")
 }
