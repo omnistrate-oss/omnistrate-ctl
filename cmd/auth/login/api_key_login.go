@@ -13,27 +13,30 @@ import (
 	"github.com/spf13/cobra"
 )
 
+// apiKeySource indicates how the API key was supplied.
+type apiKeySource int
+
+const (
+	apiKeyFromFlag        apiKeySource = iota // --api-key (visible in ps/history)
+	apiKeyFromStdin                           // --api-key-stdin or piped
+	apiKeyFromEnv                             // OMNISTRATE_API_KEY env var
+	apiKeyFromInteractive                     // interactive prompt (hidden input)
+)
+
 // apiKeyLogin exchanges an org-bounded API key plaintext for a JWT
 // session and persists it to the local auth config in the same shape
-// as a password login. Reads the key from --api-key or, when
-// --api-key-stdin is set, from stdin.
+// as a password login. Reads the key from --api-key, --api-key-stdin,
+// OMNISTRATE_API_KEY, or the interactive prompt.
 //
 // Refresh tokens are not minted for api-key sessions: the api key
 // itself is the long-lived credential and the platform expects clients
-// to re-exchange it when the JWT expires. Callers SHOULD re-invoke
-// `omnistrate-ctl login --api-key …` (or pipe via --api-key-stdin)
-// from automation to obtain a fresh JWT rather than persisting the
-// JWT longer than its TTL.
-//
-// calledByInteractiveMode is true when invoked from the interactive
-// prompt flow (where the user pasted the key into a hidden prompt).
-// In that case we suppress the "--api-key is insecure" warning
-// because the user did NOT pass the value on the command line and
-// the warning would be misleading.
-func apiKeyLogin(cmd *cobra.Command, calledByInteractiveMode bool) error {
+// to re-exchange it when the JWT expires.
+func apiKeyLogin(cmd *cobra.Command, source apiKeySource) error {
 	if len(apiKey) > 0 {
-		if !calledByInteractiveMode {
-			ctlutils.PrintWarning("Notice: Using the --api-key flag is insecure. Please consider using the --api-key-stdin flag instead. Refer to the help documentation for examples.")
+		// Warn only when the plaintext appears in the command line
+		// (visible to ps, shell history, audit logs).
+		if source == apiKeyFromFlag {
+			ctlutils.PrintWarning("Notice: Using the --api-key flag is insecure. Please consider using OMNISTRATE_API_KEY or --api-key-stdin instead. Refer to the help documentation for examples.")
 		}
 
 		if apiKeyStdin {
@@ -54,7 +57,20 @@ func apiKeyLogin(cmd *cobra.Command, calledByInteractiveMode bool) error {
 
 	apiKey = strings.TrimSpace(apiKey)
 	if len(apiKey) == 0 {
-		err := errors.New("must provide a non-empty api key via --api-key or --api-key-stdin")
+		var errMsg string
+		switch source {
+		case apiKeyFromFlag:
+			errMsg = "must provide a non-empty API key via --api-key"
+		case apiKeyFromStdin:
+			errMsg = "must provide a non-empty API key via --api-key-stdin"
+		case apiKeyFromEnv:
+			errMsg = "must provide a non-empty API key via OMNISTRATE_API_KEY"
+		case apiKeyFromInteractive:
+			errMsg = "must provide a non-empty API key"
+		default:
+			errMsg = "must provide a non-empty API key"
+		}
+		err := errors.New(errMsg)
 		ctlutils.PrintError(err)
 		return err
 	}
