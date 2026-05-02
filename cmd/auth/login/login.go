@@ -1,10 +1,14 @@
 package login
 
 import (
+	"os"
+
 	"github.com/omnistrate-oss/omnistrate-ctl/internal/utils"
 	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
 )
+
+const omnistrateAPIKeyEnv = "OMNISTRATE_API_KEY"
 
 type loginMethod string
 
@@ -26,7 +30,11 @@ omnistrate-ctl login --email email --password password
 # Login with email and password from stdin. Save the password in an environment variable and use echo to read it
   echo $OMNISTRATE_PASSWORD | omnistrate-ctl login --email email --password-stdin
 
-# Login with an org-bounded API key (insecure; prefer --api-key-stdin)
+# Login with OMNISTRATE_API_KEY environment variable (recommended for CI/CD)
+  export OMNISTRATE_API_KEY=om_…
+  omnistrate-ctl login
+
+# Login with an org-bounded API key (insecure; prefer env var or --api-key-stdin)
   omnistrate-ctl login --api-key om_…
 
 # Login with an API key from stdin
@@ -100,7 +108,20 @@ func RunLogin(cmd *cobra.Command, args []string) error {
 
 	// Login with API key if any of the api-key flags are set
 	if len(apiKey) > 0 || apiKeyStdin {
-		return apiKeyLogin(cmd, false)
+		source := apiKeyFromFlag
+		if apiKeyStdin {
+			source = apiKeyFromStdin
+		}
+		return apiKeyLogin(cmd, source)
+	}
+
+	// Auto-detect OMNISTRATE_API_KEY from environment when no explicit
+	// flags are provided. This enables zero-flag CI/CD login:
+	//   export OMNISTRATE_API_KEY=om_…
+	//   omnistrate-ctl login
+	if envKey := os.Getenv(omnistrateAPIKeyEnv); envKey != "" {
+		apiKey = envKey
+		return apiKeyLogin(cmd, apiKeyFromEnv)
 	}
 
 	if gh {
@@ -149,7 +170,7 @@ func RunLogin(cmd *cobra.Command, args []string) error {
 			utils.PrintError(err)
 			return err
 		}
-		return apiKeyLogin(cmd, true)
+		return apiKeyLogin(cmd, apiKeyFromInteractive)
 	case string(loginWithGoogle):
 		return ssoLogin(cmd.Context(), identityProviderGoogle)
 	case string(loginWithGitHub):
