@@ -57,7 +57,20 @@ func apiKeyLogin(cmd *cobra.Command, source apiKeySource) error {
 
 	apiKey = strings.TrimSpace(apiKey)
 	if len(apiKey) == 0 {
-		err := errors.New("must provide a non-empty api key via --api-key, --api-key-stdin, or OMNISTRATE_API_KEY")
+		var errMsg string
+		switch source {
+		case apiKeyFromFlag:
+			errMsg = "must provide a non-empty API key via --api-key"
+		case apiKeyFromStdin:
+			errMsg = "must provide a non-empty API key via --api-key-stdin"
+		case apiKeyFromEnv:
+			errMsg = "must provide a non-empty API key via OMNISTRATE_API_KEY"
+		case apiKeyFromInteractive:
+			errMsg = "must provide a non-empty API key"
+		default:
+			errMsg = "must provide a non-empty API key"
+		}
+		err := errors.New(errMsg)
 		ctlutils.PrintError(err)
 		return err
 	}

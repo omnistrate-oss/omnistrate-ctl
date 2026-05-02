@@ -83,11 +83,63 @@ func TestLoginCommandExampleDocumentsEnvVar(t *testing.T) {
 	require.Contains(t, loginExample, "export OMNISTRATE_API_KEY")
 }
 
+// TestAPIKeyLoginEmptyKeyErrorMessageBySource validates that the
+// empty-key guard in apiKeyLogin produces a source-appropriate error
+// message. When the key comes from the interactive prompt the message
+// must not instruct the user to supply flags or env vars.
+func TestAPIKeyLoginEmptyKeyErrorMessageBySource(t *testing.T) {
+	tests := []struct {
+		name            string
+		source          apiKeySource
+		expectedMessage string
+	}{
+		{
+			name:            "flag source",
+			source:          apiKeyFromFlag,
+			expectedMessage: "must provide a non-empty API key via --api-key",
+		},
+		{
+			name:            "stdin source",
+			source:          apiKeyFromStdin,
+			expectedMessage: "must provide a non-empty API key via --api-key-stdin",
+		},
+		{
+			name:            "env var source",
+			source:          apiKeyFromEnv,
+			expectedMessage: "must provide a non-empty API key via OMNISTRATE_API_KEY",
+		},
+		{
+			name:            "interactive source",
+			source:          apiKeyFromInteractive,
+			expectedMessage: "must provide a non-empty API key",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			resetLogin()
+			// apiKey is empty after reset — triggers the empty-key guard.
+			err := apiKeyLogin(LoginCmd, tt.source)
+			require.Error(t, err)
+			require.Contains(t, err.Error(), tt.expectedMessage)
+		})
+	}
+
+	// Extra: interactive source must NOT suggest flags or the env var.
+	t.Run("interactive message is prompt-appropriate", func(t *testing.T) {
+		resetLogin()
+		err := apiKeyLogin(LoginCmd, apiKeyFromInteractive)
+		require.Error(t, err)
+		require.NotContains(t, err.Error(), "--api-key")
+		require.NotContains(t, err.Error(), "OMNISTRATE_API_KEY")
+	})
+}
+
 // TestRunLoginPicksUpEnvVar validates that RunLogin uses
 // OMNISTRATE_API_KEY when no flags are provided. We set the env var to
 // an invalid key so the request fails at the HTTP layer, but we can
 // confirm that the code path attempted to use the env var (error
-// message won't say "must provide a non-empty api key").
+// message won't say "must provide a non-empty API key").
 func TestRunLoginPicksUpEnvVar(t *testing.T) {
 	t.Setenv("OMNISTRATE_API_KEY", "om_test_fake_key_for_unit_test")
 	t.Setenv("OMNISTRATE_DRY_RUN", "true")
@@ -97,10 +149,10 @@ func TestRunLoginPicksUpEnvVar(t *testing.T) {
 
 	err := RunLogin(LoginCmd, nil)
 	// The call will fail (no real server / invalid key), but it should
-	// NOT be the "must provide a non-empty api key" error — proving
+	// NOT be the "must provide a non-empty API key" error — proving
 	// the env var was read and passed to the signin exchange.
 	require.Error(t, err)
-	require.NotContains(t, err.Error(), "must provide a non-empty api key",
+	require.NotContains(t, err.Error(), "must provide a non-empty API key",
 		"env var should have been picked up; empty-key guard should not fire")
 }
 
@@ -119,7 +171,7 @@ func TestRunLoginFlagTakesPrecedenceOverEnv(t *testing.T) {
 	// which value was sent without mocking, but we confirm it doesn't
 	// hit the empty-key guard.
 	require.Error(t, err)
-	require.NotContains(t, err.Error(), "must provide a non-empty api key")
+	require.NotContains(t, err.Error(), "must provide a non-empty API key")
 }
 
 // TestRunLoginEnvVarNotUsedWhenOtherFlagsSet verifies that the env var
@@ -135,5 +187,5 @@ func TestRunLoginEnvVarNotUsedWhenOtherFlagsSet(t *testing.T) {
 	err := RunLogin(LoginCmd, nil)
 	// Should attempt password login (will fail at HTTP), not api-key login.
 	require.Error(t, err)
-	require.NotContains(t, err.Error(), "must provide a non-empty api key")
+	require.NotContains(t, err.Error(), "must provide a non-empty API key")
 }
