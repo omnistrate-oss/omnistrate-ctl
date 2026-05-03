@@ -36,7 +36,7 @@ const (
 	retryMax             = "OMNISTRATE_RETRY_MAX"
 
 	// OmnistrateAPIKeyEnv is the environment variable for API key authentication.
-	OmnistrateAPIKeyEnv = "OMNISTRATE_API_KEY"
+	OmnistrateAPIKeyEnv = "OMNISTRATE_API_KEY" //nolint:gosec // G101: env var name, not a credential
 )
 
 func GetComposeSpecUrl() string {

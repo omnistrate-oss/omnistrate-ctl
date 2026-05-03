@@ -235,7 +235,7 @@ func TestRunLoginFlagTakesPrecedenceOverEnv(t *testing.T) {
 	t.Setenv("OMNISTRATE_API_KEY", "om_env_should_be_ignored")
 
 	resetLogin()
-	apiKey = "om_flag_value"
+	apiKey = "om_flag_value" //nolint:gosec // G101: test credential, not real
 
 	err := RunLogin(LoginCmd, nil)
 	require.NoError(t, err)
