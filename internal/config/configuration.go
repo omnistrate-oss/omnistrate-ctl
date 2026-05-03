@@ -39,6 +39,12 @@ const (
 	OmnistrateAPIKeyEnv = "OMNISTRATE_API_KEY" //nolint:gosec // G101: env var name, not a credential
 )
 
+// GetAPIKey returns the value of the OMNISTRATE_API_KEY environment variable,
+// or an empty string if unset.
+func GetAPIKey() string {
+	return os.Getenv(OmnistrateAPIKeyEnv)
+}
+
 func GetComposeSpecUrl() string {
 	return fmt.Sprintf("https://%s/spec-guides/compose-spec/index.md", GetOmnistrateDocsDomain())
 }

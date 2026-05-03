@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/omnistrate-oss/omnistrate-ctl/internal/config"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -53,7 +54,7 @@ func makeJWT(exp int64) string {
 }
 
 func TestAPIKeyEnvConst(t *testing.T) {
-	assert.Equal(t, "OMNISTRATE_API_KEY", apiKeyEnv)
+	assert.Equal(t, "OMNISTRATE_API_KEY", config.OmnistrateAPIKeyEnv)
 }
 
 // TestGetTokenWithLoginUsesEnvVar asserts that when no stored token

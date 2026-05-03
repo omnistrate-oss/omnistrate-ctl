@@ -2,7 +2,6 @@ package common
 
 import (
 	"context"
-	"os"
 	"time"
 
 	"github.com/omnistrate-oss/omnistrate-ctl/cmd/auth/login"
@@ -14,7 +13,6 @@ import (
 
 const (
 	tokenRefreshMargin = 5 * time.Minute
-	apiKeyEnv          = "OMNISTRATE_API_KEY" //nolint:gosec
 )
 
 func GetTokenWithLogin() (token string, err error) {
@@ -56,7 +54,7 @@ func GetTokenWithLogin() (token string, err error) {
 
 	// If OMNISTRATE_API_KEY is set, exchange it for a JWT transparently
 	// without requiring an explicit `login` call.
-	if envKey := os.Getenv(apiKeyEnv); envKey != "" {
+	if envKey := config.GetAPIKey(); envKey != "" {
 		return exchangeAPIKeyEnv(ctx, envKey)
 	}
 
@@ -80,7 +78,7 @@ func GetTokenWithLogin() (token string, err error) {
 func exchangeAPIKeyEnv(ctx context.Context, apiKey string) (string, error) {
 	result, err := dataaccess.LoginWithAPIKey(ctx, apiKey)
 	if err != nil {
-		return "", errors.Wrap(err, "OMNISTRATE_API_KEY signin-exchange failed")
+		return "", errors.Wrap(err, config.OmnistrateAPIKeyEnv+" signin-exchange failed")
 	}
 
 	authConfig := config.AuthConfig{
