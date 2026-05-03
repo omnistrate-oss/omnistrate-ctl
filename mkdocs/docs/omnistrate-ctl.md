@@ -62,6 +62,7 @@ omnistrate-ctl [flags]
 * [omnistrate-ctl mcp](omnistrate-ctl_mcp.md)	 - MCP server management
 * [omnistrate-ctl operations](omnistrate-ctl_operations.md)	 - Operations and health monitoring commands
 * [omnistrate-ctl refresh](omnistrate-ctl_refresh.md)	 - Refresh the access token using the stored refresh token
+* [omnistrate-ctl revoke-token](omnistrate-ctl_revoke-token.md)	 - Revoke the stored refresh token
 * [omnistrate-ctl secret](omnistrate-ctl_secret.md)	 - Manage secrets
 * [omnistrate-ctl service](omnistrate-ctl_service.md)	 - Manage Services for your account
 * [omnistrate-ctl service-plan](omnistrate-ctl_service-plan.md)	 - Manage Service Plans for your service
