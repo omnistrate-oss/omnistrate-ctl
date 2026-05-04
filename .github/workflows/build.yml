@@ -159,3 +159,5 @@ jobs:
         uses: mathieudutour/github-tag-action@a22cf08638b34d5badda920f9daf6e72c477b07b # v6.2
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
+          default_bump: patch
+          custom_release_rules: "feat:patch,fix:patch,chore:patch,docs:patch,style:patch,refactor:patch,perf:patch,test:patch,ci:patch,build:patch"
