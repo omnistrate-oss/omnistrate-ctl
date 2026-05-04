@@ -26,8 +26,8 @@ cannot be replayed from another machine.`,
 }
 
 func runRevokeToken(cmd *cobra.Command, args []string) error {
-	refreshToken, err := config.GetRefreshToken()
-	if err != nil {
+	refreshToken, getErr := config.GetRefreshToken()
+	if getErr != nil {
 		// No stored refresh token — still remove local credentials.
 		_ = config.RemoveAuthConfig()
 		utils.PrintSuccess("No refresh token found; local credentials removed")
