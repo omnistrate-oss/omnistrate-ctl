@@ -547,11 +547,12 @@ jobs:
             exit 1
           fi
 
-      - name: Verify image entrypoint responds to help
+      - name: Verify image responds to version query
         run: |
           VERSION=$(echo "${{ github.ref_name }}" | sed 's/^v//')
           IMAGE=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${VERSION}
-          docker run --rm --platform ${{ matrix.platform }} "${IMAGE}" --help
+          ctl_version=$(docker run --rm --platform ${{ matrix.platform }} "${IMAGE}" --version)
+          echo "Docker image version query: ${ctl_version}"
 
   update-docs:
     name: Update CTL documents
