@@ -2,17 +2,12 @@ package common
 
 import (
 	"context"
-	"time"
 
 	"github.com/omnistrate-oss/omnistrate-ctl/cmd/auth/login"
 	"github.com/omnistrate-oss/omnistrate-ctl/internal/config"
 	"github.com/omnistrate-oss/omnistrate-ctl/internal/dataaccess"
 	"github.com/pkg/errors"
 	"github.com/rs/zerolog/log"
-)
-
-const (
-	tokenRefreshMargin = 5 * time.Minute
 )
 
 func GetTokenWithLogin() (token string, err error) {
@@ -93,7 +88,7 @@ func exchangeAPIKeyEnv(ctx context.Context, apiKey string) (string, error) {
 }
 
 func shouldRefreshToken(token string) bool {
-	return config.IsTokenExpired(token, tokenRefreshMargin)
+	return config.IsTokenExpired(token, config.TokenRefreshMargin)
 }
 
 // tryRefreshToken attempts to exchange the stored refresh token for a new JWT.

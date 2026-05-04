@@ -37,6 +37,9 @@ const (
 
 	// OmnistrateAPIKeyEnv is the environment variable for API key authentication.
 	OmnistrateAPIKeyEnv = "OMNISTRATE_API_KEY" //nolint:gosec // G101: env var name, not a credential
+
+	// TokenRefreshMargin is how far before expiry a JWT should be refreshed.
+	TokenRefreshMargin = 5 * time.Minute
 )
 
 // GetAPIKey returns the value of the OMNISTRATE_API_KEY environment variable,

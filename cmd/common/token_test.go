@@ -19,17 +19,17 @@ func TestShouldRefreshToken(t *testing.T) {
 	}{
 		{
 			name:      "refreshes token expiring before margin",
-			expiresIn: tokenRefreshMargin - time.Second,
+			expiresIn: config.TokenRefreshMargin - time.Second,
 			expected:  true,
 		},
 		{
 			name:      "refreshes token expiring exactly at margin",
-			expiresIn: tokenRefreshMargin,
+			expiresIn: config.TokenRefreshMargin,
 			expected:  true,
 		},
 		{
 			name:      "keeps token expiring after margin",
-			expiresIn: tokenRefreshMargin + time.Second,
+			expiresIn: config.TokenRefreshMargin + time.Second,
 			expected:  false,
 		},
 	}
