@@ -4,12 +4,7 @@ Logout and revoke refresh token
 
 ### Synopsis
 
-The logout command revokes the stored refresh token on the server
-and removes local credentials. This ensures the token cannot be replayed
-from another machine.
-
-Use --skip-revoke to only remove local credentials without server-side
-revocation (legacy behavior).
+The logout command revokes the stored refresh token on the server and removes local credentials.
 
 ```
 omnistrate-ctl logout [flags]
@@ -24,8 +19,7 @@ omnistrate-ctl logout
 ### Options
 
 ```
-  -h, --help          help for logout
-      --skip-revoke   Skip server-side token revocation; only remove local credentials
+  -h, --help   help for logout
 ```
 
 ### Options inherited from parent commands
