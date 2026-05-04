@@ -26,17 +26,13 @@ cannot be replayed from another machine.`,
 }
 
 func runRevokeToken(cmd *cobra.Command, args []string) error {
-	refreshToken, getErr := config.GetRefreshToken()
-	if getErr != nil {
-		// No stored refresh token — still remove local credentials.
-		_ = config.RemoveAuthConfig()
-		utils.PrintSuccess("No refresh token found; local credentials removed")
-		return nil
-	}
+	refreshToken, _ := config.GetRefreshToken()
 
-	if err := dataaccess.RevokeToken(cmd.Context(), refreshToken); err != nil {
-		// Server-side revocation failed — warn but still clean up locally.
-		fmt.Fprintf(cmd.ErrOrStderr(), "Warning: server-side revocation failed: %v\n", err)
+	if refreshToken != "" {
+		if err := dataaccess.RevokeToken(cmd.Context(), refreshToken); err != nil {
+			// Server-side revocation failed — warn but still clean up locally.
+			fmt.Fprintf(cmd.ErrOrStderr(), "Warning: server-side revocation failed: %v\n", err)
+		}
 	}
 
 	if err := config.RemoveAuthConfig(); err != nil {
@@ -44,6 +40,10 @@ func runRevokeToken(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	utils.PrintSuccess("Refresh token revoked and local credentials removed")
+	if refreshToken == "" {
+		utils.PrintSuccess("No refresh token found; local credentials removed")
+	} else {
+		utils.PrintSuccess("Refresh token revoked and local credentials removed")
+	}
 	return nil
 }
