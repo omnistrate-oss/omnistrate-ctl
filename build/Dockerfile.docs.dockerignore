@@ -1,0 +1,42 @@
+# Docs-specific Docker ignore — used by Dockerfile.docs builds.
+# Keeps the mkdocs/ directory (needed for site generation) while still
+# excluding heavy items that slow down context transfer.
+
+# Binaries
+*.dll
+*.so
+*.dylib
+dist/
+
+# Coverage
+*.out
+coverage*
+
+# Dependency / vendor
+vendor/
+
+# IDE / OS
+*.idea
+*.DS_Store
+.vscode/
+__debug_bin*
+**/.claude/settings.local.json
+mcp-tools.json
+
+# Git / CI
+.git/
+.github/
+
+# Go test artefacts (not needed for mkdocs build)
+**/*_test.go
+**/testdata/
+
+# Source directories not needed for docs build
+cmd/
+internal/
+doc-gen/
+test/
+main.go
+go.mod
+go.sum
+Makefile

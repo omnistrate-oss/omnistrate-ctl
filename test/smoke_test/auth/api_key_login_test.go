@@ -36,7 +36,10 @@ import (
 //          using the refresh token returned alongside the JWT — proves
 //          that api-key signin sessions are renewable like any other
 //          session and the new JWT also works.
-//       e. Log out before iterating to the next key so each key is
+//       e. Revoke the refreshed token server-side and confirm the
+//          revoked token can no longer be used for refresh — proves
+//          the revoke-token endpoint works for api-key sessions.
+//       f. Log out before iterating to the next key so each key is
 //          tested in isolation.
 //  4. Re-establish the admin session and confirm the test-scoped
 //     names are present in the list response.
@@ -177,11 +180,20 @@ func Test_login_with_api_key(t *testing.T) {
 		refreshed, err := dataaccess.RefreshToken(ctx, session.RefreshToken)
 		require.NoErrorf(err, "RefreshToken for role %s (key %s)", k.Role, k.Name)
 		require.NotEmpty(refreshed.JWTToken, "refreshed JWT must be non-empty")
+		require.NotEmpty(refreshed.RefreshToken, "refreshed refresh token must be non-empty")
 		// Confirm the refreshed JWT is itself usable.
 		_, err = dataaccess.ListServices(ctx, refreshed.JWTToken)
 		require.NoErrorf(err, "ListServices with refreshed api-key JWT for role %s (key %s)", k.Role, k.Name)
 
-		// (e) Log out so the next iteration starts from a clean slate.
+		// (e) Revoke the refresh token server-side and confirm it can
+		// no longer be used. This proves the revoke-token endpoint
+		// works for api-key signin sessions, not just password sessions.
+		err = dataaccess.RevokeToken(ctx, refreshed.RefreshToken)
+		require.NoErrorf(err, "RevokeToken for role %s (key %s)", k.Role, k.Name)
+		_, err = dataaccess.RefreshToken(ctx, refreshed.RefreshToken)
+		require.Errorf(err, "RefreshToken after revocation must fail for role %s (key %s)", k.Role, k.Name)
+
+		// (f) Log out so the next iteration starts from a clean slate.
 		cmd.RootCmd.SetArgs([]string{"logout"})
 		require.NoError(cmd.RootCmd.ExecuteContext(ctx))
 	}
