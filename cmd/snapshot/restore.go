@@ -19,9 +19,9 @@ omnistrate-ctl snapshot restore --service-id service-abcd --environment-id env-1
 )
 
 var restoreCmd = &cobra.Command{
-	Use:          "restore --service-id <service-id> --environment-id <environment-id> --snapshot-id <snapshot-id>",
-	Short:        "Create a new instance by restoring from a snapshot",
-	Long:         `This command helps you create a new instance by restoring from a snapshot.`,
+	Use:          "restore --service-id <service-id> --environment-id <environment-id> --snapshot-id <snapshot-id> [--restore-to-source]",
+	Short:        "Create an instance by restoring from a snapshot",
+	Long:         `This command helps you create an instance by restoring from a snapshot.`,
 	Example:      restoreExample,
 	RunE:         runRestore,
 	SilenceUsage: true,
@@ -36,6 +36,7 @@ func init() {
 	restoreCmd.Flags().String("param-file", "", "Json file containing parameters override for the instance deployment")
 	restoreCmd.Flags().String("tierversion-override", "", "Override the tier version for the restored instance")
 	restoreCmd.Flags().String("network-type", "", "Optional network type change for the instance deployment (PUBLIC / INTERNAL)")
+	restoreCmd.Flags().Bool("restore-to-source", false, "Restore to the original source instance, preserving its ID and endpoint")
 
 	if err := restoreCmd.MarkFlagRequired("service-id"); err != nil {
 		return
@@ -124,13 +125,23 @@ func runRestore(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
+	restoreToSource, err := cmd.Flags().GetBool("restore-to-source")
+	if err != nil {
+		utils.PrintError(err)
+		return err
+	}
+
 	if output != "json" {
 		sm = utils.NewSpinnerManager()
-		spinner = sm.AddSpinner("Creating new instance from snapshot...")
+		msg := "Creating new instance from snapshot..."
+		if restoreToSource {
+			msg = "Restoring snapshot to original source instance..."
+		}
+		spinner = sm.AddSpinner(msg)
 		sm.Start()
 	}
 
-	result, err := dataaccess.RestoreSnapshot(cmd.Context(), token, serviceID, environmentID, snapshotID, formattedParams, tierVersionOverride, networkType)
+	result, err := dataaccess.RestoreSnapshot(cmd.Context(), token, serviceID, environmentID, snapshotID, formattedParams, tierVersionOverride, networkType, restoreToSource)
 	if err != nil {
 		utils.HandleSpinnerError(spinner, sm, err)
 		return err

@@ -1,10 +1,10 @@
 ## omnistrate-ctl logout
 
-Logout
+Logout and revoke refresh token
 
 ### Synopsis
 
-The logout command is used to log out from the Omnistrate platform.
+The logout command revokes the stored refresh token on the server and removes local credentials.
 
 ```
 omnistrate-ctl logout [flags]

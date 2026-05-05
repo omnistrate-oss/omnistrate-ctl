@@ -34,7 +34,19 @@ const (
 	retryWaitMin         = "OMNISTRATE_RETRY_WAIT_MIN_IN_SECONDS"
 	retryWaitMax         = "OMNISTRATE_RETRY_WAIT_MAX_IN_SECONDS"
 	retryMax             = "OMNISTRATE_RETRY_MAX"
+
+	// OmnistrateAPIKeyEnv is the environment variable for API key authentication.
+	OmnistrateAPIKeyEnv = "OMNISTRATE_API_KEY" //nolint:gosec // G101: env var name, not a credential
+
+	// TokenRefreshMargin is how far before expiry a JWT should be refreshed.
+	TokenRefreshMargin = 5 * time.Minute
 )
+
+// GetAPIKey returns the value of the OMNISTRATE_API_KEY environment variable,
+// or an empty string if unset.
+func GetAPIKey() string {
+	return os.Getenv(OmnistrateAPIKeyEnv)
+}
 
 func GetComposeSpecUrl() string {
 	return fmt.Sprintf("https://%s/spec-guides/compose-spec/index.md", GetOmnistrateDocsDomain())

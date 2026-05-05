@@ -3,6 +3,7 @@ package snapshot
 import (
 	"testing"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -59,11 +60,26 @@ func TestRestoreCommandFlags(t *testing.T) {
 	require.Contains(restoreCmd.Use, "restore")
 	require.NotEmpty(restoreCmd.Example)
 
-	flags := []string{"service-id", "environment-id", "snapshot-id", "param", "param-file", "tierversion-override", "network-type"}
+	flags := []string{"service-id", "environment-id", "snapshot-id", "param", "param-file", "tierversion-override", "network-type", "restore-to-source"}
 	for _, flagName := range flags {
 		flag := restoreCmd.Flags().Lookup(flagName)
 		require.NotNil(flag, "Expected flag '%s' not found", flagName)
 	}
+}
+
+func TestRestoreCommandFlags_RestoreToSource(t *testing.T) {
+	flag := restoreCmd.Flags().Lookup("restore-to-source")
+	require.NotNil(t, flag, "Expected flag 'restore-to-source' to be registered")
+	assert.Contains(t, flag.Usage, "original source instance")
+	assert.Equal(t, "false", flag.DefValue, "restore-to-source should default to false")
+}
+
+func TestRestoreCommandHelpText(t *testing.T) {
+	assert.Equal(t, "Create an instance by restoring from a snapshot", restoreCmd.Short)
+}
+
+func TestRestoreCommandUse_IncludesRestoreToSource(t *testing.T) {
+	assert.Contains(t, restoreCmd.Use, "--restore-to-source")
 }
 
 func TestFormatSnapshotDisplayTime(t *testing.T) {
