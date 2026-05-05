@@ -127,7 +127,7 @@ func TestAPIKeyLoginEmptyKeyErrorMessageBySource(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			resetLogin()
+			resetLogin(LoginCmd)
 			// apiKey is empty after reset — triggers the empty-key guard.
 			err := apiKeyLogin(LoginCmd, tt.source)
 			require.Error(t, err)
@@ -137,7 +137,7 @@ func TestAPIKeyLoginEmptyKeyErrorMessageBySource(t *testing.T) {
 
 	// Extra: interactive source must NOT suggest flags or the env var.
 	t.Run("interactive message is prompt-appropriate", func(t *testing.T) {
-		resetLogin()
+		resetLogin(LoginCmd)
 		err := apiKeyLogin(LoginCmd, apiKeyFromInteractive)
 		require.Error(t, err)
 		require.NotContains(t, err.Error(), "--api-key")
@@ -216,7 +216,7 @@ func TestRunLoginPicksUpEnvVar(t *testing.T) {
 	pointClientAt(t, srv)
 	t.Setenv("OMNISTRATE_API_KEY", "om_test_env_key")
 
-	resetLogin()
+	resetLogin(LoginCmd)
 
 	err := RunLogin(LoginCmd, nil)
 	require.NoError(t, err)
@@ -234,7 +234,7 @@ func TestRunLoginFlagTakesPrecedenceOverEnv(t *testing.T) {
 	pointClientAt(t, srv)
 	t.Setenv("OMNISTRATE_API_KEY", "om_env_should_be_ignored")
 
-	resetLogin()
+	resetLogin(LoginCmd)
 	apiKey = "om_flag_value" //nolint:gosec // G101: test credential, not real
 
 	err := RunLogin(LoginCmd, nil)
@@ -252,7 +252,7 @@ func TestRunLoginEnvVarNotUsedWhenOtherFlagsSet(t *testing.T) {
 	pointClientAt(t, srv)
 	t.Setenv("OMNISTRATE_API_KEY", "om_should_not_be_used")
 
-	resetLogin()
+	resetLogin(LoginCmd)
 	email = "test@example.com"
 	password = "fake_password"
 

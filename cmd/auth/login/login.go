@@ -7,6 +7,7 @@ import (
 	"github.com/omnistrate-oss/omnistrate-ctl/internal/utils"
 	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
+	"github.com/spf13/pflag"
 )
 
 type loginMethod string
@@ -95,7 +96,7 @@ func init() {
 }
 
 func RunLogin(cmd *cobra.Command, args []string) error {
-	defer resetLogin()
+	defer resetLogin(cmd)
 
 	// Login with email and password if any of the flags are set
 	if len(email) > 0 || len(password) > 0 || passwordStdin {
@@ -182,7 +183,7 @@ func RunLogin(cmd *cobra.Command, args []string) error {
 	}
 }
 
-func resetLogin() {
+func resetLogin(cmd *cobra.Command) {
 	email = ""
 	password = ""
 	passwordStdin = false
@@ -191,4 +192,11 @@ func resetLogin() {
 	gh = false
 	google = false
 	entra = false
+
+	// Reset Cobra's internal "Changed" state so mutually-exclusive
+	// flag groups don't carry over between successive calls in the
+	// same process (e.g. test suites reusing RootCmd).
+	cmd.Flags().Visit(func(f *pflag.Flag) {
+		f.Changed = false
+	})
 }
