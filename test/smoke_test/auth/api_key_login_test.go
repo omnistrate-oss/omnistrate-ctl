@@ -196,14 +196,32 @@ func Test_login_with_api_key(t *testing.T) {
 		origStdin := os.Stdin
 		r, w, err := os.Pipe()
 		require.NoError(err)
+		t.Cleanup(func() {
+			os.Stdin = origStdin
+		})
+		t.Cleanup(func() {
+			if r != nil {
+				require.NoError(t, r.Close())
+			}
+		})
+		t.Cleanup(func() {
+			if w != nil {
+				require.NoError(t, w.Close())
+			}
+		})
 		os.Stdin = r
 		_, err = w.WriteString(k.Plaintext + "\n")
 		require.NoError(err)
-		w.Close()
+		err = w.Close()
+		require.NoError(err)
+		w = nil
 
 		cmd.RootCmd.SetArgs([]string{"login", "--api-key-stdin"})
 		stdinErr := cmd.RootCmd.ExecuteContext(ctx)
 		os.Stdin = origStdin
+		err = r.Close()
+		require.NoError(err)
+		r = nil
 		require.NoErrorf(stdinErr,
 			"login --api-key-stdin for role %s (key %s)", k.Role, k.Name)
 
