@@ -167,10 +167,20 @@ func Test_login_with_api_key(t *testing.T) {
 		cmd.RootCmd.SetArgs([]string{"logout"})
 		require.NoError(cmd.RootCmd.ExecuteContext(ctx))
 
-		os.Setenv(config.OmnistrateAPIKeyEnv, k.Plaintext)
-		cmd.RootCmd.SetArgs([]string{"login"})
-		err = cmd.RootCmd.ExecuteContext(ctx)
-		os.Unsetenv(config.OmnistrateAPIKeyEnv)
+		err = func() error {
+			previousAPIKey, hadPreviousAPIKey := os.LookupEnv(config.OmnistrateAPIKeyEnv)
+			require.NoError(os.Setenv(config.OmnistrateAPIKeyEnv, k.Plaintext))
+			defer func() {
+				if hadPreviousAPIKey {
+					require.NoError(os.Setenv(config.OmnistrateAPIKeyEnv, previousAPIKey))
+					return
+				}
+				require.NoError(os.Unsetenv(config.OmnistrateAPIKeyEnv))
+			}()
+
+			cmd.RootCmd.SetArgs([]string{"login"})
+			return cmd.RootCmd.ExecuteContext(ctx)
+		}()
 		require.NoErrorf(err,
 			"login via OMNISTRATE_API_KEY env var for role %s (key %s)", k.Role, k.Name)
 
