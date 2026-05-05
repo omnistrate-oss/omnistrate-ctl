@@ -1,11 +1,14 @@
 package build
 
 import (
+	"context"
 	"encoding/base64"
 	"os"
 	"path/filepath"
 	"testing"
 
+	"github.com/compose-spec/compose-go/loader"
+	"github.com/compose-spec/compose-go/types"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -509,4 +512,124 @@ func TestExpandOmctlEnvVars(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestBuildDockerBuildArgs(t *testing.T) {
+	tests := []struct {
+		name      string
+		platforms string
+		dockerfile string
+		imageURL  string
+		cacheFrom []string
+		cacheTo   []string
+		expected  []string
+	}{
+		{
+			name:       "no cache flags",
+			platforms:  "linux/amd64",
+			dockerfile: "Dockerfile",
+			imageURL:   "ghcr.io/owner/repo",
+			cacheFrom:  nil,
+			cacheTo:    nil,
+			expected:   []string{"buildx", "build", "--pull", "--platform", "linux/amd64", ".", "-f", "Dockerfile", "-t", "ghcr.io/owner/repo", "--load"},
+		},
+		{
+			name:       "with gha cache",
+			platforms:  "linux/amd64",
+			dockerfile: "Dockerfile",
+			imageURL:   "ghcr.io/owner/repo",
+			cacheFrom:  []string{"type=gha"},
+			cacheTo:    []string{"type=gha,mode=max"},
+			expected:   []string{"buildx", "build", "--pull", "--platform", "linux/amd64", ".", "-f", "Dockerfile", "-t", "ghcr.io/owner/repo", "--cache-from", "type=gha", "--cache-to", "type=gha,mode=max", "--load"},
+		},
+		{
+			name:       "multiple cache sources",
+			platforms:  "linux/amd64,linux/arm64",
+			dockerfile: "docker/Dockerfile.prod",
+			imageURL:   "ghcr.io/owner/repo",
+			cacheFrom:  []string{"type=gha", "type=registry,ref=ghcr.io/owner/repo:cache"},
+			cacheTo:    []string{"type=gha,mode=max"},
+			expected:   []string{"buildx", "build", "--pull", "--platform", "linux/amd64,linux/arm64", ".", "-f", "docker/Dockerfile.prod", "-t", "ghcr.io/owner/repo", "--cache-from", "type=gha", "--cache-from", "type=registry,ref=ghcr.io/owner/repo:cache", "--cache-to", "type=gha,mode=max", "--load"},
+		},
+		{
+			name:       "cache_from only",
+			platforms:  "linux/amd64",
+			dockerfile: "Dockerfile",
+			imageURL:   "ghcr.io/owner/repo",
+			cacheFrom:  []string{"type=gha"},
+			cacheTo:    nil,
+			expected:   []string{"buildx", "build", "--pull", "--platform", "linux/amd64", ".", "-f", "Dockerfile", "-t", "ghcr.io/owner/repo", "--cache-from", "type=gha", "--load"},
+		},
+		{
+			name:       "cache_to only",
+			platforms:  "linux/amd64",
+			dockerfile: "Dockerfile",
+			imageURL:   "ghcr.io/owner/repo",
+			cacheFrom:  nil,
+			cacheTo:    []string{"type=gha,mode=max"},
+			expected:   []string{"buildx", "build", "--pull", "--platform", "linux/amd64", ".", "-f", "Dockerfile", "-t", "ghcr.io/owner/repo", "--cache-to", "type=gha,mode=max", "--load"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := BuildDockerBuildArgs(tt.platforms, tt.dockerfile, tt.imageURL, tt.cacheFrom, tt.cacheTo)
+			assert.Equal(t, tt.expected, result)
+		})
+	}
+}
+
+func TestComposeCacheFromCacheToParsing(t *testing.T) {
+	composeYAML := `
+services:
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      cache_from:
+        - type=gha
+      cache_to:
+        - type=gha,mode=max
+  api:
+    build:
+      context: ./api
+      dockerfile: Dockerfile.api
+      cache_from:
+        - type=registry,ref=ghcr.io/owner/api:cache
+  db:
+    image: postgres:15
+`
+	parsedYaml, err := loader.ParseYAML([]byte(composeYAML))
+	require.NoError(t, err)
+
+	project, err := loader.LoadWithContext(context.Background(), types.ConfigDetails{
+		ConfigFiles: []types.ConfigFile{{Config: parsedYaml}},
+	})
+	require.NoError(t, err)
+
+	cacheFrom := make(map[string][]string)
+	cacheTo := make(map[string][]string)
+
+	for _, svc := range project.Services {
+		if svc.Build != nil {
+			if len(svc.Build.CacheFrom) > 0 {
+				cacheFrom[svc.Name] = svc.Build.CacheFrom
+			}
+			if len(svc.Build.CacheTo) > 0 {
+				cacheTo[svc.Name] = svc.Build.CacheTo
+			}
+		}
+	}
+
+	// web service has both cache_from and cache_to
+	assert.Equal(t, []string{"type=gha"}, cacheFrom["web"])
+	assert.Equal(t, []string{"type=gha,mode=max"}, cacheTo["web"])
+
+	// api service has only cache_from
+	assert.Equal(t, []string{"type=registry,ref=ghcr.io/owner/api:cache"}, cacheFrom["api"])
+	assert.Empty(t, cacheTo["api"])
+
+	// db service has no build context, no cache entries
+	assert.Empty(t, cacheFrom["db"])
+	assert.Empty(t, cacheTo["db"])
 }

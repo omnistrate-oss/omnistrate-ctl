@@ -86,6 +86,48 @@ jobs:
           OMCTL_GCP_PROJECT_NUMBER: ${{ secrets.OMCTL_GCP_PROJECT_NUMBER }}
         run: gotestsum --format standard-verbose -- ./test/smoke_test/${{ matrix.test-group }} -timeout 1800s -p 1 -p 1 -v
 
+  smoke-tests-docker-cache:
+    environment: ${{ inputs.environment }}
+    if: github.event_name != 'push'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Set up go
+        uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6.4.0
+        with:
+          go-version-file: "go.mod"
+          cache-dependency-path: "**/go.sum"
+
+      - name: Get dependencies
+        timeout-minutes: 10
+        run: make tidy
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@b5ca514318bd6ebac0fb2aedd5d36ec1b5c232a2 # v3.10.0
+
+      - name: Gotestsum installer
+        uses: autero1/action-gotestsum@7263b9d73912eec65f46337689e59fac865c425f # v2.0.0
+        with:
+          gotestsum_version: 1.13.0
+
+      - name: Smoke test build-from-repo with GHA cache
+        timeout-minutes: 15
+        env:
+          ENABLE_SMOKE_TEST: true
+          ENABLE_DOCKER_CACHE_TEST: true
+          TEST_EMAIL: ${{ secrets.SMOKE_TEST_EMAIL }}
+          TEST_PASSWORD: ${{ secrets.SMOKE_TEST_PASSWORD }}
+          OMNISTRATE_ROOT_DOMAIN: ${{ vars.OMNISTRATE_ROOT_DOMAIN }}
+          OMNISTRATE_LOG_LEVEL: debug
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gotestsum --format standard-verbose -- ./test/smoke_test/build/docker_cache/... -timeout 900s -p 1 -v
+
   smoke-tests-auth:
     environment: ${{ inputs.environment }}
     if: github.event_name != 'push'
