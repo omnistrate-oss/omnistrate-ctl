@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -193,4 +194,46 @@ func TestGetRetryMaxCustom(t *testing.T) {
 	t.Setenv(retryMax, "10")
 	n := GetRetryMax()
 	assert.Equal(t, 10, n)
+}
+
+func TestCleanupArgsAndFlags_StringArray(t *testing.T) {
+	cmd := &cobra.Command{Use: "test", RunE: func(cmd *cobra.Command, args []string) error { return nil }}
+	cmd.Flags().StringArray("platforms", []string{"linux/amd64"}, "platforms")
+	cmd.Flags().String("name", "default", "a string flag")
+
+	// Simulate first execution modifying the flag
+	_ = cmd.Flags().Set("platforms", "linux/arm64")
+	val, _ := cmd.Flags().GetStringArray("platforms")
+	assert.Equal(t, []string{"linux/arm64"}, val)
+
+	// Cleanup should reset to default
+	args := []string{}
+	CleanupArgsAndFlags(cmd, &args)
+
+	val, _ = cmd.Flags().GetStringArray("platforms")
+	assert.Equal(t, []string{"linux/amd64"}, val)
+
+	// Second cleanup should still return the same default (no bracket corruption)
+	CleanupArgsAndFlags(cmd, &args)
+	val, _ = cmd.Flags().GetStringArray("platforms")
+	assert.Equal(t, []string{"linux/amd64"}, val)
+
+	// String flags should also reset correctly
+	name, _ := cmd.Flags().GetString("name")
+	assert.Equal(t, "default", name)
+}
+
+func TestCleanupArgsAndFlags_EmptyStringArray(t *testing.T) {
+	cmd := &cobra.Command{Use: "test", RunE: func(cmd *cobra.Command, args []string) error { return nil }}
+	cmd.Flags().StringArray("tags", []string{}, "tags")
+
+	_ = cmd.Flags().Set("tags", "foo")
+	val, _ := cmd.Flags().GetStringArray("tags")
+	assert.Equal(t, []string{"foo"}, val)
+
+	args := []string{}
+	CleanupArgsAndFlags(cmd, &args)
+
+	val, _ = cmd.Flags().GetStringArray("tags")
+	assert.Equal(t, []string{}, val)
 }
