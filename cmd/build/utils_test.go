@@ -540,7 +540,7 @@ func TestBuildDockerBuildArgs(t *testing.T) {
 			imageURL:   "ghcr.io/owner/repo",
 			cacheFrom:  []string{"type=gha"},
 			cacheTo:    []string{"type=gha,mode=max"},
-			expected:   []string{"buildx", "build", "--pull", "--platform", "linux/amd64", ".", "-f", "Dockerfile", "-t", "ghcr.io/owner/repo", "--cache-from", "type=gha", "--cache-to", "type=gha,mode=max", "--load"},
+			expected:   []string{"buildx", "build", "--pull", "--platform", "linux/amd64", ".", "-f", "Dockerfile", "-t", "ghcr.io/owner/repo", "--cache-from", "type=gha", "--cache-to", "type=gha,mode=max"},
 		},
 		{
 			name:       "multiple cache sources",
@@ -549,7 +549,7 @@ func TestBuildDockerBuildArgs(t *testing.T) {
 			imageURL:   "ghcr.io/owner/repo",
 			cacheFrom:  []string{"type=gha", "type=registry,ref=ghcr.io/owner/repo:cache"},
 			cacheTo:    []string{"type=gha,mode=max"},
-			expected:   []string{"buildx", "build", "--pull", "--platform", "linux/amd64,linux/arm64", ".", "-f", "docker/Dockerfile.prod", "-t", "ghcr.io/owner/repo", "--cache-from", "type=gha", "--cache-from", "type=registry,ref=ghcr.io/owner/repo:cache", "--cache-to", "type=gha,mode=max", "--load"},
+			expected:   []string{"buildx", "build", "--pull", "--platform", "linux/amd64,linux/arm64", ".", "-f", "docker/Dockerfile.prod", "-t", "ghcr.io/owner/repo", "--cache-from", "type=gha", "--cache-from", "type=registry,ref=ghcr.io/owner/repo:cache", "--cache-to", "type=gha,mode=max"},
 		},
 		{
 			name:       "cache_from only",
@@ -567,7 +567,7 @@ func TestBuildDockerBuildArgs(t *testing.T) {
 			imageURL:   "ghcr.io/owner/repo",
 			cacheFrom:  nil,
 			cacheTo:    []string{"type=gha,mode=max"},
-			expected:   []string{"buildx", "build", "--pull", "--platform", "linux/amd64", ".", "-f", "Dockerfile", "-t", "ghcr.io/owner/repo", "--cache-to", "type=gha,mode=max", "--load"},
+			expected:   []string{"buildx", "build", "--pull", "--platform", "linux/amd64", ".", "-f", "Dockerfile", "-t", "ghcr.io/owner/repo", "--cache-to", "type=gha,mode=max"},
 		},
 	}
 

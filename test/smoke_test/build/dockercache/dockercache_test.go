@@ -1,4 +1,4 @@
-package docker_cache
+package dockercache
 
 import (
 	"context"

@@ -92,7 +92,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      packages: write
+      packages: read
 
     steps:
       - name: Checkout repository
@@ -126,7 +126,7 @@ jobs:
           OMNISTRATE_ROOT_DOMAIN: ${{ vars.OMNISTRATE_ROOT_DOMAIN }}
           OMNISTRATE_LOG_LEVEL: debug
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: gotestsum --format standard-verbose -- ./test/smoke_test/build/docker_cache/... -timeout 900s -p 1 -v
+        run: gotestsum --format standard-verbose -- ./test/smoke_test/build/dockercache/... -timeout 900s -p 1 -v
 
   smoke-tests-auth:
     environment: ${{ inputs.environment }}
