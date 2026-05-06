@@ -142,6 +142,7 @@ jobs:
     secrets: inherit
     permissions:
       contents: read
+      packages: read
 
   publish:
     if: github.event_name == 'push'
