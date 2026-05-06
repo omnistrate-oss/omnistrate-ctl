@@ -220,7 +220,25 @@ func CleanupArgsAndFlags(cmd *cobra.Command, args *[]string) {
 	// Clean up flags
 	cmd.Flags().VisitAll(
 		func(f *pflag.Flag) {
-			_ = cmd.Flags().Set(f.Name, f.DefValue)
+			// For slice/array flags, use Replace() to avoid the StringArray
+			// Set() bug where DefValue brackets get treated as literal characters.
+			if sv, ok := f.Value.(pflag.SliceValue); ok {
+				if f.DefValue == "[]" {
+					_ = sv.Replace([]string{})
+				} else {
+					_ = sv.Replace(sv.GetSlice()[:0])
+					// Re-parse default value by stripping brackets and splitting CSV
+					defVal := strings.TrimPrefix(f.DefValue, "[")
+					defVal = strings.TrimSuffix(defVal, "]")
+					if defVal != "" {
+						for _, v := range strings.Split(defVal, ",") {
+							_ = sv.Append(v)
+						}
+					}
+				}
+			} else {
+				_ = cmd.Flags().Set(f.Name, f.DefValue)
+			}
 		})
 
 	// Clean up arguments by resetting the slice to nil or an empty slice
