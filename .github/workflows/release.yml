@@ -199,6 +199,7 @@ jobs:
     secrets: inherit
     permissions:
       contents: read
+      packages: read
 
   approve-release:
     name: Approve release
