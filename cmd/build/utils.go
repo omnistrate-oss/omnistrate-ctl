@@ -494,3 +494,22 @@ func ExpandOmctlEnvVars(data []byte) ([]byte, error) {
 	}
 	return result, nil
 }
+
+// BuildDockerBuildArgs constructs the arguments for a `docker buildx build` command,
+// including optional --cache-from and --cache-to flags from the compose spec.
+// --load is omitted when cacheTo is set (build's purpose is cache population)
+// or when multiple platforms are specified (--load is incompatible with multi-platform builds).
+func BuildDockerBuildArgs(platforms, dockerfilePath, imageURL string, cacheFrom, cacheTo []string) []string {
+	args := []string{"buildx", "build", "--pull", "--platform", platforms, ".", "-f", dockerfilePath, "-t", imageURL}
+	for _, cf := range cacheFrom {
+		args = append(args, "--cache-from", cf)
+	}
+	for _, ct := range cacheTo {
+		args = append(args, "--cache-to", ct)
+	}
+	isMultiPlatform := strings.Contains(platforms, ",")
+	if len(cacheTo) == 0 && !isMultiPlatform {
+		args = append(args, "--load")
+	}
+	return args
+}

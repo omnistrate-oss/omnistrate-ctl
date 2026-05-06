@@ -649,6 +649,8 @@ func BuildServiceFromRepository(cmd *cobra.Command, ctx context.Context, token, 
 	var parsedYaml map[string]interface{}
 	var project *types.Project
 	dockerfilePaths := make(map[string]string)        // service -> dockerfile path
+	dockerCacheFrom := make(map[string][]string)      // service -> cache_from entries
+	dockerCacheTo := make(map[string][]string)        // service -> cache_to entries
 	versionTaggedImageUrls := make(map[string]string) // service -> image url with digest tag
 	var pat string
 	var ghUsername string
@@ -700,6 +702,12 @@ func BuildServiceFromRepository(cmd *cobra.Command, ctx context.Context, token, 
 				}
 
 				dockerfilePaths[service.Name] = filepath.Join(absContextPath, service.Build.Dockerfile)
+				if len(service.Build.CacheFrom) > 0 {
+					dockerCacheFrom[service.Name] = service.Build.CacheFrom
+				}
+				if len(service.Build.CacheTo) > 0 {
+					dockerCacheTo[service.Name] = service.Build.CacheTo
+				}
 			}
 		}
 	} else {
@@ -988,13 +996,15 @@ func BuildServiceFromRepository(cmd *cobra.Command, ctx context.Context, token, 
 				// Join the platforms list with comma as separator
 				platformsStr := strings.Join(platforms, ",")
 
-				buildCmd := exec.Command("docker", "buildx", "build", "--pull", "--platform", platformsStr, ".", "-f", dockerfilePath, "-t", imageUrl, "--load")
+				buildArgs := BuildDockerBuildArgs(platformsStr, dockerfilePath, imageUrl, dockerCacheFrom[service], dockerCacheTo[service])
+
+				buildCmd := exec.Command("docker", buildArgs...)
 
 				// Redirect stdout and stderr to the terminal
 				buildCmd.Stdout = os.Stdout
 				buildCmd.Stderr = os.Stderr
 
-				fmt.Printf("Invoking 'docker buildx build --pull --platform %s . -f %s -t %s --load'...\n", platformsStr, dockerfilePath, imageUrl)
+				fmt.Printf("Invoking 'docker %s'...\n", strings.Join(buildArgs, " "))
 				err = buildCmd.Run()
 				if err != nil {
 					utils.HandleSpinnerError(spinner, sm, err)
