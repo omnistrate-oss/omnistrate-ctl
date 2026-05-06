@@ -3,12 +3,15 @@ package build
 import (
 	"context"
 	"encoding/base64"
+	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/compose-spec/compose-go/loader"
 	"github.com/compose-spec/compose-go/types"
+	"github.com/omnistrate-oss/omnistrate-ctl/internal/utils"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -516,13 +519,13 @@ func TestExpandOmctlEnvVars(t *testing.T) {
 
 func TestBuildDockerBuildArgs(t *testing.T) {
 	tests := []struct {
-		name      string
-		platforms string
+		name       string
+		platforms  string
 		dockerfile string
-		imageURL  string
-		cacheFrom []string
-		cacheTo   []string
-		expected  []string
+		imageURL   string
+		cacheFrom  []string
+		cacheTo    []string
+		expected   []string
 	}{
 		{
 			name:       "no cache flags",
@@ -540,7 +543,7 @@ func TestBuildDockerBuildArgs(t *testing.T) {
 			imageURL:   "ghcr.io/owner/repo",
 			cacheFrom:  []string{"type=gha"},
 			cacheTo:    []string{"type=gha,mode=max"},
-			expected:   []string{"buildx", "build", "--pull", "--platform", "linux/amd64", ".", "-f", "Dockerfile", "-t", "ghcr.io/owner/repo", "--cache-from", "type=gha", "--cache-to", "type=gha,mode=max"},
+			expected:   []string{"buildx", "build", "--pull", "--platform", "linux/amd64", ".", "-f", "Dockerfile", "-t", "ghcr.io/owner/repo", "--cache-from", "type=gha", "--cache-to", "type=gha,mode=max", "--load"},
 		},
 		{
 			name:       "multiple cache sources",
@@ -567,7 +570,7 @@ func TestBuildDockerBuildArgs(t *testing.T) {
 			imageURL:   "ghcr.io/owner/repo",
 			cacheFrom:  nil,
 			cacheTo:    []string{"type=gha,mode=max"},
-			expected:   []string{"buildx", "build", "--pull", "--platform", "linux/amd64", ".", "-f", "Dockerfile", "-t", "ghcr.io/owner/repo", "--cache-to", "type=gha,mode=max"},
+			expected:   []string{"buildx", "build", "--pull", "--platform", "linux/amd64", ".", "-f", "Dockerfile", "-t", "ghcr.io/owner/repo", "--cache-to", "type=gha,mode=max", "--load"},
 		},
 		{
 			name:       "multi-platform without cache skips load",
@@ -641,4 +644,263 @@ services:
 	// db service has no build context, no cache entries
 	assert.Empty(t, cacheFrom["db"])
 	assert.Empty(t, cacheTo["db"])
+}
+
+// TestReplaceBuildContextIntegration exercises the full compose-parse →
+// ReplaceBuildContext pipeline, verifying that rendered specs contain no
+// residual build: blocks that would cause backend "build context is not
+// supported yet" errors.
+func TestReplaceBuildContextIntegration(t *testing.T) {
+	tests := []struct {
+		name        string
+		composeYAML string
+		imageURLs   map[string]string // service name -> image URL
+	}{
+		{
+			name: "cache_from and cache_to after context/dockerfile",
+			composeYAML: `services:
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      cache_from:
+        - type=gha
+      cache_to:
+        - type=gha,mode=max
+    ports:
+      - "8080:8080"
+`,
+			imageURLs: map[string]string{
+				"web": "ghcr.io/owner/web:sha-abc123",
+			},
+		},
+		{
+			name: "cache_from and cache_to before context/dockerfile",
+			composeYAML: `services:
+  web:
+    build:
+      cache_from:
+        - type=gha
+      cache_to:
+        - type=gha,mode=max
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "8080:8080"
+`,
+			imageURLs: map[string]string{
+				"web": "ghcr.io/owner/web:sha-abc123",
+			},
+		},
+		{
+			name: "cache interleaved with context and dockerfile",
+			composeYAML: `services:
+  api:
+    build:
+      context: ./api
+      cache_from:
+        - type=gha
+        - type=registry,ref=ghcr.io/owner/api:cache
+      dockerfile: Dockerfile
+      cache_to:
+        - type=gha,mode=max
+    environment:
+      DB_HOST: localhost
+`,
+			imageURLs: map[string]string{
+				"api": "ghcr.io/owner/api:sha-def456",
+			},
+		},
+		{
+			name: "multiple services with mixed cache positions",
+			composeYAML: `services:
+  frontend:
+    build:
+      cache_from:
+        - type=gha
+      context: ./frontend
+      dockerfile: Dockerfile
+      cache_to:
+        - type=gha,mode=max
+    ports:
+      - "3000:3000"
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.prod
+      cache_from:
+        - type=gha
+    environment:
+      REDIS_URL: redis://redis:6379
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+`,
+			imageURLs: map[string]string{
+				"frontend": "ghcr.io/owner/frontend:sha-111",
+				"backend":  "ghcr.io/owner/backend:sha-222",
+			},
+		},
+		{
+			name: "cache_from only no cache_to",
+			composeYAML: `services:
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      cache_from:
+        - type=gha
+    ports:
+      - "8080:8080"
+`,
+			imageURLs: map[string]string{
+				"web": "ghcr.io/owner/web:sha-abc123",
+			},
+		},
+		{
+			name: "build with args alongside cache fields",
+			composeYAML: `services:
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        NODE_ENV: production
+        VERSION: "2.0"
+      cache_from:
+        - type=gha
+      cache_to:
+        - type=gha,mode=max
+    ports:
+      - "8080:8080"
+`,
+			imageURLs: map[string]string{
+				"web": "ghcr.io/owner/web:sha-abc123",
+			},
+		},
+		{
+			name: "real-world ray-cluster layout",
+			composeYAML: `version: '3'
+
+x-omnistrate-integrations:
+  - omnistrateLogging:
+  - omnistrateMetrics:
+
+x-omnistrate-service-plan:
+  name: 'ray-jobs'
+  tenancyType: 'OMNISTRATE_MULTI_TENANCY'
+
+services:
+  hello-world:
+    build:
+      cache_from:
+        - type=gha
+      cache_to:
+        - type=gha,mode=max
+      context: ./jobs/hello-world
+      dockerfile: Dockerfile
+    environment:
+      RAY_ADDRESS: "ray://cluster:10001"
+      SCRIPT_PATH: "submit_job.py"
+    deploy:
+      resources:
+        reservations:
+          cpus: "0.1"
+          memory: 256M
+        limits:
+          cpus: "0.5"
+          memory: 1G
+    privileged: true
+    platform: linux/amd64
+  hello-cuda:
+    build:
+      context: ./jobs/hello-cuda
+      dockerfile: Dockerfile
+    environment:
+      RAY_ADDRESS: "ray://cluster:10001"
+      SCRIPT_PATH: "submit_job.py"
+x-omnistrate-image-registry-attributes:
+  ghcr.io:
+    auth:
+      password: ${{ secrets.GitHubPAT }}
+      username: testuser
+`,
+			imageURLs: map[string]string{
+				"hello-world": "ghcr.io/org/ray-cluster-hello-world:sha-abc",
+				"hello-cuda":  "ghcr.io/org/ray-cluster-hello-cuda:sha-def",
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Step 1: Parse the compose YAML exactly as build-from-repo does
+			parsedYaml, err := loader.ParseYAML([]byte(tt.composeYAML))
+			require.NoError(t, err, "failed to parse compose YAML")
+
+			project, err := loader.LoadWithContext(context.Background(), types.ConfigDetails{
+				ConfigFiles: []types.ConfigFile{{Config: parsedYaml}},
+			})
+			require.NoError(t, err, "failed to load compose project")
+
+			// Step 2: Extract dockerfile paths and build image URL mapping
+			// (mirrors build_from_repo.go logic)
+			dockerfilePaths := make(map[string]string)
+			for _, svc := range project.Services {
+				if svc.Build != nil {
+					absCtx, err := filepath.Abs(svc.Build.Context)
+					require.NoError(t, err)
+					dockerfilePaths[svc.Name] = filepath.Join(absCtx, svc.Build.Dockerfile)
+				}
+			}
+
+			dockerPathsToImageUrls := make(map[string]string)
+			for svcName, imageURL := range tt.imageURLs {
+				if dp, ok := dockerfilePaths[svcName]; ok {
+					dockerPathsToImageUrls[dp] = imageURL
+				}
+			}
+
+			// Step 3: Apply ReplaceBuildContext
+			rendered := utils.ReplaceBuildContext(tt.composeYAML, dockerPathsToImageUrls)
+
+			// Step 4: Verify no build: blocks with context/dockerfile remain
+			// This catches the exact "build context is not supported yet" error
+			assert.NotContains(t, rendered, "context: ./",
+				"rendered spec still contains build context — would cause backend rejection")
+			assert.NotContains(t, rendered, "dockerfile: Dockerfile",
+				"rendered spec still contains dockerfile reference — would cause backend rejection")
+
+			// Step 5: Verify no orphaned cache fields remain
+			assert.NotContains(t, rendered, "cache_from:",
+				"rendered spec still contains orphaned cache_from")
+			assert.NotContains(t, rendered, "cache_to:",
+				"rendered spec still contains orphaned cache_to")
+
+			// Step 6: Verify all expected image URLs are present
+			for _, imageURL := range tt.imageURLs {
+				assert.Contains(t, rendered, fmt.Sprintf(`image: "%s"`, imageURL),
+					"expected image URL not found in rendered spec")
+			}
+
+			// Step 7: Verify non-build content is preserved
+			if strings.Contains(tt.composeYAML, "ports:") {
+				assert.Contains(t, rendered, "ports:",
+					"non-build content (ports) was incorrectly removed")
+			}
+			if strings.Contains(tt.composeYAML, "environment:") {
+				assert.Contains(t, rendered, "environment:",
+					"non-build content (environment) was incorrectly removed")
+			}
+			if strings.Contains(tt.composeYAML, "x-omnistrate") {
+				assert.Contains(t, rendered, "x-omnistrate",
+					"omnistrate extensions were incorrectly removed")
+			}
+
+			// Step 8: Verify the rendered YAML is parseable
+			_, err = loader.ParseYAML([]byte(rendered))
+			assert.NoError(t, err, "rendered spec is not valid YAML")
+		})
+	}
 }

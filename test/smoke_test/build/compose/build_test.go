@@ -14,6 +14,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
+	requirepkg "github.com/stretchr/testify/require"
 )
 
 func Test_build_basic(t *testing.T) {
@@ -51,26 +52,30 @@ func Test_build_basic(t *testing.T) {
 			continue
 		}
 
-		cmd.RootCmd.SetArgs([]string{"build",
-			"-f", "../../composefiles/" + f.Name(),
-			"--name", f.Name() + uuid.NewString(),
-			"--description", "My Service Description",
-			"--service-logo-url", "https://freepnglogos.com/uploads/server-png/server-computer-database-network-vector-graphic-pixabay-31.png",
-			"--environment", "dev",
-			"--environment-type", "dev",
-			"--release-as-preferred",
-			"--release-name", "v1.0.0-alpha",
+		t.Run(f.Name(), func(t *testing.T) {
+			r := requirepkg.New(t)
+
+			cmd.RootCmd.SetArgs([]string{"build",
+				"-f", "../../composefiles/" + f.Name(),
+				"--name", f.Name() + uuid.NewString(),
+				"--description", "My Service Description",
+				"--service-logo-url", "https://freepnglogos.com/uploads/server-png/server-computer-database-network-vector-graphic-pixabay-31.png",
+				"--environment", "dev",
+				"--environment-type", "dev",
+				"--release-as-preferred",
+				"--release-name", "v1.0.0-alpha",
+			})
+			err := cmd.RootCmd.ExecuteContext(ctx)
+			r.NoError(err, f.Name())
+
+			cmd.RootCmd.SetArgs([]string{"service", "describe", "--id", build.ServiceID})
+			err = cmd.RootCmd.ExecuteContext(ctx)
+			r.NoError(err, f.Name())
+
+			cmd.RootCmd.SetArgs([]string{"service", "delete", "--id", build.ServiceID})
+			err = cmd.RootCmd.ExecuteContext(ctx)
+			r.NoError(err, f.Name())
 		})
-		err = cmd.RootCmd.ExecuteContext(ctx)
-		require.NoError(err, f.Name())
-
-		cmd.RootCmd.SetArgs([]string{"service", "describe", "--id", build.ServiceID})
-		err = cmd.RootCmd.ExecuteContext(ctx)
-		require.NoError(err, f.Name())
-
-		cmd.RootCmd.SetArgs([]string{"service", "delete", "--id", build.ServiceID})
-		err = cmd.RootCmd.ExecuteContext(ctx)
-		require.NoError(err, f.Name())
 	}
 }
 
