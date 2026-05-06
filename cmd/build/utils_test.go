@@ -569,6 +569,15 @@ func TestBuildDockerBuildArgs(t *testing.T) {
 			cacheTo:    []string{"type=gha,mode=max"},
 			expected:   []string{"buildx", "build", "--pull", "--platform", "linux/amd64", ".", "-f", "Dockerfile", "-t", "ghcr.io/owner/repo", "--cache-to", "type=gha,mode=max"},
 		},
+		{
+			name:       "multi-platform without cache skips load",
+			platforms:  "linux/amd64,linux/arm64",
+			dockerfile: "Dockerfile",
+			imageURL:   "ghcr.io/owner/repo",
+			cacheFrom:  nil,
+			cacheTo:    nil,
+			expected:   []string{"buildx", "build", "--pull", "--platform", "linux/amd64,linux/arm64", ".", "-f", "Dockerfile", "-t", "ghcr.io/owner/repo"},
+		},
 	}
 
 	for _, tt := range tests {
