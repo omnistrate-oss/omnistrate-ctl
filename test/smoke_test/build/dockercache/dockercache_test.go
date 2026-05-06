@@ -100,10 +100,13 @@ func Test_build_from_repo_with_docker_cache_full(t *testing.T) {
 
 	// Run build-from-repo --dry-run: builds the Docker image locally with GHA
 	// cache flags but skips pushing to GHCR and creating the service.
+	// Explicitly set --platforms to avoid CleanupArgsAndFlags StringArray bug
+	// where the default "[linux/amd64]" gets re-parsed with brackets.
 	cmd.RootCmd.SetArgs([]string{
 		"build-from-repo",
 		"--file", composeFile,
 		"--dry-run",
+		"--platforms", "linux/amd64",
 	})
 	err = cmd.RootCmd.ExecuteContext(ctx)
 	require.NoError(err)
