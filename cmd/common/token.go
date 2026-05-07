@@ -2,12 +2,15 @@ package common
 
 import (
 	"context"
+	"fmt"
+	"os"
 
 	"github.com/omnistrate-oss/omnistrate-ctl/cmd/auth/login"
 	"github.com/omnistrate-oss/omnistrate-ctl/internal/config"
 	"github.com/omnistrate-oss/omnistrate-ctl/internal/dataaccess"
 	"github.com/pkg/errors"
 	"github.com/rs/zerolog/log"
+	"golang.org/x/term"
 )
 
 func GetTokenWithLogin() (token string, err error) {
@@ -51,6 +54,14 @@ func GetTokenWithLogin() (token string, err error) {
 	// without requiring an explicit `login` call.
 	if envKey := config.GetAPIKey(); envKey != "" {
 		return exchangeAPIKeyEnv(ctx, envKey)
+	}
+
+	// In non-interactive environments (no TTY), return a clear error
+	// instead of attempting an interactive login prompt that would fail
+	// with "huh: could not open a new TTY".
+	if !term.IsTerminal(int(os.Stdin.Fd())) {
+		err = fmt.Errorf("not logged in and no TTY available for interactive login; please run 'omnistrate-ctl login' first, set OMNISTRATE_API_KEY, or use --api-key-stdin")
+		return
 	}
 
 	// Run login command (if no token or token was invalid)
