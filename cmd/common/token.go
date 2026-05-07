@@ -2,7 +2,6 @@ package common
 
 import (
 	"context"
-	"fmt"
 	"os"
 
 	"github.com/omnistrate-oss/omnistrate-ctl/cmd/auth/login"
@@ -59,8 +58,8 @@ func GetTokenWithLogin() (token string, err error) {
 	// In non-interactive environments (no TTY), return a clear error
 	// instead of attempting an interactive login prompt that would fail
 	// with "huh: could not open a new TTY".
-	if !term.IsTerminal(int(os.Stdin.Fd())) {
-		err = fmt.Errorf("not logged in and no TTY available for interactive login; please run 'omnistrate-ctl login' first, set OMNISTRATE_API_KEY, or use --api-key-stdin")
+	if !fileIsTerminal(os.Stdin) {
+		err = errors.New("not logged in and no TTY available for interactive login; please run 'omnistrate-ctl login' first, set OMNISTRATE_API_KEY, or use --api-key-stdin")
 		return
 	}
 
@@ -133,4 +132,20 @@ func tryRefreshToken(ctx context.Context) (string, error) {
 	}
 
 	return result.JWTToken, nil
+}
+
+// fileIsTerminal reports whether the given file is connected to a terminal.
+// It guards against fd values that exceed math.MaxInt (which can happen on
+// some platforms) by returning false in that case.
+func fileIsTerminal(file *os.File) bool {
+	if file == nil {
+		return false
+	}
+
+	fd := file.Fd()
+	if fd > uintptr(^uint(0)>>1) {
+		return false
+	}
+
+	return term.IsTerminal(int(fd))
 }
