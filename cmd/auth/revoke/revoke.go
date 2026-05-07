@@ -6,6 +6,7 @@ import (
 	"github.com/omnistrate-oss/omnistrate-ctl/internal/config"
 	"github.com/omnistrate-oss/omnistrate-ctl/internal/dataaccess"
 	"github.com/omnistrate-oss/omnistrate-ctl/internal/utils"
+	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
 )
 
@@ -36,6 +37,11 @@ func runRevokeToken(cmd *cobra.Command, args []string) error {
 	}
 
 	if err := config.RemoveAuthConfig(); err != nil {
+		// If there's no config file, there's nothing to revoke — that's OK
+		if errors.Is(err, config.ErrConfigFileNotFound) {
+			utils.PrintSuccess("No credentials found; nothing to revoke")
+			return nil
+		}
 		utils.PrintError(err)
 		return err
 	}

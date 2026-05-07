@@ -2,12 +2,14 @@ package common
 
 import (
 	"context"
+	"os"
 
 	"github.com/omnistrate-oss/omnistrate-ctl/cmd/auth/login"
 	"github.com/omnistrate-oss/omnistrate-ctl/internal/config"
 	"github.com/omnistrate-oss/omnistrate-ctl/internal/dataaccess"
 	"github.com/pkg/errors"
 	"github.com/rs/zerolog/log"
+	"golang.org/x/term"
 )
 
 func GetTokenWithLogin() (token string, err error) {
@@ -51,6 +53,14 @@ func GetTokenWithLogin() (token string, err error) {
 	// without requiring an explicit `login` call.
 	if envKey := config.GetAPIKey(); envKey != "" {
 		return exchangeAPIKeyEnv(ctx, envKey)
+	}
+
+	// In non-interactive environments (no TTY), return a clear error
+	// instead of attempting an interactive login prompt that would fail
+	// with "huh: could not open a new TTY".
+	if !fileIsTerminal(os.Stdin) {
+		err = errors.New("not logged in and no TTY available for interactive login; please run 'omnistrate-ctl login' first, set OMNISTRATE_API_KEY, or use --api-key-stdin")
+		return
 	}
 
 	// Run login command (if no token or token was invalid)
@@ -122,4 +132,20 @@ func tryRefreshToken(ctx context.Context) (string, error) {
 	}
 
 	return result.JWTToken, nil
+}
+
+// fileIsTerminal reports whether the given file is connected to a terminal.
+// It guards against fd values that exceed math.MaxInt (which can happen on
+// some platforms) by returning false in that case.
+func fileIsTerminal(file *os.File) bool {
+	if file == nil {
+		return false
+	}
+
+	fd := file.Fd()
+	if fd > uintptr(^uint(0)>>1) {
+		return false
+	}
+
+	return term.IsTerminal(int(fd))
 }

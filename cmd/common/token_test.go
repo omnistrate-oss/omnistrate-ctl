@@ -4,6 +4,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"os"
 	"testing"
 	"time"
 
@@ -75,4 +76,31 @@ func TestGetTokenWithLoginUsesEnvVar(t *testing.T) {
 			"should attempt env-var exchange, not interactive login")
 	}
 	// If it somehow succeeds (unlikely in unit test), that's fine too.
+}
+
+// TestGetTokenWithLoginNonTTY verifies that when there is no stored token,
+// no OMNISTRATE_API_KEY, and stdin is not a terminal, GetTokenWithLogin
+// returns a clear error instead of attempting an interactive login prompt.
+func TestGetTokenWithLoginNonTTY(t *testing.T) {
+	// Ensure no API key is set so we fall through to the TTY check.
+	t.Setenv("OMNISTRATE_API_KEY", "")
+
+	// Point HOME to a temp dir so no existing config/token is found.
+	t.Setenv("HOME", t.TempDir())
+
+	// Swap os.Stdin with a pipe (not a terminal).
+	origStdin := os.Stdin
+	r, w, err := os.Pipe()
+	assert.NoError(t, err)
+	defer func() {
+		os.Stdin = origStdin
+		r.Close()
+		w.Close()
+	}()
+	os.Stdin = r
+
+	token, err := GetTokenWithLogin()
+	assert.Empty(t, token)
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "no TTY available for interactive login")
 }
