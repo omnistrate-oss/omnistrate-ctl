@@ -543,7 +543,7 @@ func TestBuildDockerBuildArgs(t *testing.T) {
 			imageURL:   "ghcr.io/owner/repo",
 			cacheFrom:  []string{"type=gha"},
 			cacheTo:    []string{"type=gha,mode=max"},
-			expected:   []string{"buildx", "build", "--pull", "--platform", "linux/amd64", ".", "-f", "Dockerfile", "-t", "ghcr.io/owner/repo", "--cache-from", "type=gha", "--cache-to", "type=gha,mode=max"},
+			expected:   []string{"buildx", "build", "--pull", "--platform", "linux/amd64", ".", "-f", "Dockerfile", "-t", "ghcr.io/owner/repo", "--cache-from", "type=gha", "--cache-to", "type=gha,mode=max", "--load"},
 		},
 		{
 			name:       "multiple cache sources",
@@ -570,7 +570,7 @@ func TestBuildDockerBuildArgs(t *testing.T) {
 			imageURL:   "ghcr.io/owner/repo",
 			cacheFrom:  nil,
 			cacheTo:    []string{"type=gha,mode=max"},
-			expected:   []string{"buildx", "build", "--pull", "--platform", "linux/amd64", ".", "-f", "Dockerfile", "-t", "ghcr.io/owner/repo", "--cache-to", "type=gha,mode=max"},
+			expected:   []string{"buildx", "build", "--pull", "--platform", "linux/amd64", ".", "-f", "Dockerfile", "-t", "ghcr.io/owner/repo", "--cache-to", "type=gha,mode=max", "--load"},
 		},
 		{
 			name:       "multi-platform without cache skips load",
