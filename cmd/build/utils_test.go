@@ -519,13 +519,13 @@ func TestExpandOmctlEnvVars(t *testing.T) {
 
 func TestBuildDockerBuildArgs(t *testing.T) {
 	tests := []struct {
-		name      string
-		platforms string
+		name       string
+		platforms  string
 		dockerfile string
-		imageURL  string
-		cacheFrom []string
-		cacheTo   []string
-		expected  []string
+		imageURL   string
+		cacheFrom  []string
+		cacheTo    []string
+		expected   []string
 	}{
 		{
 			name:       "no cache flags",

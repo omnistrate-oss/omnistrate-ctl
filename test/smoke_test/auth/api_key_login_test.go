@@ -26,17 +26,17 @@ import (
 //     name. The cleanup defer revokes and deletes every key created in
 //     this run.
 //  3. For each created key, exercise all three login mechanisms:
-//       a. `omnistrate-ctl login --api-key=<key>` — plaintext flag.
-//       b. `OMNISTRATE_API_KEY=<key> omnistrate-ctl login` — env var
-//          auto-detection (zero-flag CI/CD path).
-//       c. `echo <key> | omnistrate-ctl login --api-key-stdin` — stdin
-//          pipe (secure, no process-visible plaintext).
+//     a. `omnistrate-ctl login --api-key=<key>` — plaintext flag.
+//     b. `OMNISTRATE_API_KEY=<key> omnistrate-ctl login` — env var
+//     auto-detection (zero-flag CI/CD path).
+//     c. `echo <key> | omnistrate-ctl login --api-key-stdin` — stdin
+//     pipe (secure, no process-visible plaintext).
 //     After each mechanism, exchange the key via the dataaccess helper
 //     and confirm the resulting JWT is accepted by ListServices.
 //  4. After the three mechanisms, validate the token lifecycle:
-//       a. Refresh the token and confirm the new JWT works.
-//       b. Revoke the refreshed token and confirm it can no longer be
-//          used for refresh.
+//     a. Refresh the token and confirm the new JWT works.
+//     b. Revoke the refreshed token and confirm it can no longer be
+//     used for refresh.
 //  5. Re-establish the admin session and confirm the test-scoped names
 //     are present in the list response.
 //

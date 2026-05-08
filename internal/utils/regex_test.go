@@ -232,7 +232,7 @@ services:
       DB_HOST: localhost
 `,
 			versionTaggedImageURIs: map[string]string{
-				filepath.Join(cwd, "./frontend", "Dockerfile"): "ghcr.io/user/web:v1.0",
+				filepath.Join(cwd, "./frontend", "Dockerfile"):    "ghcr.io/user/web:v1.0",
 				filepath.Join(cwd, "./backend", "Dockerfile.api"): "ghcr.io/user/api:v1.0",
 			},
 			expectedOutput: `
@@ -651,7 +651,7 @@ services:
       REDIS_URL: redis://redis:6379
 `,
 			versionTaggedImageURIs: map[string]string{
-				filepath.Join(cwd, "./frontend", "Dockerfile"):      "ghcr.io/user/frontend:v1.0",
+				filepath.Join(cwd, "./frontend", "Dockerfile"):     "ghcr.io/user/frontend:v1.0",
 				filepath.Join(cwd, "./backend", "Dockerfile.prod"): "ghcr.io/user/backend:v1.0",
 			},
 			expectedOutput: `
