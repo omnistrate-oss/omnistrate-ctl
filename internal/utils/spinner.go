@@ -133,7 +133,7 @@ func (sm *spinnerMgr) Start() {
 
 	sm.useAltScreen = useAltScreen
 
-	m := spinnerModel{mgr: sm, spin: s, progress: p, width: width}
+	m := spinnerModel{mgr: sm, spin: s, progress: p, width: width, pulseOn: true}
 	var opts []tea.ProgramOption
 	if useAltScreen {
 		opts = append(opts, tea.WithAltScreen())
@@ -187,7 +187,7 @@ func (sm *spinnerMgr) finalGroupedDeploymentView() string {
 		progress.WithSolidFill("#50C878"),
 		progress.WithWidth(48),
 	)
-	view, ok := spinnerModel{mgr: sm, spin: s, progress: p, width: width}.groupedDeploymentView(entries)
+	view, ok := spinnerModel{mgr: sm, spin: s, progress: p, width: width, pulseOn: true}.groupedDeploymentView(entries)
 	if !ok {
 		return ""
 	}
@@ -199,10 +199,12 @@ type spinnerQuitMsg struct{}
 
 // spinnerModel is the bubbletea model that renders spinner entries.
 type spinnerModel struct {
-	mgr      *spinnerMgr
-	spin     spinner.Model
-	progress progress.Model
-	width    int
+	mgr        *spinnerMgr
+	spin       spinner.Model
+	progress   progress.Model
+	width      int
+	pulseOn    bool
+	pulseTicks int
 }
 
 func (m spinnerModel) Init() tea.Cmd {
@@ -223,6 +225,15 @@ func (m spinnerModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.mgr.width = msg.Width
 		m.mgr.mu.Unlock()
 		return m, nil
+	case spinner.TickMsg:
+		var cmd tea.Cmd
+		m.spin, cmd = m.spin.Update(msg)
+		m.pulseTicks++
+		if m.pulseTicks >= RegionGlobePulseFrames {
+			m.pulseTicks = 0
+			m.pulseOn = !m.pulseOn
+		}
+		return m, cmd
 	}
 	var cmd tea.Cmd
 	m.spin, cmd = m.spin.Update(msg)
@@ -290,15 +301,26 @@ func (m spinnerModel) groupedDeploymentView(entries []*spinnerEntry) (string, bo
 	body.WriteString(titleStyle.Render("omnistrate-ctl deploy"))
 	body.WriteString("\n\n")
 	body.WriteString(commandStyle.Render("$ resolving service build and instance deployment"))
+	if provider, region, ok := spinnerDeploymentTarget(entries); ok {
+		body.WriteString("\n\n")
+		body.WriteString(RenderRegionGlobeWithProvider(provider, region, spinnerClamp(contentWidth, 42, 64), m.pulseOn))
+	}
 
 	for _, group := range groups {
 		complete, total, hasRunning, hasError := spinnerStepProgress(group.entries)
 		percent := spinnerStepPercent(complete, total, hasRunning)
+		submitted := spinnerStepGroupSubmitted(group)
+		pendingSubmit := group.index == 2 && !submitted && !hasError
+		if pendingSubmit && !hasRunning && percent >= 1 {
+			percent = 0.92
+		}
 		status := mutedStyle.Render(fmt.Sprintf("%d/%d complete", complete, total))
 		if hasError {
 			status = errorStyle.Render("failed")
-		} else if spinnerStepGroupSubmitted(group) {
+		} else if submitted {
 			status = runningStyle.Render("submitted")
+		} else if pendingSubmit {
+			status = runningStyle.Render("running")
 		} else if total > 0 && complete == total {
 			status = completeStyle.Render("complete")
 		} else if hasRunning {
@@ -307,7 +329,7 @@ func (m spinnerModel) groupedDeploymentView(entries []*spinnerEntry) (string, bo
 
 		body.WriteString("\n\n")
 		fmt.Fprintf(&body, "%s  %s\n", completeStyle.Render(group.title), status)
-		if spinnerStepGroupSubmitted(group) {
+		if submitted {
 			body.WriteString(mutedStyle.Render("Deployment workflow continues below."))
 			body.WriteString("\n")
 		} else {
@@ -399,6 +421,15 @@ func spinnerEntriesContainSteps(entries []*spinnerEntry) bool {
 		}
 	}
 	return false
+}
+
+func spinnerDeploymentTarget(entries []*spinnerEntry) (provider, region string, ok bool) {
+	for _, entry := range entries {
+		if provider, region, ok = ParseDeploymentTarget(entry.message); ok {
+			return provider, region, true
+		}
+	}
+	return "", "", false
 }
 
 func parseSpinnerStepMessage(message string) (int, int, string, bool) {

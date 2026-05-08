@@ -4,6 +4,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/charmbracelet/bubbles/progress"
+	bubbleSpinner "github.com/charmbracelet/bubbles/spinner"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/stretchr/testify/require"
 )
@@ -40,6 +42,7 @@ func TestGroupedDeploymentViewIncludesPhaseBars(t *testing.T) {
 		entries: []*spinnerEntry{
 			{message: "Step 1/2: Service name resolved: app", state: spinnerComplete},
 			{message: "Step 2/2: Preparing instance deployment", state: spinnerRunning},
+			{message: "Step 2/2: Using cloud provider 'aws' and region 'us-east-1'", state: spinnerComplete},
 		},
 	}
 	view, ok := spinnerModel{mgr: mgr, width: 100}.groupedDeploymentView(mgr.entries)
@@ -49,6 +52,9 @@ func TestGroupedDeploymentViewIncludesPhaseBars(t *testing.T) {
 	require.Contains(t, view, "Service creation")
 	require.Contains(t, view, "Instance deployment")
 	require.Contains(t, view, "Service name resolved: app")
+	require.NotContains(t, view, "Global target")
+	require.Contains(t, view, "aws")
+	require.Contains(t, view, "us-east-1")
 }
 
 func TestGroupedDeploymentViewWrapsLongLinesWithinFrame(t *testing.T) {
@@ -90,6 +96,26 @@ func TestGroupedDeploymentViewShowsSubmittedForInstanceCreation(t *testing.T) {
 	require.NotContains(t, view, "Instance deployment  complete")
 }
 
+func TestGroupedDeploymentViewKeepsInstanceDeploymentRunningBeforeSubmit(t *testing.T) {
+	mgr := &spinnerMgr{
+		entries: []*spinnerEntry{
+			{message: "Step 2/2: Preparing instance deployment", state: spinnerComplete},
+			{message: "Step 2/2: No existing instance specified; creating a new instance", state: spinnerComplete},
+			{message: "Step 2/2: Instance parameters resolved", state: spinnerComplete},
+			{message: "Step 2/2: Using resource wordpress (ID: r-1)", state: spinnerComplete},
+			{message: "Step 2/2: Using cloud provider 'aws' and region 'us-east-1'", state: spinnerComplete},
+		},
+	}
+
+	view, ok := spinnerModel{mgr: mgr, width: 100}.groupedDeploymentView(mgr.entries)
+
+	require.True(t, ok)
+	require.Contains(t, view, "Instance deployment")
+	require.Contains(t, view, "running")
+	require.NotContains(t, view, "Instance deployment  complete")
+	require.NotContains(t, view, "100%")
+}
+
 func TestFinalGroupedDeploymentViewRendersCompleteFrame(t *testing.T) {
 	mgr := &spinnerMgr{
 		width: 96,
@@ -105,4 +131,32 @@ func TestFinalGroupedDeploymentViewRendersCompleteFrame(t *testing.T) {
 	require.NotEmpty(t, view)
 	require.True(t, strings.HasPrefix(lines[0], "╭"), lines[0])
 	require.True(t, strings.HasPrefix(lines[len(lines)-1], "╰"), lines[len(lines)-1])
+}
+
+func TestGroupedDeploymentViewPulsesRegionMarkerOnTick(t *testing.T) {
+	mgr := &spinnerMgr{
+		entries: []*spinnerEntry{
+			{message: "Step 2/2: Using cloud provider 'aws' and region 'us-east-1'", state: spinnerComplete},
+		},
+	}
+	model := spinnerModel{
+		mgr:      mgr,
+		spin:     bubbleSpinner.New(),
+		progress: progress.New(),
+		width:    100,
+		pulseOn:  true,
+	}
+
+	view, ok := model.groupedDeploymentView(mgr.entries)
+	require.True(t, ok)
+	require.Contains(t, view, "◉")
+
+	for i := 0; i < RegionGlobePulseFrames; i++ {
+		updated, _ := model.Update(bubbleSpinner.TickMsg{})
+		model = updated.(spinnerModel)
+	}
+	view, ok = model.groupedDeploymentView(mgr.entries)
+	require.True(t, ok)
+	require.Contains(t, view, "●")
+	require.NotContains(t, view, "◉")
 }

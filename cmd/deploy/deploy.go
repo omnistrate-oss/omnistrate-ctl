@@ -844,6 +844,11 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
+type deployResolvedTarget struct {
+	cloudProvider string
+	region        string
+}
+
 // executeDeploymentWorkflow handles the complete post-service-build deployment workflow
 // This function is reusable for both deploy and build_simple commands
 func executeDeploymentWorkflow(cmd *cobra.Command, sm utils.SpinnerManager, token, serviceID, environmentID, planID, serviceName, environment, environmentTypeUpper, instanceID, cloudProvider, region, param, paramFile, resourceID, deploymentType string) error {
@@ -871,6 +876,7 @@ func executeDeploymentWorkflow(cmd *cobra.Command, sm utils.SpinnerManager, toke
 
 	var finalInstanceID string
 	instanceActionType := "create"
+	resolvedTarget := &deployResolvedTarget{cloudProvider: cloudProvider, region: region}
 
 	spinnerMsg := "Step 2/2: Preparing instance deployment"
 	spinner = sm.AddSpinner(spinnerMsg)
@@ -976,7 +982,7 @@ func executeDeploymentWorkflow(cmd *cobra.Command, sm utils.SpinnerManager, toke
 		}
 
 		createdInstanceID, err := "", error(nil)
-		createdInstanceID, err = createInstanceUnifiedWithSpinnerManager(cmd.Context(), token, serviceID, environmentID, planID, cloudProvider, region, resourceID, "resourceInstance", formattedParams, sm)
+		createdInstanceID, err = createInstanceUnifiedWithSpinnerManager(cmd.Context(), token, serviceID, environmentID, planID, cloudProvider, region, resourceID, "resourceInstance", formattedParams, sm, resolvedTarget)
 		finalInstanceID = createdInstanceID
 		// instanceActionType is already "create" from initialization
 		if err != nil {
@@ -996,7 +1002,7 @@ func executeDeploymentWorkflow(cmd *cobra.Command, sm utils.SpinnerManager, toke
 
 	// Optionally display workflow progress if desired
 	if finalInstanceID != "" {
-		err = instance.DisplayWorkflowResourceDataWithSpinners(cmd.Context(), token, finalInstanceID, instanceActionType)
+		err = instance.DisplayWorkflowResourceDataWithSpinners(cmd.Context(), token, finalInstanceID, instanceActionType, resolvedTarget.cloudProvider, resolvedTarget.region)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Deployment workflow failed: %s\n", err)
 			return err
@@ -1023,7 +1029,7 @@ func createInstanceUnified(ctx context.Context, token, serviceID, environmentID,
 	return createInstanceUnifiedWithSpinnerManager(ctx, token, serviceID, environmentID, productTierID, cloudProvider, region, resourceID, instanceType, formattedParams, sm)
 }
 
-func createInstanceUnifiedWithSpinnerManager(ctx context.Context, token, serviceID, environmentID, productTierID, cloudProvider, region, resourceID, instanceType string, formattedParams map[string]interface{}, sm utils.SpinnerManager) (string, error) {
+func createInstanceUnifiedWithSpinnerManager(ctx context.Context, token, serviceID, environmentID, productTierID, cloudProvider, region, resourceID, instanceType string, formattedParams map[string]interface{}, sm utils.SpinnerManager, resolvedTargets ...*deployResolvedTarget) (string, error) {
 	spinner := sm.AddSpinner("Step 2/2: Resolving service offering...")
 	// Get the latest version
 	version, err := dataaccess.FindLatestVersion(ctx, token, serviceID, productTierID)
@@ -1163,6 +1169,7 @@ func createInstanceUnifiedWithSpinnerManager(ctx context.Context, token, service
 		if err != nil {
 			return "", err
 		}
+		recordDeployResolvedTarget(resolvedTargets, cloudProvider, region)
 
 		if cloudProvider == "nebius" {
 			if err := ensureReadyNebiusAccountForRegion(ctx, token, region); err != nil {
@@ -1311,6 +1318,18 @@ func createInstanceUnifiedWithSpinnerManager(ctx context.Context, token, service
 	spinner.Complete()
 
 	return *instance.Id, nil
+}
+
+func recordDeployResolvedTarget(targets []*deployResolvedTarget, cloudProvider, region string) {
+	if len(targets) == 0 || targets[0] == nil {
+		return
+	}
+	if value := strings.TrimSpace(cloudProvider); value != "" {
+		targets[0].cloudProvider = value
+	}
+	if value := strings.TrimSpace(region); value != "" {
+		targets[0].region = value
+	}
 }
 
 // listInstances is a helper function for backward compatibility

@@ -8,8 +8,8 @@ import (
 )
 
 // DisplayWorkflowResourceDataWithSpinners renders deployment workflow progress for each resource.
-func DisplayWorkflowResourceDataWithSpinners(ctx context.Context, token, instanceID, actionType string) error {
-	return displayWorkflowResourceDataWithProgress(ctx, token, instanceID, actionType)
+func DisplayWorkflowResourceDataWithSpinners(ctx context.Context, token, instanceID, actionType string, targetRegion ...string) error {
+	return displayWorkflowResourceDataWithProgress(ctx, token, instanceID, actionType, targetRegion...)
 }
 
 // getHighestPriorityEventType checks all events in a workflowStep and returns the highest priority event type

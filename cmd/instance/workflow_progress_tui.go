@@ -14,6 +14,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 	"github.com/omnistrate-oss/omnistrate-ctl/internal/dataaccess"
 	"github.com/omnistrate-oss/omnistrate-ctl/internal/model"
+	"github.com/omnistrate-oss/omnistrate-ctl/internal/utils"
 )
 
 const (
@@ -41,8 +42,10 @@ var (
 )
 
 type workflowProgressModel struct {
-	instanceID string
-	actionType string
+	instanceID     string
+	actionType     string
+	targetProvider string
+	targetRegion   string
 
 	spinner          spinner.Model
 	overallProgress  progress.Model
@@ -50,6 +53,8 @@ type workflowProgressModel struct {
 
 	width       int
 	loading     bool
+	pulseOn     bool
+	pulseTicks  int
 	pollCount   int
 	snapshot    workflowProgressSnapshot
 	events      map[string][]workflowProgressEvent
@@ -131,7 +136,7 @@ func (event workflowProgressEvent) String() string {
 	return action
 }
 
-func displayWorkflowResourceDataWithProgress(ctx context.Context, token, instanceID, actionType string) error {
+func displayWorkflowResourceDataWithProgress(ctx context.Context, token, instanceID, actionType string, targetRegion ...string) error {
 	searchRes, err := dataaccess.SearchInventory(ctx, token, fmt.Sprintf("resourceinstance:%s", instanceID))
 	if err != nil {
 		return err
@@ -144,7 +149,7 @@ func displayWorkflowResourceDataWithProgress(ctx context.Context, token, instanc
 	streamCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
-	program := tea.NewProgram(newWorkflowProgressModel(instanceID, actionType))
+	program := tea.NewProgram(newWorkflowProgressModel(instanceID, actionType, targetRegion...))
 	go streamWorkflowProgress(
 		streamCtx,
 		program,
@@ -179,7 +184,7 @@ func displayWorkflowResourceDataWithProgress(ctx context.Context, token, instanc
 	return nil
 }
 
-func newWorkflowProgressModel(instanceID, actionType string) workflowProgressModel {
+func newWorkflowProgressModel(instanceID, actionType string, targetRegion ...string) workflowProgressModel {
 	spin := spinner.New()
 	spin.Spinner = spinner.Dot
 	spin.Style = lipgloss.NewStyle().Foreground(lipgloss.Color("#50C878"))
@@ -187,11 +192,14 @@ func newWorkflowProgressModel(instanceID, actionType string) workflowProgressMod
 	return workflowProgressModel{
 		instanceID:       instanceID,
 		actionType:       actionType,
+		targetProvider:   firstWorkflowProgressProvider(targetRegion),
+		targetRegion:     firstWorkflowProgressRegion(targetRegion),
 		spinner:          spin,
 		overallProgress:  progress.New(progress.WithSolidFill("#50C878"), progress.WithWidth(60)),
 		resourceProgress: progress.New(progress.WithSolidFill("#50C878"), progress.WithWidth(36), progress.WithoutPercentage()),
 		width:            96,
 		loading:          true,
+		pulseOn:          true,
 		events:           make(map[string][]workflowProgressEvent),
 	}
 }
@@ -219,6 +227,11 @@ func (m workflowProgressModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case spinner.TickMsg:
 		var cmd tea.Cmd
 		m.spinner, cmd = m.spinner.Update(msg)
+		m.pulseTicks++
+		if m.pulseTicks >= utils.RegionGlobePulseFrames {
+			m.pulseTicks = 0
+			m.pulseOn = !m.pulseOn
+		}
 		if m.snapshot.Done || m.err != nil || m.interrupted {
 			return m, nil
 		}
@@ -272,6 +285,11 @@ func (m workflowProgressModel) View() string {
 	body.WriteString("\n\n")
 	body.WriteString(workflowProgressCommandStyle.Render(fmt.Sprintf("$ tracking %s workflow for %s", workflowProgressActionLabel(m.actionType), m.instanceID)))
 	body.WriteString("\n")
+	if m.targetRegion != "" {
+		body.WriteString("\n")
+		body.WriteString(utils.RenderRegionGlobeWithProvider(m.targetProvider, m.targetRegion, clampInt(width-8, 42, 64), m.pulseOn || m.snapshot.Done))
+		body.WriteString("\n")
+	}
 
 	if m.loading && m.pollCount == 0 {
 		fmt.Fprintf(&body, "\n%s Resolving deployment workflow...\n", m.spinner.View())
@@ -284,6 +302,23 @@ func (m workflowProgressModel) View() string {
 	body.WriteString(m.renderResources(width))
 
 	return workflowProgressFrameStyle.Width(width).Render(body.String()) + "\n"
+}
+
+func firstWorkflowProgressRegion(regions []string) string {
+	if len(regions) == 0 {
+		return ""
+	}
+	if len(regions) >= 2 {
+		return strings.TrimSpace(regions[1])
+	}
+	return strings.TrimSpace(regions[0])
+}
+
+func firstWorkflowProgressProvider(target []string) string {
+	if len(target) < 2 {
+		return ""
+	}
+	return strings.TrimSpace(target[0])
 }
 
 func (m workflowProgressModel) renderOverview(width int) string {

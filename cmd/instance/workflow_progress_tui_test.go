@@ -5,8 +5,10 @@ import (
 	"strings"
 	"testing"
 
+	bubbleSpinner "github.com/charmbracelet/bubbles/spinner"
 	"github.com/omnistrate-oss/omnistrate-ctl/internal/dataaccess"
 	"github.com/omnistrate-oss/omnistrate-ctl/internal/model"
+	"github.com/omnistrate-oss/omnistrate-ctl/internal/utils"
 	"github.com/stretchr/testify/require"
 )
 
@@ -109,7 +111,7 @@ func TestWorkflowProgressFailureMessagePrefersResourceName(t *testing.T) {
 }
 
 func TestWorkflowProgressViewRendersProgressAndSections(t *testing.T) {
-	m := newWorkflowProgressModel("inst-1", "create")
+	m := newWorkflowProgressModel("inst-1", "create", "aws", "us-east-1")
 	m.loading = false
 	m.events = map[string][]workflowProgressEvent{
 		"database": {
@@ -149,6 +151,9 @@ func TestWorkflowProgressViewRendersProgressAndSections(t *testing.T) {
 	view := m.View()
 
 	require.Contains(t, view, "omnistrate-ctl deploy")
+	require.NotContains(t, view, "Global target")
+	require.Contains(t, view, "aws")
+	require.Contains(t, view, "us-east-1")
 	require.Contains(t, view, "Progress")
 	require.Contains(t, view, "database")
 	require.Contains(t, view, "Bootstrap")
@@ -213,6 +218,22 @@ func TestWorkflowProgressViewRendersEventsUnderMatchingResource(t *testing.T) {
 	require.Less(t, webIndex, webEventIndex)
 	require.NotContains(t, view, "volume ready")
 	require.NotContains(t, view, "pod is not ready")
+}
+
+func TestWorkflowProgressViewPulsesRegionMarkerOnTick(t *testing.T) {
+	model := newWorkflowProgressModel("inst-1", "create", "us-east-1")
+
+	view := model.View()
+	require.Contains(t, view, "◉")
+
+	for i := 0; i < utils.RegionGlobePulseFrames; i++ {
+		updated, _ := model.Update(bubbleSpinner.TickMsg{})
+		model = updated.(workflowProgressModel)
+	}
+	view = model.View()
+
+	require.Contains(t, view, "●")
+	require.NotContains(t, view, "◉")
 }
 
 func TestWorkflowProgressEventMsgMaintainsSendMsgStyleWindow(t *testing.T) {
