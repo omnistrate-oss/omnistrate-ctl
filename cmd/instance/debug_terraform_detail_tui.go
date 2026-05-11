@@ -23,7 +23,7 @@ const (
 	numTabs      = 6
 )
 
-var tabNames = []string{"Progress", "Terraform Files", "Terraform Output", "Logs", "Operation History", "Workflow Events"}
+var tabNames = []string{"Progress", "Terraform Files", "Terraform Output", "Live Logs", "Operation History", "Workflow Events"}
 
 func init() {
 	if len(tabNames) != numTabs {
