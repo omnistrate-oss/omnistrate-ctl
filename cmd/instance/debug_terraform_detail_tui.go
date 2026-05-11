@@ -1598,7 +1598,7 @@ func (m terraformDetailModel) renderOperationHistoryTab() string {
 		}
 	}
 	fmt.Fprintf(&b, "  %s\n\n", headerStyle.Render(
-		fmt.Sprintf("Operation History (%d days, %d generations, %d attempts, %d entries)",
+		fmt.Sprintf("Operation History (%d days, %d workflows, %d runs, %d entries)",
 			len(m.historyDates), totalGenerations, totalAttempts, len(m.history))))
 
 	rows := flattenTimeline(m.historyDates, m.planPreviewByOpID, m.planPreviewErrByOpID)
@@ -1651,7 +1651,7 @@ func (m terraformDetailModel) renderOperationHistoryTab() string {
 			if d.expanded {
 				arrow = "▾"
 			}
-			countStr := dimStyle.Render(fmt.Sprintf("(%d generations)", len(d.groups)))
+			countStr := dimStyle.Render(fmt.Sprintf("(%d workflows)", len(d.groups)))
 			line := fmt.Sprintf("%s %s  %s", arrow, dateStyle.Render(d.date), countStr)
 			if selected {
 				line = selectedBg.Render(line)
@@ -1680,8 +1680,8 @@ func (m terraformDetailModel) renderOperationHistoryTab() string {
 
 			line := fmt.Sprintf("  %s %s %s  %s  %s  %s",
 				statusIcon, arrow,
-				genIDStyle.Render("gen:"+displayGeneration),
-				dimStyle.Render(fmt.Sprintf("%d attempts", len(g.attempts))),
+				genIDStyle.Render("wf:"+displayGeneration),
+				dimStyle.Render(fmt.Sprintf("%d runs", len(g.attempts))),
 				styleForStatus(g.status).Render(g.status),
 				timeStyle.Render(timeRange),
 			)
@@ -1715,7 +1715,7 @@ func (m terraformDetailModel) renderOperationHistoryTab() string {
 				dimStyle.Render("│"),
 				statusIcon,
 				arrow,
-				attemptIDStyle.Render("try:"+displayNonce),
+				attemptIDStyle.Render("run:"+displayNonce),
 				summaryStyle.Render(attempt.summary),
 				styleForStatus(attempt.status).Render(attempt.status),
 				timeStyle.Render(timeRange),
