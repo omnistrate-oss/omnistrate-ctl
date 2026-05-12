@@ -23,7 +23,7 @@ const (
 	numTabs      = 6
 )
 
-var tabNames = []string{"Progress", "Terraform Files", "Terraform Output", "Logs", "Operation History", "Workflow Events"}
+var tabNames = []string{"Progress", "Terraform Files", "Terraform Output", "Live Logs", "Operation History", "Workflow Events"}
 
 func init() {
 	if len(tabNames) != numTabs {
@@ -1589,17 +1589,17 @@ func (m terraformDetailModel) renderOperationHistoryTab() string {
 	var b strings.Builder
 
 	headerStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("255"))
-	totalGenerations := 0
-	totalAttempts := 0
+	totalWorkflows := 0
+	totalRuns := 0
 	for _, d := range m.historyDates {
-		totalGenerations += len(d.groups)
+		totalWorkflows += len(d.groups)
 		for _, g := range d.groups {
-			totalAttempts += len(g.attempts)
+			totalRuns += len(g.attempts)
 		}
 	}
 	fmt.Fprintf(&b, "  %s\n\n", headerStyle.Render(
-		fmt.Sprintf("Operation History (%d days, %d generations, %d attempts, %d entries)",
-			len(m.historyDates), totalGenerations, totalAttempts, len(m.history))))
+		fmt.Sprintf("Operation History (%d days, %d workflows, %d runs, %d entries)",
+			len(m.historyDates), totalWorkflows, totalRuns, len(m.history))))
 
 	rows := flattenTimeline(m.historyDates, m.planPreviewByOpID, m.planPreviewErrByOpID)
 
@@ -1628,8 +1628,8 @@ func (m terraformDetailModel) renderOperationHistoryTab() string {
 
 	// Styles
 	dateStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("230"))
-	genIDStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("117"))
-	attemptIDStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("81"))
+	wfIDStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("117"))
+	runIDStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("81"))
 	summaryStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("252"))
 	timeStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("245"))
 	selectedBg := lipgloss.NewStyle().Background(lipgloss.Color("236"))
@@ -1651,7 +1651,7 @@ func (m terraformDetailModel) renderOperationHistoryTab() string {
 			if d.expanded {
 				arrow = "▾"
 			}
-			countStr := dimStyle.Render(fmt.Sprintf("(%d generations)", len(d.groups)))
+			countStr := dimStyle.Render(fmt.Sprintf("(%d workflows)", len(d.groups)))
 			line := fmt.Sprintf("%s %s  %s", arrow, dateStyle.Render(d.date), countStr)
 			if selected {
 				line = selectedBg.Render(line)
@@ -1662,9 +1662,9 @@ func (m terraformDetailModel) renderOperationHistoryTab() string {
 
 			statusIcon := timelineStatusIcon(g.status)
 
-			displayGeneration := g.generationID
-			if len(displayGeneration) > 10 {
-				displayGeneration = displayGeneration[:10] + "…"
+			displayWorkflow := g.generationID
+			if len(displayWorkflow) > 10 {
+				displayWorkflow = displayWorkflow[:10] + "…"
 			}
 
 			// Show only time portion since date is in the section header
@@ -1680,8 +1680,8 @@ func (m terraformDetailModel) renderOperationHistoryTab() string {
 
 			line := fmt.Sprintf("  %s %s %s  %s  %s  %s",
 				statusIcon, arrow,
-				genIDStyle.Render("gen:"+displayGeneration),
-				dimStyle.Render(fmt.Sprintf("%d attempts", len(g.attempts))),
+				wfIDStyle.Render("wf:"+displayWorkflow),
+				dimStyle.Render(fmt.Sprintf("%d runs", len(g.attempts))),
 				styleForStatus(g.status).Render(g.status),
 				timeStyle.Render(timeRange),
 			)
@@ -1715,7 +1715,7 @@ func (m terraformDetailModel) renderOperationHistoryTab() string {
 				dimStyle.Render("│"),
 				statusIcon,
 				arrow,
-				attemptIDStyle.Render("try:"+displayNonce),
+				runIDStyle.Render("run:"+displayNonce),
 				summaryStyle.Render(attempt.summary),
 				styleForStatus(attempt.status).Render(attempt.status),
 				timeStyle.Render(timeRange),
