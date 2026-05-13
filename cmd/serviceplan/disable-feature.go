@@ -20,21 +20,22 @@ omnistrate-ctl service-plan disable-feature [service-name] [plan-name] --feature
 omnistrate-ctl service-plan enable-feature --service-id [service-id] --plan-id [plan-id] --feature [feature-name]`
 )
 
-var disableCmd = &cobra.Command{
-	Use:          "disable-feature [service-name] [plan-name] [flags]",
-	Short:        "Disable feature for a service plan",
-	Long:         `This command helps you disable active service plan feature.`,
-	Example:      disableFeatureExample,
-	RunE:         runDisableFeature,
-	SilenceUsage: true,
-}
+func newDisableCmd(commandPath string) *cobra.Command {
+	cmd := &cobra.Command{
+		Use:          "disable-feature [service-name] [plan-name] [flags]",
+		Short:        "Disable feature for a service plan",
+		Long:         `This command helps you disable active service plan feature.`,
+		Example:      servicePlanExample(commandPath, disableFeatureExample),
+		RunE:         runDisableFeature,
+		SilenceUsage: true,
+	}
 
-func init() {
-	disableCmd.Flags().StringP(EnvironmentFlag, "", "", "Environment name. Use this flag with service name and plan name to describe the service plan in a specific environment")
-	disableCmd.Flags().StringP(ServiceIDFlag, "", "", "Service ID. Required if service name is not provided")
-	disableCmd.Flags().StringP(PlanIDFlag, "", "", "Plan ID. Required if plan name is not provided")
+	cmd.Flags().StringP(EnvironmentFlag, "", "", "Environment name. Use this flag with service name and plan name to describe the service plan in a specific environment")
+	cmd.Flags().StringP(ServiceIDFlag, "", "", "Service ID. Required if service name is not provided")
+	cmd.Flags().StringP(PlanIDFlag, "", "", "Plan ID. Required if plan name is not provided")
 
-	disableCmd.Flags().String(FeatureNameFlag, "", "Name / identifier of the feature to disable")
+	cmd.Flags().String(FeatureNameFlag, "", "Name / identifier of the feature to disable")
+	return cmd
 }
 
 func runDisableFeature(cmd *cobra.Command, args []string) error {

@@ -23,26 +23,27 @@ omnistrate-ctl service-plan set-default [service-name] [plan-name] --version=[ve
 omnistrate-ctl service-plan set-default --service-id=[service-id] --plan-id=[plan-id] --version=[version]`
 )
 
-var setDefaultCmd = &cobra.Command{
-	Use:   "set-default [service-name] [plan-name] --version=[version] [flags]",
-	Short: "Set a Version of a Service Plan as Default(Preferred)",
-	Long: `This command helps you set a Version of a Service Plan as the default (preferred) version for your service.
+func newSetDefaultCmd(commandPath string) *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "set-default [service-name] [plan-name] --version=[version] [flags]",
+		Short: "Set a Version of a Service Plan as Default(Preferred)",
+		Long: `This command helps you set a Version of a Service Plan as the default (preferred) version for your service.
 By setting it as default, new instance deployments from your customers will be created with this version by default.`,
-	Example:      setDefaultExample,
-	RunE:         runSetDefault,
-	SilenceUsage: true,
-}
-
-func init() {
-	setDefaultCmd.Flags().String("version", "", "Specify the version number to set the default to. Use 'latest' to set the latest version as default.")
-	setDefaultCmd.Flags().StringP("environment", "", "", "Environment name. Use this flag with service name and plan name to set the default version in a specific environment")
-	setDefaultCmd.Flags().StringP("service-id", "", "", "Service ID. Required if service name is not provided")
-	setDefaultCmd.Flags().StringP("plan-id", "", "", "Plan ID. Required if plan name is not provided")
-
-	err := setDefaultCmd.MarkFlagRequired("version")
-	if err != nil {
-		return
+		Example:      servicePlanExample(commandPath, setDefaultExample),
+		RunE:         runSetDefault,
+		SilenceUsage: true,
 	}
+
+	cmd.Flags().String("version", "", "Specify the version number to set the default to. Use 'latest' to set the latest version as default.")
+	cmd.Flags().StringP("environment", "", "", "Environment name. Use this flag with service name and plan name to set the default version in a specific environment")
+	cmd.Flags().StringP("service-id", "", "", "Service ID. Required if service name is not provided")
+	cmd.Flags().StringP("plan-id", "", "", "Plan ID. Required if plan name is not provided")
+
+	err := cmd.MarkFlagRequired("version")
+	if err != nil {
+		return cmd
+	}
+	return cmd
 }
 
 func runSetDefault(cmd *cobra.Command, args []string) error {

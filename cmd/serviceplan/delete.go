@@ -20,19 +20,20 @@ omnistrate-ctl service-plan delete [service-name] [plan-name]
 omnistrate-ctl service-plan delete --service-id=[service-id] --plan-id=[plan-id]`
 )
 
-var deleteCmd = &cobra.Command{
-	Use:          "delete [service-name] [plan-name] [flags]",
-	Short:        "Delete a Service Plan",
-	Long:         `This command helps you delete a Service Plan from your service.`,
-	Example:      deleteExample,
-	RunE:         runDelete,
-	SilenceUsage: true,
-}
+func newDeleteCmd(commandPath string) *cobra.Command {
+	cmd := &cobra.Command{
+		Use:          "delete [service-name] [plan-name] [flags]",
+		Short:        "Delete a Service Plan",
+		Long:         `This command helps you delete a Service Plan from your service.`,
+		Example:      servicePlanExample(commandPath, deleteExample),
+		RunE:         runDelete,
+		SilenceUsage: true,
+	}
 
-func init() {
-	deleteCmd.Flags().StringP("environment", "", "", "Environment name. Use this flag with service name and plan name to delete the service plan in a specific environment")
-	deleteCmd.Flags().StringP("service-id", "", "", "Service ID. Required if service name is not provided")
-	deleteCmd.Flags().StringP("plan-id", "", "", "Plan ID. Required if plan name is not provided")
+	cmd.Flags().StringP("environment", "", "", "Environment name. Use this flag with service name and plan name to delete the service plan in a specific environment")
+	cmd.Flags().StringP("service-id", "", "", "Service ID. Required if service name is not provided")
+	cmd.Flags().StringP("plan-id", "", "", "Plan ID. Required if plan name is not provided")
+	return cmd
 }
 
 func runDelete(cmd *cobra.Command, args []string) error {

@@ -108,8 +108,17 @@ func DescribeResourceInstanceSnapshot(ctx context.Context, token string, service
 
 // ListResourceInstanceOptions contains all optional parameters for ListResourceInstance
 type ListResourceInstanceOptions struct {
-	Filter        *string
-	ProductTierId *string
+	Filter                  *string
+	ProductTierId           *string
+	ProductTierVersion      *string
+	SubscriptionId          *string
+	ExcludeDetail           *bool
+	ExcludeNetworkTopology  *bool
+	ExcludeHAStatus         *bool
+	ExcludeIntegrations     *bool
+	ExcludeMaintenanceTasks *bool
+	NextPageToken           string
+	PageSize                *int64
 }
 
 func ListResourceInstance(ctx context.Context, token string, serviceID, environmentID string, options *ListResourceInstanceOptions) (res *openapiclientfleet.ListFleetResourceInstancesResultInternal, err error) {
@@ -130,6 +139,33 @@ func ListResourceInstance(ctx context.Context, token string, serviceID, environm
 		if options.ProductTierId != nil {
 			req = req.ProductTierId(*options.ProductTierId)
 		}
+		if options.ProductTierVersion != nil {
+			req = req.ProductTierVersion(*options.ProductTierVersion)
+		}
+		if options.SubscriptionId != nil {
+			req = req.SubscriptionId(*options.SubscriptionId)
+		}
+		if options.ExcludeDetail != nil {
+			req = req.ExcludeDetail(*options.ExcludeDetail)
+		}
+		if options.ExcludeNetworkTopology != nil {
+			req = req.ExcludeNetworkTopology(*options.ExcludeNetworkTopology)
+		}
+		if options.ExcludeHAStatus != nil {
+			req = req.ExcludeHAStatus(*options.ExcludeHAStatus)
+		}
+		if options.ExcludeIntegrations != nil {
+			req = req.ExcludeIntegrations(*options.ExcludeIntegrations)
+		}
+		if options.ExcludeMaintenanceTasks != nil {
+			req = req.ExcludeMaintenanceTasks(*options.ExcludeMaintenanceTasks)
+		}
+		if options.NextPageToken != "" {
+			req = req.NextPageToken(options.NextPageToken)
+		}
+		if options.PageSize != nil {
+			req = req.PageSize(*options.PageSize)
+		}
 	}
 
 	var r *http.Response
@@ -144,6 +180,29 @@ func ListResourceInstance(ctx context.Context, token string, serviceID, environm
 		return nil, handleFleetError(err)
 	}
 	return
+}
+
+func ListAllResourceInstances(ctx context.Context, token string, serviceID, environmentID string, options *ListResourceInstanceOptions) (instances []openapiclientfleet.ResourceInstance, err error) {
+	var nextPageToken string
+
+	for {
+		pageOptions := ListResourceInstanceOptions{}
+		if options != nil {
+			pageOptions = *options
+		}
+		pageOptions.NextPageToken = nextPageToken
+
+		res, err := ListResourceInstance(ctx, token, serviceID, environmentID, &pageOptions)
+		if err != nil {
+			return nil, err
+		}
+		instances = append(instances, res.GetResourceInstances()...)
+
+		nextPageToken = res.GetNextPageToken()
+		if nextPageToken == "" {
+			return instances, nil
+		}
+	}
 }
 
 func ListResourceInstanceSnapshots(ctx context.Context, token string, serviceID, environmentID, instanceID string) (res *openapiclientfleet.FleetListInstanceSnapshotResult, err error) {
