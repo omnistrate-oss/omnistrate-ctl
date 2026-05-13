@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/mitchellh/go-homedir"
 	"github.com/omnistrate-oss/omnistrate-ctl/internal/config"
 	"github.com/stretchr/testify/assert"
 )
@@ -62,6 +63,7 @@ func TestAPIKeyEnvConst(t *testing.T) {
 // exists and OMNISTRATE_API_KEY is set, GetTokenWithLogin attempts a
 // signin-exchange rather than falling through to RunLogin (interactive).
 func TestGetTokenWithLoginUsesEnvVar(t *testing.T) {
+	isolateHome(t)
 	t.Setenv("OMNISTRATE_API_KEY", "om_test_env_key")
 	t.Setenv("OMNISTRATE_DRY_RUN", "true")
 
@@ -82,11 +84,9 @@ func TestGetTokenWithLoginUsesEnvVar(t *testing.T) {
 // no OMNISTRATE_API_KEY, and stdin is not a terminal, GetTokenWithLogin
 // returns a clear error instead of attempting an interactive login prompt.
 func TestGetTokenWithLoginNonTTY(t *testing.T) {
+	isolateHome(t)
 	// Ensure no API key is set so we fall through to the TTY check.
 	t.Setenv("OMNISTRATE_API_KEY", "")
-
-	// Point HOME to a temp dir so no existing config/token is found.
-	t.Setenv("HOME", t.TempDir())
 
 	// Swap os.Stdin with a pipe (not a terminal).
 	origStdin := os.Stdin
@@ -103,4 +103,12 @@ func TestGetTokenWithLoginNonTTY(t *testing.T) {
 	assert.Empty(t, token)
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "no TTY available for interactive login")
+}
+
+func isolateHome(t *testing.T) {
+	t.Helper()
+
+	t.Setenv("HOME", t.TempDir())
+	homedir.Reset()
+	t.Cleanup(homedir.Reset)
 }

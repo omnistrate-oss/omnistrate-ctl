@@ -1012,10 +1012,12 @@ func (m servicePlanBrowserModel) renderEnvironmentTabs(width int) string {
 		}
 
 		border, _, _, _, _ := style.GetBorder()
-		if i == 0 && i == m.activeTab {
-			border.BottomLeft = "│"
-		} else if i == 0 {
-			border.BottomLeft = "├"
+		if i == 0 {
+			if i == m.activeTab {
+				border.BottomLeft = "│"
+			} else {
+				border.BottomLeft = "├"
+			}
 		}
 		style = style.Border(border)
 		renderedTabs = append(renderedTabs, style.Render(emptyValue(name)))
@@ -1387,23 +1389,6 @@ func renderServicePlanHostingBadge(badge servicePlanHostingBadge) string {
 		Background(badge.Color).
 		Padding(0, 1).
 		Render(badge.Label)
-}
-
-func servicePlanEnvironmentSummary(plan servicePlanBrowserPlan) string {
-	if len(plan.Environments) == 0 {
-		return "no environments"
-	}
-
-	names := make([]string, 0, len(plan.Environments))
-	for _, env := range plan.Environments {
-		if strings.TrimSpace(env.Name) != "" {
-			names = append(names, env.Name)
-		}
-	}
-	if len(names) == 0 {
-		return fmt.Sprintf("%d environment(s)", len(plan.Environments))
-	}
-	return fmt.Sprintf("%d environment(s)  |  %s", len(plan.Environments), strings.Join(names, ", "))
 }
 
 func (m servicePlanBrowserModel) selectedPlan() *servicePlanBrowserPlan {

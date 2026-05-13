@@ -148,8 +148,8 @@ func TestAPIKeyLoginEmptyKeyErrorMessageBySource(t *testing.T) {
 // signinCapture records the fields from the most recent captured signin
 // request body.
 type signinCapture struct {
-	Email    string
-	Password string
+	email   string
+	payload string
 }
 
 // newFakeSigninServer starts an httptest.Server that:
@@ -168,17 +168,14 @@ func newFakeSigninServer(t *testing.T) (*httptest.Server, *signinCapture) {
 			http.Error(w, "read error", http.StatusInternalServerError)
 			return
 		}
-		var req struct {
-			Email    string `json:"email"`
-			Password string `json:"password"`
-		}
+		var req map[string]string
 		if err = json.Unmarshal(body, &req); err != nil {
 			http.Error(w, "bad JSON", http.StatusBadRequest)
 			t.Errorf("newFakeSigninServer: failed to unmarshal request body: %v", err)
 			return
 		}
-		captured.Email = req.Email
-		captured.Password = req.Password
+		captured.email = req["email"]
+		captured.payload = req["password"]
 
 		w.Header().Set("Content-Type", "application/json")
 		if _, err = io.WriteString(w, `{"jwtToken":"fake-jwt-for-testing"}`); err != nil {
@@ -220,9 +217,9 @@ func TestRunLoginPicksUpEnvVar(t *testing.T) {
 
 	err := RunLogin(LoginCmd, nil)
 	require.NoError(t, err)
-	require.Equal(t, dataaccess.APIKeySigninEmail, captured.Email,
+	require.Equal(t, dataaccess.APIKeySigninEmail, captured.email,
 		"env-var login must use the API-key sentinel email")
-	require.Equal(t, "om_test_env_key", captured.Password,
+	require.Equal(t, "om_test_env_key", captured.payload,
 		"env var value must be forwarded as the request password")
 }
 
@@ -239,7 +236,7 @@ func TestRunLoginFlagTakesPrecedenceOverEnv(t *testing.T) {
 
 	err := RunLogin(LoginCmd, nil)
 	require.NoError(t, err)
-	require.Equal(t, "om_flag_value", captured.Password,
+	require.Equal(t, "om_flag_value", captured.payload,
 		"--api-key flag value must take precedence over the env var")
 }
 
@@ -258,8 +255,8 @@ func TestRunLoginEnvVarNotUsedWhenOtherFlagsSet(t *testing.T) {
 
 	err := RunLogin(LoginCmd, nil)
 	require.NoError(t, err)
-	require.Equal(t, "test@example.com", captured.Email,
+	require.Equal(t, "test@example.com", captured.email,
 		"email/password path must send the user's email, not the API-key sentinel")
-	require.Equal(t, "fake_password", captured.Password,
+	require.Equal(t, "fake_password", captured.payload,
 		"email/password path must send the password flag, not the env var API key")
 }
