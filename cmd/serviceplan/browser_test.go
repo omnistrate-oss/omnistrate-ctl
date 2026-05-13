@@ -13,14 +13,35 @@ import (
 )
 
 type fakeServicePlanBrowserLoader struct {
-	details map[string]servicePlanEnvironmentDetails
-	calls   []string
+	details     map[string]servicePlanEnvironmentDetails
+	calls       []string
+	form        servicePlanDeploymentForm
+	formErr     error
+	formCalls   []string
+	launchID    string
+	launchErr   error
+	launchReq   *servicePlanDeploymentLaunchRequest
+	launchCalls int
 }
 
 func (f *fakeServicePlanBrowserLoader) LoadEnvironmentDetails(_ context.Context, _ string, env servicePlanBrowserEnvironment) (servicePlanEnvironmentDetails, error) {
 	key := env.cacheKey()
 	f.calls = append(f.calls, key)
 	return f.details[key], nil
+}
+
+func (f *fakeServicePlanBrowserLoader) LoadDeploymentForm(_ context.Context, _ string, env servicePlanBrowserEnvironment) (servicePlanDeploymentForm, error) {
+	f.formCalls = append(f.formCalls, env.cacheKey())
+	return f.form, f.formErr
+}
+
+func (f *fakeServicePlanBrowserLoader) LaunchDeployment(_ context.Context, _ string, request servicePlanDeploymentLaunchRequest) (string, error) {
+	f.launchCalls++
+	f.launchReq = &request
+	if f.launchID == "" {
+		f.launchID = "inst-created"
+	}
+	return f.launchID, f.launchErr
 }
 
 func loadSelectedTestDetails(t *testing.T, model servicePlanBrowserModel) servicePlanBrowserModel {
@@ -76,6 +97,18 @@ func TestServicePlanBrowserAccordionAndTabSwitching(t *testing.T) {
 
 	model.list.Select(0)
 	updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyRight})
+	model = updated.(servicePlanBrowserModel)
+	require.Len(t, model.leftItems(), 2)
+
+	model.list.Select(0)
+	updated, cmd = model.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	require.Nil(t, cmd)
+	model = updated.(servicePlanBrowserModel)
+	require.Len(t, model.leftItems(), 1)
+
+	model.list.Select(0)
+	updated, cmd = model.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	require.Nil(t, cmd)
 	model = updated.(servicePlanBrowserModel)
 	require.Len(t, model.leftItems(), 2)
 
@@ -171,6 +204,34 @@ func TestServicePlanBrowserEnvironmentTabsFilterServiceAccordion(t *testing.T) {
 	require.Empty(t, model.leftItems()[1].description)
 	require.Equal(t, "Standard", model.selectedPlan().Name)
 	require.Equal(t, "prod", model.selectedEnvironment().Name)
+	require.Equal(t, "Service Plans", model.list.Title)
+}
+
+func TestServicePlanBrowserLeftPaneUsesTreeAccordion(t *testing.T) {
+	catalog := buildServicePlanBrowserCatalog(testBrowserServicesWithTwoPlans(), nil)
+	model := newServicePlanBrowserModel(context.Background(), "token", catalog, nil)
+
+	items := model.leftItems()
+
+	require.True(t, items[0].isService)
+	require.True(t, items[0].expanded)
+	require.Empty(t, items[0].description)
+	require.Equal(t, "- ", servicePlanBrowserLeftItemTreePrefix(items[0]))
+	require.Equal(t, "  ├─ ", servicePlanBrowserLeftItemTreePrefix(items[1]))
+	require.Equal(t, "  └─ ", servicePlanBrowserLeftItemTreePrefix(items[2]))
+	require.NotContains(t, model.View(), "plan name(s)")
+	require.NotContains(t, model.View(), "Service Plans ·")
+}
+
+func TestServicePlanBrowserHeaderOmitsCatalogChecks(t *testing.T) {
+	catalog := buildServicePlanBrowserCatalog(testBrowserServices(), nil)
+	model := newServicePlanBrowserModel(context.Background(), "token", catalog, nil)
+
+	view := model.View()
+
+	require.Contains(t, view, "Service Plan Browser")
+	require.NotContains(t, view, "Service catalog loaded")
+	require.NotContains(t, view, "Plan details available")
 }
 
 func TestServicePlanBrowserServiceSummaryOmitsEnvironmentCountsFromPlanBullets(t *testing.T) {
@@ -351,6 +412,274 @@ func TestServicePlanBrowserModalFiltering(t *testing.T) {
 	require.Contains(t, filtered[0].Text, "aws")
 }
 
+func TestServicePlanBrowserBYOCDetailsShowCloudAccounts(t *testing.T) {
+	catalog := buildServicePlanBrowserCatalog(testBrowserServicesWithHostingModels(), nil)
+	model := newServicePlanBrowserModel(context.Background(), "token", catalog, nil)
+	model.list.Select(2)
+	model.syncSelectionFromList()
+	env := model.selectedEnvironment()
+	require.NotNil(t, env)
+	model.detailCache[env.cacheKey()] = servicePlanEnvironmentDetails{
+		DeploymentModel:            "DEDICATED / BYOA",
+		CustomerCloudAccountsCount: 1,
+		CustomerCloudAccounts: []servicePlanCustomerCloudAccountRow{
+			{InstanceID: "acct-1", CloudProvider: "aws", Status: "RUNNING", Region: "us-west-2", CustomerEmail: "alice@example.com", SubscriptionID: "sub-1"},
+		},
+	}
+
+	rows := model.detailRows()
+	require.Equal(t, "Cloud accounts", rows[len(rows)-1].Label)
+	require.Equal(t, "1 connected", rows[len(rows)-1].Value)
+
+	model.focus = servicePlanBrowserFocusDetails
+	model.detailCursor = len(rows) - 1
+	updated, cmd := model.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	require.Nil(t, cmd)
+	model = updated.(servicePlanBrowserModel)
+	require.NotNil(t, model.modal)
+	require.Equal(t, servicePlanBrowserModalCloudAccounts, model.modal.Kind)
+	require.Contains(t, model.modal.Rows[0].Text, "acct-1")
+	require.Contains(t, model.modal.Rows[0].Text, "alice@example.com")
+}
+
+func TestServicePlanBrowserDeploymentHotkeyLoadsFormAndLaunchesWithDefaults(t *testing.T) {
+	catalog := buildServicePlanBrowserCatalog(testBrowserServicesWithHostingModels(), nil)
+	model := newServicePlanBrowserModel(context.Background(), "token", catalog, nil)
+	model.list.Select(2)
+	model.syncSelectionFromList()
+	env := *model.selectedEnvironment()
+	parameter := servicePlanDeploymentParameter{
+		Key:          "instance_type",
+		DisplayName:  "Instance type",
+		Type:         "string",
+		Required:     true,
+		DefaultValue: "small",
+	}
+	loader := &fakeServicePlanBrowserLoader{
+		form: servicePlanDeploymentForm{
+			Environment: env,
+			Version:     "1.0",
+			Resources: []servicePlanDeploymentResource{
+				{ID: "res-1", Name: "API", URLKey: "api"},
+			},
+			CloudProviders: []string{"aws"},
+			RegionsByCloud: map[string][]string{"aws": []string{"us-west-2"}},
+			Parameters:     []servicePlanDeploymentParameter{parameter},
+			ParametersByResource: map[string][]servicePlanDeploymentParameter{
+				"res-1": []servicePlanDeploymentParameter{parameter},
+			},
+			CustomerCloudAccounts: []servicePlanCustomerCloudAccountRow{
+				{InstanceID: "acct-1", CloudProvider: "aws", Status: "RUNNING"},
+			},
+			RequiresCustomerAccount: true,
+		},
+		launchID: "inst-1",
+	}
+	model.loadDeploymentForm = func(env servicePlanBrowserEnvironment) (servicePlanDeploymentForm, error) {
+		return loader.LoadDeploymentForm(context.Background(), "token", env)
+	}
+	model.launchDeployment = func(request servicePlanDeploymentLaunchRequest) (string, error) {
+		return loader.LaunchDeployment(context.Background(), "token", request)
+	}
+
+	updated, cmd := model.Update(tea.KeyMsg{Runes: []rune{'d'}, Type: tea.KeyRunes})
+	require.NotNil(t, cmd)
+	model = updated.(servicePlanBrowserModel)
+	require.True(t, model.loadingDeploymentForm)
+	require.Len(t, loader.formCalls, 0)
+
+	form, err := loader.LoadDeploymentForm(context.Background(), "token", env)
+	require.NoError(t, err)
+	updated, cmd = model.Update(servicePlanDeploymentFormLoadedMsg{form: form})
+	require.Nil(t, cmd)
+	model = updated.(servicePlanBrowserModel)
+	require.NotNil(t, model.deploymentForm)
+	require.Contains(t, model.renderDeploymentForm(), "Resource")
+
+	for i := 0; i < 4; i++ {
+		updated, cmd = model.Update(tea.KeyMsg{Type: tea.KeyEnter})
+		require.Nil(t, cmd)
+		model = updated.(servicePlanBrowserModel)
+	}
+	require.Contains(t, model.renderDeploymentForm(), "small")
+
+	updated, cmd = model.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	require.Nil(t, cmd)
+	model = updated.(servicePlanBrowserModel)
+	require.Contains(t, model.renderDeploymentForm(), "Review")
+
+	updated, cmd = model.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	require.NotNil(t, cmd)
+	model = updated.(servicePlanBrowserModel)
+	require.True(t, model.deploymentForm.Launching)
+	updated, cmd = model.Update(cmd())
+	require.Nil(t, cmd)
+	model = updated.(servicePlanBrowserModel)
+	require.False(t, model.deploymentForm.Launching)
+	require.Equal(t, 1, loader.launchCalls)
+	require.Equal(t, "API", loader.launchReq.ResourceName)
+	require.Equal(t, "aws", loader.launchReq.CloudProvider)
+	require.Equal(t, "us-west-2", loader.launchReq.Region)
+	require.Equal(t, "acct-1", loader.launchReq.CustomerAccountID)
+	require.Equal(t, "small", loader.launchReq.Params["instance_type"])
+	require.Contains(t, model.renderDeploymentForm(), "Deployment launched: inst-1")
+	require.Contains(t, model.renderDeploymentForm(), "omnistrate-ctl instance describe inst-1")
+	require.Contains(t, model.renderDeploymentForm(), "omnistrate-ctl instance list-endpoints inst-1")
+	require.Contains(t, model.renderDeploymentForm(), "omnistrate-ctl instance debug inst-1")
+}
+
+func TestServicePlanDeploymentFormRefreshesParametersWhenResourceChanges(t *testing.T) {
+	form := servicePlanDeploymentForm{
+		Resources: []servicePlanDeploymentResource{
+			{ID: "res-api", Name: "API", URLKey: "api"},
+			{ID: "res-worker", Name: "Worker", URLKey: "worker"},
+		},
+		CloudProviders: []string{"aws"},
+		RegionsByCloud: map[string][]string{"aws": []string{"us-west-2"}},
+		Parameters: []servicePlanDeploymentParameter{
+			{Key: "api_size", DisplayName: "API size", Type: "string", DefaultValue: "small"},
+		},
+		ParametersByResource: map[string][]servicePlanDeploymentParameter{
+			"res-api": []servicePlanDeploymentParameter{
+				{Key: "api_size", DisplayName: "API size", Type: "string", DefaultValue: "small"},
+			},
+			"res-worker": []servicePlanDeploymentParameter{
+				{Key: "worker_size", DisplayName: "Worker size", Type: "string", DefaultValue: "medium"},
+			},
+		},
+	}
+
+	state := newServicePlanDeploymentFormState(form, 80)
+	require.Equal(t, servicePlanDeploymentStepResource, state.currentStep())
+
+	state.SelectionCursor = 1
+	require.NoError(t, state.advanceStep(80))
+	require.NoError(t, state.advanceStep(80))
+	require.NoError(t, state.advanceStep(80))
+
+	require.Equal(t, servicePlanDeploymentStepSystemParams, state.currentStep())
+	require.Equal(t, "res-worker", state.ParameterResourceID)
+	require.Contains(t, servicePlanDeploymentFormFieldLabels(state.ParamFields), "Worker size")
+	require.NotContains(t, servicePlanDeploymentFormFieldLabels(state.ParamFields), "API size")
+}
+
+func TestServicePlanDeploymentWizardKeepsParameterStepForNonDefaultResource(t *testing.T) {
+	form := servicePlanDeploymentForm{
+		Resources: []servicePlanDeploymentResource{
+			{ID: "res-api", Name: "API", URLKey: "api"},
+			{ID: "res-worker", Name: "Worker", URLKey: "worker"},
+		},
+		CloudProviders: []string{"aws"},
+		RegionsByCloud: map[string][]string{"aws": []string{"us-west-2"}},
+		ParametersByResource: map[string][]servicePlanDeploymentParameter{
+			"res-api": []servicePlanDeploymentParameter{},
+			"res-worker": []servicePlanDeploymentParameter{
+				{Key: "worker_size", DisplayName: "Worker size", Type: "string", DefaultValue: "medium"},
+			},
+		},
+	}
+
+	state := newServicePlanDeploymentFormState(form, 80)
+
+	require.Contains(t, state.Steps, servicePlanDeploymentStepSystemParams)
+	state.SelectionCursor = 1
+	require.NoError(t, state.advanceStep(80))
+	require.NoError(t, state.advanceStep(80))
+	require.NoError(t, state.advanceStep(80))
+	require.Equal(t, servicePlanDeploymentStepSystemParams, state.currentStep())
+	require.Contains(t, servicePlanDeploymentFormFieldLabels(state.ParamFields), "Worker size")
+}
+
+func TestServicePlanDeploymentParameterOptionsUseSelectableValues(t *testing.T) {
+	form := servicePlanDeploymentForm{
+		Resources: []servicePlanDeploymentResource{
+			{ID: "res-api", Name: "API", URLKey: "api"},
+		},
+		CloudProviders: []string{"aws"},
+		RegionsByCloud: map[string][]string{"aws": []string{"us-west-2"}},
+		ParametersByResource: map[string][]servicePlanDeploymentParameter{
+			"res-api": []servicePlanDeploymentParameter{
+				{Key: "size", DisplayName: "Size", Type: "string", Required: true, Options: []string{"small", "large"}},
+			},
+		},
+	}
+
+	state := newServicePlanDeploymentFormState(form, 80)
+	require.NoError(t, state.advanceStep(80))
+	require.NoError(t, state.advanceStep(80))
+	require.NoError(t, state.advanceStep(80))
+	require.Equal(t, servicePlanDeploymentStepSystemParams, state.currentStep())
+	require.True(t, state.moveCurrentParameterOption(1))
+	require.Equal(t, "small", state.ParamFields[0].Input.Value())
+	require.True(t, state.moveCurrentParameterOption(1))
+	require.Equal(t, "large", state.ParamFields[0].Input.Value())
+}
+
+func TestServicePlanDeploymentWizardPromptsForCustomerInProd(t *testing.T) {
+	form := servicePlanDeploymentForm{
+		Environment: servicePlanBrowserEnvironment{Name: "PROD"},
+		Resources: []servicePlanDeploymentResource{
+			{ID: "res-1", Name: "API", URLKey: "api"},
+		},
+		CloudProviders: []string{"aws"},
+		RegionsByCloud: map[string][]string{"aws": []string{"us-west-2"}},
+		Customers: []servicePlanDeploymentCustomer{
+			{UserID: "user-1", Email: "alice@example.com", Name: "Alice", OrgName: "Acme"},
+		},
+	}
+
+	state := newServicePlanDeploymentFormState(form, 80)
+
+	require.Equal(t, servicePlanDeploymentStepCustomer, state.currentStep())
+	options := state.currentOptions()
+	require.Len(t, options, 2)
+	require.Equal(t, "Self", options[0].Label)
+	state.SelectionCursor = 1
+	require.NoError(t, state.advanceStep(80))
+	require.Equal(t, "alice@example.com", state.SelectedCustomer.Email)
+}
+
+func TestServicePlanDeploymentCloudAccountsFilterBySelectedCustomer(t *testing.T) {
+	state := newServicePlanDeploymentFormState(servicePlanDeploymentForm{
+		Resources:               []servicePlanDeploymentResource{{ID: "res-1", Name: "API", URLKey: "api"}},
+		CloudProviders:          []string{"aws"},
+		RegionsByCloud:          map[string][]string{"aws": []string{"us-west-2"}},
+		RequiresCustomerAccount: true,
+		Customers:               []servicePlanDeploymentCustomer{{UserID: "user-1", Email: "alice@example.com", Name: "Alice"}},
+		Subscriptions:           []servicePlanSubscriptionRow{{ID: "sub-1", RootUserID: "user-1", RootUserEmail: "alice@example.com"}},
+		CustomerCloudAccounts:   []servicePlanCustomerCloudAccountRow{{InstanceID: "acct-1", CloudProvider: "aws", SubscriptionID: "sub-1", CustomerEmail: "alice@example.com"}, {InstanceID: "acct-2", CloudProvider: "aws", SubscriptionID: "sub-2", CustomerEmail: "bob@example.com"}},
+	}, 80)
+
+	state.SelectedCustomer = servicePlanDeploymentCustomer{UserID: "user-1", Email: "alice@example.com", Name: "Alice"}
+
+	accounts := state.filteredCloudAccounts()
+	require.Len(t, accounts, 1)
+	require.Equal(t, "acct-1", accounts[0].InstanceID)
+}
+
+func TestServicePlanBrowserRefreshHotkeyReloadsRightPane(t *testing.T) {
+	catalog := buildServicePlanBrowserCatalog(testBrowserServices(), nil)
+	details := testBrowserDetails(catalog)
+	loader := &fakeServicePlanBrowserLoader{details: details}
+	model := newServicePlanBrowserModel(context.Background(), "token", catalog, loader)
+	model = loadSelectedTestDetails(t, model)
+	env := model.selectedEnvironment()
+	require.NotNil(t, env)
+	require.Contains(t, model.viewport.View(), "OMNISTRATE_HOSTED")
+
+	updatedDetail := details[env.cacheKey()]
+	updatedDetail.DeploymentModel = "UPDATED_MODEL"
+	loader.details[env.cacheKey()] = updatedDetail
+
+	updated, cmd := model.Update(tea.KeyMsg{Runes: []rune{'r'}, Type: tea.KeyRunes})
+	require.NotNil(t, cmd)
+	model = updated.(servicePlanBrowserModel)
+	require.Contains(t, model.viewport.View(), "Loading details")
+
+	model = loadSelectedTestDetails(t, model)
+	require.Contains(t, model.viewport.View(), "UPDATED_MODEL")
+}
+
 func TestDedupeServicePlanUsersUsesUserIDThenEmail(t *testing.T) {
 	users := []openapiclientfleet.User{
 		{UserId: "user-1", Email: "first@example.com"},
@@ -366,6 +695,14 @@ func TestDedupeServicePlanUsersUsesUserIDThenEmail(t *testing.T) {
 	require.Equal(t, "user-1", unique[0].UserId)
 	require.Equal(t, "shared@example.com", unique[1].Email)
 	require.Equal(t, "unique@example.com", unique[2].Email)
+}
+
+func servicePlanDeploymentFormFieldLabels(fields []servicePlanDeploymentFormField) []string {
+	labels := make([]string, 0, len(fields))
+	for _, field := range fields {
+		labels = append(labels, field.Label)
+	}
+	return labels
 }
 
 func TestProductTierSummaryHelpers(t *testing.T) {

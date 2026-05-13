@@ -2,15 +2,18 @@ package serviceplan
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"os"
 	"sort"
+	"strconv"
 	"strings"
 	"unicode"
 
 	"github.com/charmbracelet/bubbles/list"
 	"github.com/charmbracelet/bubbles/spinner"
+	"github.com/charmbracelet/bubbles/textinput"
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
@@ -27,7 +30,7 @@ const (
 	servicePlanBrowserListMinWidth       = 34
 	servicePlanBrowserListPreferredWidth = 42
 	servicePlanBrowserHelpHeight         = 2
-	servicePlanBrowserHeaderHeight       = 5
+	servicePlanBrowserHeaderHeight       = 1
 	servicePlanBrowserTabsHeight         = 3
 
 	servicePlanBrowserFocusLeft servicePlanBrowserFocus = iota
@@ -36,6 +39,10 @@ const (
 	servicePlanBrowserModalDeployments   servicePlanBrowserModalKind = "deployments"
 	servicePlanBrowserModalSubscriptions servicePlanBrowserModalKind = "subscriptions"
 	servicePlanBrowserModalUsers         servicePlanBrowserModalKind = "users"
+	servicePlanBrowserModalCloudAccounts servicePlanBrowserModalKind = "cloud-accounts"
+
+	servicePlanCustomerAccountConfigIDParamKey = "cloud_provider_account_config_id"
+	servicePlanCustomerAccountResourcePrefix   = "r-injectedaccountconfig"
 )
 
 type servicePlanBrowserFocus int
@@ -76,17 +83,19 @@ type servicePlanBrowserEnvironment struct {
 }
 
 type servicePlanEnvironmentDetails struct {
-	DeploymentModel          string
-	EnabledFeatures          []string
-	Clouds                   []string
-	Regions                  []string
-	Deployments              []servicePlanDeploymentRow
-	Subscriptions            []servicePlanSubscriptionRow
-	Users                    []servicePlanUserRow
-	DeploymentsCount         int
-	ActiveSubscriptionsCount int
-	UniqueUsersCount         int
-	Err                      string
+	DeploymentModel            string
+	EnabledFeatures            []string
+	Clouds                     []string
+	Regions                    []string
+	Deployments                []servicePlanDeploymentRow
+	Subscriptions              []servicePlanSubscriptionRow
+	Users                      []servicePlanUserRow
+	CustomerCloudAccounts      []servicePlanCustomerCloudAccountRow
+	DeploymentsCount           int
+	ActiveSubscriptionsCount   int
+	UniqueUsersCount           int
+	CustomerCloudAccountsCount int
+	Err                        string
 }
 
 type servicePlanDeploymentRow struct {
@@ -102,6 +111,7 @@ type servicePlanSubscriptionRow struct {
 	ID            string
 	Status        string
 	RootUserEmail string
+	RootUserID    string
 	RootUserName  string
 	InstanceCount int64
 }
@@ -114,8 +124,23 @@ type servicePlanUserRow struct {
 	OrgName string
 }
 
+type servicePlanCustomerCloudAccountRow struct {
+	InstanceID     string
+	CloudProvider  string
+	Status         string
+	SubscriptionID string
+	CustomerEmail  string
+	Resource       string
+	Region         string
+}
+
 type servicePlanBrowserLoader interface {
 	LoadEnvironmentDetails(context.Context, string, servicePlanBrowserEnvironment) (servicePlanEnvironmentDetails, error)
+}
+
+type servicePlanBrowserDeploymentLauncher interface {
+	LoadDeploymentForm(context.Context, string, servicePlanBrowserEnvironment) (servicePlanDeploymentForm, error)
+	LaunchDeployment(context.Context, string, servicePlanDeploymentLaunchRequest) (string, error)
 }
 
 type productionServicePlanBrowserLoader struct{}
@@ -143,6 +168,10 @@ type servicePlanBrowserModel struct {
 	detailPanelWidth       int
 	statusMessage          string
 	modal                  *servicePlanBrowserModal
+	loadingDeploymentForm  bool
+	deploymentForm         *servicePlanDeploymentFormState
+	loadDeploymentForm     func(servicePlanBrowserEnvironment) (servicePlanDeploymentForm, error)
+	launchDeployment       func(servicePlanDeploymentLaunchRequest) (string, error)
 }
 
 type servicePlanBrowserLeftItem struct {
@@ -154,6 +183,7 @@ type servicePlanBrowserLeftItem struct {
 	expandable   bool
 	expanded     bool
 	isService    bool
+	isLastChild  bool
 	hostingBadge servicePlanHostingBadge
 	serviceIndex int
 	planIndex    int
@@ -193,9 +223,136 @@ type servicePlanBrowserDetailsLoadedMsg struct {
 	detail   servicePlanEnvironmentDetails
 }
 
+type servicePlanDeploymentFormLoadedMsg struct {
+	form servicePlanDeploymentForm
+	err  error
+}
+
+type servicePlanDeploymentLaunchedMsg struct {
+	instanceID string
+	err        error
+}
+
+type servicePlanDeploymentForm struct {
+	Environment              servicePlanBrowserEnvironment
+	Version                  string
+	ServiceProviderID        string
+	ServiceURLKey            string
+	ServiceAPIVersion        string
+	ServiceEnvironmentURLKey string
+	ServiceModelURLKey       string
+	ProductTierURLKey        string
+	Resources                []servicePlanDeploymentResource
+	CloudProviders           []string
+	RegionsByCloud           map[string][]string
+	Parameters               []servicePlanDeploymentParameter
+	ParametersByResource     map[string][]servicePlanDeploymentParameter
+	CustomerCloudAccounts    []servicePlanCustomerCloudAccountRow
+	Customers                []servicePlanDeploymentCustomer
+	Subscriptions            []servicePlanSubscriptionRow
+	RequiresCustomerAccount  bool
+}
+
+type servicePlanDeploymentResource struct {
+	ID     string
+	Name   string
+	URLKey string
+}
+
+type servicePlanDeploymentParameter struct {
+	Key          string
+	DisplayName  string
+	Description  string
+	Type         string
+	Required     bool
+	IsList       bool
+	Custom       bool
+	DefaultValue string
+	Options      []string
+}
+
+type servicePlanDeploymentCustomer struct {
+	UserID  string
+	Email   string
+	Name    string
+	OrgName string
+	Self    bool
+}
+
+type servicePlanDeploymentLaunchRequest struct {
+	Form              servicePlanDeploymentForm
+	Customer          servicePlanDeploymentCustomer
+	ResourceName      string
+	CloudProvider     string
+	Region            string
+	CustomerAccountID string
+	SubscriptionID    string
+	Params            map[string]any
+}
+
+type servicePlanDeploymentFieldKind int
+
+const (
+	servicePlanDeploymentFieldParameter servicePlanDeploymentFieldKind = iota
+)
+
+type servicePlanDeploymentFormField struct {
+	Kind        servicePlanDeploymentFieldKind
+	Key         string
+	Label       string
+	Required    bool
+	Type        string
+	IsList      bool
+	Description string
+	Options     []string
+	Input       textinput.Model
+}
+
+type servicePlanDeploymentFormState struct {
+	Form                servicePlanDeploymentForm
+	Steps               []servicePlanDeploymentWizardStep
+	StepIndex           int
+	SelectionCursor     int
+	ParamFields         []servicePlanDeploymentFormField
+	ParamCursor         int
+	SelectedCustomer    servicePlanDeploymentCustomer
+	ResourceName        string
+	CloudProvider       string
+	Region              string
+	CustomerAccountID   string
+	ParameterResourceID string
+	ParamValues         map[string]string
+	Launching           bool
+	InstanceID          string
+	Result              string
+	Err                 string
+}
+
+type servicePlanDeploymentWizardStep string
+
+const (
+	servicePlanDeploymentStepCustomer     servicePlanDeploymentWizardStep = "customer"
+	servicePlanDeploymentStepResource     servicePlanDeploymentWizardStep = "resource"
+	servicePlanDeploymentStepCloud        servicePlanDeploymentWizardStep = "cloud"
+	servicePlanDeploymentStepCloudAccount servicePlanDeploymentWizardStep = "cloud-account"
+	servicePlanDeploymentStepRegion       servicePlanDeploymentWizardStep = "region"
+	servicePlanDeploymentStepCustomParams servicePlanDeploymentWizardStep = "custom-params"
+	servicePlanDeploymentStepSystemParams servicePlanDeploymentWizardStep = "system-params"
+	servicePlanDeploymentStepReview       servicePlanDeploymentWizardStep = "review"
+	servicePlanDeploymentStepComplete     servicePlanDeploymentWizardStep = "complete"
+)
+
+type servicePlanDeploymentWizardOption struct {
+	Label       string
+	Description string
+	Value       string
+	Customer    servicePlanDeploymentCustomer
+	Account     servicePlanCustomerCloudAccountRow
+}
+
 func newServicePlanBrowserDelegate() servicePlanBrowserDelegate {
 	delegate := servicePlanBrowserDelegate{DefaultDelegate: list.NewDefaultDelegate()}
-	delegate.SetHeight(2)
+	delegate.SetHeight(1)
 	delegate.SetSpacing(0)
 	return delegate
 }
@@ -209,35 +366,36 @@ func (d servicePlanBrowserDelegate) Render(writer io.Writer, model list.Model, i
 
 	isSelected := index == model.Index()
 	titleStyle := lipgloss.NewStyle().Padding(0, 0, 0, 1)
-	descriptionStyle := lipgloss.NewStyle().Padding(0, 0, 0, 1).Foreground(lipgloss.Color("245"))
 	if isSelected {
 		titleStyle = titleStyle.Bold(true).Foreground(lipgloss.Color("230")).Background(lipgloss.Color("62"))
-		descriptionStyle = descriptionStyle.Foreground(lipgloss.Color("252"))
 	}
 
-	indent := strings.Repeat("  ", browserItem.level)
-	titlePrefix := ""
-	switch {
-	case browserItem.expandable && browserItem.expanded:
-		titlePrefix = "▾ "
-	case browserItem.expandable:
-		titlePrefix = "▸ "
-	case browserItem.level > 0:
-		titlePrefix = "• "
-	}
-
-	title := indent + titlePrefix + browserItem.title
-	description := browserItem.description
-	if description != "" {
-		description = indent + "  " + description
-	}
+	title := servicePlanBrowserLeftItemTreePrefix(browserItem) + browserItem.title
 
 	renderedTitle := titleStyle.Render(title)
 	if browserItem.hostingBadge.Label != "" {
 		renderedTitle = lipgloss.JoinHorizontal(lipgloss.Center, renderedTitle, " ", renderServicePlanHostingBadge(browserItem.hostingBadge))
 	}
 
-	fmt.Fprintf(writer, "%s\n%s", renderedTitle, descriptionStyle.Render(description))
+	fmt.Fprint(writer, renderedTitle)
+}
+
+func servicePlanBrowserLeftItemTreePrefix(item servicePlanBrowserLeftItem) string {
+	if item.isService {
+		if item.expanded {
+			return "- "
+		}
+		return "+ "
+	}
+
+	if item.level > 0 {
+		if item.isLastChild {
+			return "  └─ "
+		}
+		return "  ├─ "
+	}
+
+	return ""
 }
 
 func buildServicePlanBrowserCatalog(services []openapiclient.DescribeServiceResult, filterMaps []map[string]string) servicePlanBrowserCatalog {
@@ -345,6 +503,14 @@ func newServicePlanBrowserModel(ctx context.Context, token string, catalog servi
 		model.loadEnvironmentDetails = func(env servicePlanBrowserEnvironment) (servicePlanEnvironmentDetails, error) {
 			return loader.LoadEnvironmentDetails(ctx, token, env)
 		}
+		if launcher, ok := loader.(servicePlanBrowserDeploymentLauncher); ok {
+			model.loadDeploymentForm = func(env servicePlanBrowserEnvironment) (servicePlanDeploymentForm, error) {
+				return launcher.LoadDeploymentForm(ctx, token, env)
+			}
+			model.launchDeployment = func(request servicePlanDeploymentLaunchRequest) (string, error) {
+				return launcher.LaunchDeployment(ctx, token, request)
+			}
+		}
 	}
 	model.setSize(defaultServicePlanBrowserWidth, defaultServicePlanBrowserHeight)
 	model.ensureActiveEnvironmentExpanded()
@@ -365,7 +531,7 @@ func (m servicePlanBrowserModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.setSize(msg.Width, msg.Height)
 		return m, nil
 	case spinner.TickMsg:
-		if !m.hasLoadingDetails() {
+		if !m.hasLoadingDetails() && !m.loadingDeploymentForm {
 			return m, nil
 		}
 		var cmd tea.Cmd
@@ -375,9 +541,48 @@ func (m servicePlanBrowserModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case servicePlanBrowserDetailsLoadedMsg:
 		delete(m.loadingDetails, msg.cacheKey)
 		m.detailCache[msg.cacheKey] = msg.detail
+		if m.statusMessage == "Refreshing plan details..." {
+			m.statusMessage = "Plan details refreshed"
+		}
 		m.syncViewportContent()
 		return m, nil
+	case servicePlanDeploymentFormLoadedMsg:
+		if !m.loadingDeploymentForm {
+			return m, nil
+		}
+		m.loadingDeploymentForm = false
+		if msg.err != nil {
+			m.statusMessage = "Failed to load deployment form: " + msg.err.Error()
+			return m, nil
+		}
+		formState := newServicePlanDeploymentFormState(msg.form, spMax(m.detailPanelWidth-8, 40))
+		m.deploymentForm = &formState
+		return m, nil
+	case servicePlanDeploymentLaunchedMsg:
+		if m.deploymentForm == nil {
+			return m, nil
+		}
+		m.deploymentForm.Launching = false
+		if msg.err != nil {
+			m.deploymentForm.Err = msg.err.Error()
+			return m, nil
+		}
+		m.deploymentForm.Err = ""
+		m.deploymentForm.InstanceID = strings.TrimSpace(msg.instanceID)
+		m.deploymentForm.Result = "Deployment launched: " + emptyValue(msg.instanceID)
+		m.deploymentForm.StepIndex = len(m.deploymentForm.Steps)
+		m.deploymentForm.Steps = append(m.deploymentForm.Steps, servicePlanDeploymentStepComplete)
+		m.statusMessage = m.deploymentForm.Result
+		return m, m.refreshSelectedDetails()
 	case tea.KeyMsg:
+		if m.deploymentForm != nil {
+			return m.updateDeploymentForm(msg)
+		}
+		if m.loadingDeploymentForm && msg.String() == "esc" {
+			m.loadingDeploymentForm = false
+			m.statusMessage = ""
+			return m, nil
+		}
 		if m.modal != nil {
 			return m.updateModal(msg), nil
 		}
@@ -385,6 +590,10 @@ func (m servicePlanBrowserModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		switch msg.String() {
 		case "ctrl+c", "q":
 			return m, tea.Quit
+		case "d":
+			return m, m.openDeploymentForm()
+		case "r":
+			return m, m.refreshSelectedDetails()
 		case "tab":
 			return m, m.moveEnvironmentTab(1)
 		case "shift+tab":
@@ -397,6 +606,9 @@ func (m servicePlanBrowserModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		switch msg.String() {
 		case "enter":
+			if m.toggleSelectedService() {
+				return m, nil
+			}
 			_, loadCmd := m.enterDetailsPane()
 			return m, loadCmd
 		case " ", "right":
@@ -484,6 +696,12 @@ func (m servicePlanBrowserModel) updateModal(msg tea.KeyMsg) servicePlanBrowserM
 }
 
 func (m servicePlanBrowserModel) View() string {
+	if m.deploymentForm != nil {
+		return m.renderDeploymentForm()
+	}
+	if m.loadingDeploymentForm {
+		return m.renderDeploymentFormLoading()
+	}
 	if m.modal != nil {
 		return m.renderModal()
 	}
@@ -550,16 +768,16 @@ func (m servicePlanBrowserModel) statusLine() string {
 		return m.statusMessage
 	}
 	if m.focus == servicePlanBrowserFocusDetails {
-		return "Use tab or shift+tab to switch environments. Use esc or left to return to the plan list."
+		return "Use d to launch a deployment, r to refresh. Use tab or shift+tab to switch environments. Use esc or left to return to the plan list."
 	}
-	return "Use tab or shift+tab to switch environments. Plan details update as the selector moves."
+	return "Use d to launch a deployment, r to refresh. Plan details update as the selector moves."
 }
 
 func (m servicePlanBrowserModel) helpLine() string {
 	if m.focus == servicePlanBrowserFocusDetails {
-		return "tab/shift+tab: environment  ↑/↓: detail rows  enter: open row  esc/←: focus plans  q: quit"
+		return "d: deploy  r: refresh  tab/shift+tab: environment  ↑/↓: detail rows  enter: open row  esc/←: focus plans  q: quit"
 	}
-	return "tab/shift+tab: environment  ↑/↓: navigate plans  enter/→: details/open  ←/→: expand/collapse services  q: quit"
+	return "d: deploy  r: refresh  tab/shift+tab: environment  ↑/↓: navigate plans  enter/→: details/open  ←/→: expand/collapse services  q: quit"
 }
 
 func (m *servicePlanBrowserModel) rebuildVisibleItems(selectedKey string) {
@@ -589,9 +807,6 @@ func (m *servicePlanBrowserModel) rebuildVisibleItems(selectedKey string) {
 		m.list.Select(selectedIndex)
 	}
 	m.list.Title = "Service Plans"
-	if env := m.activeEnvironmentName(); env != "" {
-		m.list.Title = "Service Plans · " + env
-	}
 	m.syncSelectionFromList()
 	m.syncViewportContent()
 }
@@ -951,37 +1166,8 @@ func isServicePlanSoftBreak(r rune) bool {
 	return unicode.IsSpace(r) || strings.ContainsRune("/:?&=_-.,", r)
 }
 
-func renderServicePlanBrowserHeader(catalog servicePlanBrowserCatalog) string {
-	serviceCount := len(catalog.Services)
-	planCount := 0
-	envCount := 0
-	for _, service := range catalog.Services {
-		planCount += len(service.Plans)
-		for _, plan := range service.Plans {
-			envCount += len(plan.Environments)
-		}
-	}
-
-	title := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("230")).Render("Service Plan Browser")
-	metadata := lipgloss.NewStyle().Foreground(lipgloss.Color("245")).Render(
-		fmt.Sprintf("%d service(s)  |  %d plan name(s)  |  %d environment variant(s)", serviceCount, planCount, envCount),
-	)
-	checks := []string{
-		renderServicePlanBrowserCheck("Service catalog loaded", serviceCount > 0),
-		renderServicePlanBrowserCheck("Plan details available", planCount > 0),
-	}
-
-	return lipgloss.JoinVertical(lipgloss.Left, title, metadata, strings.Join(checks, "  "))
-}
-
-func renderServicePlanBrowserCheck(label string, ok bool) string {
-	icon := "○"
-	style := lipgloss.NewStyle().Foreground(lipgloss.Color("245"))
-	if ok {
-		icon = "✓"
-		style = lipgloss.NewStyle().Foreground(lipgloss.Color("82")).Bold(true)
-	}
-	return style.Render(fmt.Sprintf("%s %s", icon, label))
+func renderServicePlanBrowserHeader(_ servicePlanBrowserCatalog) string {
+	return lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("230")).Render("Service Plan Browser")
 }
 
 func (m servicePlanBrowserModel) renderEnvironmentTabs(width int) string {
@@ -996,7 +1182,8 @@ func (m servicePlanBrowserModel) renderEnvironmentTabs(width int) string {
 	inactiveTabStyle := lipgloss.NewStyle().
 		Border(inactiveTabBorder, true).
 		BorderForeground(highlightColor).
-		Padding(0, 1)
+		Padding(0, 1).
+		Bold(true)
 	activeTabStyle := lipgloss.NewStyle().
 		Border(activeTabBorder, true).
 		BorderForeground(highlightColor).
@@ -1082,7 +1269,7 @@ func (m servicePlanBrowserModel) detailRows() []servicePlanBrowserDetailRow {
 		return []servicePlanBrowserDetailRow{{Label: "Error", Value: detail.Err}}
 	}
 
-	return []servicePlanBrowserDetailRow{
+	rows := []servicePlanBrowserDetailRow{
 		{Label: "Deployment model", Value: emptyValue(detail.DeploymentModel)},
 		{Label: "Enabled features", Value: joinOrNone(detail.EnabledFeatures)},
 		{Label: "Clouds", Value: joinOrNone(detail.Clouds)},
@@ -1091,6 +1278,14 @@ func (m servicePlanBrowserModel) detailRows() []servicePlanBrowserDetailRow {
 		{Label: "Subscriptions", Value: fmt.Sprintf("%d", detail.ActiveSubscriptionsCount), ModalKind: servicePlanBrowserModalSubscriptions},
 		{Label: "Users", Value: fmt.Sprintf("%d", detail.UniqueUsersCount), ModalKind: servicePlanBrowserModalUsers},
 	}
+	if servicePlanEnvironmentRequiresCustomerAccount(*env) || detail.CustomerCloudAccountsCount > 0 {
+		rows = append(rows, servicePlanBrowserDetailRow{
+			Label:     "Cloud accounts",
+			Value:     fmt.Sprintf("%d connected", detail.CustomerCloudAccountsCount),
+			ModalKind: servicePlanBrowserModalCloudAccounts,
+		})
+	}
+	return rows
 }
 
 func (m servicePlanBrowserModel) renderModal() string {
@@ -1232,6 +1427,17 @@ func (m *servicePlanBrowserModel) expandSelectedService() bool {
 	return true
 }
 
+func (m *servicePlanBrowserModel) toggleSelectedService() bool {
+	selected := m.selectedLeftItem()
+	if selected == nil || !selected.expandable {
+		return false
+	}
+
+	m.expanded[selected.serviceIndex] = !selected.expanded
+	m.rebuildVisibleItems(selected.key)
+	return true
+}
+
 func (m *servicePlanBrowserModel) collapseSelectedItem() bool {
 	selected := m.selectedLeftItem()
 	if selected == nil {
@@ -1287,6 +1493,19 @@ func (m *servicePlanBrowserModel) openSelectedModal() {
 			text := fmt.Sprintf("%s | %s | %s | %s | %s", emptyValue(user.ID), emptyValue(user.Email), emptyValue(user.Name), emptyValue(user.Status), emptyValue(user.OrgName))
 			modalRows = append(modalRows, servicePlanBrowserModalRow{Text: text, Search: strings.ToLower(text)})
 		}
+	case servicePlanBrowserModalCloudAccounts:
+		for _, account := range detail.CustomerCloudAccounts {
+			text := fmt.Sprintf(
+				"%s | %s | %s | %s | %s | %s",
+				emptyValue(account.InstanceID),
+				emptyValue(account.CloudProvider),
+				emptyValue(account.Status),
+				emptyValue(account.Region),
+				emptyValue(account.CustomerEmail),
+				emptyValue(account.SubscriptionID),
+			)
+			modalRows = append(modalRows, servicePlanBrowserModalRow{Text: text, Search: strings.ToLower(text)})
+		}
 	}
 
 	m.modal = &servicePlanBrowserModal{
@@ -1316,6 +1535,9 @@ func (m servicePlanBrowserModel) leftItems() []servicePlanBrowserLeftItem {
 				planIndex:    planIndex,
 			})
 		}
+		for index := range planItems {
+			planItems[index].isLastChild = index == len(planItems)-1
+		}
 		if len(planItems) == 0 {
 			continue
 		}
@@ -1323,7 +1545,6 @@ func (m servicePlanBrowserModel) leftItems() []servicePlanBrowserLeftItem {
 		items = append(items, servicePlanBrowserLeftItem{
 			key:          serviceKey,
 			title:        service.Name,
-			description:  fmt.Sprintf("%d plan name(s)", len(planItems)),
 			expandable:   true,
 			expanded:     m.expanded[serviceIndex],
 			isService:    true,
@@ -1444,6 +1665,21 @@ func (m *servicePlanBrowserModel) requestSelectedDetailsLoad() tea.Cmd {
 	return tea.Batch(m.spinner.Tick, m.loadDetailsCmd(*env))
 }
 
+func (m *servicePlanBrowserModel) refreshSelectedDetails() tea.Cmd {
+	env := m.selectedEnvironment()
+	if env == nil {
+		m.statusMessage = "No environment selected to refresh"
+		return nil
+	}
+	key := env.cacheKey()
+	delete(m.detailCache, key)
+	delete(m.loadingDetails, key)
+	m.statusMessage = "Refreshing plan details..."
+	cmd := m.requestSelectedDetailsLoad()
+	m.syncViewportContent()
+	return cmd
+}
+
 func (m servicePlanBrowserModel) selectedDetailsLoadCmd() tea.Cmd {
 	env := m.selectedEnvironment()
 	if env == nil {
@@ -1453,6 +1689,1009 @@ func (m servicePlanBrowserModel) selectedDetailsLoadCmd() tea.Cmd {
 		return nil
 	}
 	return m.loadDetailsCmd(*env)
+}
+
+func (m *servicePlanBrowserModel) openDeploymentForm() tea.Cmd {
+	selected := m.selectedLeftItem()
+	if selected == nil || selected.isService {
+		m.statusMessage = "Select a plan before launching a deployment"
+		return nil
+	}
+	env := m.selectedEnvironment()
+	if env == nil {
+		m.statusMessage = "No environment is selected for this plan"
+		return nil
+	}
+	if m.loadDeploymentForm == nil {
+		m.statusMessage = "Deployment launch is not available in this view"
+		return nil
+	}
+
+	m.loadingDeploymentForm = true
+	m.statusMessage = "Loading deployment form..."
+	return tea.Batch(m.spinner.Tick, m.loadDeploymentFormCmd(*env))
+}
+
+func (m servicePlanBrowserModel) loadDeploymentFormCmd(env servicePlanBrowserEnvironment) tea.Cmd {
+	if m.loadDeploymentForm == nil {
+		return nil
+	}
+
+	return func() tea.Msg {
+		form, err := m.loadDeploymentForm(env)
+		return servicePlanDeploymentFormLoadedMsg{form: form, err: err}
+	}
+}
+
+func (m servicePlanBrowserModel) launchDeploymentCmd(request servicePlanDeploymentLaunchRequest) tea.Cmd {
+	if m.launchDeployment == nil {
+		return nil
+	}
+
+	return func() tea.Msg {
+		instanceID, err := m.launchDeployment(request)
+		return servicePlanDeploymentLaunchedMsg{instanceID: instanceID, err: err}
+	}
+}
+
+func (m servicePlanBrowserModel) updateDeploymentForm(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	if m.deploymentForm == nil {
+		return m, nil
+	}
+
+	switch msg.String() {
+	case "ctrl+c":
+		return m, tea.Quit
+	case "esc":
+		m.deploymentForm = nil
+		m.statusMessage = ""
+		return m, nil
+	case "left", "backspace":
+		m.deploymentForm.previousStep(spMax(m.detailPanelWidth-8, 40))
+		return m, nil
+	case "up":
+		if m.deploymentForm.currentStepIsParameters() && m.deploymentForm.moveCurrentParameterOption(-1) {
+			return m, nil
+		}
+		m.deploymentForm.moveWizardCursor(-1)
+		return m, nil
+	case "down":
+		if m.deploymentForm.currentStepIsParameters() && m.deploymentForm.moveCurrentParameterOption(1) {
+			return m, nil
+		}
+		m.deploymentForm.moveWizardCursor(1)
+		return m, nil
+	case "tab":
+		if m.deploymentForm.currentStepIsParameters() {
+			m.deploymentForm.moveWizardCursor(1)
+			return m, nil
+		}
+	case "shift+tab":
+		if m.deploymentForm.currentStepIsParameters() {
+			m.deploymentForm.moveWizardCursor(-1)
+			return m, nil
+		}
+	case "right", "enter":
+		return m.advanceDeploymentWizard()
+	}
+
+	if m.deploymentForm.Launching || !m.deploymentForm.currentStepIsParameters() || len(m.deploymentForm.ParamFields) == 0 {
+		return m, nil
+	}
+
+	field := &m.deploymentForm.ParamFields[m.deploymentForm.ParamCursor]
+	if len(field.Options) > 0 {
+		return m, nil
+	}
+	updated, cmd := field.Input.Update(msg)
+	field.Input = updated
+	m.deploymentForm.Err = ""
+	return m, cmd
+}
+
+func (m servicePlanBrowserModel) advanceDeploymentWizard() (tea.Model, tea.Cmd) {
+	if m.deploymentForm == nil {
+		return m, nil
+	}
+	if m.deploymentForm.currentStep() == servicePlanDeploymentStepComplete {
+		m.deploymentForm = nil
+		m.statusMessage = ""
+		return m, nil
+	}
+	if m.deploymentForm.currentStep() == servicePlanDeploymentStepReview {
+		request, err := m.deploymentForm.launchRequest()
+		if err != nil {
+			m.deploymentForm.Err = err.Error()
+			return m, nil
+		}
+		if m.launchDeployment == nil {
+			m.deploymentForm.Err = "deployment launch is not available"
+			return m, nil
+		}
+		m.deploymentForm.Err = ""
+		m.deploymentForm.Result = ""
+		m.deploymentForm.Launching = true
+		return m, m.launchDeploymentCmd(request)
+	}
+
+	if err := m.deploymentForm.advanceStep(spMax(m.detailPanelWidth-8, 40)); err != nil {
+		m.deploymentForm.Err = err.Error()
+		return m, nil
+	}
+	return m, nil
+}
+
+func newServicePlanDeploymentFormState(form servicePlanDeploymentForm, width int) servicePlanDeploymentFormState {
+	customers := servicePlanDeploymentCustomerOptions(form)
+	resourceName := firstString(servicePlanDeploymentResourceOptions(form.Resources))
+	cloudProvider := firstString(form.CloudProviders)
+	state := servicePlanDeploymentFormState{
+		Form:             form,
+		SelectedCustomer: firstServicePlanDeploymentCustomer(customers),
+		ResourceName:     resourceName,
+		CloudProvider:    cloudProvider,
+		Region:           firstString(form.RegionsByCloud[cloudProvider]),
+		ParamValues:      map[string]string{},
+	}
+	state.Steps = servicePlanDeploymentWizardSteps(form)
+	state.CustomerAccountID = state.firstCloudAccountID()
+	state.prepareCurrentStep(width)
+	return state
+}
+
+func servicePlanDeploymentWizardSteps(form servicePlanDeploymentForm) []servicePlanDeploymentWizardStep {
+	steps := make([]servicePlanDeploymentWizardStep, 0, 8)
+	if servicePlanEnvironmentIsProduction(form.Environment) {
+		steps = append(steps, servicePlanDeploymentStepCustomer)
+	}
+	steps = append(steps, servicePlanDeploymentStepResource)
+	steps = append(steps, servicePlanDeploymentStepCloud)
+	if form.RequiresCustomerAccount {
+		steps = append(steps, servicePlanDeploymentStepCloudAccount)
+	}
+	steps = append(steps, servicePlanDeploymentStepRegion)
+	if servicePlanDeploymentFormHasParameters(form, true) {
+		steps = append(steps, servicePlanDeploymentStepCustomParams)
+	}
+	if servicePlanDeploymentFormHasParameters(form, false) {
+		steps = append(steps, servicePlanDeploymentStepSystemParams)
+	}
+	steps = append(steps, servicePlanDeploymentStepReview)
+	return steps
+}
+
+func servicePlanDeploymentFormHasParameters(form servicePlanDeploymentForm, custom bool) bool {
+	for _, resource := range form.Resources {
+		resourceName := strings.TrimSpace(resource.Name)
+		if resourceName == "" {
+			resourceName = strings.TrimSpace(resource.ID)
+		}
+		if len(servicePlanDeploymentParametersByCustomFlag(form, resourceName, custom)) > 0 {
+			return true
+		}
+	}
+	return false
+}
+
+func (s *servicePlanDeploymentFormState) prepareCurrentStep(width int) {
+	s.Err = ""
+	s.SelectionCursor = s.selectedOptionIndex()
+	if s.currentStepIsParameters() {
+		_, s.ParameterResourceID = servicePlanDeploymentParametersForResource(s.Form, s.ResourceName)
+		s.ParamFields = s.buildParameterFields(s.currentStep(), width)
+		s.ParamCursor = spClamp(s.ParamCursor, spMax(0, len(s.ParamFields)-1))
+		s.syncFocus()
+		return
+	}
+	s.ParameterResourceID = ""
+	s.ParamFields = nil
+	s.ParamCursor = 0
+}
+
+func (s servicePlanDeploymentFormState) buildParameterFields(step servicePlanDeploymentWizardStep, width int) []servicePlanDeploymentFormField {
+	custom := step == servicePlanDeploymentStepCustomParams
+	parameters := servicePlanDeploymentParametersByCustomFlag(s.Form, s.ResourceName, custom)
+	fields := make([]servicePlanDeploymentFormField, 0, len(parameters))
+	fieldWidth := spMin(spMax(width-28, 24), 64)
+	for _, parameter := range parameters {
+		if strings.EqualFold(parameter.Key, servicePlanCustomerAccountConfigIDParamKey) {
+			continue
+		}
+		label := strings.TrimSpace(parameter.DisplayName)
+		if label == "" {
+			label = parameter.Key
+		}
+		value := parameter.DefaultValue
+		if s.ParamValues != nil {
+			if existing, ok := s.ParamValues[parameter.Key]; ok {
+				value = existing
+			}
+		}
+		input := textinput.New()
+		input.CharLimit = 0
+		input.Width = fieldWidth
+		input.Prompt = ""
+		input.SetValue(value)
+		fields = append(fields, servicePlanDeploymentFormField{
+			Kind:        servicePlanDeploymentFieldParameter,
+			Key:         parameter.Key,
+			Label:       label,
+			Required:    parameter.Required,
+			Type:        parameter.Type,
+			IsList:      parameter.IsList,
+			Description: parameter.Description,
+			Options:     parameter.Options,
+			Input:       input,
+		})
+	}
+	return fields
+}
+
+func (s *servicePlanDeploymentFormState) advanceStep(width int) error {
+	if s.Launching {
+		return nil
+	}
+	if s.currentStepIsParameters() {
+		if err := s.storeCurrentParameterValues(); err != nil {
+			return err
+		}
+	} else if err := s.applySelectedOption(); err != nil {
+		return err
+	}
+
+	if s.StepIndex < len(s.Steps)-1 {
+		s.StepIndex++
+		s.prepareCurrentStep(width)
+	}
+	return nil
+}
+
+func (s *servicePlanDeploymentFormState) previousStep(width int) {
+	if s.Launching {
+		return
+	}
+	if s.currentStepIsParameters() {
+		_ = s.storeCurrentParameterValues()
+	}
+	if s.StepIndex > 0 {
+		s.StepIndex--
+		s.prepareCurrentStep(width)
+	}
+}
+
+func (s *servicePlanDeploymentFormState) moveWizardCursor(delta int) {
+	if s.currentStepIsParameters() {
+		if len(s.ParamFields) == 0 {
+			s.ParamCursor = 0
+			return
+		}
+		s.ParamCursor = (s.ParamCursor + delta + len(s.ParamFields)) % len(s.ParamFields)
+		s.syncFocus()
+		return
+	}
+
+	options := s.currentOptions()
+	if len(options) == 0 {
+		s.SelectionCursor = 0
+		return
+	}
+	s.SelectionCursor = (s.SelectionCursor + delta + len(options)) % len(options)
+}
+
+func (s *servicePlanDeploymentFormState) moveCurrentParameterOption(delta int) bool {
+	if !s.currentStepIsParameters() || len(s.ParamFields) == 0 {
+		return false
+	}
+	field := &s.ParamFields[s.ParamCursor]
+	if len(field.Options) == 0 {
+		return false
+	}
+
+	current := strings.TrimSpace(field.Input.Value())
+	index := -1
+	for i, option := range field.Options {
+		if strings.EqualFold(strings.TrimSpace(option), current) {
+			index = i
+			break
+		}
+	}
+	next := 0
+	if index >= 0 {
+		next = (index + delta + len(field.Options)) % len(field.Options)
+	} else if delta < 0 {
+		next = len(field.Options) - 1
+	}
+	field.Input.SetValue(field.Options[next])
+	s.Err = ""
+	return true
+}
+
+func (s servicePlanDeploymentFormState) currentStep() servicePlanDeploymentWizardStep {
+	if s.StepIndex < 0 || s.StepIndex >= len(s.Steps) {
+		return servicePlanDeploymentStepReview
+	}
+	return s.Steps[s.StepIndex]
+}
+
+func (s servicePlanDeploymentFormState) currentStepIsParameters() bool {
+	step := s.currentStep()
+	return step == servicePlanDeploymentStepCustomParams || step == servicePlanDeploymentStepSystemParams
+}
+
+func (s servicePlanDeploymentFormState) currentStepNumber() int {
+	return spMin(s.StepIndex+1, len(s.Steps))
+}
+
+func (s *servicePlanDeploymentFormState) syncFocus() {
+	for i := range s.ParamFields {
+		if i == s.ParamCursor {
+			s.ParamFields[i].Input.Focus()
+		} else {
+			s.ParamFields[i].Input.Blur()
+		}
+	}
+}
+
+func (s *servicePlanDeploymentFormState) storeCurrentParameterValues() error {
+	if s.ParamValues == nil {
+		s.ParamValues = map[string]string{}
+	}
+	for _, field := range s.ParamFields {
+		value := strings.TrimSpace(field.Input.Value())
+		if field.Required && value == "" {
+			return fmt.Errorf("%s is required", field.Label)
+		}
+		s.ParamValues[field.Key] = value
+	}
+	return nil
+}
+
+func (s *servicePlanDeploymentFormState) applySelectedOption() error {
+	options := s.currentOptions()
+	if len(options) == 0 {
+		if s.currentStep() == servicePlanDeploymentStepCloudAccount {
+			return fmt.Errorf("no connected cloud accounts for %s. Run: omnistrate-ctl account customer create --help", emptyValue(s.CloudProvider))
+		}
+		return nil
+	}
+	option := options[spClamp(s.SelectionCursor, len(options)-1)]
+	switch s.currentStep() {
+	case servicePlanDeploymentStepCustomer:
+		s.SelectedCustomer = option.Customer
+		s.CustomerAccountID = s.firstCloudAccountID()
+	case servicePlanDeploymentStepResource:
+		s.ResourceName = option.Value
+		s.ParamFields = nil
+	case servicePlanDeploymentStepCloud:
+		s.CloudProvider = option.Value
+		s.Region = firstString(s.Form.RegionsByCloud[s.CloudProvider])
+		s.CustomerAccountID = s.firstCloudAccountID()
+	case servicePlanDeploymentStepCloudAccount:
+		s.CustomerAccountID = option.Value
+	case servicePlanDeploymentStepRegion:
+		s.Region = option.Value
+	}
+	s.SelectionCursor = 0
+	return nil
+}
+
+func (s servicePlanDeploymentFormState) launchRequest() (servicePlanDeploymentLaunchRequest, error) {
+	request := servicePlanDeploymentLaunchRequest{
+		Form:              s.Form,
+		Customer:          s.SelectedCustomer,
+		ResourceName:      s.ResourceName,
+		CloudProvider:     s.CloudProvider,
+		Region:            s.Region,
+		CustomerAccountID: s.CustomerAccountID,
+		Params:            map[string]any{},
+	}
+
+	if s.currentStepIsParameters() {
+		copyState := s
+		if err := copyState.storeCurrentParameterValues(); err != nil {
+			return request, err
+		}
+	}
+	request.SubscriptionID = servicePlanSubscriptionIDForCustomer(s.Form.Subscriptions, s.SelectedCustomer)
+
+	if _, ok := servicePlanDeploymentResourceByName(s.Form, request.ResourceName); !ok {
+		return request, fmt.Errorf("resource %q is not available for this plan", request.ResourceName)
+	}
+	if request.CloudProvider != "" && !servicePlanContainsFold(s.Form.CloudProviders, request.CloudProvider) {
+		return request, fmt.Errorf("cloud provider %q is not available for this plan", request.CloudProvider)
+	}
+	if request.Region != "" {
+		regions := s.Form.RegionsByCloud[request.CloudProvider]
+		if len(regions) > 0 && !servicePlanContainsFold(regions, request.Region) {
+			return request, fmt.Errorf("region %q is not available for cloud provider %q", request.Region, request.CloudProvider)
+		}
+	}
+	if s.Form.RequiresCustomerAccount {
+		if request.CustomerAccountID == "" {
+			return request, fmt.Errorf("customer cloud account is required for BYOC plans. Run: omnistrate-ctl account customer create --help")
+		}
+		if !servicePlanCustomerCloudAccountExists(s.filteredCloudAccounts(), request.CustomerAccountID) {
+			return request, fmt.Errorf("customer cloud account %q is not connected to this plan", request.CustomerAccountID)
+		}
+	}
+
+	for _, parameter := range servicePlanDeploymentParametersForSelectedResource(s.Form, request.ResourceName) {
+		if strings.EqualFold(parameter.Key, servicePlanCustomerAccountConfigIDParamKey) {
+			continue
+		}
+		value := strings.TrimSpace(s.ParamValues[parameter.Key])
+		if value == "" {
+			value = strings.TrimSpace(parameter.DefaultValue)
+		}
+		if value == "" && !parameter.Required {
+			continue
+		}
+		if value == "" {
+			return request, fmt.Errorf("%s is required", servicePlanDeploymentParameterLabel(parameter))
+		}
+		parsed, err := parseServicePlanDeploymentParamValue(value, parameter.Type, parameter.IsList)
+		if err != nil {
+			return request, fmt.Errorf("%s: %w", servicePlanDeploymentParameterLabel(parameter), err)
+		}
+		request.Params[parameter.Key] = parsed
+	}
+
+	return request, nil
+}
+
+func parseServicePlanDeploymentParamValue(value, valueType string, isList bool) (any, error) {
+	value = strings.TrimSpace(value)
+	if isList {
+		if strings.HasPrefix(value, "[") {
+			var parsed any
+			if err := json.Unmarshal([]byte(value), &parsed); err != nil {
+				return nil, err
+			}
+			return parsed, nil
+		}
+		if value == "" {
+			return []string{}, nil
+		}
+		parts := strings.Split(value, ",")
+		values := make([]string, 0, len(parts))
+		for _, part := range parts {
+			part = strings.TrimSpace(part)
+			if part != "" {
+				values = append(values, part)
+			}
+		}
+		return values, nil
+	}
+
+	switch strings.ToLower(strings.TrimSpace(valueType)) {
+	case "bool", "boolean":
+		return strconv.ParseBool(value)
+	case "int", "int32", "int64", "integer":
+		return strconv.ParseInt(value, 10, 64)
+	case "float", "float32", "float64", "double", "number":
+		return strconv.ParseFloat(value, 64)
+	case "object", "json", "map":
+		var parsed any
+		if err := json.Unmarshal([]byte(value), &parsed); err != nil {
+			return nil, err
+		}
+		return parsed, nil
+	default:
+		return value, nil
+	}
+}
+
+func (m servicePlanBrowserModel) renderDeploymentFormLoading() string {
+	env := m.selectedEnvironment()
+	title := "Launch Deployment"
+	if plan := m.selectedPlan(); plan != nil && env != nil {
+		title = plan.ServiceName + " / " + plan.Name + " / " + env.Name
+	}
+	content := lipgloss.JoinVertical(
+		lipgloss.Left,
+		lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("230")).Render(title),
+		"",
+		m.spinner.View()+" Loading deployment form...",
+		"",
+		lipgloss.NewStyle().Foreground(lipgloss.Color("245")).Render("esc: cancel"),
+	)
+	return servicePlanBrowserPanelStyle(lipgloss.Color("117")).Width(spMax(m.width-4, 80)).Render(content)
+}
+
+func (m servicePlanBrowserModel) renderDeploymentForm() string {
+	form := m.deploymentForm
+	if form == nil {
+		return ""
+	}
+
+	width := spMax(m.width-4, 80)
+	height := spMax(m.height-6, 16)
+	titleStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("230"))
+	metaStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("245"))
+	labelStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("111"))
+	selectedLabelStyle := labelStyle.Foreground(lipgloss.Color("230")).Background(lipgloss.Color("62"))
+	valueStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("252"))
+
+	lines := []string{
+		titleStyle.Render("Launch Deployment"),
+		metaStyle.Render(fmt.Sprintf("%s / %s / %s", form.Form.Environment.ServiceName, form.Form.Environment.PlanName, form.Form.Environment.Name)),
+		metaStyle.Render(fmt.Sprintf("Step %d/%d: %s", form.currentStepNumber(), len(form.Steps), servicePlanDeploymentStepTitle(form.currentStep()))),
+		metaStyle.Render("Version: " + emptyValue(form.Form.Version)),
+		"",
+	}
+
+	switch {
+	case form.currentStep() == servicePlanDeploymentStepComplete:
+		lines = append(lines, form.renderDeploymentCompleteLines(valueStyle)...)
+	case form.currentStep() == servicePlanDeploymentStepReview:
+		lines = append(lines, form.renderDeploymentReviewLines(labelStyle, valueStyle)...)
+	case form.currentStepIsParameters():
+		lines = append(lines, form.renderDeploymentParameterLines(height, labelStyle, selectedLabelStyle, metaStyle)...)
+	default:
+		lines = append(lines, form.renderDeploymentOptionLines(height, selectedLabelStyle, valueStyle, metaStyle)...)
+	}
+
+	if form.Err != "" {
+		lines = append(lines, "", lipgloss.NewStyle().Foreground(lipgloss.Color("196")).Render("Error: "+form.Err))
+	}
+	if form.Launching {
+		lines = append(lines, "", lipgloss.NewStyle().Foreground(lipgloss.Color("111")).Render("Launching deployment..."))
+	}
+
+	help := "enter/→: next  ↑/↓: select  ←: back  esc: close"
+	if form.currentStepIsParameters() {
+		help = "enter/→: next  tab/shift+tab: fields  ↑/↓: select option or move fields  ←: back  esc: close"
+	}
+	if form.currentStep() == servicePlanDeploymentStepReview {
+		help = "enter: launch  ←: back  esc: close"
+	}
+	if form.currentStep() == servicePlanDeploymentStepComplete {
+		help = "enter/esc: close"
+	}
+	lines = append(lines, "", metaStyle.Render(help))
+
+	return servicePlanBrowserPanelStyle(lipgloss.Color("117")).
+		Width(width).
+		Render(lipgloss.JoinVertical(lipgloss.Left, lines...))
+}
+
+func (s servicePlanDeploymentFormState) renderDeploymentOptionLines(height int, selectedStyle, valueStyle, metaStyle lipgloss.Style) []string {
+	options := s.currentOptions()
+	if len(options) == 0 {
+		if s.currentStep() == servicePlanDeploymentStepCloudAccount {
+			return []string{
+				"No connected cloud accounts match this selection.",
+				"",
+				metaStyle.Render("Run: omnistrate-ctl account customer create --help"),
+			}
+		}
+		return []string{"No options available."}
+	}
+
+	visibleRows := spMax(height-10, 4)
+	start := 0
+	if s.SelectionCursor >= visibleRows {
+		start = s.SelectionCursor - visibleRows + 1
+	}
+	end := spMin(len(options), start+visibleRows)
+	lines := make([]string, 0, visibleRows+1)
+	for i := start; i < end; i++ {
+		option := options[i]
+		prefix := "  "
+		style := valueStyle
+		if i == s.SelectionCursor {
+			prefix = "▸ "
+			style = selectedStyle
+		}
+		lines = append(lines, style.Render(prefix+option.Label))
+		if option.Description != "" {
+			lines = append(lines, metaStyle.Render("    "+option.Description))
+		}
+	}
+	return lines
+}
+
+func (s servicePlanDeploymentFormState) renderDeploymentParameterLines(height int, labelStyle, selectedLabelStyle, metaStyle lipgloss.Style) []string {
+	if len(s.ParamFields) == 0 {
+		return []string{"No parameters required for this step."}
+	}
+
+	visibleFields := spMax(height-10, 4)
+	start := 0
+	if s.ParamCursor >= visibleFields {
+		start = s.ParamCursor - visibleFields + 1
+	}
+	end := spMin(len(s.ParamFields), start+visibleFields)
+	lines := make([]string, 0, visibleFields+1)
+	for i := start; i < end; i++ {
+		field := s.ParamFields[i]
+		prefix := "  "
+		style := labelStyle
+		if i == s.ParamCursor {
+			prefix = "▸ "
+			style = selectedLabelStyle
+		}
+		required := ""
+		if field.Required {
+			required = " *"
+		}
+		lines = append(lines, style.Render(prefix+field.Label+required+": ")+field.Input.View())
+		if len(field.Options) > 0 {
+			lines = append(lines, metaStyle.Render("    "+servicePlanDeploymentParameterOptionsLine(field)))
+		} else if field.Description != "" {
+			lines = append(lines, metaStyle.Render("    "+field.Description))
+		}
+	}
+	return lines
+}
+
+func servicePlanDeploymentParameterOptionsLine(field servicePlanDeploymentFormField) string {
+	current := strings.TrimSpace(field.Input.Value())
+	parts := make([]string, 0, len(field.Options))
+	for _, option := range field.Options {
+		option = strings.TrimSpace(option)
+		if option == "" {
+			continue
+		}
+		if strings.EqualFold(option, current) {
+			parts = append(parts, "["+option+"]")
+			continue
+		}
+		parts = append(parts, option)
+	}
+	if current == "" {
+		return "options: " + strings.Join(parts, "  ")
+	}
+	return "selected: " + strings.Join(parts, "  ")
+}
+
+func (s servicePlanDeploymentFormState) renderDeploymentReviewLines(labelStyle, valueStyle lipgloss.Style) []string {
+	lines := []string{
+		labelStyle.Render("Deploy for: ") + valueStyle.Render(servicePlanDeploymentCustomerLabel(s.SelectedCustomer)),
+		labelStyle.Render("Resource: ") + valueStyle.Render(emptyValue(s.ResourceName)),
+		labelStyle.Render("Cloud: ") + valueStyle.Render(emptyValue(s.CloudProvider)),
+		labelStyle.Render("Region: ") + valueStyle.Render(emptyValue(s.Region)),
+	}
+	if s.Form.RequiresCustomerAccount {
+		lines = append(lines, labelStyle.Render("Cloud account: ")+valueStyle.Render(emptyValue(s.CustomerAccountID)))
+	}
+	if subscriptionID := servicePlanSubscriptionIDForCustomer(s.Form.Subscriptions, s.SelectedCustomer); subscriptionID != "" {
+		lines = append(lines, labelStyle.Render("Subscription: ")+valueStyle.Render(subscriptionID))
+	} else if !s.SelectedCustomer.Self {
+		lines = append(lines, labelStyle.Render("Subscription: ")+valueStyle.Render("will be created on launch"))
+	}
+
+	params := servicePlanDeploymentParametersForSelectedResource(s.Form, s.ResourceName)
+	if len(params) > 0 {
+		lines = append(lines, "", labelStyle.Render("Parameters"))
+		for _, parameter := range params {
+			if strings.EqualFold(parameter.Key, servicePlanCustomerAccountConfigIDParamKey) {
+				continue
+			}
+			value := strings.TrimSpace(s.ParamValues[parameter.Key])
+			if value == "" {
+				value = strings.TrimSpace(parameter.DefaultValue)
+			}
+			lines = append(lines, valueStyle.Render("  "+servicePlanDeploymentParameterLabel(parameter)+": "+emptyValue(value)))
+		}
+	}
+	return lines
+}
+
+func (s servicePlanDeploymentFormState) renderDeploymentCompleteLines(valueStyle lipgloss.Style) []string {
+	instanceID := emptyValue(s.InstanceID)
+	lines := []string{
+		lipgloss.NewStyle().Foreground(lipgloss.Color("82")).Render("Deployment launched: " + instanceID),
+		"",
+		"Next commands:",
+		valueStyle.Render("  omnistrate-ctl instance describe " + instanceID),
+		valueStyle.Render("  omnistrate-ctl instance list-endpoints " + instanceID),
+		valueStyle.Render("  omnistrate-ctl instance debug " + instanceID),
+	}
+	return lines
+}
+
+func (s servicePlanDeploymentFormState) currentOptions() []servicePlanDeploymentWizardOption {
+	switch s.currentStep() {
+	case servicePlanDeploymentStepCustomer:
+		customers := servicePlanDeploymentCustomerOptions(s.Form)
+		options := make([]servicePlanDeploymentWizardOption, 0, len(customers))
+		for _, customer := range customers {
+			options = append(options, servicePlanDeploymentWizardOption{
+				Label:       servicePlanDeploymentCustomerLabel(customer),
+				Description: servicePlanDeploymentCustomerDescription(customer),
+				Value:       customer.Email,
+				Customer:    customer,
+			})
+		}
+		return options
+	case servicePlanDeploymentStepResource:
+		options := make([]servicePlanDeploymentWizardOption, 0, len(s.Form.Resources))
+		for _, resource := range s.Form.Resources {
+			label := strings.TrimSpace(resource.Name)
+			if label == "" {
+				label = resource.ID
+			}
+			options = append(options, servicePlanDeploymentWizardOption{
+				Label: label,
+				Value: label,
+			})
+		}
+		return options
+	case servicePlanDeploymentStepCloud:
+		options := make([]servicePlanDeploymentWizardOption, 0, len(s.Form.CloudProviders))
+		for _, cloud := range s.Form.CloudProviders {
+			options = append(options, servicePlanDeploymentWizardOption{Label: cloud, Value: cloud})
+		}
+		return options
+	case servicePlanDeploymentStepCloudAccount:
+		accounts := s.filteredCloudAccounts()
+		options := make([]servicePlanDeploymentWizardOption, 0, len(accounts))
+		for _, account := range accounts {
+			label := account.InstanceID
+			descriptionParts := []string{account.CloudProvider, account.Region, account.Status, account.CustomerEmail}
+			options = append(options, servicePlanDeploymentWizardOption{
+				Label:       label,
+				Description: strings.Join(nonEmptyStrings(descriptionParts), " | "),
+				Value:       account.InstanceID,
+				Account:     account,
+			})
+		}
+		return options
+	case servicePlanDeploymentStepRegion:
+		regions := s.Form.RegionsByCloud[s.CloudProvider]
+		options := make([]servicePlanDeploymentWizardOption, 0, len(regions))
+		for _, region := range regions {
+			options = append(options, servicePlanDeploymentWizardOption{Label: region, Value: region})
+		}
+		return options
+	default:
+		return nil
+	}
+}
+
+func (s servicePlanDeploymentFormState) selectedOptionIndex() int {
+	options := s.currentOptions()
+	selected := ""
+	switch s.currentStep() {
+	case servicePlanDeploymentStepCustomer:
+		selected = s.SelectedCustomer.Email
+		if s.SelectedCustomer.Self {
+			selected = "self"
+		}
+	case servicePlanDeploymentStepResource:
+		selected = s.ResourceName
+	case servicePlanDeploymentStepCloud:
+		selected = s.CloudProvider
+	case servicePlanDeploymentStepCloudAccount:
+		selected = s.CustomerAccountID
+	case servicePlanDeploymentStepRegion:
+		selected = s.Region
+	}
+	for i, option := range options {
+		if strings.EqualFold(option.Value, selected) ||
+			strings.EqualFold(option.Label, selected) ||
+			(option.Customer.Self && selected == "self") {
+			return i
+		}
+	}
+	return 0
+}
+
+func (s servicePlanDeploymentFormState) filteredCloudAccounts() []servicePlanCustomerCloudAccountRow {
+	accounts := make([]servicePlanCustomerCloudAccountRow, 0, len(s.Form.CustomerCloudAccounts))
+	selectedSubscriptionID := servicePlanSubscriptionIDForCustomer(s.Form.Subscriptions, s.SelectedCustomer)
+	for _, account := range s.Form.CustomerCloudAccounts {
+		if s.CloudProvider != "" && !strings.EqualFold(account.CloudProvider, s.CloudProvider) {
+			continue
+		}
+		if !s.SelectedCustomer.Self {
+			switch {
+			case selectedSubscriptionID != "" && account.SubscriptionID != "":
+				if !strings.EqualFold(account.SubscriptionID, selectedSubscriptionID) {
+					continue
+				}
+			case s.SelectedCustomer.Email != "":
+				if !strings.EqualFold(account.CustomerEmail, s.SelectedCustomer.Email) {
+					continue
+				}
+			default:
+				continue
+			}
+		}
+		accounts = append(accounts, account)
+	}
+	return accounts
+}
+
+func (s servicePlanDeploymentFormState) firstCloudAccountID() string {
+	for _, account := range s.filteredCloudAccounts() {
+		if strings.TrimSpace(account.InstanceID) != "" {
+			return strings.TrimSpace(account.InstanceID)
+		}
+	}
+	return ""
+}
+
+func servicePlanDeploymentCustomerOptions(form servicePlanDeploymentForm) []servicePlanDeploymentCustomer {
+	customers := []servicePlanDeploymentCustomer{{Self: true, Name: "Self"}}
+	customers = append(customers, form.Customers...)
+	return customers
+}
+
+func firstServicePlanDeploymentCustomer(customers []servicePlanDeploymentCustomer) servicePlanDeploymentCustomer {
+	if len(customers) == 0 {
+		return servicePlanDeploymentCustomer{Self: true, Name: "Self"}
+	}
+	return customers[0]
+}
+
+func servicePlanDeploymentCustomerLabel(customer servicePlanDeploymentCustomer) string {
+	if customer.Self {
+		return "Self"
+	}
+	name := strings.TrimSpace(customer.Name)
+	email := strings.TrimSpace(customer.Email)
+	if name == "" {
+		return emptyValue(email)
+	}
+	if email == "" {
+		return name
+	}
+	return fmt.Sprintf("%s <%s>", name, email)
+}
+
+func servicePlanDeploymentCustomerDescription(customer servicePlanDeploymentCustomer) string {
+	if customer.Self {
+		return "Deploy as the current service provider user"
+	}
+	parts := nonEmptyStrings([]string{customer.OrgName, customer.UserID})
+	return strings.Join(parts, " | ")
+}
+
+func servicePlanDeploymentStepTitle(step servicePlanDeploymentWizardStep) string {
+	switch step {
+	case servicePlanDeploymentStepCustomer:
+		return "Deploy on Behalf Of"
+	case servicePlanDeploymentStepResource:
+		return "Resource"
+	case servicePlanDeploymentStepCloud:
+		return "Cloud Provider"
+	case servicePlanDeploymentStepCloudAccount:
+		return "Customer Cloud Account"
+	case servicePlanDeploymentStepRegion:
+		return "Region"
+	case servicePlanDeploymentStepCustomParams:
+		return "Customer Parameters"
+	case servicePlanDeploymentStepSystemParams:
+		return "Advanced Parameters"
+	case servicePlanDeploymentStepReview:
+		return "Review"
+	case servicePlanDeploymentStepComplete:
+		return "Complete"
+	default:
+		return "Deploy"
+	}
+}
+
+func servicePlanDeploymentResourceOptions(resources []servicePlanDeploymentResource) []string {
+	options := make([]string, 0, len(resources))
+	for _, resource := range resources {
+		name := strings.TrimSpace(resource.Name)
+		if name == "" {
+			name = strings.TrimSpace(resource.ID)
+		}
+		if name != "" {
+			options = append(options, name)
+		}
+	}
+	return options
+}
+
+func servicePlanCustomerCloudAccountExists(accounts []servicePlanCustomerCloudAccountRow, instanceID string) bool {
+	for _, account := range accounts {
+		if strings.EqualFold(strings.TrimSpace(account.InstanceID), strings.TrimSpace(instanceID)) {
+			return true
+		}
+	}
+	return false
+}
+
+func servicePlanDeploymentParametersForSelectedResource(form servicePlanDeploymentForm, resourceName string) []servicePlanDeploymentParameter {
+	parameters, _ := servicePlanDeploymentParametersForResource(form, resourceName)
+	return parameters
+}
+
+func servicePlanDeploymentParametersByCustomFlag(form servicePlanDeploymentForm, resourceName string, custom bool) []servicePlanDeploymentParameter {
+	parameters := servicePlanDeploymentParametersForSelectedResource(form, resourceName)
+	filtered := make([]servicePlanDeploymentParameter, 0, len(parameters))
+	for _, parameter := range parameters {
+		if parameter.Custom == custom {
+			filtered = append(filtered, parameter)
+		}
+	}
+	sort.Slice(filtered, func(i, j int) bool {
+		return filtered[i].Key < filtered[j].Key
+	})
+	return filtered
+}
+
+func servicePlanDeploymentParameterLabel(parameter servicePlanDeploymentParameter) string {
+	label := strings.TrimSpace(parameter.DisplayName)
+	if label == "" {
+		label = parameter.Key
+	}
+	return label
+}
+
+func servicePlanSubscriptionIDForCustomer(subscriptions []servicePlanSubscriptionRow, customer servicePlanDeploymentCustomer) string {
+	if customer.Self {
+		return ""
+	}
+	for _, subscription := range subscriptions {
+		if customer.UserID != "" && strings.EqualFold(subscription.RootUserID, customer.UserID) {
+			return strings.TrimSpace(subscription.ID)
+		}
+		if customer.Email != "" && strings.EqualFold(subscription.RootUserEmail, customer.Email) {
+			return strings.TrimSpace(subscription.ID)
+		}
+	}
+	return ""
+}
+
+func servicePlanDeploymentResourceByName(form servicePlanDeploymentForm, resourceName string) (servicePlanDeploymentResource, bool) {
+	for _, resource := range form.Resources {
+		if strings.EqualFold(resource.Name, resourceName) ||
+			strings.EqualFold(resource.ID, resourceName) ||
+			strings.EqualFold(resource.URLKey, resourceName) {
+			return resource, true
+		}
+	}
+	return servicePlanDeploymentResource{}, false
+}
+
+func servicePlanDeploymentParametersForResource(form servicePlanDeploymentForm, resourceName string) ([]servicePlanDeploymentParameter, string) {
+	if form.ParametersByResource == nil {
+		return form.Parameters, ""
+	}
+	resource, ok := servicePlanDeploymentResourceByName(form, resourceName)
+	if !ok {
+		return form.Parameters, ""
+	}
+	parameters, ok := form.ParametersByResource[resource.ID]
+	if !ok {
+		return form.Parameters, resource.ID
+	}
+	return parameters, resource.ID
+}
+
+func servicePlanContainsFold(values []string, value string) bool {
+	for _, existing := range values {
+		if strings.EqualFold(strings.TrimSpace(existing), strings.TrimSpace(value)) {
+			return true
+		}
+	}
+	return false
+}
+
+func firstString(values []string) string {
+	for _, value := range values {
+		if strings.TrimSpace(value) != "" {
+			return strings.TrimSpace(value)
+		}
+	}
+	return ""
+}
+
+func nonEmptyStrings(values []string) []string {
+	nonEmpty := make([]string, 0, len(values))
+	for _, value := range values {
+		value = strings.TrimSpace(value)
+		if value != "" {
+			nonEmpty = append(nonEmpty, value)
+		}
+	}
+	return nonEmpty
 }
 
 func (m servicePlanBrowserModel) loadDetailsCmd(env servicePlanBrowserEnvironment) tea.Cmd {
@@ -1536,6 +2775,13 @@ func (productionServicePlanBrowserLoader) LoadEnvironmentDetails(ctx context.Con
 		return servicePlanEnvironmentDetails{}, err
 	}
 	activeSubscriptions := activeServicePlanSubscriptions(subscriptions)
+	customerCloudAccounts := []servicePlanCustomerCloudAccountRow{}
+	if servicePlanEnvironmentRequiresCustomerAccount(env) {
+		customerCloudAccounts, err = listServicePlanCustomerCloudAccounts(ctx, token, env, activeSubscriptions)
+		if err != nil {
+			return servicePlanEnvironmentDetails{}, err
+		}
+	}
 
 	allUsers := make([]openapiclientfleet.User, 0)
 	for _, subscription := range activeSubscriptions {
@@ -1557,18 +2803,397 @@ func (productionServicePlanBrowserLoader) LoadEnvironmentDetails(ctx context.Con
 
 	clouds, regions := productTierCloudsAndRegions(productTier)
 	detail := servicePlanEnvironmentDetails{
-		DeploymentModel:          servicePlanDeploymentModel(env, productTier),
-		EnabledFeatures:          productTierEnabledFeatures(productTier),
-		Clouds:                   clouds,
-		Regions:                  regions,
-		Deployments:              servicePlanDeploymentRows(deployments),
-		Subscriptions:            servicePlanSubscriptionRows(activeSubscriptions),
-		Users:                    servicePlanUserRows(uniqueUsers),
-		DeploymentsCount:         len(deployments),
-		ActiveSubscriptionsCount: len(activeSubscriptions),
-		UniqueUsersCount:         len(uniqueUsers),
+		DeploymentModel:            servicePlanDeploymentModel(env, productTier),
+		EnabledFeatures:            productTierEnabledFeatures(productTier),
+		Clouds:                     clouds,
+		Regions:                    regions,
+		Deployments:                servicePlanDeploymentRows(deployments),
+		Subscriptions:              servicePlanSubscriptionRows(activeSubscriptions),
+		Users:                      servicePlanUserRows(uniqueUsers),
+		CustomerCloudAccounts:      customerCloudAccounts,
+		DeploymentsCount:           len(deployments),
+		ActiveSubscriptionsCount:   len(activeSubscriptions),
+		UniqueUsersCount:           len(uniqueUsers),
+		CustomerCloudAccountsCount: len(customerCloudAccounts),
 	}
 	return detail, nil
+}
+
+func (productionServicePlanBrowserLoader) LoadDeploymentForm(ctx context.Context, token string, env servicePlanBrowserEnvironment) (servicePlanDeploymentForm, error) {
+	version, err := dataaccess.FindPreferredVersion(ctx, token, env.ServiceID, env.PlanID)
+	if err != nil {
+		version, err = dataaccess.FindLatestVersion(ctx, token, env.ServiceID, env.PlanID)
+		if err != nil {
+			return servicePlanDeploymentForm{}, err
+		}
+	}
+
+	offeringResult, err := dataaccess.DescribeServiceOffering(ctx, token, env.ServiceID, env.PlanID, version)
+	if err != nil {
+		return servicePlanDeploymentForm{}, err
+	}
+	offering, err := selectServicePlanOffering(offeringResult, env)
+	if err != nil {
+		return servicePlanDeploymentForm{}, err
+	}
+
+	resources := servicePlanDeploymentResources(offering.ResourceParameters)
+	if len(resources) == 0 {
+		return servicePlanDeploymentForm{}, fmt.Errorf("no deployable resources found for %s / %s", env.ServiceName, env.PlanName)
+	}
+
+	parametersByResource := map[string][]servicePlanDeploymentParameter{}
+	for _, resource := range resources {
+		parametersResult, err := dataaccess.ListInputParameters(ctx, token, env.ServiceID, resource.ID, env.PlanID, version)
+		if err != nil {
+			return servicePlanDeploymentForm{}, err
+		}
+		parametersByResource[resource.ID] = servicePlanDeploymentParameters(parametersResult.GetInputParameters())
+	}
+
+	pageSize := int64(100)
+	exclude := true
+	includeInactive := false
+	subscriptions, err := dataaccess.ListAllSubscriptions(ctx, token, env.ServiceID, env.ID, &dataaccess.ListSubscriptionsOptions{
+		ProductTierId:   &env.PlanID,
+		IncludeInactive: &includeInactive,
+		ExcludePricing:  &exclude,
+		PageSize:        &pageSize,
+	})
+	if err != nil {
+		return servicePlanDeploymentForm{}, err
+	}
+	activeSubscriptions := activeServicePlanSubscriptions(subscriptions)
+
+	customers := []servicePlanDeploymentCustomer{}
+	if servicePlanEnvironmentIsProduction(env) {
+		customers, err = listServicePlanDeploymentCustomers(ctx, token)
+		if err != nil {
+			return servicePlanDeploymentForm{}, err
+		}
+	}
+
+	customerCloudAccounts := []servicePlanCustomerCloudAccountRow{}
+	requiresCustomerAccount := servicePlanEnvironmentRequiresCustomerAccount(env) || servicePlanOfferingRequiresCustomerAccount(offering)
+	if requiresCustomerAccount {
+		customerCloudAccounts, err = listServicePlanCustomerCloudAccounts(ctx, token, env, activeSubscriptions)
+		if err != nil {
+			return servicePlanDeploymentForm{}, err
+		}
+	}
+
+	cloudProviders, regionsByCloud := servicePlanOfferingCloudsAndRegions(offering)
+	form := servicePlanDeploymentForm{
+		Environment:              env,
+		Version:                  version,
+		ServiceProviderID:        offeringResult.ConsumptionDescribeServiceOfferingResult.ServiceProviderId,
+		ServiceURLKey:            offeringResult.ConsumptionDescribeServiceOfferingResult.ServiceURLKey,
+		ServiceAPIVersion:        offering.ServiceAPIVersion,
+		ServiceEnvironmentURLKey: offering.ServiceEnvironmentURLKey,
+		ServiceModelURLKey:       offering.ServiceModelURLKey,
+		ProductTierURLKey:        offering.ProductTierURLKey,
+		Resources:                resources,
+		CloudProviders:           cloudProviders,
+		RegionsByCloud:           regionsByCloud,
+		Parameters:               parametersByResource[resources[0].ID],
+		ParametersByResource:     parametersByResource,
+		CustomerCloudAccounts:    customerCloudAccounts,
+		Customers:                customers,
+		Subscriptions:            servicePlanSubscriptionRows(activeSubscriptions),
+		RequiresCustomerAccount:  requiresCustomerAccount,
+	}
+	return form, nil
+}
+
+func (productionServicePlanBrowserLoader) LaunchDeployment(ctx context.Context, token string, request servicePlanDeploymentLaunchRequest) (string, error) {
+	resource, ok := servicePlanDeploymentResourceByName(request.Form, request.ResourceName)
+	if !ok {
+		return "", fmt.Errorf("resource %q is not available for this plan", request.ResourceName)
+	}
+
+	params := request.Params
+	if params == nil {
+		params = map[string]any{}
+	}
+	if request.Form.RequiresCustomerAccount {
+		customerAccountID := strings.TrimSpace(request.CustomerAccountID)
+		if customerAccountID == "" {
+			return "", fmt.Errorf("customer cloud account is required for BYOC plans")
+		}
+		params[servicePlanCustomerAccountConfigIDParamKey] = customerAccountID
+	}
+
+	subscriptionID := strings.TrimSpace(request.SubscriptionID)
+	if !request.Customer.Self {
+		if subscriptionID == "" {
+			createResp, err := dataaccess.CreateSubscriptionOnBehalf(ctx, token, request.Form.Environment.ServiceID, request.Form.Environment.ID, &dataaccess.CreateSubscriptionOnBehalfOptions{
+				ProductTierID:            request.Form.Environment.PlanID,
+				OnBehalfOfCustomerUserID: request.Customer.UserID,
+				OnBehalfOfCustomerEmail:  request.Customer.Email,
+			})
+			if err != nil {
+				return "", fmt.Errorf("failed to create subscription for %s: %w", servicePlanDeploymentCustomerLabel(request.Customer), err)
+			}
+			subscriptionID = strings.TrimSpace(createResp.GetId())
+			if subscriptionID == "" {
+				return "", fmt.Errorf("subscription creation for %s returned an empty subscription ID", servicePlanDeploymentCustomerLabel(request.Customer))
+			}
+		}
+	}
+
+	createRequest := openapiclientfleet.FleetCreateResourceInstanceRequest2{
+		ProductTierVersion: &request.Form.Version,
+		CloudProvider:      &request.CloudProvider,
+		Region:             &request.Region,
+		RequestParams:      params,
+	}
+	if subscriptionID != "" {
+		createRequest.SubscriptionId = &subscriptionID
+	}
+	instance, err := dataaccess.CreateResourceInstance(
+		ctx,
+		token,
+		request.Form.ServiceProviderID,
+		request.Form.ServiceURLKey,
+		request.Form.ServiceAPIVersion,
+		request.Form.ServiceEnvironmentURLKey,
+		request.Form.ServiceModelURLKey,
+		request.Form.ProductTierURLKey,
+		resource.URLKey,
+		createRequest,
+	)
+	if err != nil {
+		return "", err
+	}
+	if instance == nil || strings.TrimSpace(instance.GetId()) == "" {
+		return "", fmt.Errorf("deployment create response did not include an instance ID")
+	}
+	return instance.GetId(), nil
+}
+
+func selectServicePlanOffering(result *openapiclientfleet.InventoryDescribeServiceOfferingResult, env servicePlanBrowserEnvironment) (*openapiclientfleet.ServiceOffering, error) {
+	if result == nil || result.ConsumptionDescribeServiceOfferingResult == nil {
+		return nil, fmt.Errorf("service offering response is empty for %s / %s", env.ServiceName, env.PlanName)
+	}
+
+	var planMatch *openapiclientfleet.ServiceOffering
+	for i := range result.ConsumptionDescribeServiceOfferingResult.Offerings {
+		offering := &result.ConsumptionDescribeServiceOfferingResult.Offerings[i]
+		if !strings.EqualFold(offering.ProductTierID, env.PlanID) {
+			continue
+		}
+		if planMatch == nil {
+			planMatch = offering
+		}
+		if strings.EqualFold(offering.ServiceEnvironmentID, env.ID) {
+			return offering, nil
+		}
+	}
+	if planMatch != nil {
+		return planMatch, nil
+	}
+	return nil, fmt.Errorf("service offering not found for %s / %s", env.ServiceName, env.PlanName)
+}
+
+func servicePlanDeploymentResources(resources []openapiclientfleet.ResourceEntity) []servicePlanDeploymentResource {
+	result := make([]servicePlanDeploymentResource, 0, len(resources))
+	for _, resource := range resources {
+		if resource.IsDeprecated {
+			continue
+		}
+		result = append(result, servicePlanDeploymentResource{
+			ID:     strings.TrimSpace(resource.ResourceId),
+			Name:   strings.TrimSpace(resource.Name),
+			URLKey: strings.TrimSpace(resource.UrlKey),
+		})
+	}
+	return result
+}
+
+func servicePlanDeploymentParameters(parameters []openapiclient.DescribeInputParameterResult) []servicePlanDeploymentParameter {
+	result := make([]servicePlanDeploymentParameter, 0, len(parameters))
+	for _, parameter := range parameters {
+		defaultValue := ""
+		if value, ok := parameter.GetDefaultValueOk(); ok && value != nil {
+			defaultValue = *value
+		}
+		result = append(result, servicePlanDeploymentParameter{
+			Key:          strings.TrimSpace(parameter.GetKey()),
+			DisplayName:  strings.TrimSpace(parameter.GetName()),
+			Description:  strings.TrimSpace(parameter.GetDescription()),
+			Type:         strings.TrimSpace(parameter.GetType()),
+			Required:     parameter.GetRequired(),
+			IsList:       parameter.GetIsList(),
+			Custom:       servicePlanInputParameterIsCustom(parameter),
+			DefaultValue: defaultValue,
+			Options:      parameter.GetOptions(),
+		})
+	}
+	return result
+}
+
+func servicePlanInputParameterIsCustom(parameter openapiclient.DescribeInputParameterResult) bool {
+	value, ok := parameter.AdditionalProperties["custom"]
+	if !ok {
+		return false
+	}
+	custom, ok := value.(bool)
+	return ok && custom
+}
+
+func servicePlanOfferingCloudsAndRegions(offering *openapiclientfleet.ServiceOffering) ([]string, map[string][]string) {
+	regionsByCloud := map[string][]string{}
+	if offering == nil {
+		return nil, regionsByCloud
+	}
+
+	add := func(cloud string, regions []string) {
+		cloud = strings.ToLower(strings.TrimSpace(cloud))
+		if cloud == "" {
+			return
+		}
+		normalizedRegions := make([]string, 0, len(regions))
+		for _, region := range regions {
+			region = strings.TrimSpace(region)
+			if region != "" {
+				normalizedRegions = append(normalizedRegions, region)
+			}
+		}
+		if len(normalizedRegions) == 0 {
+			return
+		}
+		sort.Strings(normalizedRegions)
+		regionsByCloud[cloud] = normalizedRegions
+	}
+
+	add("aws", offering.AwsRegions)
+	add("azure", offering.AzureRegions)
+	add("gcp", offering.GcpRegions)
+	add("oci", offering.OciRegions)
+	add("nebius", offering.NebiusRegions)
+	add("private", offering.PrivateRegions)
+	add("on-prem", offering.OnPremPlatforms)
+
+	cloudSet := map[string]bool{}
+	for _, cloud := range offering.CloudProviders {
+		cloud = strings.ToLower(strings.TrimSpace(cloud))
+		if cloud != "" {
+			cloudSet[cloud] = true
+		}
+	}
+	for cloud := range regionsByCloud {
+		cloudSet[cloud] = true
+	}
+	return sortedKeys(cloudSet), regionsByCloud
+}
+
+func listServicePlanCustomerCloudAccounts(
+	ctx context.Context,
+	token string,
+	env servicePlanBrowserEnvironment,
+	subscriptions []openapiclientfleet.FleetDescribeSubscriptionResult,
+) ([]servicePlanCustomerCloudAccountRow, error) {
+	searchResult, err := dataaccess.SearchInventory(ctx, token, "resourceinstance:i")
+	if err != nil {
+		return nil, err
+	}
+
+	emailsBySubscription := servicePlanEmailsBySubscription(subscriptions)
+	rows := make([]servicePlanCustomerCloudAccountRow, 0)
+	for _, record := range searchResult.ResourceInstanceResults {
+		resourceID := strings.TrimSpace(utils.FromPtr(record.ResourceId))
+		if !strings.HasPrefix(resourceID, servicePlanCustomerAccountResourcePrefix) {
+			continue
+		}
+		if !strings.EqualFold(strings.TrimSpace(record.ServiceId), strings.TrimSpace(env.ServiceID)) {
+			continue
+		}
+		if !strings.EqualFold(strings.TrimSpace(record.ServiceEnvironmentId), strings.TrimSpace(env.ID)) {
+			continue
+		}
+		if !strings.EqualFold(strings.TrimSpace(record.ProductTierId), strings.TrimSpace(env.PlanID)) {
+			continue
+		}
+
+		subscriptionID := strings.TrimSpace(utils.FromPtr(record.SubscriptionId))
+		rows = append(rows, servicePlanCustomerCloudAccountRow{
+			InstanceID:     strings.TrimSpace(record.Id),
+			CloudProvider:  strings.TrimSpace(record.CloudProvider),
+			Status:         strings.TrimSpace(record.Status),
+			SubscriptionID: subscriptionID,
+			CustomerEmail:  emailsBySubscription[subscriptionID],
+			Resource:       strings.TrimSpace(record.ResourceName),
+			Region:         strings.TrimSpace(record.RegionCode),
+		})
+	}
+
+	sort.Slice(rows, func(i, j int) bool {
+		return rows[i].InstanceID < rows[j].InstanceID
+	})
+	return rows, nil
+}
+
+func listServicePlanDeploymentCustomers(ctx context.Context, token string) ([]servicePlanDeploymentCustomer, error) {
+	customers := make([]servicePlanDeploymentCustomer, 0)
+	nextPageToken := ""
+	for {
+		result, err := dataaccess.ListCustomerUsers(ctx, token, dataaccess.CustomerUserListOptions{
+			NextPageToken: nextPageToken,
+			PageSize:      100,
+			ExcludeStats:  true,
+		})
+		if err != nil {
+			return nil, err
+		}
+		for _, user := range result.GetUsers() {
+			email := strings.TrimSpace(utils.FromPtr(user.Email))
+			userID := strings.TrimSpace(utils.FromPtr(user.UserId))
+			if email == "" && userID == "" {
+				continue
+			}
+			customers = append(customers, servicePlanDeploymentCustomer{
+				UserID:  userID,
+				Email:   email,
+				Name:    strings.TrimSpace(utils.FromPtr(user.UserName)),
+				OrgName: strings.TrimSpace(utils.FromPtr(user.OrgName)),
+			})
+		}
+		nextPageToken = result.GetNextPageToken()
+		if nextPageToken == "" {
+			break
+		}
+	}
+	sort.Slice(customers, func(i, j int) bool {
+		return strings.ToLower(customers[i].Email) < strings.ToLower(customers[j].Email)
+	})
+	return customers, nil
+}
+
+func servicePlanEmailsBySubscription(subscriptions []openapiclientfleet.FleetDescribeSubscriptionResult) map[string]string {
+	emails := map[string]string{}
+	for _, subscription := range subscriptions {
+		id := strings.TrimSpace(subscription.Id)
+		if id != "" && strings.TrimSpace(subscription.RootUserEmail) != "" {
+			emails[id] = strings.TrimSpace(subscription.RootUserEmail)
+		}
+	}
+	return emails
+}
+
+func servicePlanEnvironmentRequiresCustomerAccount(env servicePlanBrowserEnvironment) bool {
+	return servicePlanHostingBadgeForValues(env.TenancyType, env.DeploymentType).Label == "BYOC"
+}
+
+func servicePlanEnvironmentIsProduction(env servicePlanBrowserEnvironment) bool {
+	normalized := strings.ToLower(strings.TrimSpace(env.Name))
+	return normalized == "prod" || normalized == "production"
+}
+
+func servicePlanOfferingRequiresCustomerAccount(offering *openapiclientfleet.ServiceOffering) bool {
+	if offering == nil {
+		return false
+	}
+	return servicePlanHostingBadgeForValues(offering.ServiceModelType, offering.ProductTierType).Label == "BYOC"
 }
 
 func activeServicePlanSubscriptions(subscriptions []openapiclientfleet.FleetDescribeSubscriptionResult) []openapiclientfleet.FleetDescribeSubscriptionResult {
@@ -1718,6 +3343,7 @@ func servicePlanSubscriptionRows(subscriptions []openapiclientfleet.FleetDescrib
 			ID:            subscription.Id,
 			Status:        subscription.Status,
 			RootUserEmail: subscription.RootUserEmail,
+			RootUserID:    subscription.RootUserId,
 			RootUserName:  subscription.RootUserName,
 			InstanceCount: subscription.InstanceCount,
 		})
