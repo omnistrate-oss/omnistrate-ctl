@@ -112,28 +112,31 @@ func TestServicePlanBrowserSelectionUpdatesPlanDetailsWithoutEnter(t *testing.T)
 	require.Len(t, loader.calls, 2)
 }
 
-func TestServicePlanBrowserTabOnlySwitchesEnvironmentInDetailsPane(t *testing.T) {
+func TestServicePlanBrowserTabSwitchesTopEnvironmentFromAnyPane(t *testing.T) {
 	catalog := buildServicePlanBrowserCatalog(testBrowserServices(), nil)
 	loader := &fakeServicePlanBrowserLoader{details: testBrowserDetails(catalog)}
 	model := newServicePlanBrowserModel(context.Background(), "token", catalog, loader)
 	model = loadSelectedTestDetails(t, model)
 
 	updated, cmd := model.Update(tea.KeyMsg{Type: tea.KeyTab})
-	require.Nil(t, cmd)
-	model = updated.(servicePlanBrowserModel)
-	require.Equal(t, 0, model.activeTab)
-
-	model.focus = servicePlanBrowserFocusDetails
-	updated, cmd = model.Update(tea.KeyMsg{Type: tea.KeyTab})
 	require.NotNil(t, cmd)
 	model = updated.(servicePlanBrowserModel)
 	require.Equal(t, 1, model.activeTab)
+	require.Equal(t, "prod", model.activeEnvironmentName())
+	require.Equal(t, "prod", model.selectedEnvironment().Name)
+	model = loadSelectedTestDetails(t, model)
+
+	model.focus = servicePlanBrowserFocusDetails
+	updated, cmd = model.Update(tea.KeyMsg{Type: tea.KeyShiftTab})
+	require.Nil(t, cmd)
+	model = updated.(servicePlanBrowserModel)
+	require.Equal(t, 0, model.activeTab)
+	require.Equal(t, "dev", model.activeEnvironmentName())
 }
 
-func TestServicePlanBrowserTabCyclesEnvironmentsInDetailsPane(t *testing.T) {
+func TestServicePlanBrowserTabCyclesTopEnvironments(t *testing.T) {
 	catalog := buildServicePlanBrowserCatalog(testBrowserServices(), nil)
 	model := newServicePlanBrowserModel(context.Background(), "token", catalog, nil)
-	model.focus = servicePlanBrowserFocusDetails
 
 	model.activeTab = 1
 	updated, cmd := model.Update(tea.KeyMsg{Type: tea.KeyTab})
@@ -145,6 +148,41 @@ func TestServicePlanBrowserTabCyclesEnvironmentsInDetailsPane(t *testing.T) {
 	require.Nil(t, cmd)
 	model = updated.(servicePlanBrowserModel)
 	require.Equal(t, 1, model.activeTab)
+}
+
+func TestServicePlanBrowserEnvironmentTabsFilterServiceAccordion(t *testing.T) {
+	catalog := buildServicePlanBrowserCatalog(testBrowserServicesWithTwoPlans(), nil)
+	model := newServicePlanBrowserModel(context.Background(), "token", catalog, nil)
+
+	require.Equal(t, "dev", model.activeEnvironmentName())
+	require.Len(t, model.leftItems(), 3)
+	require.Equal(t, "Standard", model.leftItems()[1].title)
+	require.Empty(t, model.leftItems()[1].description)
+	require.Equal(t, "Premium", model.leftItems()[2].title)
+	require.Empty(t, model.leftItems()[2].description)
+
+	updated, cmd := model.Update(tea.KeyMsg{Type: tea.KeyTab})
+	require.Nil(t, cmd)
+	model = updated.(servicePlanBrowserModel)
+
+	require.Equal(t, "prod", model.activeEnvironmentName())
+	require.Len(t, model.leftItems(), 2)
+	require.Equal(t, "Standard", model.leftItems()[1].title)
+	require.Empty(t, model.leftItems()[1].description)
+	require.Equal(t, "Standard", model.selectedPlan().Name)
+	require.Equal(t, "prod", model.selectedEnvironment().Name)
+}
+
+func TestServicePlanBrowserServiceSummaryOmitsEnvironmentCountsFromPlanBullets(t *testing.T) {
+	catalog := buildServicePlanBrowserCatalog(testBrowserServicesWithTwoPlans(), nil)
+	model := newServicePlanBrowserModel(context.Background(), "token", catalog, nil)
+
+	content := model.renderServiceContent(model.leftItems()[0], 80)
+
+	require.Contains(t, content, "Standard")
+	require.Contains(t, content, "Premium")
+	require.NotContains(t, content, "environment(s)")
+	require.NotContains(t, content, "Standard:")
 }
 
 func TestServicePlanBrowserEscapeMovesFocusBackToPlans(t *testing.T) {
@@ -185,19 +223,18 @@ func TestServicePlanBrowserEnterFocusesDetailsPane(t *testing.T) {
 	require.Equal(t, servicePlanBrowserFocusDetails, model.focus)
 }
 
-func TestServicePlanBrowserEnvironmentSelectorIsInlineAndColored(t *testing.T) {
+func TestServicePlanBrowserEnvironmentTabsUseDebugTabStyle(t *testing.T) {
 	catalog := buildServicePlanBrowserCatalog(testBrowserServices(), nil)
 	model := newServicePlanBrowserModel(context.Background(), "token", catalog, nil)
 
-	selector := model.renderEnvironmentSelector(80)
+	tabs := model.renderEnvironmentTabs(80)
 
-	require.NotContains(t, selector, "╭")
-	require.NotContains(t, selector, "╰")
-	require.NotContains(t, selector, "┘")
-	require.NotContains(t, selector, "┴")
-	require.Contains(t, selector, "Environment:")
-	require.Contains(t, selector, "▸ dev")
-	require.Contains(t, selector, "prod")
+	require.Contains(t, tabs, "╭")
+	require.Contains(t, tabs, "┴")
+	require.Contains(t, tabs, "dev")
+	require.Contains(t, tabs, "prod")
+	model.activeTab = 1
+	require.Contains(t, model.renderEnvironmentTabs(80), "┘")
 	require.Equal(t, "82", string(servicePlanEnvironmentColor("Dev")))
 	require.Equal(t, "160", string(servicePlanEnvironmentColor("Prod")))
 }
@@ -216,7 +253,7 @@ func TestServicePlanBrowserDetailCursorAutoScrollsViewport(t *testing.T) {
 	require.Contains(t, model.viewport.View(), "Users")
 }
 
-func TestServicePlanBrowserDetailCursorCanReturnToEnvironmentSelector(t *testing.T) {
+func TestServicePlanBrowserDetailCursorCanReturnToTopOfPlanDetails(t *testing.T) {
 	catalog := buildServicePlanBrowserCatalog(testBrowserServices(), nil)
 	loader := &fakeServicePlanBrowserLoader{details: testBrowserDetails(catalog)}
 	model := newServicePlanBrowserModel(context.Background(), "token", catalog, loader)
@@ -233,7 +270,7 @@ func TestServicePlanBrowserDetailCursorCanReturnToEnvironmentSelector(t *testing
 
 	require.Equal(t, -1, model.detailCursor)
 	require.Equal(t, 0, model.viewport.YOffset)
-	require.Contains(t, model.viewport.View(), "Environment:")
+	require.Contains(t, model.viewport.View(), "Postgres / Standard")
 
 	model.moveDetailCursor(1)
 
@@ -242,7 +279,7 @@ func TestServicePlanBrowserDetailCursorCanReturnToEnvironmentSelector(t *testing
 	require.Contains(t, model.viewport.View(), "Deployment model")
 }
 
-func TestServicePlanBrowserEnvironmentSwitchReturnsViewportToSelector(t *testing.T) {
+func TestServicePlanBrowserEnvironmentSwitchReturnsViewportToTop(t *testing.T) {
 	catalog := buildServicePlanBrowserCatalog(testBrowserServices(), nil)
 	loader := &fakeServicePlanBrowserLoader{details: testBrowserDetails(catalog)}
 	model := newServicePlanBrowserModel(context.Background(), "token", catalog, loader)
@@ -258,7 +295,8 @@ func TestServicePlanBrowserEnvironmentSwitchReturnsViewportToSelector(t *testing
 
 	require.Equal(t, -1, model.detailCursor)
 	require.Equal(t, 0, model.viewport.YOffset)
-	require.Contains(t, model.viewport.View(), "Environment:")
+	require.Equal(t, "prod", model.activeEnvironmentName())
+	require.Contains(t, model.viewport.View(), "Postgres / Standard")
 }
 
 func TestServicePlanBrowserPlanItemsIncludeHostingBadges(t *testing.T) {

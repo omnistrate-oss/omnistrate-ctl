@@ -28,6 +28,7 @@ const (
 	servicePlanBrowserListPreferredWidth = 42
 	servicePlanBrowserHelpHeight         = 2
 	servicePlanBrowserHeaderHeight       = 5
+	servicePlanBrowserTabsHeight         = 3
 
 	servicePlanBrowserFocusLeft servicePlanBrowserFocus = iota
 	servicePlanBrowserFocusDetails
@@ -125,6 +126,7 @@ type servicePlanBrowserModel struct {
 	expanded               map[int]bool
 	detailCache            map[string]servicePlanEnvironmentDetails
 	loadingDetails         map[string]bool
+	environmentTabs        []string
 	items                  []servicePlanBrowserLeftItem
 	list                   list.Model
 	viewport               viewport.Model
@@ -329,25 +331,23 @@ func newServicePlanBrowserModel(ctx context.Context, token string, catalog servi
 	detailSpinner.Style = lipgloss.NewStyle().Foreground(lipgloss.Color("117"))
 
 	model := servicePlanBrowserModel{
-		catalog:        catalog,
-		expanded:       map[int]bool{},
-		detailCache:    map[string]servicePlanEnvironmentDetails{},
-		loadingDetails: map[string]bool{},
-		list:           planList,
-		viewport:       viewport.New(0, 0),
-		spinner:        detailSpinner,
-		focus:          servicePlanBrowserFocusLeft,
+		catalog:         catalog,
+		expanded:        map[int]bool{},
+		detailCache:     map[string]servicePlanEnvironmentDetails{},
+		loadingDetails:  map[string]bool{},
+		environmentTabs: servicePlanBrowserEnvironmentTabs(catalog),
+		list:            planList,
+		viewport:        viewport.New(0, 0),
+		spinner:         detailSpinner,
+		focus:           servicePlanBrowserFocusLeft,
 	}
 	if loader != nil {
 		model.loadEnvironmentDetails = func(env servicePlanBrowserEnvironment) (servicePlanEnvironmentDetails, error) {
 			return loader.LoadEnvironmentDetails(ctx, token, env)
 		}
 	}
-	if len(catalog.Services) > 0 {
-		model.expanded[0] = true
-	}
-
 	model.setSize(defaultServicePlanBrowserWidth, defaultServicePlanBrowserHeight)
+	model.ensureActiveEnvironmentExpanded()
 	model.rebuildVisibleItems(model.firstPlanKey())
 	if model.requestSelectedDetailsLoad() != nil {
 		model.syncViewportContent()
@@ -385,6 +385,10 @@ func (m servicePlanBrowserModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		switch msg.String() {
 		case "ctrl+c", "q":
 			return m, tea.Quit
+		case "tab":
+			return m, m.moveEnvironmentTab(1)
+		case "shift+tab":
+			return m, m.moveEnvironmentTab(-1)
 		}
 
 		if m.focus == servicePlanBrowserFocusDetails {
@@ -426,10 +430,6 @@ func (m servicePlanBrowserModel) updateDetails(msg tea.KeyMsg) (tea.Model, tea.C
 	case "esc", "left":
 		m.focus = servicePlanBrowserFocusLeft
 		m.syncViewportContent()
-	case "tab":
-		return m, m.moveTab(1)
-	case "shift+tab":
-		return m, m.moveTab(-1)
 	case "enter":
 		m.openSelectedModal()
 	case "down":
@@ -489,6 +489,7 @@ func (m servicePlanBrowserModel) View() string {
 	}
 
 	header := renderServicePlanBrowserHeader(m.catalog)
+	tabs := m.renderEnvironmentTabs(m.width)
 
 	listPanelStyle := servicePlanBrowserPanelStyle(m.focusBorderColor(servicePlanBrowserFocusLeft))
 	detailPanelStyle := servicePlanBrowserPanelStyle(m.focusBorderColor(servicePlanBrowserFocusDetails))
@@ -498,7 +499,7 @@ func (m servicePlanBrowserModel) View() string {
 
 	help := lipgloss.NewStyle().Foreground(lipgloss.Color("245")).Render(m.helpLine())
 	status := lipgloss.NewStyle().Foreground(lipgloss.Color("111")).Render(m.statusLine())
-	return lipgloss.JoinVertical(lipgloss.Left, header, body, help, status)
+	return lipgloss.JoinVertical(lipgloss.Left, header, tabs, body, help, status)
 }
 
 func renderServicePlanBrowserSnapshot(model servicePlanBrowserModel) string {
@@ -517,7 +518,7 @@ func (m *servicePlanBrowserModel) setSize(width, height int) {
 	m.height = height
 
 	listPanelWidth := spMin(spMax(width/3, servicePlanBrowserListMinWidth), servicePlanBrowserListPreferredWidth)
-	bodyHeight := spMax(height-servicePlanBrowserHeaderHeight-servicePlanBrowserHelpHeight, 12)
+	bodyHeight := spMax(height-servicePlanBrowserHeaderHeight-servicePlanBrowserTabsHeight-servicePlanBrowserHelpHeight, 12)
 	detailPanelWidth := spMax(width-listPanelWidth-1, 40)
 	panelFrameWidth := servicePlanBrowserPanelStyle(lipgloss.Color("240")).GetHorizontalFrameSize()
 
@@ -549,28 +550,32 @@ func (m servicePlanBrowserModel) statusLine() string {
 		return m.statusMessage
 	}
 	if m.focus == servicePlanBrowserFocusDetails {
-		return "Use tab or shift+tab to cycle environments. Use esc or left to return to the plan list."
+		return "Use tab or shift+tab to switch environments. Use esc or left to return to the plan list."
 	}
-	return "Use enter on a plan to focus details. Plan details update as the selector moves."
+	return "Use tab or shift+tab to switch environments. Plan details update as the selector moves."
 }
 
 func (m servicePlanBrowserModel) helpLine() string {
 	if m.focus == servicePlanBrowserFocusDetails {
-		return "↑/↓: detail rows  enter: open row  tab/shift+tab: environment  esc/←: focus plans  q: quit"
+		return "tab/shift+tab: environment  ↑/↓: detail rows  enter: open row  esc/←: focus plans  q: quit"
 	}
-	return "↑/↓: navigate plans  enter/→: details/open  ←/→: expand/collapse services  q: quit"
+	return "tab/shift+tab: environment  ↑/↓: navigate plans  enter/→: details/open  ←/→: expand/collapse services  q: quit"
 }
 
 func (m *servicePlanBrowserModel) rebuildVisibleItems(selectedKey string) {
 	if selectedKey == "" {
 		selectedKey = m.selectedLeftItemKey()
 	}
-	if selectedKey == "" {
-		selectedKey = m.firstPlanKey()
-	}
 
 	m.items = m.leftItems()
 	listItems := make([]list.Item, len(m.items))
+	if selectedKey == "" || !servicePlanBrowserItemsContainKey(m.items, selectedKey) {
+		selectedKey = firstServicePlanBrowserPlanKey(m.items)
+	}
+	if selectedKey == "" && len(m.items) > 0 {
+		selectedKey = m.items[0].key
+	}
+
 	selectedIndex := 0
 	for index, item := range m.items {
 		listItems[index] = item
@@ -583,17 +588,119 @@ func (m *servicePlanBrowserModel) rebuildVisibleItems(selectedKey string) {
 	if len(listItems) > 0 {
 		m.list.Select(selectedIndex)
 	}
+	m.list.Title = "Service Plans"
+	if env := m.activeEnvironmentName(); env != "" {
+		m.list.Title = "Service Plans · " + env
+	}
 	m.syncSelectionFromList()
 	m.syncViewportContent()
 }
 
 func (m servicePlanBrowserModel) firstPlanKey() string {
-	for _, item := range m.leftItems() {
+	return firstServicePlanBrowserPlanKey(m.leftItems())
+}
+
+func servicePlanBrowserItemsContainKey(items []servicePlanBrowserLeftItem, key string) bool {
+	for _, item := range items {
+		if item.key == key {
+			return true
+		}
+	}
+	return false
+}
+
+func firstServicePlanBrowserPlanKey(items []servicePlanBrowserLeftItem) string {
+	for _, item := range items {
 		if !item.isService {
 			return item.key
 		}
 	}
 	return ""
+}
+
+func servicePlanBrowserEnvironmentTabs(catalog servicePlanBrowserCatalog) []string {
+	seen := map[string]bool{}
+	tabs := make([]string, 0)
+	for _, service := range catalog.Services {
+		for _, plan := range service.Plans {
+			for _, env := range plan.Environments {
+				name := strings.TrimSpace(env.Name)
+				key := servicePlanEnvironmentKey(name)
+				if name == "" {
+					name = "-"
+				}
+				if seen[key] {
+					continue
+				}
+				seen[key] = true
+				tabs = append(tabs, name)
+			}
+		}
+	}
+	return tabs
+}
+
+func servicePlanEnvironmentKey(environment string) string {
+	environment = strings.ToLower(strings.TrimSpace(environment))
+	if environment == "" {
+		return "-"
+	}
+	return environment
+}
+
+func (m servicePlanBrowserModel) activeEnvironmentName() string {
+	if len(m.environmentTabs) == 0 {
+		return ""
+	}
+	activeTab := spClamp(m.activeTab, len(m.environmentTabs)-1)
+	return m.environmentTabs[activeTab]
+}
+
+func (m servicePlanBrowserModel) environmentMatchesActive(env servicePlanBrowserEnvironment) bool {
+	if len(m.environmentTabs) == 0 {
+		return true
+	}
+	return servicePlanEnvironmentKey(env.Name) == servicePlanEnvironmentKey(m.activeEnvironmentName())
+}
+
+func (m servicePlanBrowserModel) planForActiveEnvironment(plan servicePlanBrowserPlan) (servicePlanBrowserPlan, bool) {
+	filtered := plan
+	filtered.Environments = make([]servicePlanBrowserEnvironment, 0, len(plan.Environments))
+	for _, env := range plan.Environments {
+		if m.environmentMatchesActive(env) {
+			filtered.Environments = append(filtered.Environments, env)
+		}
+	}
+	return filtered, len(filtered.Environments) > 0
+}
+
+func (m servicePlanBrowserModel) servicePlansForActiveEnvironment(service servicePlanBrowserService) []servicePlanBrowserPlan {
+	plans := make([]servicePlanBrowserPlan, 0, len(service.Plans))
+	for _, plan := range service.Plans {
+		filtered, ok := m.planForActiveEnvironment(plan)
+		if ok {
+			plans = append(plans, filtered)
+		}
+	}
+	return plans
+}
+
+func (m *servicePlanBrowserModel) ensureActiveEnvironmentExpanded() {
+	for serviceIndex, service := range m.catalog.Services {
+		if len(m.servicePlansForActiveEnvironment(service)) == 0 {
+			continue
+		}
+		if m.expanded[serviceIndex] {
+			return
+		}
+	}
+	for serviceIndex, service := range m.catalog.Services {
+		if len(m.servicePlansForActiveEnvironment(service)) == 0 {
+			continue
+		}
+		m.expanded[serviceIndex] = true
+		return
+	}
 }
 
 func (m servicePlanBrowserModel) selectedLeftItemKey() string {
@@ -627,7 +734,6 @@ func (m *servicePlanBrowserModel) syncSelectionFromList() {
 	m.serviceIndex = item.serviceIndex
 	m.planIndex = item.planIndex
 	if changed {
-		m.activeTab = 0
 		m.detailCursor = 0
 		m.detailViewportTop = false
 	}
@@ -661,6 +767,7 @@ func (m *servicePlanBrowserModel) syncViewportContent() {
 
 func (m servicePlanBrowserModel) renderServiceContent(item servicePlanBrowserLeftItem, width int) string {
 	service := m.catalog.Services[item.serviceIndex]
+	plans := m.servicePlansForActiveEnvironment(service)
 	titleStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("230"))
 	sectionStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("117"))
 	keyStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("111"))
@@ -672,10 +779,11 @@ func (m servicePlanBrowserModel) renderServiceContent(item servicePlanBrowserLef
 		sectionStyle.Render("Overview"),
 	}
 	lines = append(lines, renderServicePlanField("Service ID", emptyValue(service.ID), width, keyStyle, valueStyle)...)
-	lines = append(lines, renderServicePlanField("Plans", fmt.Sprintf("%d", len(service.Plans)), width, keyStyle, valueStyle)...)
-	lines = append(lines, "", sectionStyle.Render("Plan names"))
-	for _, plan := range service.Plans {
-		lines = append(lines, renderServicePlanBullet(fmt.Sprintf("%s: %s", plan.Name, servicePlanEnvironmentSummary(plan)), width, keyStyle, valueStyle)...)
+	lines = append(lines, renderServicePlanField("Environment", emptyValue(m.activeEnvironmentName()), width, keyStyle, valueStyle)...)
+	lines = append(lines, renderServicePlanField("Plans", fmt.Sprintf("%d", len(plans)), width, keyStyle, valueStyle)...)
+	lines = append(lines, "", sectionStyle.Render("Plans in environment"))
+	for _, plan := range plans {
+		lines = append(lines, renderServicePlanBullet(plan.Name, width, keyStyle, valueStyle)...)
 	}
 
 	return strings.Join(lines, "\n")
@@ -696,13 +804,12 @@ func (m servicePlanBrowserModel) renderPlanContentWithCursorLine(width int) (str
 
 	lines := []string{
 		titleStyle.Render(plan.ServiceName + " / " + plan.Name),
-		m.renderEnvironmentSelector(width),
 		"",
 		sectionStyle.Render("Overview"),
 	}
 	lines = append(lines, renderServicePlanField("Plan name", plan.Name, width, keyStyle, valueStyle)...)
 	lines = append(lines, renderServicePlanField("Service ID", emptyValue(plan.ServiceID), width, keyStyle, valueStyle)...)
-	lines = append(lines, renderServicePlanField("Environments", servicePlanEnvironmentSummary(*plan), width, keyStyle, valueStyle)...)
+	lines = append(lines, renderServicePlanField("Environment", emptyValue(m.activeEnvironmentName()), width, keyStyle, valueStyle)...)
 
 	env := m.selectedEnvironment()
 	if env == nil {
@@ -877,31 +984,67 @@ func renderServicePlanBrowserCheck(label string, ok bool) string {
 	return style.Render(fmt.Sprintf("%s %s", icon, label))
 }
 
-func (m servicePlanBrowserModel) renderEnvironmentSelector(width int) string {
-	plan := m.selectedPlan()
-	if plan == nil || len(plan.Environments) == 0 {
+func (m servicePlanBrowserModel) renderEnvironmentTabs(width int) string {
+	if len(m.environmentTabs) == 0 {
 		return lipgloss.NewStyle().Foreground(lipgloss.Color("245")).Render("No environments")
 	}
 
-	labelStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("111"))
-	items := []string{labelStyle.Render("Environment:")}
-	for i, env := range plan.Environments {
-		envColor := servicePlanEnvironmentColor(env.Name)
-		name := emptyValue(env.Name)
+	highlightColor := lipgloss.Color("62")
+	inactiveTabBorder := servicePlanTabBorderWithBottom("┴", "─", "┴")
+	activeTabBorder := servicePlanTabBorderWithBottom("┘", " ", "└")
+
+	inactiveTabStyle := lipgloss.NewStyle().
+		Border(inactiveTabBorder, true).
+		BorderForeground(highlightColor).
+		Padding(0, 1)
+	activeTabStyle := lipgloss.NewStyle().
+		Border(activeTabBorder, true).
+		BorderForeground(highlightColor).
+		Padding(0, 1).
+		Bold(true)
+
+	renderedTabs := make([]string, 0, len(m.environmentTabs))
+	for i, name := range m.environmentTabs {
+		envColor := servicePlanEnvironmentColor(name)
+		style := inactiveTabStyle.Foreground(envColor).Faint(true)
 		if i == m.activeTab {
-			items = append(items, lipgloss.NewStyle().
-				Bold(true).
-				Foreground(envColor).
-				Render("▸ "+name))
-		} else {
-			items = append(items, lipgloss.NewStyle().
-				Foreground(envColor).
-				Faint(true).
-				Render(name))
+			style = activeTabStyle.Foreground(envColor)
 		}
+
+		border, _, _, _, _ := style.GetBorder()
+		if i == 0 && i == m.activeTab {
+			border.BottomLeft = "│"
+		} else if i == 0 {
+			border.BottomLeft = "├"
+		}
+		style = style.Border(border)
+		renderedTabs = append(renderedTabs, style.Render(emptyValue(name)))
 	}
 
-	return lipgloss.NewStyle().MaxWidth(width).Render(strings.Join(items, "  "))
+	row := lipgloss.JoinHorizontal(lipgloss.Top, renderedTabs...)
+	rowWidth := lipgloss.Width(row)
+	gapWidth := width - rowWidth - 2
+	if gapWidth > 0 {
+		gapBorder := lipgloss.Border{
+			Bottom:      "─",
+			BottomLeft:  "┴",
+			BottomRight: "┐",
+		}
+		gapStyle := lipgloss.NewStyle().
+			Border(gapBorder, false, false, true, false).
+			BorderForeground(highlightColor)
+		row = lipgloss.JoinHorizontal(lipgloss.Bottom, row, gapStyle.Render(strings.Repeat(" ", gapWidth)))
+	}
+
+	return lipgloss.NewStyle().MaxWidth(width).Render(row)
+}
+
+func servicePlanTabBorderWithBottom(left, middle, right string) lipgloss.Border {
+	border := lipgloss.RoundedBorder()
+	border.BottomLeft = left
+	border.Bottom = middle
+	border.BottomRight = right
+	return border
 }
 
 func servicePlanEnvironmentColor(environment string) lipgloss.Color {
@@ -1044,20 +1187,17 @@ func (m *servicePlanBrowserModel) ensureViewportLineVisible(line, totalLines int
 	}
 }
 
-func (m *servicePlanBrowserModel) moveTab(delta int) tea.Cmd {
-	selected := m.selectedLeftItem()
-	if selected == nil || selected.isService {
+func (m *servicePlanBrowserModel) moveEnvironmentTab(delta int) tea.Cmd {
+	if len(m.environmentTabs) == 0 {
 		return nil
 	}
 
-	plan := m.selectedPlan()
-	if plan == nil || len(plan.Environments) == 0 {
-		m.activeTab = 0
-		return nil
-	}
-	m.activeTab = (m.activeTab + delta + len(plan.Environments)) % len(plan.Environments)
+	selectedKey := m.selectedLeftItemKey()
+	m.activeTab = (m.activeTab + delta + len(m.environmentTabs)) % len(m.environmentTabs)
 	m.detailCursor = -1
 	m.detailViewportTop = true
+	m.ensureActiveEnvironmentExpanded()
+	m.rebuildVisibleItems(selectedKey)
 	loadCmd := m.requestSelectedDetailsLoad()
 	m.syncViewportContent()
 	return loadCmd
@@ -1157,12 +1297,32 @@ func (m *servicePlanBrowserModel) openSelectedModal() {
 func (m servicePlanBrowserModel) leftItems() []servicePlanBrowserLeftItem {
 	items := make([]servicePlanBrowserLeftItem, 0)
 	for serviceIndex, service := range m.catalog.Services {
+		planItems := make([]servicePlanBrowserLeftItem, 0, len(service.Plans))
 		serviceKey := fmt.Sprintf("service:%d", serviceIndex)
+		for planIndex, plan := range service.Plans {
+			filteredPlan, ok := m.planForActiveEnvironment(plan)
+			if !ok {
+				continue
+			}
+			planItems = append(planItems, servicePlanBrowserLeftItem{
+				key:          fmt.Sprintf("%s/plan:%d", serviceKey, planIndex),
+				parentKey:    serviceKey,
+				title:        plan.Name,
+				level:        1,
+				hostingBadge: servicePlanHostingBadgeForPlan(filteredPlan),
+				serviceIndex: serviceIndex,
+				planIndex:    planIndex,
+			})
+		}
+		if len(planItems) == 0 {
+			continue
+		}
+
 		items = append(items, servicePlanBrowserLeftItem{
 			key:          serviceKey,
 			title:        service.Name,
-			description:  fmt.Sprintf("%d plan name(s)", len(service.Plans)),
-			expandable:   len(service.Plans) > 0,
+			description:  fmt.Sprintf("%d plan name(s)", len(planItems)),
+			expandable:   true,
 			expanded:     m.expanded[serviceIndex],
 			isService:    true,
 			serviceIndex: serviceIndex,
@@ -1170,18 +1330,7 @@ func (m servicePlanBrowserModel) leftItems() []servicePlanBrowserLeftItem {
 		if !m.expanded[serviceIndex] {
 			continue
 		}
-		for planIndex, plan := range service.Plans {
-			items = append(items, servicePlanBrowserLeftItem{
-				key:          fmt.Sprintf("%s/plan:%d", serviceKey, planIndex),
-				parentKey:    serviceKey,
-				title:        plan.Name,
-				description:  servicePlanEnvironmentSummary(plan),
-				level:        1,
-				hostingBadge: servicePlanHostingBadgeForPlan(plan),
-				serviceIndex: serviceIndex,
-				planIndex:    planIndex,
-			})
-		}
+		items = append(items, planItems...)
 	}
 	return items
 }
@@ -1273,8 +1422,12 @@ func (m servicePlanBrowserModel) selectedEnvironment() *servicePlanBrowserEnviro
 	if plan == nil || len(plan.Environments) == 0 {
 		return nil
 	}
-	activeTab := spClamp(m.activeTab, len(plan.Environments)-1)
-	return &plan.Environments[activeTab]
+	for i := range plan.Environments {
+		if m.environmentMatchesActive(plan.Environments[i]) {
+			return &plan.Environments[i]
+		}
+	}
+	return nil
 }
 
 func (m servicePlanBrowserModel) selectedDetails() (servicePlanEnvironmentDetails, bool) {
