@@ -128,7 +128,7 @@ func DeleteAPIKey(ctx context.Context, token, id string) error {
 	ctxWithToken := context.WithValue(ctx, openapiclient.ContextAccessToken, token)
 
 	apiClient := getV1Client()
-	_, r, err := apiClient.ApiKeyApiAPI.ApiKeyApiDeleteAPIKey(ctxWithToken, id).Execute()
+	r, err := apiClient.ApiKeyApiAPI.ApiKeyApiDeleteAPIKey(ctxWithToken, id).Execute()
 	if r != nil {
 		defer r.Body.Close()
 	}
