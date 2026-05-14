@@ -412,6 +412,69 @@ func TestResourceDebugInfoTerraformJSON(t *testing.T) {
 	require.Contains(decoded.TerraformLogs, "log/op-2-apply.log")
 }
 
+func TestResourceDebugInfoOperatorJSON(t *testing.T) {
+	require := require.New(t)
+
+	info := ResourceDebugInfo{
+		ResourceID:   "r-op-1",
+		ResourceKey:  "cnpg-db",
+		ResourceType: "OperatorCRD",
+		Operator: &OperatorData{
+			InputParams: []OperatorInputParam{
+				{Key: "replicas", DisplayName: "Replicas", Description: "Number of replicas", Type: "int", Required: true, Modifiable: true, Custom: true, DefaultValue: "3"},
+				{Key: "storage", DisplayName: "Storage Size", Description: "Storage in GB", Type: "string", Required: true},
+			},
+			OutputParams: []OperatorOutputParam{
+				{Key: "endpoint", DisplayName: "Endpoint", Description: "Connection endpoint", Type: "string", Custom: true},
+			},
+		},
+	}
+
+	jsonBytes, err := json.Marshal(info)
+	require.NoError(err)
+
+	var decoded map[string]interface{}
+	err = json.Unmarshal(jsonBytes, &decoded)
+	require.NoError(err)
+
+	require.Equal("r-op-1", decoded["resourceId"])
+	require.Equal("cnpg-db", decoded["resourceKey"])
+	require.Equal("OperatorCRD", decoded["resourceType"])
+
+	op, ok := decoded["operator"].(map[string]interface{})
+	require.True(ok, "operator should be a map")
+
+	inputParams, ok := op["inputParams"].([]interface{})
+	require.True(ok, "inputParams should be an array")
+	require.Len(inputParams, 2)
+
+	param0, ok := inputParams[0].(map[string]interface{})
+	require.True(ok)
+	require.Equal("replicas", param0["key"])
+	require.Equal("Replicas", param0["displayName"])
+	require.Equal("int", param0["type"])
+	require.Equal(true, param0["required"])
+	require.Equal(true, param0["modifiable"])
+	require.Equal(true, param0["custom"])
+	require.Equal("3", param0["defaultValue"])
+
+	outputParams, ok := op["outputParams"].([]interface{})
+	require.True(ok, "outputParams should be an array")
+	require.Len(outputParams, 1)
+	out0, ok := outputParams[0].(map[string]interface{})
+	require.True(ok)
+	require.Equal("endpoint", out0["key"])
+	require.Equal("string", out0["type"])
+	require.Equal(true, out0["custom"])
+
+	// Verify helm and terraform fields are omitted
+	require.NotContains(decoded, "helm")
+	require.NotContains(decoded, "terraformProgress")
+	require.NotContains(decoded, "terraformHistory")
+	require.NotContains(decoded, "terraformFiles")
+	require.NotContains(decoded, "terraformLogs")
+}
+
 func TestResourceDebugInfoOmitsEmptyFields(t *testing.T) {
 	require := require.New(t)
 
@@ -430,6 +493,7 @@ func TestResourceDebugInfoOmitsEmptyFields(t *testing.T) {
 
 	require.Equal("r-1", decoded["resourceId"])
 	require.NotContains(decoded, "helm")
+	require.NotContains(decoded, "operator")
 	require.NotContains(decoded, "terraformProgress")
 	require.NotContains(decoded, "terraformHistory")
 	require.NotContains(decoded, "terraformFiles")
@@ -808,6 +872,45 @@ func TestResourceDebugInfoOmitsEmptyPlanPreview(t *testing.T) {
 	require.NotContains(decoded, "terraformPlanPreviewError")
 }
 
+func TestResourceDebugInfoHasDataWithOperator(t *testing.T) {
+	require := require.New(t)
+
+	// Operator data makes hasData() return true
+	info := ResourceDebugInfo{
+		ResourceID:   "r-1",
+		ResourceKey:  "cnpg",
+		ResourceType: "OperatorCRD",
+		Operator: &OperatorData{
+			InputParams: []OperatorInputParam{
+				{Key: "replicas", Type: "int"},
+			},
+		},
+	}
+	require.True(info.hasData())
+
+	// Operator with only output params also returns true
+	info2 := ResourceDebugInfo{
+		ResourceID:   "r-1",
+		ResourceKey:  "cnpg",
+		ResourceType: "OperatorCRD",
+		Operator: &OperatorData{
+			OutputParams: []OperatorOutputParam{
+				{Key: "status", Type: "string"},
+			},
+		},
+	}
+	require.True(info2.hasData())
+
+	// Empty operator (no params) but non-nil still returns true
+	info3 := ResourceDebugInfo{
+		ResourceID:   "r-1",
+		ResourceKey:  "cnpg",
+		ResourceType: "OperatorCRD",
+		Operator:     &OperatorData{},
+	}
+	require.True(info3.hasData())
+}
+
 func TestResourceDebugInfoHasDataWithPlanPreview(t *testing.T) {
 	require := require.New(t)
 
@@ -981,4 +1084,101 @@ func TestDebugDataJSONRoundTripWithPlanPreview(t *testing.T) {
 	require.Empty(cacheInfo.TerraformPlanPreview)
 	require.Len(cacheInfo.TerraformPlanPreviewError, 1)
 	require.Equal("Error: Failed to refresh state for resource", cacheInfo.TerraformPlanPreviewError["op-2"])
+}
+
+func TestDebugDataJSONRoundTripWithOperator(t *testing.T) {
+	require := require.New(t)
+
+	original := DebugData{
+		InstanceID:    "inst-123",
+		ServiceID:     "svc-456",
+		EnvironmentID: "env-789",
+		ProductTierID: "pt-abc",
+		TierVersion:   "v2",
+		ResourceDebugInfo: map[string]*ResourceDebugInfo{
+			"cnpg": {
+				ResourceID:   "r-op-1",
+				ResourceKey:  "cnpg",
+				ResourceType: "OperatorCRD",
+				Operator: &OperatorData{
+					InputParams: []OperatorInputParam{
+						{Key: "replicas", DisplayName: "Replicas", Description: "Number of replicas", Type: "int", Required: true, Modifiable: true, Custom: true, DefaultValue: "3"},
+						{Key: "storage", DisplayName: "Storage", Description: "Storage size", Type: "string", Required: true},
+					},
+					OutputParams: []OperatorOutputParam{
+						{Key: "endpoint", DisplayName: "Endpoint", Description: "Connection endpoint", Type: "string", Custom: true},
+					},
+				},
+			},
+		},
+	}
+
+	jsonBytes, err := json.MarshalIndent(original, "", "  ")
+	require.NoError(err)
+
+	var roundTripped DebugData
+	err = json.Unmarshal(jsonBytes, &roundTripped)
+	require.NoError(err)
+
+	require.Equal("inst-123", roundTripped.InstanceID)
+	require.Equal("pt-abc", roundTripped.ProductTierID)
+	require.Equal("v2", roundTripped.TierVersion)
+
+	require.Contains(roundTripped.ResourceDebugInfo, "cnpg")
+	cnpgInfo := roundTripped.ResourceDebugInfo["cnpg"]
+	require.Equal("r-op-1", cnpgInfo.ResourceID)
+	require.Equal("OperatorCRD", cnpgInfo.ResourceType)
+	require.Nil(cnpgInfo.Helm)
+
+	require.NotNil(cnpgInfo.Operator)
+	require.Len(cnpgInfo.Operator.InputParams, 2)
+	require.Equal("replicas", cnpgInfo.Operator.InputParams[0].Key)
+	require.Equal("3", cnpgInfo.Operator.InputParams[0].DefaultValue)
+	require.True(cnpgInfo.Operator.InputParams[0].Required)
+	require.True(cnpgInfo.Operator.InputParams[0].Modifiable)
+	require.True(cnpgInfo.Operator.InputParams[0].Custom)
+
+	require.Len(cnpgInfo.Operator.OutputParams, 1)
+	require.Equal("endpoint", cnpgInfo.Operator.OutputParams[0].Key)
+	require.True(cnpgInfo.Operator.OutputParams[0].Custom)
+}
+
+func TestDebugDataJSONIncludesProductTierIDAndVersion(t *testing.T) {
+	require := require.New(t)
+
+	data := DebugData{
+		InstanceID:    "inst-1",
+		ServiceID:     "svc-1",
+		EnvironmentID: "env-1",
+		ProductTierID: "pt-abc",
+		TierVersion:   "v3",
+	}
+
+	jsonBytes, err := json.Marshal(data)
+	require.NoError(err)
+
+	var decoded map[string]interface{}
+	err = json.Unmarshal(jsonBytes, &decoded)
+	require.NoError(err)
+
+	require.Equal("pt-abc", decoded["productTierId"])
+	require.Equal("v3", decoded["tierVersion"])
+}
+
+func TestDebugDataJSONOmitsEmptyProductTierIDAndVersion(t *testing.T) {
+	require := require.New(t)
+
+	data := DebugData{
+		InstanceID: "inst-1",
+	}
+
+	jsonBytes, err := json.Marshal(data)
+	require.NoError(err)
+
+	var decoded map[string]interface{}
+	err = json.Unmarshal(jsonBytes, &decoded)
+	require.NoError(err)
+
+	require.NotContains(decoded, "productTierId", "empty productTierId should be omitted")
+	require.NotContains(decoded, "tierVersion", "empty tierVersion should be omitted")
 }

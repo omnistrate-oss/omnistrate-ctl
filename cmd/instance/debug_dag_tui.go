@@ -738,8 +738,13 @@ func (m dagModel) openNodeDetail() (tea.Model, tea.Cmd) {
 		return m, detail.Init()
 	}
 
-	// For other resource types, do nothing for now
-	return m, nil
+	// For other resource types, open the operator detail TUI
+	detail := newOperatorDetailModel(node, m.debugData)
+	detail.width = m.width
+	detail.height = m.height
+	m.detailModel = detail
+	m.inDetail = true
+	return m, detail.Init()
 }
 
 func (m dagModel) View() string {

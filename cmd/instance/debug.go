@@ -32,6 +32,8 @@ type DebugData struct {
 	PlanDAG           *PlanDAG                      `json:"planDag,omitempty"`
 	ServiceID         string                        `json:"serviceId,omitempty"`
 	EnvironmentID     string                        `json:"environmentId,omitempty"`
+	ProductTierID     string                        `json:"productTierId,omitempty"`
+	TierVersion       string                        `json:"tierVersion,omitempty"`
 	Token             string                        `json:"-"`
 	ResourceDebugInfo map[string]*ResourceDebugInfo `json:"resourceDebugInfo,omitempty"`
 }
@@ -113,6 +115,8 @@ func fetchDebugData(instanceID, token string) tea.Cmd {
 				PlanDAG:       planDAG,
 				ServiceID:     serviceID,
 				EnvironmentID: environmentID,
+				ProductTierID: instanceData.ProductTierId,
+				TierVersion:   instanceData.TierVersion,
 				Token:         token,
 			},
 		}
@@ -211,9 +215,10 @@ func runDebugJSON(instanceID, token string) error {
 }
 
 // collectResourceDebugInfo fetches all per-resource debug data for the JSON output path.
-// It collects helm data (logs, values) and terraform data (progress, history, files, logs)
-// for each resource in the plan DAG. Errors for individual resources or data sources are
-// handled gracefully — partial data is returned rather than failing the entire operation.
+// It collects helm data (logs, values), terraform data (progress, history, files, logs),
+// and operator data (input/output parameters) for each resource in the plan DAG.
+// Errors for individual resources or data sources are handled gracefully — partial data
+// is returned rather than failing the entire operation.
 func collectResourceDebugInfo(ctx context.Context, token, serviceID, environmentID, instanceID string, planDAG *PlanDAG, instanceData *openapiclientfleet.ResourceInstance) map[string]*ResourceDebugInfo {
 	result := make(map[string]*ResourceDebugInfo)
 	if planDAG == nil || len(planDAG.Nodes) == 0 {
@@ -238,6 +243,9 @@ func collectResourceDebugInfo(ctx context.Context, token, serviceID, environment
 
 	// Collect terraform debug data from k8s ConfigMaps
 	collectTerraformDebugInfo(ctx, token, instanceData, instanceID, planDAG, result)
+
+	// Collect operator debug data (input/output parameters) for non-helm, non-terraform resources
+	collectOperatorDebugInfo(ctx, token, serviceID, instanceID, planDAG, instanceData, result)
 
 	// Remove entries that have no debug data
 	for key, info := range result {
@@ -346,6 +354,69 @@ func collectTerraformDebugInfo(ctx context.Context, token string, instanceData *
 			if len(stateData.PreviewErrors) > 0 {
 				info.TerraformPlanPreviewError = stateData.PreviewErrors
 			}
+		}
+	}
+}
+
+// collectOperatorDebugInfo fetches operator debug data (input/output parameters)
+// for resources that are neither helm nor terraform.
+func collectOperatorDebugInfo(ctx context.Context, token, serviceID, instanceID string, planDAG *PlanDAG, instanceData *openapiclientfleet.ResourceInstance, result map[string]*ResourceDebugInfo) {
+	for _, node := range planDAG.Nodes {
+		lower := strings.ToLower(node.Type)
+		if strings.Contains(lower, "helm") || strings.Contains(lower, "terraform") {
+			continue
+		}
+
+		key := node.Key
+		if key == "" {
+			key = node.ID
+		}
+		info, exists := result[key]
+		if !exists {
+			continue
+		}
+
+		offeringResult, err := dataaccess.DescribeServiceOfferingResource(
+			ctx, token, serviceID, node.ID, instanceID,
+			instanceData.ProductTierId, instanceData.TierVersion,
+		)
+		if err != nil {
+			continue
+		}
+
+		opData := &OperatorData{}
+
+		inner := offeringResult.GetConsumptionDescribeServiceOfferingResourceResult()
+		apis := inner.GetApis()
+		for _, api := range apis {
+			for _, ip := range api.InputParameters {
+				param := OperatorInputParam{
+					Key:         ip.Key,
+					DisplayName: ip.DisplayName,
+					Description: ip.Description,
+					Type:        ip.Type,
+					Required:    ip.Required,
+					Modifiable:  ip.Modifiable,
+					Custom:      ip.Custom,
+				}
+				if ip.DefaultValue != nil {
+					param.DefaultValue = *ip.DefaultValue
+				}
+				opData.InputParams = append(opData.InputParams, param)
+			}
+			for _, op := range api.OutputParameters {
+				opData.OutputParams = append(opData.OutputParams, OperatorOutputParam{
+					Key:         op.Key,
+					DisplayName: op.DisplayName,
+					Description: op.Description,
+					Type:        op.Type,
+					Custom:      op.Custom,
+				})
+			}
+		}
+
+		if len(opData.InputParams) > 0 || len(opData.OutputParams) > 0 {
+			info.Operator = opData
 		}
 	}
 }

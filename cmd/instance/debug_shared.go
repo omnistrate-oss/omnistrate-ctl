@@ -17,6 +17,33 @@ type TerraformData struct {
 	Logs  map[string]string `json:"logs"`
 }
 
+// OperatorInputParam describes a single input parameter for an operator resource.
+type OperatorInputParam struct {
+	Key          string `json:"key"`
+	DisplayName  string `json:"displayName"`
+	Description  string `json:"description"`
+	Type         string `json:"type"`
+	DefaultValue string `json:"defaultValue,omitempty"`
+	Required     bool   `json:"required"`
+	Modifiable   bool   `json:"modifiable"`
+	Custom       bool   `json:"custom"`
+}
+
+// OperatorOutputParam describes a single output parameter for an operator resource.
+type OperatorOutputParam struct {
+	Key         string `json:"key"`
+	DisplayName string `json:"displayName"`
+	Description string `json:"description"`
+	Type        string `json:"type"`
+	Custom      bool   `json:"custom"`
+}
+
+// OperatorData holds debug information specific to operator-type resources.
+type OperatorData struct {
+	InputParams  []OperatorInputParam  `json:"inputParams,omitempty"`
+	OutputParams []OperatorOutputParam `json:"outputParams,omitempty"`
+}
+
 // ResourceDebugInfo holds all debug information for a specific resource in the plan DAG.
 type ResourceDebugInfo struct {
 	ResourceID   string `json:"resourceId"`
@@ -33,11 +60,14 @@ type ResourceDebugInfo struct {
 	TerraformLogs             map[string]string       `json:"terraformLogs,omitempty"`
 	TerraformPlanPreview      map[string]string       `json:"terraformPlanPreview,omitempty"`
 	TerraformPlanPreviewError map[string]string       `json:"terraformPlanPreviewError,omitempty"`
+
+	// Operator-specific data (populated for operator resources)
+	Operator *OperatorData `json:"operator,omitempty"`
 }
 
 // hasData returns true if any debug data has been populated for this resource.
 func (r *ResourceDebugInfo) hasData() bool {
-	return r.Helm != nil || r.TerraformProgress != nil ||
+	return r.Helm != nil || r.Operator != nil || r.TerraformProgress != nil ||
 		len(r.TerraformHistory) > 0 || len(r.TerraformFiles) > 0 || len(r.TerraformLogs) > 0 ||
 		len(r.TerraformPlanPreview) > 0 || len(r.TerraformPlanPreviewError) > 0
 }
