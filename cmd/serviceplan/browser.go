@@ -6,9 +6,13 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/exec"
+	"path/filepath"
+	"runtime"
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 	"unicode"
 
 	"github.com/charmbracelet/bubbles/list"
@@ -22,6 +26,7 @@ import (
 	openapiclientfleet "github.com/omnistrate-oss/omnistrate-sdk-go/fleet"
 	openapiclient "github.com/omnistrate-oss/omnistrate-sdk-go/v1"
 	"golang.org/x/term"
+	"gopkg.in/yaml.v3"
 )
 
 const (
@@ -31,7 +36,7 @@ const (
 	servicePlanBrowserListPreferredWidth = 42
 	servicePlanBrowserHelpHeight         = 2
 	servicePlanBrowserHeaderHeight       = 1
-	servicePlanBrowserTabsHeight         = 3
+	servicePlanBrowserTabsHeight         = 4
 
 	servicePlanBrowserFocusLeft servicePlanBrowserFocus = iota
 	servicePlanBrowserFocusDetails
@@ -43,7 +48,28 @@ const (
 
 	servicePlanCustomerAccountConfigIDParamKey = "cloud_provider_account_config_id"
 	servicePlanCustomerAccountResourcePrefix   = "r-injectedaccountconfig"
+	servicePlanCustomerAccountResourceKey      = "omnistrateCloudAccountConfig"
+
+	servicePlanCustomerAccountIacToolKey             = "account_configuration_method"
+	servicePlanCustomerAccountAWSAccountIDKey        = "aws_account_id"
+	servicePlanCustomerAccountAWSBootstrapRoleKey    = "aws_bootstrap_role_arn"
+	servicePlanCustomerAccountGCPProjectIDKey        = "gcp_project_id"
+	servicePlanCustomerAccountGCPProjectNumberKey    = "gcp_project_number"
+	servicePlanCustomerAccountGCPServiceAccountKey   = "gcp_service_account_email"
+	servicePlanCustomerAccountAzureSubscriptionIDKey = "azure_subscription_id"
+	servicePlanCustomerAccountAzureTenantIDKey       = "azure_tenant_id"
+	servicePlanCustomerAccountNebiusTenantIDKey      = "nebius_tenant_id"
+	servicePlanCustomerAccountNebiusBindingsKey      = "nebius_bindings"
+	servicePlanCustomerAccountNebiusBindingsFileKey  = "nebius_bindings_file"
+	servicePlanCustomerAccountReadyPollInterval      = 10 * time.Second
+	servicePlanCustomerAccountProgressPollInterval   = 10 * time.Second
+	servicePlanCustomerAccountReadyTimeout           = 10 * time.Minute
+	servicePlanCustomerAccountConnectOptionValue     = "__connect_customer_cloud_account__"
+	servicePlanCustomerAccountRetryOptionValue       = "__retry_customer_cloud_account__"
+	servicePlanCustomerAccountDeleteOptionValue      = "__delete_customer_cloud_account__"
 )
+
+var servicePlanBrowserCopyToClipboard = copyServicePlanBrowserToClipboard
 
 type servicePlanBrowserFocus int
 
@@ -125,13 +151,32 @@ type servicePlanUserRow struct {
 }
 
 type servicePlanCustomerCloudAccountRow struct {
-	InstanceID     string
-	CloudProvider  string
-	Status         string
-	SubscriptionID string
-	CustomerEmail  string
-	Resource       string
-	Region         string
+	InstanceID                 string
+	ServiceID                  string
+	EnvironmentID              string
+	ResourceID                 string
+	AccountConfigID            string
+	CloudProvider              string
+	Status                     string
+	StatusMessage              string
+	SubscriptionID             string
+	CustomerEmail              string
+	Resource                   string
+	Region                     string
+	AWSAccountID               string
+	AWSBootstrapRoleARN        string
+	AWSCloudFormationURL       string
+	AWSCloudFormationNoLBURL   string
+	GCPProjectID               string
+	GCPProjectNumber           string
+	GCPServiceAccountEmail     string
+	GCPBootstrapShellCommand   string
+	AzureSubscriptionID        string
+	AzureTenantID              string
+	AzureBootstrapShellCommand string
+	NebiusTenantID             string
+	NebiusBindingsCount        int
+	OCIBootstrapShellCommand   string
 }
 
 type servicePlanBrowserLoader interface {
@@ -141,6 +186,17 @@ type servicePlanBrowserLoader interface {
 type servicePlanBrowserDeploymentLauncher interface {
 	LoadDeploymentForm(context.Context, string, servicePlanBrowserEnvironment) (servicePlanDeploymentForm, error)
 	LaunchDeployment(context.Context, string, servicePlanDeploymentLaunchRequest) (string, error)
+}
+
+type servicePlanBrowserCustomerAccountConnector interface {
+	CreateCustomerCloudAccount(context.Context, string, servicePlanCustomerCloudAccountConnectRequest) (servicePlanCustomerCloudAccountRow, error)
+	RefreshCustomerCloudAccount(context.Context, string, servicePlanCustomerCloudAccountActionRequest) (servicePlanCustomerCloudAccountRow, error)
+}
+
+type servicePlanBrowserCustomerAccountManager interface {
+	servicePlanBrowserCustomerAccountConnector
+	DeleteCustomerCloudAccount(context.Context, string, servicePlanCustomerCloudAccountActionRequest) error
+	RetryCustomerCloudAccount(context.Context, string, servicePlanCustomerCloudAccountActionRequest) (servicePlanCustomerCloudAccountRow, error)
 }
 
 type productionServicePlanBrowserLoader struct{}
@@ -172,6 +228,10 @@ type servicePlanBrowserModel struct {
 	deploymentForm         *servicePlanDeploymentFormState
 	loadDeploymentForm     func(servicePlanBrowserEnvironment) (servicePlanDeploymentForm, error)
 	launchDeployment       func(servicePlanDeploymentLaunchRequest) (string, error)
+	createCustomerAccount  func(servicePlanCustomerCloudAccountConnectRequest) (servicePlanCustomerCloudAccountRow, error)
+	refreshCustomerAccount func(servicePlanCustomerCloudAccountActionRequest) (servicePlanCustomerCloudAccountRow, error)
+	deleteCustomerAccount  func(servicePlanCustomerCloudAccountActionRequest) error
+	retryCustomerAccount   func(servicePlanCustomerCloudAccountActionRequest) (servicePlanCustomerCloudAccountRow, error)
 }
 
 type servicePlanBrowserLeftItem struct {
@@ -233,6 +293,29 @@ type servicePlanDeploymentLaunchedMsg struct {
 	err        error
 }
 
+type servicePlanCustomerCloudAccountCreatedMsg struct {
+	account servicePlanCustomerCloudAccountRow
+	err     error
+}
+
+type servicePlanCustomerCloudAccountPollTickMsg struct{}
+
+type servicePlanCustomerCloudAccountRefreshedMsg struct {
+	account servicePlanCustomerCloudAccountRow
+	err     error
+}
+
+type servicePlanBrowserClipboardResultMsg struct {
+	message string
+	err     error
+}
+
+type servicePlanCustomerCloudAccountActionMsg struct {
+	action  servicePlanCustomerCloudAccountAction
+	account servicePlanCustomerCloudAccountRow
+	err     error
+}
+
 type servicePlanDeploymentForm struct {
 	Environment              servicePlanBrowserEnvironment
 	Version                  string
@@ -242,6 +325,7 @@ type servicePlanDeploymentForm struct {
 	ServiceEnvironmentURLKey string
 	ServiceModelURLKey       string
 	ProductTierURLKey        string
+	AccountResource          servicePlanDeploymentResource
 	Resources                []servicePlanDeploymentResource
 	CloudProviders           []string
 	RegionsByCloud           map[string][]string
@@ -290,10 +374,23 @@ type servicePlanDeploymentLaunchRequest struct {
 	Params            map[string]any
 }
 
+type servicePlanCustomerCloudAccountConnectRequest struct {
+	Form          servicePlanDeploymentForm
+	Customer      servicePlanDeploymentCustomer
+	CloudProvider string
+	Values        map[string]string
+}
+
+type servicePlanCustomerCloudAccountActionRequest struct {
+	Form    servicePlanDeploymentForm
+	Account servicePlanCustomerCloudAccountRow
+}
+
 type servicePlanDeploymentFieldKind int
 
 const (
 	servicePlanDeploymentFieldParameter servicePlanDeploymentFieldKind = iota
+	servicePlanDeploymentFieldCustomerAccount
 )
 
 type servicePlanDeploymentFormField struct {
@@ -309,45 +406,81 @@ type servicePlanDeploymentFormField struct {
 }
 
 type servicePlanDeploymentFormState struct {
-	Form                servicePlanDeploymentForm
-	Steps               []servicePlanDeploymentWizardStep
-	StepIndex           int
-	SelectionCursor     int
-	ParamFields         []servicePlanDeploymentFormField
-	ParamCursor         int
-	SelectedCustomer    servicePlanDeploymentCustomer
-	ResourceName        string
-	CloudProvider       string
-	Region              string
-	CustomerAccountID   string
-	ParameterResourceID string
-	ParamValues         map[string]string
-	Launching           bool
-	InstanceID          string
-	Result              string
-	Err                 string
+	Form                         servicePlanDeploymentForm
+	Steps                        []servicePlanDeploymentWizardStep
+	StepIndex                    int
+	SelectionCursor              int
+	AccountActionCursor          int
+	CustomerSearch               textinput.Model
+	OptionInput                  textinput.Model
+	ParamFields                  []servicePlanDeploymentFormField
+	ParamCursor                  int
+	SelectedCustomer             servicePlanDeploymentCustomer
+	ResourceName                 string
+	CloudProvider                string
+	Region                       string
+	CustomerAccountID            string
+	ParameterResourceID          string
+	ParamValues                  map[string]string
+	AccountParamValues           map[string]string
+	Launching                    bool
+	ConnectingAccount            bool
+	CustomerAccountPollScheduled bool
+	ConnectRequest               servicePlanCustomerCloudAccountConnectRequest
+	PendingAccount               servicePlanCustomerCloudAccountRow
+	AccountActionRunning         bool
+	AccountAction                servicePlanCustomerCloudAccountAction
+	InstanceID                   string
+	Result                       string
+	Notice                       string
+	Err                          string
 }
 
 type servicePlanDeploymentWizardStep string
 
 const (
-	servicePlanDeploymentStepCustomer     servicePlanDeploymentWizardStep = "customer"
-	servicePlanDeploymentStepResource     servicePlanDeploymentWizardStep = "resource"
-	servicePlanDeploymentStepCloud        servicePlanDeploymentWizardStep = "cloud"
-	servicePlanDeploymentStepCloudAccount servicePlanDeploymentWizardStep = "cloud-account"
-	servicePlanDeploymentStepRegion       servicePlanDeploymentWizardStep = "region"
-	servicePlanDeploymentStepCustomParams servicePlanDeploymentWizardStep = "custom-params"
-	servicePlanDeploymentStepSystemParams servicePlanDeploymentWizardStep = "system-params"
-	servicePlanDeploymentStepReview       servicePlanDeploymentWizardStep = "review"
-	servicePlanDeploymentStepComplete     servicePlanDeploymentWizardStep = "complete"
+	servicePlanDeploymentStepCustomer       servicePlanDeploymentWizardStep = "customer"
+	servicePlanDeploymentStepResource       servicePlanDeploymentWizardStep = "resource"
+	servicePlanDeploymentStepCloud          servicePlanDeploymentWizardStep = "cloud"
+	servicePlanDeploymentStepCloudAccount   servicePlanDeploymentWizardStep = "cloud-account"
+	servicePlanDeploymentStepConnectAccount servicePlanDeploymentWizardStep = "connect-account"
+	servicePlanDeploymentStepRegion         servicePlanDeploymentWizardStep = "region"
+	servicePlanDeploymentStepCustomParams   servicePlanDeploymentWizardStep = "custom-params"
+	servicePlanDeploymentStepSystemParams   servicePlanDeploymentWizardStep = "system-params"
+	servicePlanDeploymentStepReview         servicePlanDeploymentWizardStep = "review"
+	servicePlanDeploymentStepComplete       servicePlanDeploymentWizardStep = "complete"
 )
 
 type servicePlanDeploymentWizardOption struct {
+	Label          string
+	Description    string
+	Value          string
+	Customer       servicePlanDeploymentCustomer
+	Account        servicePlanCustomerCloudAccountRow
+	ConnectAccount bool
+	AccountAction  servicePlanCustomerCloudAccountAction
+}
+
+type servicePlanCustomerCloudAccountAction string
+
+const (
+	servicePlanCustomerCloudAccountActionNone        servicePlanCustomerCloudAccountAction = ""
+	servicePlanCustomerCloudAccountActionSelect      servicePlanCustomerCloudAccountAction = "select"
+	servicePlanCustomerCloudAccountActionConnect     servicePlanCustomerCloudAccountAction = "connect"
+	servicePlanCustomerCloudAccountActionRetry       servicePlanCustomerCloudAccountAction = "retry"
+	servicePlanCustomerCloudAccountActionDelete      servicePlanCustomerCloudAccountAction = "delete"
+	servicePlanCustomerCloudAccountActionUnavailable servicePlanCustomerCloudAccountAction = "unavailable"
+)
+
+type servicePlanCustomerCloudAccountActionButton struct {
+	Label  string
+	Action servicePlanCustomerCloudAccountAction
+}
+
+type servicePlanCustomerAccountFieldSpec struct {
+	Key         string
 	Label       string
 	Description string
-	Value       string
-	Customer    servicePlanDeploymentCustomer
-	Account     servicePlanCustomerCloudAccountRow
 }
 
 func newServicePlanBrowserDelegate() servicePlanBrowserDelegate {
@@ -511,6 +644,22 @@ func newServicePlanBrowserModel(ctx context.Context, token string, catalog servi
 				return launcher.LaunchDeployment(ctx, token, request)
 			}
 		}
+		if connector, ok := loader.(servicePlanBrowserCustomerAccountConnector); ok {
+			model.createCustomerAccount = func(request servicePlanCustomerCloudAccountConnectRequest) (servicePlanCustomerCloudAccountRow, error) {
+				return connector.CreateCustomerCloudAccount(ctx, token, request)
+			}
+			model.refreshCustomerAccount = func(request servicePlanCustomerCloudAccountActionRequest) (servicePlanCustomerCloudAccountRow, error) {
+				return connector.RefreshCustomerCloudAccount(ctx, token, request)
+			}
+		}
+		if manager, ok := loader.(servicePlanBrowserCustomerAccountManager); ok {
+			model.deleteCustomerAccount = func(request servicePlanCustomerCloudAccountActionRequest) error {
+				return manager.DeleteCustomerCloudAccount(ctx, token, request)
+			}
+			model.retryCustomerAccount = func(request servicePlanCustomerCloudAccountActionRequest) (servicePlanCustomerCloudAccountRow, error) {
+				return manager.RetryCustomerCloudAccount(ctx, token, request)
+			}
+		}
 	}
 	model.setSize(defaultServicePlanBrowserWidth, defaultServicePlanBrowserHeight)
 	model.ensureActiveEnvironmentExpanded()
@@ -531,7 +680,7 @@ func (m servicePlanBrowserModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.setSize(msg.Width, msg.Height)
 		return m, nil
 	case spinner.TickMsg:
-		if !m.hasLoadingDetails() && !m.loadingDeploymentForm {
+		if !m.hasLoadingDetails() && !m.loadingDeploymentForm && !m.deploymentFormSpinnerActive() {
 			return m, nil
 		}
 		var cmd tea.Cmd
@@ -557,7 +706,7 @@ func (m servicePlanBrowserModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		formState := newServicePlanDeploymentFormState(msg.form, spMax(m.detailPanelWidth-8, 40))
 		m.deploymentForm = &formState
-		return m, nil
+		return m, m.scheduleCustomerCloudAccountPollIfNeeded()
 	case servicePlanDeploymentLaunchedMsg:
 		if m.deploymentForm == nil {
 			return m, nil
@@ -574,6 +723,108 @@ func (m servicePlanBrowserModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.deploymentForm.Steps = append(m.deploymentForm.Steps, servicePlanDeploymentStepComplete)
 		m.statusMessage = m.deploymentForm.Result
 		return m, m.refreshSelectedDetails()
+	case servicePlanCustomerCloudAccountCreatedMsg:
+		if m.deploymentForm == nil {
+			return m, nil
+		}
+		if msg.err != nil {
+			m.deploymentForm.ConnectingAccount = false
+			m.deploymentForm.Err = msg.err.Error()
+			return m, nil
+		}
+		m.deploymentForm.PendingAccount = msg.account
+		m.deploymentForm.Err = ""
+		m.deploymentForm.addConnectedCustomerAccount(msg.account)
+		if servicePlanCustomerCloudAccountUsable(msg.account) {
+			return m.completeCustomerCloudAccountConnection(msg.account)
+		}
+		if strings.EqualFold(strings.TrimSpace(msg.account.Status), "FAILED") {
+			m.deploymentForm.ConnectingAccount = false
+			m.deploymentForm.Err = fmt.Sprintf("%s is FAILED", servicePlanCustomerCloudAccountLabel(msg.account))
+			return m, nil
+		}
+		pollCmd := m.scheduleCustomerCloudAccountPollIfNeeded()
+		return m, tea.Batch(m.spinner.Tick, pollCmd)
+	case servicePlanCustomerCloudAccountPollTickMsg:
+		if m.deploymentForm == nil {
+			return m, nil
+		}
+		m.deploymentForm.CustomerAccountPollScheduled = false
+		account, ok := m.deploymentForm.selectedCustomerCloudAccountForRefresh()
+		if !ok {
+			return m, nil
+		}
+		request := servicePlanCustomerCloudAccountActionRequest{Form: m.deploymentForm.Form, Account: account}
+		return m, m.refreshCustomerCloudAccountCmd(request)
+	case servicePlanCustomerCloudAccountRefreshedMsg:
+		if m.deploymentForm == nil {
+			return m, nil
+		}
+		if msg.err != nil {
+			m.deploymentForm.Err = msg.err.Error()
+			return m, m.scheduleCustomerCloudAccountPollIfNeeded()
+		}
+		if m.deploymentForm.ConnectingAccount {
+			m.deploymentForm.PendingAccount = msg.account
+		}
+		m.deploymentForm.Err = ""
+		m.deploymentForm.addConnectedCustomerAccount(msg.account)
+		if m.deploymentForm.ConnectingAccount && servicePlanCustomerCloudAccountUsable(msg.account) {
+			return m.completeCustomerCloudAccountConnection(msg.account)
+		}
+		if m.deploymentForm.ConnectingAccount && strings.EqualFold(strings.TrimSpace(msg.account.Status), "FAILED") {
+			m.deploymentForm.ConnectingAccount = false
+			m.deploymentForm.Err = fmt.Sprintf("%s is FAILED", servicePlanCustomerCloudAccountLabel(msg.account))
+			return m, nil
+		}
+		return m, m.scheduleCustomerCloudAccountPollIfNeeded()
+	case servicePlanCustomerCloudAccountActionMsg:
+		if m.deploymentForm == nil {
+			return m, nil
+		}
+		m.deploymentForm.AccountActionRunning = false
+		m.deploymentForm.AccountAction = servicePlanCustomerCloudAccountActionNone
+		if msg.err != nil {
+			m.deploymentForm.Err = msg.err.Error()
+			return m, nil
+		}
+		switch msg.action {
+		case servicePlanCustomerCloudAccountActionDelete:
+			m.deploymentForm.removeCustomerAccount(msg.account.InstanceID)
+			m.deploymentForm.Err = ""
+			m.statusMessage = "Cloud account deleted"
+			m.deploymentForm.prepareCurrentStep(spMax(m.detailPanelWidth-8, 40))
+			return m, m.refreshSelectedDetails()
+		case servicePlanCustomerCloudAccountActionRetry:
+			m.deploymentForm.addConnectedCustomerAccount(msg.account)
+			m.deploymentForm.Err = ""
+			m.statusMessage = "Cloud account ready"
+			if strings.EqualFold(strings.TrimSpace(msg.account.Status), "READY") && m.deploymentForm.StepIndex < len(m.deploymentForm.Steps)-1 {
+				m.deploymentForm.StepIndex++
+				m.deploymentForm.prepareCurrentStep(spMax(m.detailPanelWidth-8, 40))
+			} else {
+				m.deploymentForm.prepareCurrentStep(spMax(m.detailPanelWidth-8, 40))
+			}
+			return m, m.refreshSelectedDetails()
+		}
+		return m, nil
+	case servicePlanBrowserClipboardResultMsg:
+		if m.deploymentForm != nil {
+			if msg.err != nil {
+				m.deploymentForm.Err = msg.err.Error()
+				m.deploymentForm.Notice = ""
+			} else {
+				m.deploymentForm.Err = ""
+				m.deploymentForm.Notice = msg.message
+			}
+			return m, nil
+		}
+		if msg.err != nil {
+			m.statusMessage = msg.err.Error()
+		} else {
+			m.statusMessage = msg.message
+		}
+		return m, nil
 	case tea.KeyMsg:
 		if m.deploymentForm != nil {
 			return m.updateDeploymentForm(msg)
@@ -707,17 +958,32 @@ func (m servicePlanBrowserModel) View() string {
 	}
 
 	header := renderServicePlanBrowserHeader(m.catalog)
-	tabs := m.renderEnvironmentTabs(m.width)
 
-	listPanelStyle := servicePlanBrowserPanelStyle(m.focusBorderColor(servicePlanBrowserFocusLeft))
-	detailPanelStyle := servicePlanBrowserPanelStyle(m.focusBorderColor(servicePlanBrowserFocusDetails))
-	plansPanel := listPanelStyle.Width(m.listPanelWidth).Render(m.list.View())
-	detailsPanel := detailPanelStyle.Width(m.detailPanelWidth).Render(m.viewport.View())
-	body := lipgloss.JoinHorizontal(lipgloss.Top, plansPanel, " ", detailsPanel)
+	tabsAndBody := m.renderEnvironmentTabsWithBody(m.width, m.renderBrowserBody())
 
 	help := lipgloss.NewStyle().Foreground(lipgloss.Color("245")).Render(m.helpLine())
-	status := lipgloss.NewStyle().Foreground(lipgloss.Color("111")).Render(m.statusLine())
-	return lipgloss.JoinVertical(lipgloss.Left, header, tabs, body, help, status)
+	sections := []string{header, tabsAndBody, help}
+	if status := m.statusLine(); status != "" {
+		sections = append(sections, lipgloss.NewStyle().Foreground(lipgloss.Color("111")).Render(status))
+	}
+	return lipgloss.JoinVertical(lipgloss.Left, sections...)
+}
+
+func (m servicePlanBrowserModel) renderBrowserBody() string {
+	left := lipgloss.NewStyle().
+		Width(m.listPanelWidth).
+		Height(m.viewport.Height).
+		Render(m.list.View())
+	separator := lipgloss.NewStyle().
+		Foreground(lipgloss.Color("240")).
+		Height(m.viewport.Height).
+		Render("│")
+	right := lipgloss.NewStyle().
+		Width(m.detailPanelWidth).
+		Height(m.viewport.Height).
+		Render(m.viewport.View())
+
+	return lipgloss.JoinHorizontal(lipgloss.Top, left, separator, right)
 }
 
 func renderServicePlanBrowserSnapshot(model servicePlanBrowserModel) string {
@@ -735,16 +1001,16 @@ func (m *servicePlanBrowserModel) setSize(width, height int) {
 	m.width = width
 	m.height = height
 
-	listPanelWidth := spMin(spMax(width/3, servicePlanBrowserListMinWidth), servicePlanBrowserListPreferredWidth)
+	bodyWidth := spMax(width-2, servicePlanBrowserListMinWidth+41)
+	listPanelWidth := spMin(spMax(bodyWidth/3, servicePlanBrowserListMinWidth), servicePlanBrowserListPreferredWidth)
 	bodyHeight := spMax(height-servicePlanBrowserHeaderHeight-servicePlanBrowserTabsHeight-servicePlanBrowserHelpHeight, 12)
-	detailPanelWidth := spMax(width-listPanelWidth-1, 40)
-	panelFrameWidth := servicePlanBrowserPanelStyle(lipgloss.Color("240")).GetHorizontalFrameSize()
+	detailPanelWidth := spMax(bodyWidth-listPanelWidth-1, 40)
 
 	m.listPanelWidth = listPanelWidth
 	m.detailPanelWidth = detailPanelWidth
-	m.list.SetWidth(spMax(listPanelWidth-panelFrameWidth, 10))
+	m.list.SetWidth(spMax(listPanelWidth, 10))
 	m.list.SetHeight(bodyHeight)
-	m.viewport.Width = spMax(detailPanelWidth-panelFrameWidth, 10)
+	m.viewport.Width = spMax(detailPanelWidth, 10)
 	m.viewport.Height = bodyHeight
 	m.syncViewportContent()
 }
@@ -756,21 +1022,11 @@ func servicePlanBrowserPanelStyle(borderColor lipgloss.Color) lipgloss.Style {
 		Padding(0, 1)
 }
 
-func (m servicePlanBrowserModel) focusBorderColor(focus servicePlanBrowserFocus) lipgloss.Color {
-	if m.focus == focus {
-		return lipgloss.Color("117")
-	}
-	return lipgloss.Color("240")
-}
-
 func (m servicePlanBrowserModel) statusLine() string {
 	if strings.TrimSpace(m.statusMessage) != "" {
 		return m.statusMessage
 	}
-	if m.focus == servicePlanBrowserFocusDetails {
-		return "Use d to launch a deployment, r to refresh. Use tab or shift+tab to switch environments. Use esc or left to return to the plan list."
-	}
-	return "Use d to launch a deployment, r to refresh. Plan details update as the selector moves."
+	return ""
 }
 
 func (m servicePlanBrowserModel) helpLine() string {
@@ -1179,34 +1435,23 @@ func (m servicePlanBrowserModel) renderEnvironmentTabs(width int) string {
 	inactiveTabBorder := servicePlanTabBorderWithBottom("┴", "─", "┴")
 	activeTabBorder := servicePlanTabBorderWithBottom("┘", " ", "└")
 
-	inactiveTabStyle := lipgloss.NewStyle().
-		Border(inactiveTabBorder, true).
-		BorderForeground(highlightColor).
-		Padding(0, 1).
-		Bold(true)
-	activeTabStyle := lipgloss.NewStyle().
-		Border(activeTabBorder, true).
-		BorderForeground(highlightColor).
-		Padding(0, 1).
-		Bold(true)
-
 	renderedTabs := make([]string, 0, len(m.environmentTabs))
 	for i, name := range m.environmentTabs {
-		envColor := servicePlanEnvironmentColor(name)
-		style := inactiveTabStyle.Foreground(envColor).Faint(true)
-		if i == m.activeTab {
-			style = activeTabStyle.Foreground(envColor)
+		isFirst := i == 0
+		isActive := i == m.activeTab
+		border := inactiveTabBorder
+		if isActive {
+			border = activeTabBorder
 		}
+		style := servicePlanEnvironmentTabStyle(isActive, border)
 
-		border, _, _, _, _ := style.GetBorder()
-		if i == 0 {
-			if i == m.activeTab {
-				border.BottomLeft = "│"
-			} else {
-				border.BottomLeft = "├"
-			}
+		renderedBorder, _, _, _, _ := style.GetBorder()
+		if isFirst && isActive {
+			renderedBorder.BottomLeft = "│"
+		} else if isFirst && !isActive {
+			renderedBorder.BottomLeft = "├"
 		}
-		style = style.Border(border)
+		style = style.Border(renderedBorder)
 		renderedTabs = append(renderedTabs, style.Render(emptyValue(name)))
 	}
 
@@ -1225,7 +1470,31 @@ func (m servicePlanBrowserModel) renderEnvironmentTabs(width int) string {
 		row = lipgloss.JoinHorizontal(lipgloss.Bottom, row, gapStyle.Render(strings.Repeat(" ", gapWidth)))
 	}
 
-	return lipgloss.NewStyle().MaxWidth(width).Render(row)
+	return row
+}
+
+func (m servicePlanBrowserModel) renderEnvironmentTabsWithBody(width int, body string) string {
+	tabs := m.renderEnvironmentTabs(width)
+	highlightColor := lipgloss.Color("62")
+	windowStyle := lipgloss.NewStyle().
+		BorderForeground(highlightColor).
+		Border(lipgloss.NormalBorder()).
+		UnsetBorderTop().
+		Width(spMax(width-2, 1)).
+		Padding(0, 0)
+
+	return lipgloss.JoinVertical(lipgloss.Left, tabs, windowStyle.Render(body))
+}
+
+func servicePlanEnvironmentTabStyle(active bool, border lipgloss.Border) lipgloss.Style {
+	style := lipgloss.NewStyle().
+		Border(border, true).
+		BorderForeground(lipgloss.Color("62")).
+		Padding(0, 1)
+	if active {
+		return style.Bold(true).Foreground(lipgloss.Color("230"))
+	}
+	return style.Foreground(lipgloss.Color("245"))
 }
 
 func servicePlanTabBorderWithBottom(left, middle, right string) lipgloss.Border {
@@ -1234,22 +1503,6 @@ func servicePlanTabBorderWithBottom(left, middle, right string) lipgloss.Border 
 	border.Bottom = middle
 	border.BottomRight = right
 	return border
-}
-
-func servicePlanEnvironmentColor(environment string) lipgloss.Color {
-	normalized := strings.ToLower(strings.TrimSpace(environment))
-	switch normalized {
-	case "prod", "production":
-		return lipgloss.Color("160")
-	case "stage", "staging":
-		return lipgloss.Color("214")
-	case "dev", "development":
-		return lipgloss.Color("82")
-	case "qa", "test", "testing":
-		return lipgloss.Color("39")
-	default:
-		return lipgloss.Color("62")
-	}
 }
 
 func (m servicePlanBrowserModel) detailRows() []servicePlanBrowserDetailRow {
@@ -1496,13 +1749,12 @@ func (m *servicePlanBrowserModel) openSelectedModal() {
 	case servicePlanBrowserModalCloudAccounts:
 		for _, account := range detail.CustomerCloudAccounts {
 			text := fmt.Sprintf(
-				"%s | %s | %s | %s | %s | %s",
-				emptyValue(account.InstanceID),
+				"%s | %s | %s | %s | %s",
+				emptyValue(servicePlanCustomerCloudAccountLabel(account)),
 				emptyValue(account.CloudProvider),
 				emptyValue(account.Status),
 				emptyValue(account.Region),
 				emptyValue(account.CustomerEmail),
-				emptyValue(account.SubscriptionID),
 			)
 			modalRows = append(modalRows, servicePlanBrowserModalRow{Text: text, Search: strings.ToLower(text)})
 		}
@@ -1734,9 +1986,126 @@ func (m servicePlanBrowserModel) launchDeploymentCmd(request servicePlanDeployme
 	}
 }
 
+func (m servicePlanBrowserModel) createCustomerCloudAccountCmd(request servicePlanCustomerCloudAccountConnectRequest) tea.Cmd {
+	if m.createCustomerAccount == nil {
+		return nil
+	}
+
+	return func() tea.Msg {
+		account, err := m.createCustomerAccount(request)
+		return servicePlanCustomerCloudAccountCreatedMsg{account: account, err: err}
+	}
+}
+
+func (m servicePlanBrowserModel) customerCloudAccountPollTickCmd() tea.Cmd {
+	return tea.Tick(servicePlanCustomerAccountProgressPollInterval, func(time.Time) tea.Msg {
+		return servicePlanCustomerCloudAccountPollTickMsg{}
+	})
+}
+
+func (m *servicePlanBrowserModel) scheduleCustomerCloudAccountPollIfNeeded() tea.Cmd {
+	if m.deploymentForm == nil || m.deploymentForm.CustomerAccountPollScheduled {
+		return nil
+	}
+	if _, ok := m.deploymentForm.selectedCustomerCloudAccountForRefresh(); !ok {
+		return nil
+	}
+	m.deploymentForm.CustomerAccountPollScheduled = true
+	return m.customerCloudAccountPollTickCmd()
+}
+
+func (m servicePlanBrowserModel) refreshCustomerCloudAccountCmd(request servicePlanCustomerCloudAccountActionRequest) tea.Cmd {
+	if m.refreshCustomerAccount == nil {
+		return nil
+	}
+
+	return func() tea.Msg {
+		account, err := m.refreshCustomerAccount(request)
+		if account.InstanceID == "" {
+			account = request.Account
+		}
+		return servicePlanCustomerCloudAccountRefreshedMsg{account: account, err: err}
+	}
+}
+
+func (m servicePlanBrowserModel) deleteCustomerCloudAccountCmd(request servicePlanCustomerCloudAccountActionRequest) tea.Cmd {
+	if m.deleteCustomerAccount == nil {
+		return nil
+	}
+
+	return func() tea.Msg {
+		err := m.deleteCustomerAccount(request)
+		return servicePlanCustomerCloudAccountActionMsg{
+			action:  servicePlanCustomerCloudAccountActionDelete,
+			account: request.Account,
+			err:     err,
+		}
+	}
+}
+
+func (m servicePlanBrowserModel) retryCustomerCloudAccountCmd(request servicePlanCustomerCloudAccountActionRequest) tea.Cmd {
+	if m.retryCustomerAccount == nil {
+		return nil
+	}
+
+	return func() tea.Msg {
+		account, err := m.retryCustomerAccount(request)
+		if account.InstanceID == "" {
+			account = request.Account
+		}
+		return servicePlanCustomerCloudAccountActionMsg{
+			action:  servicePlanCustomerCloudAccountActionRetry,
+			account: account,
+			err:     err,
+		}
+	}
+}
+
+func (m servicePlanBrowserModel) completeCustomerCloudAccountConnection(account servicePlanCustomerCloudAccountRow) (tea.Model, tea.Cmd) {
+	if m.deploymentForm == nil {
+		return m, nil
+	}
+	m.deploymentForm.ConnectingAccount = false
+	m.deploymentForm.PendingAccount = account
+	m.deploymentForm.addConnectedCustomerAccount(account)
+	m.deploymentForm.Err = ""
+	if m.deploymentForm.StepIndex < len(m.deploymentForm.Steps)-1 {
+		m.deploymentForm.StepIndex++
+		m.deploymentForm.prepareCurrentStep(spMax(m.detailPanelWidth-8, 40))
+	}
+	cmd := m.refreshSelectedDetails()
+	return m, cmd
+}
+
+func (m servicePlanBrowserModel) deploymentFormSpinnerActive() bool {
+	return m.deploymentForm != nil && (m.deploymentForm.Launching || m.deploymentForm.ConnectingAccount || m.deploymentForm.AccountActionRunning)
+}
+
 func (m servicePlanBrowserModel) updateDeploymentForm(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	if m.deploymentForm == nil {
 		return m, nil
+	}
+
+	if m.deploymentForm.ConnectingAccount || m.deploymentForm.AccountActionRunning {
+		switch msg.String() {
+		case "ctrl+c":
+			return m, tea.Quit
+		case "esc":
+			m.deploymentForm = nil
+			m.statusMessage = ""
+		case "c", "C", "y", "Y":
+			if m.deploymentForm.ConnectingAccount {
+				return m.copyDeploymentCloudFormationTemplateURL()
+			}
+		}
+		return m, nil
+	}
+
+	if cmd, handled := m.deploymentForm.updateActiveTextInput(msg); handled {
+		return m, cmd
+	}
+	if cmd, handled := m.deploymentForm.updateCurrentFormFieldInput(msg); handled {
+		return m, cmd
 	}
 
 	switch msg.String() {
@@ -1746,7 +2115,7 @@ func (m servicePlanBrowserModel) updateDeploymentForm(msg tea.KeyMsg) (tea.Model
 		m.deploymentForm = nil
 		m.statusMessage = ""
 		return m, nil
-	case "left", "backspace":
+	case "left":
 		m.deploymentForm.previousStep(spMax(m.detailPanelWidth-8, 40))
 		return m, nil
 	case "up":
@@ -1754,39 +2123,55 @@ func (m servicePlanBrowserModel) updateDeploymentForm(msg tea.KeyMsg) (tea.Model
 			return m, nil
 		}
 		m.deploymentForm.moveWizardCursor(-1)
-		return m, nil
+		return m, m.scheduleCustomerCloudAccountPollIfNeeded()
 	case "down":
 		if m.deploymentForm.currentStepIsParameters() && m.deploymentForm.moveCurrentParameterOption(1) {
 			return m, nil
 		}
 		m.deploymentForm.moveWizardCursor(1)
-		return m, nil
+		return m, m.scheduleCustomerCloudAccountPollIfNeeded()
 	case "tab":
-		if m.deploymentForm.currentStepIsParameters() {
+		if m.deploymentForm.currentStep() == servicePlanDeploymentStepCloudAccount {
+			m.deploymentForm.moveCustomerCloudAccountActionCursor(1)
+			return m, nil
+		}
+		if m.deploymentForm.currentStepUsesFormFields() {
 			m.deploymentForm.moveWizardCursor(1)
 			return m, nil
 		}
 	case "shift+tab":
-		if m.deploymentForm.currentStepIsParameters() {
+		if m.deploymentForm.currentStep() == servicePlanDeploymentStepCloudAccount {
+			m.deploymentForm.moveCustomerCloudAccountActionCursor(-1)
+			return m, nil
+		}
+		if m.deploymentForm.currentStepUsesFormFields() {
 			m.deploymentForm.moveWizardCursor(-1)
 			return m, nil
 		}
-	case "right", "enter":
+	case "enter":
+		if m.deploymentForm.advanceFormFieldCursor() {
+			return m, nil
+		}
 		return m.advanceDeploymentWizard()
+	case "c", "C", "y", "Y":
+		return m.copyDeploymentCloudFormationTemplateURL()
 	}
+	return m, nil
+}
 
-	if m.deploymentForm.Launching || !m.deploymentForm.currentStepIsParameters() || len(m.deploymentForm.ParamFields) == 0 {
+func (m servicePlanBrowserModel) copyDeploymentCloudFormationTemplateURL() (tea.Model, tea.Cmd) {
+	if m.deploymentForm == nil {
 		return m, nil
 	}
-
-	field := &m.deploymentForm.ParamFields[m.deploymentForm.ParamCursor]
-	if len(field.Options) > 0 {
+	url := m.deploymentForm.selectedCloudFormationTemplateURL()
+	if strings.TrimSpace(url) == "" {
+		m.deploymentForm.Err = "CloudFormation template URL is not available yet"
+		m.deploymentForm.Notice = ""
 		return m, nil
 	}
-	updated, cmd := field.Input.Update(msg)
-	field.Input = updated
 	m.deploymentForm.Err = ""
-	return m, cmd
+	m.deploymentForm.Notice = "Copying CloudFormation template URL..."
+	return m, copyServicePlanBrowserTextCmd(url, "Copied CloudFormation template URL")
 }
 
 func (m servicePlanBrowserModel) advanceDeploymentWizard() (tea.Model, tea.Cmd) {
@@ -1797,6 +2182,32 @@ func (m servicePlanBrowserModel) advanceDeploymentWizard() (tea.Model, tea.Cmd) 
 		m.deploymentForm = nil
 		m.statusMessage = ""
 		return m, nil
+	}
+	if m.deploymentForm.currentStep() == servicePlanDeploymentStepConnectAccount {
+		request, err := m.deploymentForm.customerAccountConnectRequest()
+		if err != nil {
+			m.deploymentForm.Err = err.Error()
+			return m, nil
+		}
+		if m.createCustomerAccount == nil {
+			m.deploymentForm.Err = "customer cloud account connection is not available"
+			return m, nil
+		}
+		m.deploymentForm.Err = ""
+		m.deploymentForm.ConnectingAccount = true
+		m.deploymentForm.ConnectRequest = request
+		m.deploymentForm.PendingAccount = servicePlanCustomerCloudAccountRow{
+			CloudProvider:  strings.ToLower(strings.TrimSpace(request.CloudProvider)),
+			CustomerEmail:  request.Customer.Email,
+			SubscriptionID: servicePlanSubscriptionIDForCustomer(request.Form.Subscriptions, request.Customer),
+		}
+		m.statusMessage = "Creating cloud account connection..."
+		return m, tea.Batch(m.spinner.Tick, m.createCustomerCloudAccountCmd(request))
+	}
+	if m.deploymentForm.currentStep() == servicePlanDeploymentStepCloudAccount {
+		if model, cmd, handled := m.advanceCustomerCloudAccountAction(); handled {
+			return model, cmd
+		}
 	}
 	if m.deploymentForm.currentStep() == servicePlanDeploymentStepReview {
 		request, err := m.deploymentForm.launchRequest()
@@ -1818,20 +2229,75 @@ func (m servicePlanBrowserModel) advanceDeploymentWizard() (tea.Model, tea.Cmd) 
 		m.deploymentForm.Err = err.Error()
 		return m, nil
 	}
-	return m, nil
+	return m, m.scheduleCustomerCloudAccountPollIfNeeded()
+}
+
+func (m servicePlanBrowserModel) advanceCustomerCloudAccountAction() (tea.Model, tea.Cmd, bool) {
+	option, action, ok := m.deploymentForm.selectedCustomerCloudAccountAction()
+	if !ok {
+		return m, nil, false
+	}
+
+	switch action {
+	case servicePlanCustomerCloudAccountActionSelect:
+		return m, nil, false
+	case servicePlanCustomerCloudAccountActionConnect:
+		m.deploymentForm.CustomerAccountID = ""
+		m.deploymentForm.ensureConnectAccountStep()
+		if m.deploymentForm.StepIndex < len(m.deploymentForm.Steps)-1 {
+			m.deploymentForm.StepIndex++
+			m.deploymentForm.prepareCurrentStep(spMax(m.detailPanelWidth-8, 40))
+		}
+		return m, nil, true
+	case servicePlanCustomerCloudAccountActionDelete:
+		if m.deleteCustomerAccount == nil {
+			m.deploymentForm.Err = "customer cloud account delete is not available"
+			return m, nil, true
+		}
+		request := servicePlanCustomerCloudAccountActionRequest{Form: m.deploymentForm.Form, Account: option.Account}
+		m.deploymentForm.Err = ""
+		m.deploymentForm.AccountAction = servicePlanCustomerCloudAccountActionDelete
+		m.deploymentForm.AccountActionRunning = true
+		m.statusMessage = "Deleting cloud account..."
+		return m, tea.Batch(m.spinner.Tick, m.deleteCustomerCloudAccountCmd(request)), true
+	case servicePlanCustomerCloudAccountActionRetry:
+		if m.retryCustomerAccount == nil {
+			m.deploymentForm.Err = "customer cloud account retry is not available"
+			return m, nil, true
+		}
+		request := servicePlanCustomerCloudAccountActionRequest{Form: m.deploymentForm.Form, Account: option.Account}
+		m.deploymentForm.Err = ""
+		m.deploymentForm.AccountAction = servicePlanCustomerCloudAccountActionRetry
+		m.deploymentForm.AccountActionRunning = true
+		m.statusMessage = "Retrying cloud account..."
+		return m, tea.Batch(m.spinner.Tick, m.retryCustomerCloudAccountCmd(request)), true
+	case servicePlanCustomerCloudAccountActionUnavailable:
+		m.deploymentForm.Err = fmt.Sprintf("%s is %s", servicePlanCustomerCloudAccountLabel(option.Account), emptyValue(option.Account.Status))
+		return m, nil, true
+	default:
+		return m, nil, false
+	}
 }
 
 func newServicePlanDeploymentFormState(form servicePlanDeploymentForm, width int) servicePlanDeploymentFormState {
 	customers := servicePlanDeploymentCustomerOptions(form)
 	resourceName := firstString(servicePlanDeploymentResourceOptions(form.Resources))
 	cloudProvider := firstString(form.CloudProviders)
+	customerSearch := textinput.New()
+	customerSearch.Prompt = "Search: "
+	customerSearch.Placeholder = "name, email, company, or user ID"
+	optionInput := textinput.New()
+	optionInput.Prompt = "> "
 	state := servicePlanDeploymentFormState{
-		Form:             form,
-		SelectedCustomer: firstServicePlanDeploymentCustomer(customers),
-		ResourceName:     resourceName,
-		CloudProvider:    cloudProvider,
-		Region:           firstString(form.RegionsByCloud[cloudProvider]),
-		ParamValues:      map[string]string{},
+		Form:               form,
+		SelectedCustomer:   firstServicePlanDeploymentCustomer(customers),
+		ResourceName:       resourceName,
+		CloudProvider:      cloudProvider,
+		Region:             firstString(form.RegionsByCloud[cloudProvider]),
+		CustomerSearch:     customerSearch,
+		OptionInput:        optionInput,
+		ParamValues:        map[string]string{},
+		AccountParamValues: map[string]string{},
 	}
 	state.Steps = servicePlanDeploymentWizardSteps(form)
 	state.CustomerAccountID = state.firstCloudAccountID()
@@ -1844,7 +2310,9 @@ func servicePlanDeploymentWizardSteps(form servicePlanDeploymentForm) []serviceP
 	if servicePlanEnvironmentIsProduction(form.Environment) {
 		steps = append(steps, servicePlanDeploymentStepCustomer)
 	}
-	steps = append(steps, servicePlanDeploymentStepResource)
+	if len(form.Resources) > 1 {
+		steps = append(steps, servicePlanDeploymentStepResource)
+	}
 	steps = append(steps, servicePlanDeploymentStepCloud)
 	if form.RequiresCustomerAccount {
 		steps = append(steps, servicePlanDeploymentStepCloudAccount)
@@ -1875,10 +2343,34 @@ func servicePlanDeploymentFormHasParameters(form servicePlanDeploymentForm, cust
 
 func (s *servicePlanDeploymentFormState) prepareCurrentStep(width int) {
 	s.Err = ""
+	s.CustomerSearch.Blur()
+	s.OptionInput.Blur()
 	s.SelectionCursor = s.selectedOptionIndex()
-	if s.currentStepIsParameters() {
-		_, s.ParameterResourceID = servicePlanDeploymentParametersForResource(s.Form, s.ResourceName)
-		s.ParamFields = s.buildParameterFields(s.currentStep(), width)
+	if s.currentStep() == servicePlanDeploymentStepCustomer {
+		s.CustomerSearch.Width = spMin(spMax(width-18, 24), 72)
+		s.CustomerSearch.Focus()
+		s.SelectionCursor = spClamp(s.SelectionCursor, spMax(0, len(s.currentOptions())-1))
+		return
+	}
+	if s.currentStep() == servicePlanDeploymentStepCloudAccount {
+		s.SelectionCursor = spClamp(s.SelectionCursor, spMax(0, len(s.currentOptions())-1))
+		s.AccountActionCursor = spClamp(s.AccountActionCursor, spMax(0, len(s.selectedCustomerCloudAccountActionButtons())-1))
+		return
+	}
+	if s.currentStepUsesFreeformInput() {
+		s.OptionInput.Width = spMin(spMax(width-18, 24), 72)
+		s.OptionInput.SetValue(s.currentFreeformValue())
+		s.OptionInput.Focus()
+		return
+	}
+	if s.currentStepUsesFormFields() {
+		if s.currentStep() == servicePlanDeploymentStepConnectAccount {
+			s.ParameterResourceID = ""
+			s.ParamFields = s.buildCustomerAccountFields(width)
+		} else {
+			_, s.ParameterResourceID = servicePlanDeploymentParametersForResource(s.Form, s.ResourceName)
+			s.ParamFields = s.buildParameterFields(s.currentStep(), width)
+		}
 		s.ParamCursor = spClamp(s.ParamCursor, spMax(0, len(s.ParamFields)-1))
 		s.syncFocus()
 		return
@@ -1927,6 +2419,29 @@ func (s servicePlanDeploymentFormState) buildParameterFields(step servicePlanDep
 	return fields
 }
 
+func (s servicePlanDeploymentFormState) buildCustomerAccountFields(width int) []servicePlanDeploymentFormField {
+	specs := servicePlanCustomerAccountFieldSpecs(s.CloudProvider)
+	fields := make([]servicePlanDeploymentFormField, 0, len(specs))
+	fieldWidth := spMin(spMax(width-28, 24), 64)
+	for _, spec := range specs {
+		input := textinput.New()
+		input.CharLimit = 0
+		input.Width = fieldWidth
+		input.Prompt = ""
+		input.SetValue(s.AccountParamValues[spec.Key])
+		fields = append(fields, servicePlanDeploymentFormField{
+			Kind:        servicePlanDeploymentFieldCustomerAccount,
+			Key:         spec.Key,
+			Label:       spec.Label,
+			Required:    true,
+			Type:        "string",
+			Description: spec.Description,
+			Input:       input,
+		})
+	}
+	return fields
+}
+
 func (s *servicePlanDeploymentFormState) advanceStep(width int) error {
 	if s.Launching {
 		return nil
@@ -1952,6 +2467,8 @@ func (s *servicePlanDeploymentFormState) previousStep(width int) {
 	}
 	if s.currentStepIsParameters() {
 		_ = s.storeCurrentParameterValues()
+	} else if s.currentStep() == servicePlanDeploymentStepConnectAccount {
+		_ = s.storeCurrentAccountValues()
 	}
 	if s.StepIndex > 0 {
 		s.StepIndex--
@@ -1960,7 +2477,7 @@ func (s *servicePlanDeploymentFormState) previousStep(width int) {
 }
 
 func (s *servicePlanDeploymentFormState) moveWizardCursor(delta int) {
-	if s.currentStepIsParameters() {
+	if s.currentStepUsesFormFields() {
 		if len(s.ParamFields) == 0 {
 			s.ParamCursor = 0
 			return
@@ -1973,9 +2490,84 @@ func (s *servicePlanDeploymentFormState) moveWizardCursor(delta int) {
 	options := s.currentOptions()
 	if len(options) == 0 {
 		s.SelectionCursor = 0
+		s.AccountActionCursor = 0
 		return
 	}
 	s.SelectionCursor = (s.SelectionCursor + delta + len(options)) % len(options)
+	if s.currentStep() == servicePlanDeploymentStepCloudAccount {
+		s.AccountActionCursor = 0
+	}
+}
+
+func (s *servicePlanDeploymentFormState) moveCustomerCloudAccountActionCursor(delta int) {
+	buttons := s.selectedCustomerCloudAccountActionButtons()
+	if len(buttons) == 0 {
+		s.AccountActionCursor = 0
+		return
+	}
+	s.AccountActionCursor = (s.AccountActionCursor + delta + len(buttons)) % len(buttons)
+}
+
+func (s *servicePlanDeploymentFormState) updateActiveTextInput(msg tea.KeyMsg) (tea.Cmd, bool) {
+	if !servicePlanDeploymentTextInputKey(msg) {
+		return nil, false
+	}
+
+	switch {
+	case s.currentStep() == servicePlanDeploymentStepCustomer:
+		updated, cmd := s.CustomerSearch.Update(msg)
+		s.CustomerSearch = updated
+		s.SelectionCursor = spClamp(s.SelectionCursor, spMax(0, len(s.currentOptions())-1))
+		s.Err = ""
+		return cmd, true
+	case s.currentStepUsesFreeformInput():
+		updated, cmd := s.OptionInput.Update(msg)
+		s.OptionInput = updated
+		s.Err = ""
+		return cmd, true
+	default:
+		return nil, false
+	}
+}
+
+func (s *servicePlanDeploymentFormState) updateCurrentFormFieldInput(msg tea.KeyMsg) (tea.Cmd, bool) {
+	if !servicePlanDeploymentTextInputKey(msg) || !s.currentStepUsesFormFields() || len(s.ParamFields) == 0 {
+		return nil, false
+	}
+	field := &s.ParamFields[s.ParamCursor]
+	if len(field.Options) > 0 {
+		return nil, false
+	}
+	updated, cmd := field.Input.Update(msg)
+	field.Input = updated
+	s.Err = ""
+	return cmd, true
+}
+
+func (s *servicePlanDeploymentFormState) advanceFormFieldCursor() bool {
+	if s.Launching || !s.currentStepUsesFormFields() || len(s.ParamFields) == 0 || s.ParamCursor >= len(s.ParamFields)-1 {
+		return false
+	}
+	if err := servicePlanValidateDeploymentFormField(s.ParamFields[s.ParamCursor]); err != nil {
+		s.Err = err.Error()
+		return false
+	}
+	s.ParamCursor++
+	s.syncFocus()
+	s.Err = ""
+	return true
+}
+
+func servicePlanDeploymentTextInputKey(msg tea.KeyMsg) bool {
+	if len(msg.Runes) > 0 {
+		return true
+	}
+	switch msg.String() {
+	case "backspace", "ctrl+h", "delete", "ctrl+u", "ctrl+w":
+		return true
+	default:
+		return false
+	}
 }
 
 func (s *servicePlanDeploymentFormState) moveCurrentParameterOption(delta int) bool {
@@ -2018,13 +2610,40 @@ func (s servicePlanDeploymentFormState) currentStepIsParameters() bool {
 	return step == servicePlanDeploymentStepCustomParams || step == servicePlanDeploymentStepSystemParams
 }
 
+func (s servicePlanDeploymentFormState) currentStepUsesFormFields() bool {
+	return s.currentStepIsParameters() || s.currentStep() == servicePlanDeploymentStepConnectAccount
+}
+
+func (s servicePlanDeploymentFormState) currentStepUsesFreeformInput() bool {
+	if len(s.currentOptions()) > 0 {
+		return false
+	}
+	switch s.currentStep() {
+	case servicePlanDeploymentStepCloud, servicePlanDeploymentStepRegion:
+		return true
+	default:
+		return false
+	}
+}
+
+func (s servicePlanDeploymentFormState) currentFreeformValue() string {
+	switch s.currentStep() {
+	case servicePlanDeploymentStepCloud:
+		return s.CloudProvider
+	case servicePlanDeploymentStepRegion:
+		return s.Region
+	default:
+		return ""
+	}
+}
+
 func (s servicePlanDeploymentFormState) currentStepNumber() int {
 	return spMin(s.StepIndex+1, len(s.Steps))
 }
 
 func (s *servicePlanDeploymentFormState) syncFocus() {
 	for i := range s.ParamFields {
-		if i == s.ParamCursor {
+		if i == s.ParamCursor && len(s.ParamFields[i].Options) == 0 {
 			s.ParamFields[i].Input.Focus()
 		} else {
 			s.ParamFields[i].Input.Blur()
@@ -2037,11 +2656,32 @@ func (s *servicePlanDeploymentFormState) storeCurrentParameterValues() error {
 		s.ParamValues = map[string]string{}
 	}
 	for _, field := range s.ParamFields {
-		value := strings.TrimSpace(field.Input.Value())
-		if field.Required && value == "" {
-			return fmt.Errorf("%s is required", field.Label)
+		if err := servicePlanValidateDeploymentFormField(field); err != nil {
+			return err
 		}
+		value := strings.TrimSpace(field.Input.Value())
 		s.ParamValues[field.Key] = value
+	}
+	return nil
+}
+
+func (s *servicePlanDeploymentFormState) storeCurrentAccountValues() error {
+	if s.AccountParamValues == nil {
+		s.AccountParamValues = map[string]string{}
+	}
+	for _, field := range s.ParamFields {
+		if err := servicePlanValidateDeploymentFormField(field); err != nil {
+			return err
+		}
+		value := strings.TrimSpace(field.Input.Value())
+		s.AccountParamValues[field.Key] = value
+	}
+	return nil
+}
+
+func servicePlanValidateDeploymentFormField(field servicePlanDeploymentFormField) error {
+	if field.Required && strings.TrimSpace(field.Input.Value()) == "" {
+		return fmt.Errorf("%s is required", field.Label)
 	}
 	return nil
 }
@@ -2051,6 +2691,12 @@ func (s *servicePlanDeploymentFormState) applySelectedOption() error {
 	if len(options) == 0 {
 		if s.currentStep() == servicePlanDeploymentStepCloudAccount {
 			return fmt.Errorf("no connected cloud accounts for %s. Run: omnistrate-ctl account customer create --help", emptyValue(s.CloudProvider))
+		}
+		if s.currentStepUsesFreeformInput() {
+			return s.applyFreeformOption()
+		}
+		if s.currentStep() == servicePlanDeploymentStepCustomer {
+			return fmt.Errorf("no customers match %q", strings.TrimSpace(s.CustomerSearch.Value()))
 		}
 		return nil
 	}
@@ -2063,16 +2709,90 @@ func (s *servicePlanDeploymentFormState) applySelectedOption() error {
 		s.ResourceName = option.Value
 		s.ParamFields = nil
 	case servicePlanDeploymentStepCloud:
+		s.removeConnectAccountStep()
 		s.CloudProvider = option.Value
 		s.Region = firstString(s.Form.RegionsByCloud[s.CloudProvider])
 		s.CustomerAccountID = s.firstCloudAccountID()
 	case servicePlanDeploymentStepCloudAccount:
+		if option.ConnectAccount || option.AccountAction == servicePlanCustomerCloudAccountActionConnect {
+			s.CustomerAccountID = ""
+			s.ensureConnectAccountStep()
+			return nil
+		}
+		if option.AccountAction != "" && option.AccountAction != servicePlanCustomerCloudAccountActionSelect {
+			return nil
+		}
+		s.removeConnectAccountStep()
 		s.CustomerAccountID = option.Value
 	case servicePlanDeploymentStepRegion:
 		s.Region = option.Value
 	}
 	s.SelectionCursor = 0
 	return nil
+}
+
+func (s *servicePlanDeploymentFormState) customerAccountConnectRequest() (servicePlanCustomerCloudAccountConnectRequest, error) {
+	request := servicePlanCustomerCloudAccountConnectRequest{
+		Form:          s.Form,
+		Customer:      s.SelectedCustomer,
+		CloudProvider: s.CloudProvider,
+		Values:        map[string]string{},
+	}
+	if err := s.storeCurrentAccountValues(); err != nil {
+		return request, err
+	}
+	if !servicePlanCustomerAccountConnectSupported(s.CloudProvider) {
+		return request, fmt.Errorf("inline cloud account connection is not supported for %s", emptyValue(s.CloudProvider))
+	}
+	if strings.TrimSpace(s.Form.AccountResource.ID) == "" || strings.TrimSpace(s.Form.AccountResource.URLKey) == "" {
+		return request, fmt.Errorf("selected plan does not expose the injected cloud account resource")
+	}
+	for key, value := range s.AccountParamValues {
+		request.Values[key] = value
+	}
+	return request, nil
+}
+
+func (s *servicePlanDeploymentFormState) applyFreeformOption() error {
+	value := strings.TrimSpace(s.OptionInput.Value())
+	switch s.currentStep() {
+	case servicePlanDeploymentStepCloud:
+		s.removeConnectAccountStep()
+		if value == "" {
+			return fmt.Errorf("cloud provider is required")
+		}
+		s.CloudProvider = value
+		s.Region = firstString(s.Form.RegionsByCloud[s.CloudProvider])
+		s.CustomerAccountID = s.firstCloudAccountID()
+	case servicePlanDeploymentStepRegion:
+		if value == "" {
+			return fmt.Errorf("region is required")
+		}
+		s.Region = value
+	}
+	s.SelectionCursor = 0
+	return nil
+}
+
+func (s *servicePlanDeploymentFormState) ensureConnectAccountStep() {
+	s.removeConnectAccountStep()
+	insertAt := spMin(s.StepIndex+1, len(s.Steps))
+	s.Steps = append(s.Steps, "")
+	copy(s.Steps[insertAt+1:], s.Steps[insertAt:])
+	s.Steps[insertAt] = servicePlanDeploymentStepConnectAccount
+}
+
+func (s *servicePlanDeploymentFormState) removeConnectAccountStep() {
+	for i, step := range s.Steps {
+		if step != servicePlanDeploymentStepConnectAccount {
+			continue
+		}
+		s.Steps = append(s.Steps[:i], s.Steps[i+1:]...)
+		if i < s.StepIndex {
+			s.StepIndex--
+		}
+		return
+	}
 }
 
 func (s servicePlanDeploymentFormState) launchRequest() (servicePlanDeploymentLaunchRequest, error) {
@@ -2097,7 +2817,7 @@ func (s servicePlanDeploymentFormState) launchRequest() (servicePlanDeploymentLa
 	if _, ok := servicePlanDeploymentResourceByName(s.Form, request.ResourceName); !ok {
 		return request, fmt.Errorf("resource %q is not available for this plan", request.ResourceName)
 	}
-	if request.CloudProvider != "" && !servicePlanContainsFold(s.Form.CloudProviders, request.CloudProvider) {
+	if request.CloudProvider != "" && len(s.Form.CloudProviders) > 0 && !servicePlanContainsFold(s.Form.CloudProviders, request.CloudProvider) {
 		return request, fmt.Errorf("cloud provider %q is not available for this plan", request.CloudProvider)
 	}
 	if request.Region != "" {
@@ -2110,8 +2830,12 @@ func (s servicePlanDeploymentFormState) launchRequest() (servicePlanDeploymentLa
 		if request.CustomerAccountID == "" {
 			return request, fmt.Errorf("customer cloud account is required for BYOC plans. Run: omnistrate-ctl account customer create --help")
 		}
-		if !servicePlanCustomerCloudAccountExists(s.filteredCloudAccounts(), request.CustomerAccountID) {
+		account, ok := servicePlanCustomerCloudAccountByID(s.filteredCloudAccounts(), request.CustomerAccountID)
+		if !ok {
 			return request, fmt.Errorf("customer cloud account %q is not connected to this plan", request.CustomerAccountID)
+		}
+		if !servicePlanCustomerCloudAccountUsable(account) {
+			return request, fmt.Errorf("%s is %s", servicePlanCustomerCloudAccountLabel(account), emptyValue(account.Status))
 		}
 	}
 
@@ -2225,7 +2949,7 @@ func (m servicePlanBrowserModel) renderDeploymentForm() string {
 		lines = append(lines, form.renderDeploymentCompleteLines(valueStyle)...)
 	case form.currentStep() == servicePlanDeploymentStepReview:
 		lines = append(lines, form.renderDeploymentReviewLines(labelStyle, valueStyle)...)
-	case form.currentStepIsParameters():
+	case form.currentStepUsesFormFields():
 		lines = append(lines, form.renderDeploymentParameterLines(height, labelStyle, selectedLabelStyle, metaStyle)...)
 	default:
 		lines = append(lines, form.renderDeploymentOptionLines(height, selectedLabelStyle, valueStyle, metaStyle)...)
@@ -2234,41 +2958,149 @@ func (m servicePlanBrowserModel) renderDeploymentForm() string {
 	if form.Err != "" {
 		lines = append(lines, "", lipgloss.NewStyle().Foreground(lipgloss.Color("196")).Render("Error: "+form.Err))
 	}
+	if form.Notice != "" {
+		lines = append(lines, "", lipgloss.NewStyle().Foreground(lipgloss.Color("111")).Render(form.Notice))
+	}
 	if form.Launching {
-		lines = append(lines, "", lipgloss.NewStyle().Foreground(lipgloss.Color("111")).Render("Launching deployment..."))
+		lines = append(lines, "", lipgloss.NewStyle().Foreground(lipgloss.Color("111")).Render(m.spinner.View()+" Launching deployment..."))
+	}
+	if form.ConnectingAccount {
+		lines = append(lines, "")
+		if strings.TrimSpace(form.PendingAccount.InstanceID) == "" {
+			lines = append(lines, lipgloss.NewStyle().Foreground(lipgloss.Color("111")).Render(m.spinner.View()+" Creating "+emptyValue(form.CloudProvider)+" account connection..."))
+		} else {
+			lines = append(lines, lipgloss.NewStyle().Foreground(lipgloss.Color("111")).Render(m.spinner.View()+" Waiting for account to become READY..."))
+			lines = append(lines, "")
+			lines = append(lines, servicePlanCustomerCloudAccountOnboardingLines(form.PendingAccount, "", metaStyle)...)
+		}
+	}
+	if form.AccountActionRunning {
+		lines = append(lines, "", lipgloss.NewStyle().Foreground(lipgloss.Color("111")).Render(m.spinner.View()+" "+servicePlanCustomerCloudAccountActionProgressText(form.AccountAction)))
 	}
 
-	help := "enter/→: next  ↑/↓: select  ←: back  esc: close"
-	if form.currentStepIsParameters() {
-		help = "enter/→: next  tab/shift+tab: fields  ↑/↓: select option or move fields  ←: back  esc: close"
-	}
-	if form.currentStep() == servicePlanDeploymentStepReview {
-		help = "enter: launch  ←: back  esc: close"
-	}
-	if form.currentStep() == servicePlanDeploymentStepComplete {
-		help = "enter/esc: close"
-	}
-	lines = append(lines, "", metaStyle.Render(help))
+	lines = append(lines, "", metaStyle.Render(form.deploymentHelpLine()))
 
 	return servicePlanBrowserPanelStyle(lipgloss.Color("117")).
 		Width(width).
 		Render(lipgloss.JoinVertical(lipgloss.Left, lines...))
 }
 
+func servicePlanCustomerCloudAccountActionProgressText(action servicePlanCustomerCloudAccountAction) string {
+	switch action {
+	case servicePlanCustomerCloudAccountActionDelete:
+		return "Deleting cloud account..."
+	case servicePlanCustomerCloudAccountActionRetry:
+		return "Retrying cloud account..."
+	default:
+		return "Updating cloud account..."
+	}
+}
+
 func (s servicePlanDeploymentFormState) renderDeploymentOptionLines(height int, selectedStyle, valueStyle, metaStyle lipgloss.Style) []string {
 	options := s.currentOptions()
-	if len(options) == 0 {
-		if s.currentStep() == servicePlanDeploymentStepCloudAccount {
+	if s.currentStep() == servicePlanDeploymentStepCustomer {
+		lines := []string{
+			valueStyle.Render(s.CustomerSearch.View()),
+			metaStyle.Render(fmt.Sprintf("%d customer option(s)", len(options))),
+			"",
+		}
+		if len(options) == 0 {
+			return append(lines, "No customers match the current search.")
+		}
+		return append(lines, s.renderDeploymentOptionList(options, spMax(height-13, 4), selectedStyle, valueStyle, metaStyle)...)
+	}
+	if s.currentStep() == servicePlanDeploymentStepCloudAccount {
+		if len(options) == 0 {
 			return []string{
-				"No connected cloud accounts match this selection.",
+				"No connected cloud accounts match this selection, and this cloud is not supported by the inline connector.",
 				"",
 				metaStyle.Render("Run: omnistrate-ctl account customer create --help"),
+			}
+		}
+		return s.renderDeploymentCloudAccountLines(options, spMax(height-10, 4), selectedStyle, valueStyle, metaStyle)
+	}
+	if len(options) == 0 {
+		if s.currentStepUsesFreeformInput() {
+			return []string{
+				metaStyle.Render("No fixed options were returned. Type a value."),
+				valueStyle.Render(s.OptionInput.View()),
 			}
 		}
 		return []string{"No options available."}
 	}
 
-	visibleRows := spMax(height-10, 4)
+	return s.renderDeploymentOptionList(options, spMax(height-10, 4), selectedStyle, valueStyle, metaStyle)
+}
+
+func (s servicePlanDeploymentFormState) renderDeploymentCloudAccountLines(options []servicePlanDeploymentWizardOption, visibleRows int, selectedStyle, valueStyle, metaStyle lipgloss.Style) []string {
+	start := 0
+	if s.SelectionCursor >= visibleRows {
+		start = s.SelectionCursor - visibleRows + 1
+	}
+	end := spMin(len(options), start+visibleRows)
+	lines := make([]string, 0, visibleRows*3)
+	for i := start; i < end; i++ {
+		option := options[i]
+		if option.ConnectAccount && i > start {
+			lines = append(lines, "")
+		}
+		prefix := fmt.Sprintf("%d. ", i+1)
+		style := valueStyle
+		if i == s.SelectionCursor {
+			if option.ConnectAccount {
+				prefix = "▸ "
+			} else {
+				prefix = "▸ " + prefix
+			}
+			style = selectedStyle
+		} else {
+			if option.ConnectAccount {
+				prefix = "  "
+			} else {
+				prefix = "  " + prefix
+			}
+		}
+		lines = append(lines, style.Render(prefix+option.Label))
+		if option.Description != "" {
+			if strings.TrimSpace(option.Account.InstanceID) != "" {
+				lines = append(lines, renderServicePlanCustomerCloudAccountDescription(option.Account, metaStyle, "    "))
+			} else {
+				lines = append(lines, metaStyle.Render("    "+option.Description))
+			}
+		}
+		if buttons := s.customerCloudAccountActionButtons(option); len(buttons) > 0 {
+			lines = append(lines, "    "+s.renderCustomerCloudAccountActionButtons(buttons, i == s.SelectionCursor))
+		}
+		if i == s.SelectionCursor && servicePlanCustomerCloudAccountNeedsOnboarding(option.Account) {
+			lines = append(lines, servicePlanCustomerCloudAccountOnboardingLines(option.Account, "    ", metaStyle)...)
+		}
+	}
+	return lines
+}
+
+func (s servicePlanDeploymentFormState) renderCustomerCloudAccountActionButtons(buttons []servicePlanCustomerCloudAccountActionButton, selectedAccount bool) string {
+	activeStyle := lipgloss.NewStyle().
+		Bold(true).
+		Foreground(lipgloss.Color("230")).
+		Background(lipgloss.Color("62")).
+		Padding(0, 1)
+	inactiveStyle := lipgloss.NewStyle().
+		Foreground(lipgloss.Color("252")).
+		Background(lipgloss.Color("238")).
+		Padding(0, 1)
+
+	rendered := make([]string, 0, len(buttons))
+	for i, button := range buttons {
+		style := inactiveStyle
+		if selectedAccount && i == spClamp(s.AccountActionCursor, len(buttons)-1) {
+			style = activeStyle
+		}
+		rendered = append(rendered, style.Render(button.Label))
+	}
+	return strings.Join(rendered, " ")
+}
+
+func (s servicePlanDeploymentFormState) renderDeploymentOptionList(options []servicePlanDeploymentWizardOption, visibleRows int, selectedStyle, valueStyle, metaStyle lipgloss.Style) []string {
 	start := 0
 	if s.SelectionCursor >= visibleRows {
 		start = s.SelectionCursor - visibleRows + 1
@@ -2323,6 +3155,85 @@ func (s servicePlanDeploymentFormState) renderDeploymentParameterLines(height in
 		}
 	}
 	return lines
+}
+
+func (s servicePlanDeploymentFormState) deploymentHelpLine() string {
+	switch {
+	case s.currentStep() == servicePlanDeploymentStepComplete:
+		return "enter: close  esc: close"
+	case s.Launching || s.ConnectingAccount:
+		if strings.TrimSpace(s.selectedCloudFormationTemplateURL()) != "" {
+			return "c: copy template URL  esc: cancel"
+		}
+		return "esc: cancel"
+	case s.currentStepUsesFormFields() && len(s.ParamFields) > 1:
+		return "type/backspace: edit  tab/shift+tab: fields  enter: continue  esc: cancel"
+	case s.currentStepUsesFormFields():
+		return "type/backspace: edit  enter: continue  esc: cancel"
+	case s.currentStep() == servicePlanDeploymentStepCustomer:
+		return "type: search  ↑/↓: select  enter: continue  esc: cancel"
+	case s.currentStep() == servicePlanDeploymentStepCloudAccount:
+		copyHint := ""
+		if strings.TrimSpace(s.selectedCloudFormationTemplateURL()) != "" {
+			copyHint = "  c: copy template URL"
+		}
+		if len(s.selectedCustomerCloudAccountActionButtons()) == 0 {
+			return "enter: select" + copyHint + "  esc: cancel"
+		}
+		return "↑/↓: account  tab/shift+tab: action  enter: select" + copyHint + "  esc: cancel"
+	default:
+		return "↑/↓: select  enter: continue  esc: cancel"
+	}
+}
+
+func (s servicePlanDeploymentFormState) selectedCloudFormationTemplateURL() string {
+	account, ok := s.selectedCloudAccountForTemplateURL()
+	if !ok {
+		return ""
+	}
+	return strings.TrimSpace(account.AWSCloudFormationURL)
+}
+
+func (s servicePlanDeploymentFormState) selectedCloudAccountForTemplateURL() (servicePlanCustomerCloudAccountRow, bool) {
+	if s.ConnectingAccount {
+		if strings.TrimSpace(s.PendingAccount.InstanceID) == "" {
+			return servicePlanCustomerCloudAccountRow{}, false
+		}
+		return s.PendingAccount, true
+	}
+	if s.currentStep() != servicePlanDeploymentStepCloudAccount {
+		return servicePlanCustomerCloudAccountRow{}, false
+	}
+	options := s.currentOptions()
+	if len(options) == 0 {
+		return servicePlanCustomerCloudAccountRow{}, false
+	}
+	option := options[spClamp(s.SelectionCursor, len(options)-1)]
+	if option.ConnectAccount || strings.TrimSpace(option.Account.InstanceID) == "" {
+		return servicePlanCustomerCloudAccountRow{}, false
+	}
+	return option.Account, true
+}
+
+func (s servicePlanDeploymentFormState) selectedCustomerCloudAccountForRefresh() (servicePlanCustomerCloudAccountRow, bool) {
+	if s.ConnectingAccount {
+		if servicePlanCustomerCloudAccountNeedsOnboarding(s.PendingAccount) {
+			return s.PendingAccount, true
+		}
+		return servicePlanCustomerCloudAccountRow{}, false
+	}
+	if s.currentStep() != servicePlanDeploymentStepCloudAccount {
+		return servicePlanCustomerCloudAccountRow{}, false
+	}
+	options := s.currentOptions()
+	if len(options) == 0 {
+		return servicePlanCustomerCloudAccountRow{}, false
+	}
+	option := options[spClamp(s.SelectionCursor, len(options)-1)]
+	if option.ConnectAccount || !servicePlanCustomerCloudAccountNeedsOnboarding(option.Account) {
+		return servicePlanCustomerCloudAccountRow{}, false
+	}
+	return option.Account, true
 }
 
 func servicePlanDeploymentParameterOptionsLine(field servicePlanDeploymentFormField) string {
@@ -2397,6 +3308,9 @@ func (s servicePlanDeploymentFormState) currentOptions() []servicePlanDeployment
 		customers := servicePlanDeploymentCustomerOptions(s.Form)
 		options := make([]servicePlanDeploymentWizardOption, 0, len(customers))
 		for _, customer := range customers {
+			if !servicePlanDeploymentCustomerMatchesSearch(customer, s.CustomerSearch.Value()) {
+				continue
+			}
 			options = append(options, servicePlanDeploymentWizardOption{
 				Label:       servicePlanDeploymentCustomerLabel(customer),
 				Description: servicePlanDeploymentCustomerDescription(customer),
@@ -2426,15 +3340,22 @@ func (s servicePlanDeploymentFormState) currentOptions() []servicePlanDeployment
 		return options
 	case servicePlanDeploymentStepCloudAccount:
 		accounts := s.filteredCloudAccounts()
-		options := make([]servicePlanDeploymentWizardOption, 0, len(accounts))
+		options := make([]servicePlanDeploymentWizardOption, 0, len(accounts)+1)
 		for _, account := range accounts {
-			label := account.InstanceID
-			descriptionParts := []string{account.CloudProvider, account.Region, account.Status, account.CustomerEmail}
 			options = append(options, servicePlanDeploymentWizardOption{
-				Label:       label,
-				Description: strings.Join(nonEmptyStrings(descriptionParts), " | "),
-				Value:       account.InstanceID,
-				Account:     account,
+				Label:         servicePlanCustomerCloudAccountLabel(account),
+				Description:   servicePlanCustomerCloudAccountDescription(account),
+				Value:         account.InstanceID,
+				Account:       account,
+				AccountAction: servicePlanCustomerCloudAccountDefaultAction(account),
+			})
+		}
+		if servicePlanCustomerAccountConnectSupported(s.CloudProvider) {
+			options = append(options, servicePlanDeploymentWizardOption{
+				Label:          servicePlanCustomerCloudAccountConnectOptionLabel(s.CloudProvider, len(accounts) > 0),
+				Value:          servicePlanCustomerAccountConnectOptionValue,
+				ConnectAccount: true,
+				AccountAction:  servicePlanCustomerCloudAccountActionConnect,
 			})
 		}
 		return options
@@ -2448,6 +3369,22 @@ func (s servicePlanDeploymentFormState) currentOptions() []servicePlanDeployment
 	default:
 		return nil
 	}
+}
+
+func servicePlanDeploymentCustomerMatchesSearch(customer servicePlanDeploymentCustomer, query string) bool {
+	query = strings.ToLower(strings.TrimSpace(query))
+	if query == "" {
+		return true
+	}
+	haystack := strings.ToLower(strings.Join(nonEmptyStrings([]string{
+		servicePlanDeploymentCustomerLabel(customer),
+		servicePlanDeploymentCustomerDescription(customer),
+		customer.Email,
+		customer.Name,
+		customer.OrgName,
+		customer.UserID,
+	}), " "))
+	return strings.Contains(haystack, query)
 }
 
 func (s servicePlanDeploymentFormState) selectedOptionIndex() int {
@@ -2478,6 +3415,65 @@ func (s servicePlanDeploymentFormState) selectedOptionIndex() int {
 	return 0
 }
 
+func (s servicePlanDeploymentFormState) selectedCustomerCloudAccountAction() (servicePlanDeploymentWizardOption, servicePlanCustomerCloudAccountAction, bool) {
+	if s.currentStep() != servicePlanDeploymentStepCloudAccount {
+		return servicePlanDeploymentWizardOption{}, servicePlanCustomerCloudAccountActionNone, false
+	}
+	options := s.currentOptions()
+	if len(options) == 0 {
+		return servicePlanDeploymentWizardOption{}, servicePlanCustomerCloudAccountActionNone, false
+	}
+	option := options[spClamp(s.SelectionCursor, len(options)-1)]
+	buttons := s.customerCloudAccountActionButtons(option)
+	if len(buttons) == 0 {
+		return option, option.AccountAction, true
+	}
+	action := buttons[spClamp(s.AccountActionCursor, len(buttons)-1)].Action
+	return option, action, true
+}
+
+func (s servicePlanDeploymentFormState) selectedCustomerCloudAccountActionButtons() []servicePlanCustomerCloudAccountActionButton {
+	if s.currentStep() != servicePlanDeploymentStepCloudAccount {
+		return nil
+	}
+	options := s.currentOptions()
+	if len(options) == 0 {
+		return nil
+	}
+	return s.customerCloudAccountActionButtons(options[spClamp(s.SelectionCursor, len(options)-1)])
+}
+
+func (s servicePlanDeploymentFormState) customerCloudAccountActionButtons(option servicePlanDeploymentWizardOption) []servicePlanCustomerCloudAccountActionButton {
+	if option.ConnectAccount || option.AccountAction == servicePlanCustomerCloudAccountActionConnect {
+		return nil
+	}
+
+	buttons := make([]servicePlanCustomerCloudAccountActionButton, 0, 2)
+	switch {
+	case servicePlanCustomerCloudAccountUsable(option.Account):
+		buttons = append(buttons,
+			servicePlanCustomerCloudAccountActionButton{Label: "Use", Action: servicePlanCustomerCloudAccountActionSelect},
+			servicePlanCustomerCloudAccountActionButton{Label: "Delete", Action: servicePlanCustomerCloudAccountActionDelete},
+		)
+	case strings.EqualFold(strings.TrimSpace(option.Account.Status), "FAILED"):
+		buttons = append(buttons,
+			servicePlanCustomerCloudAccountActionButton{Label: "Retry", Action: servicePlanCustomerCloudAccountActionRetry},
+			servicePlanCustomerCloudAccountActionButton{Label: "Delete", Action: servicePlanCustomerCloudAccountActionDelete},
+		)
+	default:
+		buttons = append(buttons, servicePlanCustomerCloudAccountActionButton{Label: "Waiting", Action: servicePlanCustomerCloudAccountActionUnavailable})
+	}
+	return buttons
+}
+
+func servicePlanCustomerCloudAccountConnectOptionLabel(cloudProvider string, hasAccounts bool) string {
+	cloud := strings.ToLower(strings.TrimSpace(cloudProvider))
+	if hasAccounts {
+		return "Connect new " + emptyValue(cloud) + " account"
+	}
+	return "Connect your " + emptyValue(cloud) + " account"
+}
+
 func (s servicePlanDeploymentFormState) filteredCloudAccounts() []servicePlanCustomerCloudAccountRow {
 	accounts := make([]servicePlanCustomerCloudAccountRow, 0, len(s.Form.CustomerCloudAccounts))
 	selectedSubscriptionID := servicePlanSubscriptionIDForCustomer(s.Form.Subscriptions, s.SelectedCustomer)
@@ -2485,6 +3481,12 @@ func (s servicePlanDeploymentFormState) filteredCloudAccounts() []servicePlanCus
 		if s.CloudProvider != "" && !strings.EqualFold(account.CloudProvider, s.CloudProvider) {
 			continue
 		}
+		account.CustomerEmail = firstString([]string{
+			account.CustomerEmail,
+			servicePlanEmailForSubscriptionRows(s.Form.Subscriptions, account.SubscriptionID),
+			s.SelectedCustomer.Email,
+		})
+		account.StatusMessage = servicePlanCustomerCloudAccountStatusMessage(account)
 		if !s.SelectedCustomer.Self {
 			switch {
 			case selectedSubscriptionID != "" && account.SubscriptionID != "":
@@ -2506,11 +3508,71 @@ func (s servicePlanDeploymentFormState) filteredCloudAccounts() []servicePlanCus
 
 func (s servicePlanDeploymentFormState) firstCloudAccountID() string {
 	for _, account := range s.filteredCloudAccounts() {
+		if !servicePlanCustomerCloudAccountUsable(account) {
+			continue
+		}
 		if strings.TrimSpace(account.InstanceID) != "" {
 			return strings.TrimSpace(account.InstanceID)
 		}
 	}
 	return ""
+}
+
+func (s *servicePlanDeploymentFormState) addConnectedCustomerAccount(account servicePlanCustomerCloudAccountRow) {
+	account.InstanceID = strings.TrimSpace(account.InstanceID)
+	if account.InstanceID == "" {
+		return
+	}
+	account.CustomerEmail = firstString([]string{
+		account.CustomerEmail,
+		servicePlanEmailForSubscriptionRows(s.Form.Subscriptions, account.SubscriptionID),
+		s.SelectedCustomer.Email,
+	})
+	account.StatusMessage = servicePlanCustomerCloudAccountStatusMessage(account)
+	if !servicePlanCustomerCloudAccountExists(s.Form.CustomerCloudAccounts, account.InstanceID) {
+		s.Form.CustomerCloudAccounts = append(s.Form.CustomerCloudAccounts, account)
+	} else {
+		for i := range s.Form.CustomerCloudAccounts {
+			if strings.EqualFold(s.Form.CustomerCloudAccounts[i].InstanceID, account.InstanceID) {
+				s.Form.CustomerCloudAccounts[i] = account
+				break
+			}
+		}
+	}
+	s.CustomerAccountID = account.InstanceID
+	s.SelectionCursor = s.selectedOptionIndex()
+
+	if s.SelectedCustomer.Self || strings.TrimSpace(account.SubscriptionID) == "" {
+		return
+	}
+	if servicePlanSubscriptionIDForCustomer(s.Form.Subscriptions, s.SelectedCustomer) != "" {
+		return
+	}
+	s.Form.Subscriptions = append(s.Form.Subscriptions, servicePlanSubscriptionRow{
+		ID:            strings.TrimSpace(account.SubscriptionID),
+		Status:        "ACTIVE",
+		RootUserEmail: s.SelectedCustomer.Email,
+		RootUserID:    s.SelectedCustomer.UserID,
+		RootUserName:  s.SelectedCustomer.Name,
+	})
+}
+
+func (s *servicePlanDeploymentFormState) removeCustomerAccount(instanceID string) {
+	instanceID = strings.TrimSpace(instanceID)
+	if instanceID == "" {
+		return
+	}
+	for i, account := range s.Form.CustomerCloudAccounts {
+		if !strings.EqualFold(account.InstanceID, instanceID) {
+			continue
+		}
+		s.Form.CustomerCloudAccounts = append(s.Form.CustomerCloudAccounts[:i], s.Form.CustomerCloudAccounts[i+1:]...)
+		break
+	}
+	if strings.EqualFold(s.CustomerAccountID, instanceID) {
+		s.CustomerAccountID = s.firstCloudAccountID()
+	}
+	s.SelectionCursor = s.selectedOptionIndex()
 }
 
 func servicePlanDeploymentCustomerOptions(form servicePlanDeploymentForm) []servicePlanDeploymentCustomer {
@@ -2559,6 +3621,8 @@ func servicePlanDeploymentStepTitle(step servicePlanDeploymentWizardStep) string
 		return "Cloud Provider"
 	case servicePlanDeploymentStepCloudAccount:
 		return "Customer Cloud Account"
+	case servicePlanDeploymentStepConnectAccount:
+		return "Connect Cloud Account"
 	case servicePlanDeploymentStepRegion:
 		return "Region"
 	case servicePlanDeploymentStepCustomParams:
@@ -2571,6 +3635,41 @@ func servicePlanDeploymentStepTitle(step servicePlanDeploymentWizardStep) string
 		return "Complete"
 	default:
 		return "Deploy"
+	}
+}
+
+func servicePlanCustomerAccountConnectSupported(cloudProvider string) bool {
+	switch strings.ToLower(strings.TrimSpace(cloudProvider)) {
+	case "aws", "gcp", "azure", "nebius":
+		return true
+	default:
+		return false
+	}
+}
+
+func servicePlanCustomerAccountFieldSpecs(cloudProvider string) []servicePlanCustomerAccountFieldSpec {
+	switch strings.ToLower(strings.TrimSpace(cloudProvider)) {
+	case "aws":
+		return []servicePlanCustomerAccountFieldSpec{
+			{Key: servicePlanCustomerAccountAWSAccountIDKey, Label: "AWS account ID"},
+		}
+	case "gcp":
+		return []servicePlanCustomerAccountFieldSpec{
+			{Key: servicePlanCustomerAccountGCPProjectIDKey, Label: "GCP project ID"},
+			{Key: servicePlanCustomerAccountGCPProjectNumberKey, Label: "GCP project number"},
+		}
+	case "azure":
+		return []servicePlanCustomerAccountFieldSpec{
+			{Key: servicePlanCustomerAccountAzureSubscriptionIDKey, Label: "Azure subscription ID"},
+			{Key: servicePlanCustomerAccountAzureTenantIDKey, Label: "Azure tenant ID"},
+		}
+	case "nebius":
+		return []servicePlanCustomerAccountFieldSpec{
+			{Key: servicePlanCustomerAccountNebiusTenantIDKey, Label: "Nebius tenant ID"},
+			{Key: servicePlanCustomerAccountNebiusBindingsFileKey, Label: "Nebius bindings file"},
+		}
+	default:
+		return nil
 	}
 }
 
@@ -2589,12 +3688,254 @@ func servicePlanDeploymentResourceOptions(resources []servicePlanDeploymentResou
 }
 
 func servicePlanCustomerCloudAccountExists(accounts []servicePlanCustomerCloudAccountRow, instanceID string) bool {
+	_, ok := servicePlanCustomerCloudAccountByID(accounts, instanceID)
+	return ok
+}
+
+func servicePlanCustomerCloudAccountByID(accounts []servicePlanCustomerCloudAccountRow, instanceID string) (servicePlanCustomerCloudAccountRow, bool) {
 	for _, account := range accounts {
 		if strings.EqualFold(strings.TrimSpace(account.InstanceID), strings.TrimSpace(instanceID)) {
-			return true
+			return account, true
 		}
 	}
-	return false
+	return servicePlanCustomerCloudAccountRow{}, false
+}
+
+func servicePlanCustomerCloudAccountUsable(account servicePlanCustomerCloudAccountRow) bool {
+	status := strings.ToUpper(strings.TrimSpace(account.Status))
+	return status == "" || status == "READY" || status == "RUNNING"
+}
+
+func servicePlanCustomerCloudAccountDefaultAction(account servicePlanCustomerCloudAccountRow) servicePlanCustomerCloudAccountAction {
+	switch {
+	case servicePlanCustomerCloudAccountUsable(account):
+		return servicePlanCustomerCloudAccountActionSelect
+	case strings.EqualFold(strings.TrimSpace(account.Status), "FAILED"):
+		return servicePlanCustomerCloudAccountActionRetry
+	default:
+		return servicePlanCustomerCloudAccountActionUnavailable
+	}
+}
+
+func servicePlanCustomerCloudAccountLabel(account servicePlanCustomerCloudAccountRow) string {
+	provider := strings.ToLower(strings.TrimSpace(account.CloudProvider))
+	switch provider {
+	case "aws":
+		if strings.TrimSpace(account.AWSAccountID) != "" {
+			return "AWS account " + strings.TrimSpace(account.AWSAccountID)
+		}
+	case "gcp":
+		projectID := strings.TrimSpace(account.GCPProjectID)
+		projectNumber := strings.TrimSpace(account.GCPProjectNumber)
+		if projectID != "" && projectNumber != "" {
+			return fmt.Sprintf("GCP project %s (%s)", projectID, projectNumber)
+		}
+		if projectID != "" {
+			return "GCP project " + projectID
+		}
+	case "azure":
+		subscriptionID := strings.TrimSpace(account.AzureSubscriptionID)
+		tenantID := strings.TrimSpace(account.AzureTenantID)
+		if subscriptionID != "" && tenantID != "" {
+			return fmt.Sprintf("Azure subscription %s (%s)", subscriptionID, tenantID)
+		}
+		if subscriptionID != "" {
+			return "Azure subscription " + subscriptionID
+		}
+	case "nebius":
+		tenantID := strings.TrimSpace(account.NebiusTenantID)
+		if tenantID != "" && account.NebiusBindingsCount > 0 {
+			return fmt.Sprintf("Nebius tenant %s (%d bindings)", tenantID, account.NebiusBindingsCount)
+		}
+		if tenantID != "" {
+			return "Nebius tenant " + tenantID
+		}
+	}
+
+	if provider != "" {
+		return strings.ToUpper(provider) + " account details unavailable"
+	}
+	return "Cloud account details unavailable"
+}
+
+func servicePlanCustomerCloudAccountDescription(account servicePlanCustomerCloudAccountRow) string {
+	parts := []string{
+		account.Status,
+		servicePlanCustomerCloudAccountStatusMessage(account),
+		account.Region,
+		account.CustomerEmail,
+		account.SubscriptionID,
+	}
+	return strings.Join(nonEmptyStrings(parts), " | ")
+}
+
+func renderServicePlanCustomerCloudAccountDescription(account servicePlanCustomerCloudAccountRow, metaStyle lipgloss.Style, indent string) string {
+	status := strings.TrimSpace(account.Status)
+	parts := nonEmptyStrings([]string{
+		servicePlanCustomerCloudAccountStatusMessage(account),
+		account.Region,
+		account.CustomerEmail,
+		account.SubscriptionID,
+	})
+	if status == "" {
+		return metaStyle.Render(indent + strings.Join(parts, " | "))
+	}
+
+	line := metaStyle.Render(indent) + servicePlanCustomerCloudAccountStatusStyle(status, metaStyle).Render(status)
+	if len(parts) > 0 {
+		line += metaStyle.Render(" | " + strings.Join(parts, " | "))
+	}
+	return line
+}
+
+func servicePlanCustomerCloudAccountStatusMessage(account servicePlanCustomerCloudAccountRow) string {
+	if strings.EqualFold(strings.TrimSpace(account.Status), "READY") {
+		return "account verified"
+	}
+	return strings.TrimSpace(account.StatusMessage)
+}
+
+func servicePlanCustomerCloudAccountStatusStyle(status string, base lipgloss.Style) lipgloss.Style {
+	style := base.Bold(true)
+	switch strings.ToUpper(strings.TrimSpace(status)) {
+	case "READY", "RUNNING":
+		return style.Foreground(lipgloss.Color("82"))
+	case "FAILED":
+		return style.Foreground(lipgloss.Color("196"))
+	case "DEPLOYING", "PENDING", "UPDATING":
+		return style.Foreground(lipgloss.Color("214"))
+	default:
+		return style.Foreground(lipgloss.Color("245"))
+	}
+}
+
+func servicePlanCustomerCloudAccountNeedsOnboarding(account servicePlanCustomerCloudAccountRow) bool {
+	if strings.TrimSpace(account.InstanceID) == "" {
+		return false
+	}
+	if servicePlanCustomerCloudAccountUsable(account) {
+		return false
+	}
+	return !strings.EqualFold(strings.TrimSpace(account.Status), "FAILED")
+}
+
+func servicePlanCustomerCloudAccountOnboardingLines(account servicePlanCustomerCloudAccountRow, indent string, metaStyle lipgloss.Style) []string {
+	titleStyle := metaStyle.Bold(true).Foreground(lipgloss.Color("117"))
+	keyStyle := metaStyle.Bold(true).Foreground(lipgloss.Color("111"))
+	valueStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("252"))
+	messageStyle := metaStyle.Foreground(lipgloss.Color("245"))
+
+	lines := []string{
+		titleStyle.Render(indent + "Account connection"),
+		servicePlanCustomerCloudAccountInstructionLine(indent, "Instance ID", emptyValue(account.InstanceID), keyStyle, valueStyle),
+	}
+	if strings.TrimSpace(account.AccountConfigID) != "" {
+		lines = append(lines, servicePlanCustomerCloudAccountInstructionLine(indent, "Account config ID", strings.TrimSpace(account.AccountConfigID), keyStyle, valueStyle))
+	}
+
+	detailLines := servicePlanCustomerCloudAccountProviderInstructionLines(account, indent, keyStyle, valueStyle)
+	if len(detailLines) == 0 {
+		lines = append(lines, messageStyle.Render(indent+"Account details are still being prepared."))
+		return lines
+	}
+	lines = append(lines, detailLines...)
+	if !servicePlanCustomerCloudAccountHasProviderInstructions(account) {
+		lines = append(lines, messageStyle.Render(indent+"Account details are still being prepared."))
+	}
+	return lines
+}
+
+func servicePlanCustomerCloudAccountHasProviderInstructions(account servicePlanCustomerCloudAccountRow) bool {
+	switch strings.ToLower(strings.TrimSpace(account.CloudProvider)) {
+	case "aws":
+		return strings.TrimSpace(account.AWSCloudFormationURL) != ""
+	case "gcp":
+		return strings.TrimSpace(account.GCPBootstrapShellCommand) != ""
+	case "azure":
+		return strings.TrimSpace(account.AzureBootstrapShellCommand) != ""
+	case "oci":
+		return strings.TrimSpace(account.OCIBootstrapShellCommand) != ""
+	case "nebius":
+		return account.NebiusBindingsCount > 0
+	default:
+		return false
+	}
+}
+
+func servicePlanCustomerCloudAccountProviderInstructionLines(account servicePlanCustomerCloudAccountRow, indent string, keyStyle lipgloss.Style, valueStyle lipgloss.Style) []string {
+	switch strings.ToLower(strings.TrimSpace(account.CloudProvider)) {
+	case "aws":
+		return nonEmptyStrings([]string{
+			servicePlanCustomerCloudAccountInstructionLine(indent, "AWS account ID", account.AWSAccountID, keyStyle, valueStyle),
+			servicePlanCustomerCloudAccountInstructionLine(indent, "Bootstrap role ARN", account.AWSBootstrapRoleARN, keyStyle, valueStyle),
+			servicePlanCustomerCloudAccountInstructionLine(indent, "CloudFormation template URL", account.AWSCloudFormationURL, keyStyle, valueStyle),
+		})
+	case "gcp":
+		return nonEmptyStrings([]string{
+			servicePlanCustomerCloudAccountInstructionLine(indent, "GCP project ID", account.GCPProjectID, keyStyle, valueStyle),
+			servicePlanCustomerCloudAccountInstructionLine(indent, "GCP project number", account.GCPProjectNumber, keyStyle, valueStyle),
+			servicePlanCustomerCloudAccountInstructionLine(indent, "Service account email", account.GCPServiceAccountEmail, keyStyle, valueStyle),
+			servicePlanCustomerCloudAccountInstructionLine(indent, "Bootstrap command", account.GCPBootstrapShellCommand, keyStyle, valueStyle),
+		})
+	case "azure":
+		return nonEmptyStrings([]string{
+			servicePlanCustomerCloudAccountInstructionLine(indent, "Azure subscription ID", account.AzureSubscriptionID, keyStyle, valueStyle),
+			servicePlanCustomerCloudAccountInstructionLine(indent, "Azure tenant ID", account.AzureTenantID, keyStyle, valueStyle),
+			servicePlanCustomerCloudAccountInstructionLine(indent, "Bootstrap command", account.AzureBootstrapShellCommand, keyStyle, valueStyle),
+		})
+	case "oci":
+		return nonEmptyStrings([]string{
+			servicePlanCustomerCloudAccountInstructionLine(indent, "Bootstrap command", account.OCIBootstrapShellCommand, keyStyle, valueStyle),
+		})
+	case "nebius":
+		return nonEmptyStrings([]string{
+			servicePlanCustomerCloudAccountInstructionLine(indent, "Nebius tenant ID", account.NebiusTenantID, keyStyle, valueStyle),
+			servicePlanCustomerCloudAccountInstructionLine(indent, "Bindings", fmt.Sprintf("%d", account.NebiusBindingsCount), keyStyle, valueStyle),
+		})
+	default:
+		return nil
+	}
+}
+
+func servicePlanCustomerCloudAccountInstructionLine(indent string, label string, value string, keyStyle lipgloss.Style, valueStyle lipgloss.Style) string {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return ""
+	}
+	return indent + keyStyle.Render(label+":") + " " + valueStyle.Render(value)
+}
+
+func copyServicePlanBrowserTextCmd(text string, successMessage string) tea.Cmd {
+	return func() tea.Msg {
+		if err := servicePlanBrowserCopyToClipboard(text); err != nil {
+			return servicePlanBrowserClipboardResultMsg{err: fmt.Errorf("clipboard copy failed: %w", err)}
+		}
+		return servicePlanBrowserClipboardResultMsg{message: successMessage}
+	}
+}
+
+func copyServicePlanBrowserToClipboard(text string) error {
+	var cmd *exec.Cmd
+
+	switch runtime.GOOS {
+	case "darwin":
+		cmd = exec.Command("pbcopy")
+	case "linux":
+		if _, err := exec.LookPath("xclip"); err == nil {
+			cmd = exec.Command("xclip", "-selection", "clipboard")
+		} else if _, err := exec.LookPath("xsel"); err == nil {
+			cmd = exec.Command("xsel", "--clipboard", "--input")
+		} else {
+			return fmt.Errorf("no clipboard tool found (install xclip or xsel)")
+		}
+	case "windows":
+		cmd = exec.Command("clip.exe")
+	default:
+		return fmt.Errorf("clipboard is not supported on %s", runtime.GOOS)
+	}
+
+	cmd.Stdin = strings.NewReader(text)
+	return cmd.Run()
 }
 
 func servicePlanDeploymentParametersForSelectedResource(form servicePlanDeploymentForm, resourceName string) []servicePlanDeploymentParameter {
@@ -2837,6 +4178,7 @@ func (productionServicePlanBrowserLoader) LoadDeploymentForm(ctx context.Context
 		return servicePlanDeploymentForm{}, err
 	}
 
+	accountResource := servicePlanCustomerAccountResource(offering.ResourceParameters)
 	resources := servicePlanDeploymentResources(offering.ResourceParameters)
 	if len(resources) == 0 {
 		return servicePlanDeploymentForm{}, fmt.Errorf("no deployable resources found for %s / %s", env.ServiceName, env.PlanName)
@@ -2846,6 +4188,10 @@ func (productionServicePlanBrowserLoader) LoadDeploymentForm(ctx context.Context
 	for _, resource := range resources {
 		parametersResult, err := dataaccess.ListInputParameters(ctx, token, env.ServiceID, resource.ID, env.PlanID, version)
 		if err != nil {
+			if servicePlanInputParametersNotFound(err) {
+				parametersByResource[resource.ID] = nil
+				continue
+			}
 			return servicePlanDeploymentForm{}, err
 		}
 		parametersByResource[resource.ID] = servicePlanDeploymentParameters(parametersResult.GetInputParameters())
@@ -2892,6 +4238,7 @@ func (productionServicePlanBrowserLoader) LoadDeploymentForm(ctx context.Context
 		ServiceEnvironmentURLKey: offering.ServiceEnvironmentURLKey,
 		ServiceModelURLKey:       offering.ServiceModelURLKey,
 		ProductTierURLKey:        offering.ProductTierURLKey,
+		AccountResource:          accountResource,
 		Resources:                resources,
 		CloudProviders:           cloudProviders,
 		RegionsByCloud:           regionsByCloud,
@@ -2971,6 +4318,389 @@ func (productionServicePlanBrowserLoader) LaunchDeployment(ctx context.Context, 
 	return instance.GetId(), nil
 }
 
+func (productionServicePlanBrowserLoader) CreateCustomerCloudAccount(ctx context.Context, token string, request servicePlanCustomerCloudAccountConnectRequest) (servicePlanCustomerCloudAccountRow, error) {
+	accountResource := request.Form.AccountResource
+	if strings.TrimSpace(accountResource.URLKey) == "" {
+		return servicePlanCustomerCloudAccountRow{}, fmt.Errorf("selected plan does not expose the injected cloud account resource")
+	}
+
+	params, err := servicePlanCustomerAccountRequestParams(ctx, token, request.CloudProvider, request.Values)
+	if err != nil {
+		return servicePlanCustomerCloudAccountRow{}, err
+	}
+
+	subscriptionID := servicePlanSubscriptionIDForCustomer(request.Form.Subscriptions, request.Customer)
+	if !request.Customer.Self && subscriptionID == "" {
+		createResp, err := dataaccess.CreateSubscriptionOnBehalf(ctx, token, request.Form.Environment.ServiceID, request.Form.Environment.ID, &dataaccess.CreateSubscriptionOnBehalfOptions{
+			ProductTierID:            request.Form.Environment.PlanID,
+			OnBehalfOfCustomerUserID: request.Customer.UserID,
+			OnBehalfOfCustomerEmail:  request.Customer.Email,
+		})
+		if err != nil {
+			return servicePlanCustomerCloudAccountRow{}, fmt.Errorf("failed to create subscription for %s: %w", servicePlanDeploymentCustomerLabel(request.Customer), err)
+		}
+		subscriptionID = strings.TrimSpace(createResp.GetId())
+		if subscriptionID == "" {
+			return servicePlanCustomerCloudAccountRow{}, fmt.Errorf("subscription creation for %s returned an empty subscription ID", servicePlanDeploymentCustomerLabel(request.Customer))
+		}
+	}
+
+	createRequest := openapiclientfleet.FleetCreateResourceInstanceRequest2{
+		ProductTierVersion: &request.Form.Version,
+		RequestParams:      params,
+	}
+	if subscriptionID != "" {
+		createRequest.SubscriptionId = &subscriptionID
+	}
+
+	instance, err := dataaccess.CreateResourceInstance(
+		ctx,
+		token,
+		request.Form.ServiceProviderID,
+		request.Form.ServiceURLKey,
+		request.Form.ServiceAPIVersion,
+		request.Form.ServiceEnvironmentURLKey,
+		request.Form.ServiceModelURLKey,
+		request.Form.ProductTierURLKey,
+		accountResource.URLKey,
+		createRequest,
+	)
+	if err != nil {
+		return servicePlanCustomerCloudAccountRow{}, err
+	}
+	if instance == nil || strings.TrimSpace(instance.GetId()) == "" {
+		return servicePlanCustomerCloudAccountRow{}, fmt.Errorf("customer account onboarding returned an empty resource instance ID")
+	}
+
+	instanceID := strings.TrimSpace(instance.GetId())
+	row := servicePlanCustomerCloudAccountRow{
+		InstanceID:     instanceID,
+		ServiceID:      request.Form.Environment.ServiceID,
+		EnvironmentID:  request.Form.Environment.ID,
+		ResourceID:     accountResource.ID,
+		CloudProvider:  strings.ToLower(strings.TrimSpace(request.CloudProvider)),
+		Status:         "DEPLOYING",
+		SubscriptionID: subscriptionID,
+		CustomerEmail:  request.Customer.Email,
+		Resource:       accountResource.Name,
+	}
+	instanceDetail, err := dataaccess.DescribeResourceInstance(ctx, token, request.Form.Environment.ServiceID, request.Form.Environment.ID, instanceID)
+	if err == nil {
+		row = servicePlanEnrichCustomerCloudAccountRow(ctx, token, row, instanceDetail)
+	}
+	return row, nil
+}
+
+func (productionServicePlanBrowserLoader) RefreshCustomerCloudAccount(ctx context.Context, token string, request servicePlanCustomerCloudAccountActionRequest) (servicePlanCustomerCloudAccountRow, error) {
+	account := request.Account
+	serviceID := firstString([]string{account.ServiceID, request.Form.Environment.ServiceID})
+	environmentID := firstString([]string{account.EnvironmentID, request.Form.Environment.ID})
+	if serviceID == "" || environmentID == "" || strings.TrimSpace(account.InstanceID) == "" {
+		return servicePlanCustomerCloudAccountRow{}, fmt.Errorf("cloud account refresh is missing required identifiers")
+	}
+	instanceDetail, err := dataaccess.DescribeResourceInstance(ctx, token, serviceID, environmentID, account.InstanceID)
+	if err != nil {
+		return servicePlanCustomerCloudAccountRow{}, err
+	}
+	account.ServiceID = serviceID
+	account.EnvironmentID = environmentID
+	return servicePlanEnrichCustomerCloudAccountRow(ctx, token, account, instanceDetail), nil
+}
+
+func (productionServicePlanBrowserLoader) DeleteCustomerCloudAccount(ctx context.Context, token string, request servicePlanCustomerCloudAccountActionRequest) error {
+	account := request.Account
+	serviceID := firstString([]string{account.ServiceID, request.Form.Environment.ServiceID})
+	environmentID := firstString([]string{account.EnvironmentID, request.Form.Environment.ID})
+	resourceID := firstString([]string{account.ResourceID, request.Form.AccountResource.ID})
+	if serviceID == "" || environmentID == "" || resourceID == "" || strings.TrimSpace(account.InstanceID) == "" {
+		return fmt.Errorf("cloud account delete is missing required identifiers")
+	}
+	return dataaccess.DeleteResourceInstance(ctx, token, serviceID, environmentID, resourceID, account.InstanceID)
+}
+
+func (productionServicePlanBrowserLoader) RetryCustomerCloudAccount(ctx context.Context, token string, request servicePlanCustomerCloudAccountActionRequest) (servicePlanCustomerCloudAccountRow, error) {
+	account := request.Account
+	serviceID := firstString([]string{account.ServiceID, request.Form.Environment.ServiceID})
+	environmentID := firstString([]string{account.EnvironmentID, request.Form.Environment.ID})
+	resourceID := firstString([]string{account.ResourceID, request.Form.AccountResource.ID})
+	if serviceID == "" || environmentID == "" || resourceID == "" || strings.TrimSpace(account.InstanceID) == "" {
+		return servicePlanCustomerCloudAccountRow{}, fmt.Errorf("cloud account retry is missing required identifiers")
+	}
+	if err := servicePlanRetryCustomerCloudAccountOnboarding(ctx, token, serviceID, environmentID, resourceID, account.InstanceID); err != nil {
+		return servicePlanCustomerCloudAccountRow{}, err
+	}
+	instanceDetail, err := waitForServicePlanCustomerAccountReady(ctx, token, serviceID, environmentID, account.InstanceID)
+	if err != nil {
+		return servicePlanCustomerCloudAccountRow{}, err
+	}
+	account.ServiceID = serviceID
+	account.EnvironmentID = environmentID
+	account.ResourceID = resourceID
+	return servicePlanEnrichCustomerCloudAccountRow(ctx, token, account, instanceDetail), nil
+}
+
+func servicePlanRetryCustomerCloudAccountOnboarding(ctx context.Context, token string, serviceID string, environmentID string, resourceID string, instanceID string) error {
+	workflows, err := dataaccess.ListWorkflows(ctx, token, serviceID, environmentID, &dataaccess.ListWorkflowsOptions{
+		InstanceID: instanceID,
+	})
+	if err == nil && workflows != nil {
+		for _, workflow := range workflows.Workflows {
+			if strings.TrimSpace(workflow.Id) == "" {
+				continue
+			}
+			if !strings.EqualFold(strings.TrimSpace(workflow.Status), "FAILED") {
+				continue
+			}
+			_, err = dataaccess.RetryWorkflow(ctx, token, serviceID, environmentID, workflow.Id)
+			return err
+		}
+	}
+
+	return dataaccess.RestartResourceInstance(ctx, token, serviceID, environmentID, resourceID, instanceID)
+}
+
+func servicePlanCustomerAccountRequestParams(ctx context.Context, token string, cloudProvider string, values map[string]string) (map[string]any, error) {
+	value := func(key string) string {
+		return strings.TrimSpace(values[key])
+	}
+	params := map[string]any{}
+
+	switch strings.ToLower(strings.TrimSpace(cloudProvider)) {
+	case "aws":
+		accountID := value(servicePlanCustomerAccountAWSAccountIDKey)
+		if accountID == "" {
+			return nil, fmt.Errorf("AWS account ID is required")
+		}
+		params[servicePlanCustomerAccountIacToolKey] = "CloudFormation"
+		params[servicePlanCustomerAccountAWSAccountIDKey] = accountID
+		params[servicePlanCustomerAccountAWSBootstrapRoleKey] = fmt.Sprintf("arn:aws:iam::%s:role/omnistrate-bootstrap-role", accountID)
+	case "gcp":
+		projectID := value(servicePlanCustomerAccountGCPProjectIDKey)
+		projectNumber := value(servicePlanCustomerAccountGCPProjectNumberKey)
+		if projectID == "" || projectNumber == "" {
+			return nil, fmt.Errorf("GCP project ID and project number are required")
+		}
+		user, err := dataaccess.DescribeUser(ctx, token)
+		if err != nil {
+			return nil, err
+		}
+		if user.OrgId == nil || strings.TrimSpace(*user.OrgId) == "" {
+			return nil, fmt.Errorf("describe user returned an empty org ID; cannot derive the GCP bootstrap service account email")
+		}
+		params[servicePlanCustomerAccountIacToolKey] = "Terraform"
+		params[servicePlanCustomerAccountGCPProjectIDKey] = projectID
+		params[servicePlanCustomerAccountGCPProjectNumberKey] = projectNumber
+		params[servicePlanCustomerAccountGCPServiceAccountKey] = fmt.Sprintf("bootstrap-%s@%s.iam.gserviceaccount.com", *user.OrgId, projectID)
+	case "azure":
+		subscriptionID := value(servicePlanCustomerAccountAzureSubscriptionIDKey)
+		tenantID := value(servicePlanCustomerAccountAzureTenantIDKey)
+		if subscriptionID == "" || tenantID == "" {
+			return nil, fmt.Errorf("azure subscription ID and tenant ID are required")
+		}
+		params[servicePlanCustomerAccountIacToolKey] = "AzureScript"
+		params[servicePlanCustomerAccountAzureSubscriptionIDKey] = subscriptionID
+		params[servicePlanCustomerAccountAzureTenantIDKey] = tenantID
+	case "nebius":
+		tenantID := value(servicePlanCustomerAccountNebiusTenantIDKey)
+		bindingsFile := value(servicePlanCustomerAccountNebiusBindingsFileKey)
+		if tenantID == "" || bindingsFile == "" {
+			return nil, fmt.Errorf("nebius tenant ID and bindings file are required")
+		}
+		bindings, err := servicePlanParseNebiusBindingsFile(bindingsFile)
+		if err != nil {
+			return nil, err
+		}
+		params[servicePlanCustomerAccountNebiusTenantIDKey] = tenantID
+		params[servicePlanCustomerAccountNebiusBindingsKey] = bindings
+	default:
+		return nil, fmt.Errorf("inline cloud account connection is not supported for %s", emptyValue(cloudProvider))
+	}
+
+	return params, nil
+}
+
+func waitForServicePlanCustomerAccountReady(ctx context.Context, token string, serviceID string, environmentID string, instanceID string) (*openapiclientfleet.ResourceInstance, error) {
+	timeout := time.After(servicePlanCustomerAccountReadyTimeout)
+	ticker := time.NewTicker(servicePlanCustomerAccountReadyPollInterval)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case <-timeout:
+			return nil, fmt.Errorf("customer account onboarding %s did not become READY after %s", instanceID, servicePlanCustomerAccountReadyTimeout)
+		case <-ticker.C:
+			instance, err := dataaccess.DescribeResourceInstance(ctx, token, serviceID, environmentID, instanceID)
+			if err != nil {
+				return nil, err
+			}
+			status := strings.ToUpper(strings.TrimSpace(utils.FromPtr(instance.ConsumptionResourceInstanceResult.Status)))
+			switch status {
+			case "READY":
+				return instance, nil
+			case "FAILED":
+				return nil, fmt.Errorf("customer account onboarding %s entered FAILED state", instanceID)
+			}
+		}
+	}
+}
+
+type servicePlanNebiusBindingsFile struct {
+	Bindings       []servicePlanNebiusBindingFileEntry `yaml:"bindings"`
+	NebiusBindings []servicePlanNebiusBindingFileEntry `yaml:"nebiusBindings"`
+}
+
+type servicePlanNebiusBindingFileEntry struct {
+	ProjectID          string `yaml:"projectID"`
+	ProjectId          string `yaml:"projectId"`
+	PublicKeyID        string `yaml:"publicKeyID"`
+	PublicKeyId        string `yaml:"publicKeyId"`
+	ServiceAccountID   string `yaml:"serviceAccountID"`
+	ServiceAccountId   string `yaml:"serviceAccountId"`
+	PrivateKeyPEM      string `yaml:"privateKeyPEM"`
+	PrivateKeyPem      string `yaml:"privateKeyPem"`
+	PrivateKeyPEMFile  string `yaml:"privateKeyPEMFile"`
+	PrivateKeyPemFile  string `yaml:"privateKeyPemFile"`
+	PrivateKeyFile     string `yaml:"privateKeyFile"`
+	PrivateKeyFilePath string `yaml:"privateKeyFilePath"`
+}
+
+func servicePlanParseNebiusBindingsFile(path string) ([]map[string]any, error) {
+	resolvedPath, err := servicePlanExpandPath(path, "")
+	if err != nil {
+		return nil, fmt.Errorf("failed to resolve Nebius bindings file path %q: %w", path, err)
+	}
+
+	data, err := os.ReadFile(resolvedPath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read Nebius bindings file %q: %w", resolvedPath, err)
+	}
+
+	var wrapped servicePlanNebiusBindingsFile
+	if err := yaml.Unmarshal(data, &wrapped); err != nil {
+		return nil, fmt.Errorf("failed to parse Nebius bindings file %q: %w", resolvedPath, err)
+	}
+
+	entries := wrapped.Bindings
+	if len(entries) == 0 {
+		entries = wrapped.NebiusBindings
+	}
+	if len(entries) == 0 {
+		var directEntries []servicePlanNebiusBindingFileEntry
+		if err := yaml.Unmarshal(data, &directEntries); err == nil && len(directEntries) > 0 {
+			entries = directEntries
+		}
+	}
+	if len(entries) == 0 {
+		return nil, fmt.Errorf("nebius bindings file %q must contain at least one binding", resolvedPath)
+	}
+
+	baseDir := filepath.Dir(resolvedPath)
+	bindings := make([]map[string]any, 0, len(entries))
+	seenProjectIDs := make(map[string]struct{}, len(entries))
+	for index, entry := range entries {
+		binding, err := entry.toRequestParam(baseDir)
+		if err != nil {
+			return nil, fmt.Errorf("invalid Nebius binding at index %d: %w", index, err)
+		}
+		projectID := strings.ToLower(strings.TrimSpace(fmt.Sprint(binding["projectID"])))
+		if _, exists := seenProjectIDs[projectID]; exists {
+			return nil, fmt.Errorf("duplicate Nebius binding for project %q", projectID)
+		}
+		seenProjectIDs[projectID] = struct{}{}
+		bindings = append(bindings, binding)
+	}
+	return bindings, nil
+}
+
+func (entry servicePlanNebiusBindingFileEntry) toRequestParam(baseDir string) (map[string]any, error) {
+	projectID := servicePlanFirstNonEmpty(entry.ProjectID, entry.ProjectId)
+	publicKeyID := servicePlanFirstNonEmpty(entry.PublicKeyID, entry.PublicKeyId)
+	serviceAccountID := servicePlanFirstNonEmpty(entry.ServiceAccountID, entry.ServiceAccountId)
+	privateKeyPEM := strings.TrimSpace(servicePlanFirstNonEmpty(entry.PrivateKeyPEM, entry.PrivateKeyPem))
+	privateKeyPEMFile := servicePlanFirstNonEmpty(
+		entry.PrivateKeyPEMFile,
+		entry.PrivateKeyPemFile,
+		entry.PrivateKeyFile,
+		entry.PrivateKeyFilePath,
+	)
+
+	if privateKeyPEM != "" && privateKeyPEMFile != "" {
+		return nil, fmt.Errorf("specify only one of privateKeyPEM or privateKeyPEMFile")
+	}
+	if privateKeyPEM == "" {
+		if privateKeyPEMFile == "" {
+			return nil, fmt.Errorf("privateKeyPEMFile is required")
+		}
+		resolvedKeyPath, err := servicePlanExpandPath(privateKeyPEMFile, baseDir)
+		if err != nil {
+			return nil, fmt.Errorf("failed to resolve private key path %q: %w", privateKeyPEMFile, err)
+		}
+		keyData, err := os.ReadFile(resolvedKeyPath)
+		if err != nil {
+			return nil, fmt.Errorf("failed to read private key file %q: %w", resolvedKeyPath, err)
+		}
+		privateKeyPEM = strings.TrimSpace(string(keyData))
+		if privateKeyPEM == "" {
+			return nil, fmt.Errorf("private key file %q is empty", resolvedKeyPath)
+		}
+	}
+
+	switch {
+	case strings.TrimSpace(projectID) == "":
+		return nil, fmt.Errorf("projectID is required")
+	case strings.TrimSpace(publicKeyID) == "":
+		return nil, fmt.Errorf("publicKeyID is required")
+	case strings.TrimSpace(serviceAccountID) == "":
+		return nil, fmt.Errorf("serviceAccountID is required")
+	}
+
+	return map[string]any{
+		"projectID":        strings.TrimSpace(projectID),
+		"serviceAccountID": strings.TrimSpace(serviceAccountID),
+		"publicKeyID":      strings.TrimSpace(publicKeyID),
+		"privateKeyPEM":    privateKeyPEM,
+	}, nil
+}
+
+func servicePlanExpandPath(path string, baseDir string) (string, error) {
+	trimmed := strings.TrimSpace(path)
+	if trimmed == "" {
+		return "", fmt.Errorf("path cannot be empty")
+	}
+
+	if strings.HasPrefix(trimmed, "~/") || trimmed == "~" {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return "", err
+		}
+		if trimmed == "~" {
+			trimmed = home
+		} else {
+			trimmed = filepath.Join(home, strings.TrimPrefix(trimmed, "~/"))
+		}
+	}
+
+	if !filepath.IsAbs(trimmed) {
+		if baseDir == "" {
+			baseDir = "."
+		}
+		trimmed = filepath.Join(baseDir, trimmed)
+	}
+
+	return filepath.Clean(trimmed), nil
+}
+
+func servicePlanFirstNonEmpty(values ...string) string {
+	for _, value := range values {
+		if trimmed := strings.TrimSpace(value); trimmed != "" {
+			return trimmed
+		}
+	}
+	return ""
+}
+
 func selectServicePlanOffering(result *openapiclientfleet.InventoryDescribeServiceOfferingResult, env servicePlanBrowserEnvironment) (*openapiclientfleet.ServiceOffering, error) {
 	if result == nil || result.ConsumptionDescribeServiceOfferingResult == nil {
 		return nil, fmt.Errorf("service offering response is empty for %s / %s", env.ServiceName, env.PlanName)
@@ -2998,16 +4728,52 @@ func selectServicePlanOffering(result *openapiclientfleet.InventoryDescribeServi
 func servicePlanDeploymentResources(resources []openapiclientfleet.ResourceEntity) []servicePlanDeploymentResource {
 	result := make([]servicePlanDeploymentResource, 0, len(resources))
 	for _, resource := range resources {
-		if resource.IsDeprecated {
+		resourceID := strings.TrimSpace(resource.ResourceId)
+		resourceName := strings.TrimSpace(resource.Name)
+		resourceURLKey := strings.TrimSpace(resource.UrlKey)
+		if resource.IsDeprecated || resourceID == "" || resourceURLKey == "" || servicePlanIsInjectedCustomerAccountResource(resourceID, resourceURLKey) {
 			continue
 		}
+		if resourceName == "" {
+			resourceName = resourceID
+		}
 		result = append(result, servicePlanDeploymentResource{
-			ID:     strings.TrimSpace(resource.ResourceId),
-			Name:   strings.TrimSpace(resource.Name),
-			URLKey: strings.TrimSpace(resource.UrlKey),
+			ID:     resourceID,
+			Name:   resourceName,
+			URLKey: resourceURLKey,
 		})
 	}
 	return result
+}
+
+func servicePlanCustomerAccountResource(resources []openapiclientfleet.ResourceEntity) servicePlanDeploymentResource {
+	for _, resource := range resources {
+		resourceID := strings.TrimSpace(resource.ResourceId)
+		resourceURLKey := strings.TrimSpace(resource.UrlKey)
+		if resource.IsDeprecated || resourceID == "" || resourceURLKey == "" || !servicePlanIsInjectedCustomerAccountResource(resourceID, resourceURLKey) {
+			continue
+		}
+		name := strings.TrimSpace(resource.Name)
+		if name == "" {
+			name = "Cloud Provider Account"
+		}
+		return servicePlanDeploymentResource{ID: resourceID, Name: name, URLKey: resourceURLKey}
+	}
+	return servicePlanDeploymentResource{}
+}
+
+func servicePlanIsInjectedCustomerAccountResource(resourceID, resourceURLKey string) bool {
+	return strings.HasPrefix(strings.TrimSpace(resourceID), servicePlanCustomerAccountResourcePrefix) ||
+		strings.EqualFold(strings.TrimSpace(resourceURLKey), servicePlanCustomerAccountResourceKey)
+}
+
+func servicePlanInputParametersNotFound(err error) bool {
+	if err == nil {
+		return false
+	}
+	message := strings.ToLower(err.Error())
+	return strings.Contains(message, "input parameter") &&
+		(strings.Contains(message, "not_found") || strings.Contains(message, "record not found"))
 }
 
 func servicePlanDeploymentParameters(parameters []openapiclient.DescribeInputParameterResult) []servicePlanDeploymentParameter {
@@ -3087,6 +4853,198 @@ func servicePlanOfferingCloudsAndRegions(offering *openapiclientfleet.ServiceOff
 	return sortedKeys(cloudSet), regionsByCloud
 }
 
+func servicePlanEnrichCustomerCloudAccountRow(ctx context.Context, token string, row servicePlanCustomerCloudAccountRow, instance *openapiclientfleet.ResourceInstance) servicePlanCustomerCloudAccountRow {
+	row = servicePlanCustomerCloudAccountRowWithInstanceDetails(row, instance)
+	if row.AccountConfigID == "" {
+		return row
+	}
+	account, err := dataaccess.DescribeAccount(ctx, token, row.AccountConfigID)
+	if err != nil {
+		return row
+	}
+	return servicePlanCustomerCloudAccountRowWithAccountConfig(row, account)
+}
+
+func servicePlanCustomerCloudAccountRowWithInstanceDetails(row servicePlanCustomerCloudAccountRow, instance *openapiclientfleet.ResourceInstance) servicePlanCustomerCloudAccountRow {
+	if instance == nil {
+		return row
+	}
+
+	result := instance.ConsumptionResourceInstanceResult
+	row.InstanceID = firstString([]string{row.InstanceID, utils.FromPtr(result.Id)})
+	row.ServiceID = firstString([]string{row.ServiceID, instance.ServiceId})
+	row.EnvironmentID = firstString([]string{row.EnvironmentID, instance.EnvironmentId})
+	row.ResourceID = firstString([]string{row.ResourceID, utils.FromPtr(result.ResourceID)})
+	row.AccountConfigID = firstString([]string{row.AccountConfigID, servicePlanCustomerAccountConfigIDFromInstance(instance)})
+	row.CloudProvider = firstString([]string{row.CloudProvider, utils.FromPtr(result.CloudProvider), instance.CloudProvider})
+	row.Status = firstString([]string{utils.FromPtr(result.Status), row.Status})
+	row.SubscriptionID = firstString([]string{utils.FromPtr(result.SubscriptionId), instance.SubscriptionId, row.SubscriptionID})
+	row.Region = firstString([]string{utils.FromPtr(result.Region), row.Region})
+	row.AWSAccountID = firstString([]string{row.AWSAccountID, utils.FromPtr(result.AwsAccountID), utils.FromPtr(instance.AwsAccountID)})
+	row.GCPProjectID = firstString([]string{row.GCPProjectID, utils.FromPtr(result.GcpProjectID), utils.FromPtr(instance.GcpProjectID)})
+	row.AzureSubscriptionID = firstString([]string{row.AzureSubscriptionID, utils.FromPtr(result.AzureSubscriptionID), utils.FromPtr(instance.AzureSubscriptionID)})
+
+	for _, params := range servicePlanCustomerCloudAccountParamMaps(instance) {
+		row.AccountConfigID = firstString([]string{row.AccountConfigID, servicePlanStringParam(params, servicePlanCustomerAccountConfigIDParamKey)})
+		row.AWSAccountID = firstString([]string{row.AWSAccountID, servicePlanStringParam(params, servicePlanCustomerAccountAWSAccountIDKey, "awsAccountID")})
+		row.GCPProjectID = firstString([]string{row.GCPProjectID, servicePlanStringParam(params, servicePlanCustomerAccountGCPProjectIDKey, "gcpProjectID")})
+		row.GCPProjectNumber = firstString([]string{row.GCPProjectNumber, servicePlanStringParam(params, servicePlanCustomerAccountGCPProjectNumberKey, "gcpProjectNumber")})
+		row.GCPServiceAccountEmail = firstString([]string{row.GCPServiceAccountEmail, servicePlanStringParam(params, servicePlanCustomerAccountGCPServiceAccountKey, "gcpServiceAccountEmail")})
+		row.AzureSubscriptionID = firstString([]string{row.AzureSubscriptionID, servicePlanStringParam(params, servicePlanCustomerAccountAzureSubscriptionIDKey, "azureSubscriptionID")})
+		row.AzureTenantID = firstString([]string{row.AzureTenantID, servicePlanStringParam(params, servicePlanCustomerAccountAzureTenantIDKey, "azureTenantID")})
+		row.NebiusTenantID = firstString([]string{row.NebiusTenantID, servicePlanStringParam(params, servicePlanCustomerAccountNebiusTenantIDKey, "nebiusTenantID")})
+		if row.NebiusBindingsCount == 0 {
+			row.NebiusBindingsCount = servicePlanSliceParamLen(params, servicePlanCustomerAccountNebiusBindingsKey, "nebiusBindings")
+		}
+	}
+	row.CloudProvider = servicePlanNormalizeCustomerCloudProvider(row.CloudProvider, row)
+	row.StatusMessage = servicePlanCustomerCloudAccountStatusMessage(row)
+	return row
+}
+
+func servicePlanCustomerCloudAccountRowWithAccountConfig(row servicePlanCustomerCloudAccountRow, account *openapiclient.DescribeAccountConfigResult) servicePlanCustomerCloudAccountRow {
+	if account == nil {
+		return row
+	}
+	row.AccountConfigID = firstString([]string{row.AccountConfigID, strings.TrimSpace(account.Id)})
+	row.Status = firstString([]string{row.Status, strings.TrimSpace(account.Status)})
+	row.StatusMessage = firstString([]string{row.StatusMessage, strings.TrimSpace(account.StatusMessage)})
+	row.AWSAccountID = firstString([]string{row.AWSAccountID, utils.FromPtr(account.AwsAccountID)})
+	row.AWSBootstrapRoleARN = firstString([]string{row.AWSBootstrapRoleARN, utils.FromPtr(account.AwsBootstrapRoleARN)})
+	row.AWSCloudFormationURL = firstString([]string{row.AWSCloudFormationURL, utils.FromPtr(account.AwsCloudFormationTemplateURL)})
+	row.AWSCloudFormationNoLBURL = firstString([]string{row.AWSCloudFormationNoLBURL, utils.FromPtr(account.AwsCloudFormationNoLBTemplateURL)})
+	row.GCPProjectID = firstString([]string{row.GCPProjectID, utils.FromPtr(account.GcpProjectID)})
+	row.GCPProjectNumber = firstString([]string{row.GCPProjectNumber, utils.FromPtr(account.GcpProjectNumber)})
+	row.GCPServiceAccountEmail = firstString([]string{row.GCPServiceAccountEmail, utils.FromPtr(account.GcpServiceAccountEmail)})
+	row.GCPBootstrapShellCommand = firstString([]string{row.GCPBootstrapShellCommand, utils.FromPtr(account.GcpBootstrapShellCommand)})
+	row.AzureSubscriptionID = firstString([]string{row.AzureSubscriptionID, utils.FromPtr(account.AzureSubscriptionID)})
+	row.AzureTenantID = firstString([]string{row.AzureTenantID, utils.FromPtr(account.AzureTenantID)})
+	row.AzureBootstrapShellCommand = firstString([]string{row.AzureBootstrapShellCommand, utils.FromPtr(account.AzureBootstrapShellCommand)})
+	row.NebiusTenantID = firstString([]string{row.NebiusTenantID, utils.FromPtr(account.NebiusTenantID)})
+	row.OCIBootstrapShellCommand = firstString([]string{row.OCIBootstrapShellCommand, utils.FromPtr(account.OciBootstrapShellCommand)})
+	if row.NebiusBindingsCount == 0 {
+		row.NebiusBindingsCount = len(account.NebiusBindings)
+	}
+	row.CloudProvider = servicePlanNormalizeCustomerCloudProvider(row.CloudProvider, row)
+	row.StatusMessage = servicePlanCustomerCloudAccountStatusMessage(row)
+	return row
+}
+
+func servicePlanCustomerAccountConfigIDFromInstance(instance *openapiclientfleet.ResourceInstance) string {
+	if instance == nil {
+		return ""
+	}
+	params := servicePlanAnyMap(instance.ConsumptionResourceInstanceResult.ResultParams)
+	return servicePlanStringParam(params, servicePlanCustomerAccountConfigIDParamKey)
+}
+
+func servicePlanCustomerCloudAccountParamMaps(instance *openapiclientfleet.ResourceInstance) []map[string]any {
+	if instance == nil {
+		return nil
+	}
+	result := instance.ConsumptionResourceInstanceResult
+	rawValues := []any{
+		result.ResultParams,
+		result.LaunchInputParams,
+		instance.InputParams,
+		instance.LaunchInputParams,
+	}
+	maps := make([]map[string]any, 0, len(rawValues))
+	for _, raw := range rawValues {
+		if params := servicePlanAnyMap(raw); len(params) > 0 {
+			maps = append(maps, params)
+		}
+	}
+	return maps
+}
+
+func servicePlanAnyMap(value any) map[string]any {
+	switch typed := value.(type) {
+	case nil:
+		return nil
+	case map[string]any:
+		return typed
+	case map[string]string:
+		result := make(map[string]any, len(typed))
+		for key, val := range typed {
+			result[key] = val
+		}
+		return result
+	default:
+		data, err := json.Marshal(typed)
+		if err != nil {
+			return nil
+		}
+		var result map[string]any
+		if err := json.Unmarshal(data, &result); err != nil {
+			return nil
+		}
+		return result
+	}
+}
+
+func servicePlanStringParam(params map[string]any, keys ...string) string {
+	for _, key := range keys {
+		value, ok := params[key]
+		if !ok {
+			continue
+		}
+		switch typed := value.(type) {
+		case string:
+			if strings.TrimSpace(typed) != "" {
+				return strings.TrimSpace(typed)
+			}
+		case fmt.Stringer:
+			if strings.TrimSpace(typed.String()) != "" {
+				return strings.TrimSpace(typed.String())
+			}
+		default:
+			text := strings.TrimSpace(fmt.Sprint(typed))
+			if text != "" && text != "<nil>" {
+				return text
+			}
+		}
+	}
+	return ""
+}
+
+func servicePlanSliceParamLen(params map[string]any, keys ...string) int {
+	for _, key := range keys {
+		value, ok := params[key]
+		if !ok {
+			continue
+		}
+		switch typed := value.(type) {
+		case []any:
+			return len(typed)
+		case []map[string]any:
+			return len(typed)
+		case []string:
+			return len(typed)
+		}
+	}
+	return 0
+}
+
+func servicePlanNormalizeCustomerCloudProvider(provider string, row servicePlanCustomerCloudAccountRow) string {
+	provider = strings.ToLower(strings.TrimSpace(provider))
+	if provider != "" {
+		return provider
+	}
+	switch {
+	case row.AWSAccountID != "":
+		return "aws"
+	case row.GCPProjectID != "":
+		return "gcp"
+	case row.AzureSubscriptionID != "":
+		return "azure"
+	case row.NebiusTenantID != "":
+		return "nebius"
+	default:
+		return ""
+	}
+}
+
 func listServicePlanCustomerCloudAccounts(
 	ctx context.Context,
 	token string,
@@ -3116,15 +5074,25 @@ func listServicePlanCustomerCloudAccounts(
 		}
 
 		subscriptionID := strings.TrimSpace(utils.FromPtr(record.SubscriptionId))
-		rows = append(rows, servicePlanCustomerCloudAccountRow{
+		customerEmail := servicePlanCustomerCloudAccountEmailForSubscription(ctx, token, env, subscriptionID, emailsBySubscription)
+		row := servicePlanCustomerCloudAccountRow{
 			InstanceID:     strings.TrimSpace(record.Id),
+			ServiceID:      strings.TrimSpace(record.ServiceId),
+			EnvironmentID:  strings.TrimSpace(record.ServiceEnvironmentId),
+			ResourceID:     resourceID,
 			CloudProvider:  strings.TrimSpace(record.CloudProvider),
 			Status:         strings.TrimSpace(record.Status),
+			StatusMessage:  strings.TrimSpace(record.StatusDescription),
 			SubscriptionID: subscriptionID,
-			CustomerEmail:  emailsBySubscription[subscriptionID],
+			CustomerEmail:  customerEmail,
 			Resource:       strings.TrimSpace(record.ResourceName),
 			Region:         strings.TrimSpace(record.RegionCode),
-		})
+		}
+		if instance, describeErr := dataaccess.DescribeResourceInstance(ctx, token, row.ServiceID, row.EnvironmentID, row.InstanceID); describeErr == nil {
+			row = servicePlanEnrichCustomerCloudAccountRow(ctx, token, row, instance)
+		}
+		row.StatusMessage = servicePlanCustomerCloudAccountStatusMessage(row)
+		rows = append(rows, row)
 	}
 
 	sort.Slice(rows, func(i, j int) bool {
@@ -3178,6 +5146,38 @@ func servicePlanEmailsBySubscription(subscriptions []openapiclientfleet.FleetDes
 		}
 	}
 	return emails
+}
+
+func servicePlanCustomerCloudAccountEmailForSubscription(ctx context.Context, token string, env servicePlanBrowserEnvironment, subscriptionID string, emailsBySubscription map[string]string) string {
+	subscriptionID = strings.TrimSpace(subscriptionID)
+	if subscriptionID == "" {
+		return ""
+	}
+	if email := strings.TrimSpace(emailsBySubscription[subscriptionID]); email != "" {
+		return email
+	}
+	subscription, err := dataaccess.DescribeSubscription(ctx, token, env.ServiceID, env.ID, subscriptionID)
+	if err != nil || subscription == nil {
+		return ""
+	}
+	email := strings.TrimSpace(subscription.RootUserEmail)
+	if email != "" {
+		emailsBySubscription[subscriptionID] = email
+	}
+	return email
+}
+
+func servicePlanEmailForSubscriptionRows(subscriptions []servicePlanSubscriptionRow, subscriptionID string) string {
+	subscriptionID = strings.TrimSpace(subscriptionID)
+	if subscriptionID == "" {
+		return ""
+	}
+	for _, subscription := range subscriptions {
+		if strings.EqualFold(strings.TrimSpace(subscription.ID), subscriptionID) {
+			return strings.TrimSpace(subscription.RootUserEmail)
+		}
+	}
+	return ""
 }
 
 func servicePlanEnvironmentRequiresCustomerAccount(env servicePlanBrowserEnvironment) bool {

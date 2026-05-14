@@ -2,9 +2,12 @@ package serviceplan
 
 import (
 	"context"
+	"errors"
+	"strings"
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 	displaymodel "github.com/omnistrate-oss/omnistrate-ctl/internal/model"
 	"github.com/omnistrate-oss/omnistrate-ctl/internal/utils"
 	openapiclientfleet "github.com/omnistrate-oss/omnistrate-sdk-go/fleet"
@@ -13,15 +16,30 @@ import (
 )
 
 type fakeServicePlanBrowserLoader struct {
-	details     map[string]servicePlanEnvironmentDetails
-	calls       []string
-	form        servicePlanDeploymentForm
-	formErr     error
-	formCalls   []string
-	launchID    string
-	launchErr   error
-	launchReq   *servicePlanDeploymentLaunchRequest
-	launchCalls int
+	details        map[string]servicePlanEnvironmentDetails
+	calls          []string
+	form           servicePlanDeploymentForm
+	formErr        error
+	formCalls      []string
+	launchID       string
+	launchErr      error
+	launchReq      *servicePlanDeploymentLaunchRequest
+	launchCalls    int
+	connectAccount servicePlanCustomerCloudAccountRow
+	connectErr     error
+	connectReq     *servicePlanCustomerCloudAccountConnectRequest
+	connectCalls   int
+	refreshAccount servicePlanCustomerCloudAccountRow
+	refreshErr     error
+	refreshReq     *servicePlanCustomerCloudAccountActionRequest
+	refreshCalls   int
+	deleteErr      error
+	deleteReq      *servicePlanCustomerCloudAccountActionRequest
+	deleteCalls    int
+	retryAccount   servicePlanCustomerCloudAccountRow
+	retryErr       error
+	retryReq       *servicePlanCustomerCloudAccountActionRequest
+	retryCalls     int
 }
 
 func (f *fakeServicePlanBrowserLoader) LoadEnvironmentDetails(_ context.Context, _ string, env servicePlanBrowserEnvironment) (servicePlanEnvironmentDetails, error) {
@@ -42,6 +60,41 @@ func (f *fakeServicePlanBrowserLoader) LaunchDeployment(_ context.Context, _ str
 		f.launchID = "inst-created"
 	}
 	return f.launchID, f.launchErr
+}
+
+func (f *fakeServicePlanBrowserLoader) CreateCustomerCloudAccount(_ context.Context, _ string, request servicePlanCustomerCloudAccountConnectRequest) (servicePlanCustomerCloudAccountRow, error) {
+	f.connectCalls++
+	f.connectReq = &request
+	if f.connectAccount.InstanceID == "" {
+		f.connectAccount = servicePlanCustomerCloudAccountRow{InstanceID: "acct-created", CloudProvider: request.CloudProvider, Status: "READY"}
+	}
+	return f.connectAccount, f.connectErr
+}
+
+func (f *fakeServicePlanBrowserLoader) RefreshCustomerCloudAccount(_ context.Context, _ string, request servicePlanCustomerCloudAccountActionRequest) (servicePlanCustomerCloudAccountRow, error) {
+	f.refreshCalls++
+	f.refreshReq = &request
+	if f.refreshAccount.InstanceID == "" {
+		f.refreshAccount = request.Account
+		f.refreshAccount.Status = "READY"
+	}
+	return f.refreshAccount, f.refreshErr
+}
+
+func (f *fakeServicePlanBrowserLoader) DeleteCustomerCloudAccount(_ context.Context, _ string, request servicePlanCustomerCloudAccountActionRequest) error {
+	f.deleteCalls++
+	f.deleteReq = &request
+	return f.deleteErr
+}
+
+func (f *fakeServicePlanBrowserLoader) RetryCustomerCloudAccount(_ context.Context, _ string, request servicePlanCustomerCloudAccountActionRequest) (servicePlanCustomerCloudAccountRow, error) {
+	f.retryCalls++
+	f.retryReq = &request
+	if f.retryAccount.InstanceID == "" {
+		f.retryAccount = request.Account
+		f.retryAccount.Status = "READY"
+	}
+	return f.retryAccount, f.retryErr
 }
 
 func loadSelectedTestDetails(t *testing.T, model servicePlanBrowserModel) servicePlanBrowserModel {
@@ -234,6 +287,19 @@ func TestServicePlanBrowserHeaderOmitsCatalogChecks(t *testing.T) {
 	require.NotContains(t, view, "Plan details available")
 }
 
+func TestServicePlanBrowserTabbedBodyDoesNotWrapPaneBorders(t *testing.T) {
+	catalog := buildServicePlanBrowserCatalog(testBrowserServicesWithTwoPlans(), nil)
+	model := newServicePlanBrowserModel(context.Background(), "token", catalog, nil)
+	model.setSize(120, 32)
+
+	view := model.renderEnvironmentTabsWithBody(model.width, model.renderBrowserBody())
+
+	require.NotContains(t, view, "╰")
+	for _, line := range strings.Split(view, "\n") {
+		require.LessOrEqual(t, lipgloss.Width(line), model.width)
+	}
+}
+
 func TestServicePlanBrowserServiceSummaryOmitsEnvironmentCountsFromPlanBullets(t *testing.T) {
 	catalog := buildServicePlanBrowserCatalog(testBrowserServicesWithTwoPlans(), nil)
 	model := newServicePlanBrowserModel(context.Background(), "token", catalog, nil)
@@ -296,8 +362,12 @@ func TestServicePlanBrowserEnvironmentTabsUseDebugTabStyle(t *testing.T) {
 	require.Contains(t, tabs, "prod")
 	model.activeTab = 1
 	require.Contains(t, model.renderEnvironmentTabs(80), "┘")
-	require.Equal(t, "82", string(servicePlanEnvironmentColor("Dev")))
-	require.Equal(t, "160", string(servicePlanEnvironmentColor("Prod")))
+	activeStyle := servicePlanEnvironmentTabStyle(true, servicePlanTabBorderWithBottom("┘", " ", "└"))
+	inactiveStyle := servicePlanEnvironmentTabStyle(false, servicePlanTabBorderWithBottom("┴", "─", "┴"))
+	require.Equal(t, lipgloss.Color("230"), activeStyle.GetForeground())
+	require.True(t, activeStyle.GetBold())
+	require.Equal(t, lipgloss.Color("245"), inactiveStyle.GetForeground())
+	require.False(t, inactiveStyle.GetFaint())
 }
 
 func TestServicePlanBrowserDetailCursorAutoScrollsViewport(t *testing.T) {
@@ -423,7 +493,7 @@ func TestServicePlanBrowserBYOCDetailsShowCloudAccounts(t *testing.T) {
 		DeploymentModel:            "DEDICATED / BYOA",
 		CustomerCloudAccountsCount: 1,
 		CustomerCloudAccounts: []servicePlanCustomerCloudAccountRow{
-			{InstanceID: "acct-1", CloudProvider: "aws", Status: "RUNNING", Region: "us-west-2", CustomerEmail: "alice@example.com", SubscriptionID: "sub-1"},
+			{InstanceID: "acct-1", CloudProvider: "aws", Status: "RUNNING", Region: "us-west-2", CustomerEmail: "alice@example.com", SubscriptionID: "sub-1", AWSAccountID: "123456789012"},
 		},
 	}
 
@@ -438,8 +508,33 @@ func TestServicePlanBrowserBYOCDetailsShowCloudAccounts(t *testing.T) {
 	model = updated.(servicePlanBrowserModel)
 	require.NotNil(t, model.modal)
 	require.Equal(t, servicePlanBrowserModalCloudAccounts, model.modal.Kind)
-	require.Contains(t, model.modal.Rows[0].Text, "acct-1")
+	require.Contains(t, model.modal.Rows[0].Text, "AWS account 123456789012")
+	require.NotContains(t, model.modal.Rows[0].Text, "acct-1")
 	require.Contains(t, model.modal.Rows[0].Text, "alice@example.com")
+}
+
+func TestServicePlanDeploymentResourcesSkipInjectedCustomerAccountResource(t *testing.T) {
+	resources := servicePlanDeploymentResources([]openapiclientfleet.ResourceEntity{
+		{ResourceId: "r-injectedaccountconfigpt123", Name: "Cloud Provider Account", UrlKey: "omnistrateCloudAccountConfig"},
+		{ResourceId: "r-api", Name: "API", UrlKey: "api"},
+		{ResourceId: "r-worker", UrlKey: "worker"},
+		{ResourceId: "r-missing-key", Name: "Missing URL key"},
+		{ResourceId: "r-old", Name: "Old", UrlKey: "old", IsDeprecated: true},
+	})
+
+	require.Len(t, resources, 2)
+	require.Equal(t, "r-api", resources[0].ID)
+	require.Equal(t, "API", resources[0].Name)
+	require.Equal(t, "api", resources[0].URLKey)
+	require.Equal(t, "r-worker", resources[1].Name)
+}
+
+func TestServicePlanInputParametersNotFoundIsEmptyParameterMetadata(t *testing.T) {
+	require.True(t, servicePlanInputParametersNotFound(errors.New("not_found\nDetail: Invalid request: failed to query input parameter: record not found")))
+	require.True(t, servicePlanInputParametersNotFound(errors.New("NOT_FOUND: input parameter record not found")))
+	require.False(t, servicePlanInputParametersNotFound(errors.New("not_found\nDetail: service offering record not found")))
+	require.False(t, servicePlanInputParametersNotFound(errors.New("internal error: failed to query input parameter")))
+	require.False(t, servicePlanInputParametersNotFound(nil))
 }
 
 func TestServicePlanBrowserDeploymentHotkeyLoadsFormAndLaunchesWithDefaults(t *testing.T) {
@@ -494,9 +589,13 @@ func TestServicePlanBrowserDeploymentHotkeyLoadsFormAndLaunchesWithDefaults(t *t
 	require.Nil(t, cmd)
 	model = updated.(servicePlanBrowserModel)
 	require.NotNil(t, model.deploymentForm)
-	require.Contains(t, model.renderDeploymentForm(), "Resource")
+	require.Equal(t, servicePlanDeploymentStepCloud, model.deploymentForm.currentStep())
+	require.NotContains(t, model.deploymentForm.Steps, servicePlanDeploymentStepResource)
+	require.Contains(t, model.renderDeploymentForm(), "Step 1/5: Cloud Provider")
+	require.NotContains(t, model.renderDeploymentForm(), "Back")
+	require.NotContains(t, model.renderDeploymentForm(), "Next")
 
-	for i := 0; i < 4; i++ {
+	for i := 0; i < 3; i++ {
 		updated, cmd = model.Update(tea.KeyMsg{Type: tea.KeyEnter})
 		require.Nil(t, cmd)
 		model = updated.(servicePlanBrowserModel)
@@ -526,6 +625,19 @@ func TestServicePlanBrowserDeploymentHotkeyLoadsFormAndLaunchesWithDefaults(t *t
 	require.Contains(t, model.renderDeploymentForm(), "omnistrate-ctl instance describe inst-1")
 	require.Contains(t, model.renderDeploymentForm(), "omnistrate-ctl instance list-endpoints inst-1")
 	require.Contains(t, model.renderDeploymentForm(), "omnistrate-ctl instance debug inst-1")
+}
+
+func TestServicePlanDeploymentWizardSkipsResourceStepForSingleResource(t *testing.T) {
+	state := newServicePlanDeploymentFormState(servicePlanDeploymentForm{
+		Resources:      []servicePlanDeploymentResource{{ID: "res-api", Name: "API", URLKey: "api"}},
+		CloudProviders: []string{"aws"},
+		RegionsByCloud: map[string][]string{"aws": []string{"us-west-2"}},
+	}, 80)
+
+	require.Equal(t, "API", state.ResourceName)
+	require.NotContains(t, state.Steps, servicePlanDeploymentStepResource)
+	require.Equal(t, servicePlanDeploymentStepCloud, state.currentStep())
+	require.Equal(t, 3, len(state.Steps))
 }
 
 func TestServicePlanDeploymentFormRefreshesParametersWhenResourceChanges(t *testing.T) {
@@ -607,7 +719,6 @@ func TestServicePlanDeploymentParameterOptionsUseSelectableValues(t *testing.T) 
 	state := newServicePlanDeploymentFormState(form, 80)
 	require.NoError(t, state.advanceStep(80))
 	require.NoError(t, state.advanceStep(80))
-	require.NoError(t, state.advanceStep(80))
 	require.Equal(t, servicePlanDeploymentStepSystemParams, state.currentStep())
 	require.True(t, state.moveCurrentParameterOption(1))
 	require.Equal(t, "small", state.ParamFields[0].Input.Value())
@@ -639,6 +750,55 @@ func TestServicePlanDeploymentWizardPromptsForCustomerInProd(t *testing.T) {
 	require.Equal(t, "alice@example.com", state.SelectedCustomer.Email)
 }
 
+func TestServicePlanDeploymentCustomerStepIsSearchable(t *testing.T) {
+	form := servicePlanDeploymentForm{
+		Environment: servicePlanBrowserEnvironment{Name: "PROD"},
+		Resources:   []servicePlanDeploymentResource{{ID: "res-1", Name: "API", URLKey: "api"}},
+		Customers: []servicePlanDeploymentCustomer{
+			{UserID: "user-1", Email: "alice@example.com", Name: "Alice", OrgName: "Acme"},
+			{UserID: "user-2", Email: "bob@example.com", Name: "Bob", OrgName: "Beta"},
+		},
+	}
+
+	state := newServicePlanDeploymentFormState(form, 80)
+	for _, r := range "bob" {
+		_, handled := state.updateActiveTextInput(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{r}})
+		require.True(t, handled)
+	}
+
+	options := state.currentOptions()
+	require.Len(t, options, 1)
+	require.Equal(t, "bob@example.com", options[0].Customer.Email)
+	require.NoError(t, state.advanceStep(80))
+	require.Equal(t, "bob@example.com", state.SelectedCustomer.Email)
+}
+
+func TestServicePlanDeploymentFreeformCloudAndRegionWhenOptionsMissing(t *testing.T) {
+	form := servicePlanDeploymentForm{
+		Resources: []servicePlanDeploymentResource{{ID: "res-1", Name: "API", URLKey: "api"}},
+	}
+
+	state := newServicePlanDeploymentFormState(form, 80)
+	require.Equal(t, servicePlanDeploymentStepCloud, state.currentStep())
+	require.True(t, state.currentStepUsesFreeformInput())
+	require.Contains(t, strings.Join(state.renderDeploymentOptionLines(20, lipgloss.NewStyle(), lipgloss.NewStyle(), lipgloss.NewStyle()), "\n"), "No fixed options")
+
+	state.OptionInput.SetValue("custom-cloud")
+	require.NoError(t, state.advanceStep(80))
+	require.Equal(t, "custom-cloud", state.CloudProvider)
+	require.Equal(t, servicePlanDeploymentStepRegion, state.currentStep())
+	require.True(t, state.currentStepUsesFreeformInput())
+
+	state.OptionInput.SetValue("custom-region")
+	require.NoError(t, state.advanceStep(80))
+	require.Equal(t, "custom-region", state.Region)
+
+	request, err := state.launchRequest()
+	require.NoError(t, err)
+	require.Equal(t, "custom-cloud", request.CloudProvider)
+	require.Equal(t, "custom-region", request.Region)
+}
+
 func TestServicePlanDeploymentCloudAccountsFilterBySelectedCustomer(t *testing.T) {
 	state := newServicePlanDeploymentFormState(servicePlanDeploymentForm{
 		Resources:               []servicePlanDeploymentResource{{ID: "res-1", Name: "API", URLKey: "api"}},
@@ -655,6 +815,571 @@ func TestServicePlanDeploymentCloudAccountsFilterBySelectedCustomer(t *testing.T
 	accounts := state.filteredCloudAccounts()
 	require.Len(t, accounts, 1)
 	require.Equal(t, "acct-1", accounts[0].InstanceID)
+}
+
+func TestServicePlanDeploymentCloudAccountStepOffersInlineConnectWhenNoAccountMatches(t *testing.T) {
+	state := newServicePlanDeploymentFormState(servicePlanDeploymentForm{
+		AccountResource:         servicePlanDeploymentResource{ID: "r-injectedaccountconfig", Name: "Cloud Provider Account", URLKey: "omnistrateCloudAccountConfig"},
+		Resources:               []servicePlanDeploymentResource{{ID: "res-1", Name: "API", URLKey: "api"}},
+		CloudProviders:          []string{"aws"},
+		RegionsByCloud:          map[string][]string{"aws": []string{"us-west-2"}},
+		RequiresCustomerAccount: true,
+	}, 80)
+
+	require.Equal(t, servicePlanDeploymentStepCloud, state.currentStep())
+	require.NoError(t, state.advanceStep(80))
+	require.Equal(t, servicePlanDeploymentStepCloudAccount, state.currentStep())
+
+	options := state.currentOptions()
+	require.Len(t, options, 1)
+	require.True(t, options[0].ConnectAccount)
+	require.Equal(t, "Connect your aws account", options[0].Label)
+	require.Empty(t, state.customerCloudAccountActionButtons(options[0]))
+	require.Equal(t, []string{"▸ Connect your aws account"}, state.renderDeploymentOptionLines(20, lipgloss.NewStyle(), lipgloss.NewStyle(), lipgloss.NewStyle()))
+	require.Equal(t, "enter: select  esc: cancel", state.deploymentHelpLine())
+
+	require.NoError(t, state.advanceStep(80))
+	require.Equal(t, servicePlanDeploymentStepConnectAccount, state.currentStep())
+	require.Contains(t, servicePlanDeploymentFormFieldLabels(state.ParamFields), "AWS account ID")
+
+	state.ParamFields[0].Input.SetValue("123456789012")
+	request, err := state.customerAccountConnectRequest()
+	require.NoError(t, err)
+	require.Equal(t, "aws", request.CloudProvider)
+	require.Equal(t, "123456789012", request.Values[servicePlanCustomerAccountAWSAccountIDKey])
+
+	params, err := servicePlanCustomerAccountRequestParams(context.Background(), "token", "aws", request.Values)
+	require.NoError(t, err)
+	require.Equal(t, "CloudFormation", params[servicePlanCustomerAccountIacToolKey])
+	require.Equal(t, "123456789012", params[servicePlanCustomerAccountAWSAccountIDKey])
+	require.Equal(t, "arn:aws:iam::123456789012:role/omnistrate-bootstrap-role", params[servicePlanCustomerAccountAWSBootstrapRoleKey])
+}
+
+func TestServicePlanDeploymentCloudAccountStepUsesCloudIdentityAndFailedActions(t *testing.T) {
+	state := newServicePlanDeploymentFormState(servicePlanDeploymentForm{
+		AccountResource:         servicePlanDeploymentResource{ID: "r-injectedaccountconfig", Name: "Cloud Provider Account", URLKey: "omnistrateCloudAccountConfig"},
+		Resources:               []servicePlanDeploymentResource{{ID: "res-1", Name: "API", URLKey: "api"}},
+		CloudProviders:          []string{"aws"},
+		RegionsByCloud:          map[string][]string{"aws": []string{"us-west-2"}},
+		RequiresCustomerAccount: true,
+		CustomerCloudAccounts: []servicePlanCustomerCloudAccountRow{
+			{InstanceID: "instance-qu9xnfp2x", CloudProvider: "aws", Status: "FAILED", AWSAccountID: "123456789012", CustomerEmail: "alok@nistro.ai"},
+		},
+	}, 80)
+	require.NoError(t, state.advanceStep(80))
+	require.Equal(t, servicePlanDeploymentStepCloudAccount, state.currentStep())
+
+	options := state.currentOptions()
+	require.Len(t, options, 2)
+	require.Equal(t, "AWS account 123456789012", options[0].Label)
+	require.Equal(t, servicePlanCustomerCloudAccountActionRetry, options[0].AccountAction)
+	require.True(t, options[1].ConnectAccount)
+	require.Equal(t, "Connect new aws account", options[1].Label)
+	buttons := state.customerCloudAccountActionButtons(options[0])
+	require.Len(t, buttons, 2)
+	require.Equal(t, "Retry", buttons[0].Label)
+	require.Equal(t, "Delete", buttons[1].Label)
+	rendered := strings.Join(state.renderDeploymentOptionLines(20, lipgloss.NewStyle(), lipgloss.NewStyle(), lipgloss.NewStyle()), "\n")
+	require.Contains(t, rendered, "1. AWS account 123456789012")
+	require.Contains(t, rendered, "Retry")
+	require.Contains(t, rendered, "Delete")
+	require.Contains(t, rendered, "\n\n  Connect new aws account")
+	require.NotContains(t, rendered, "instance-qu9xnfp2x")
+
+	_, action, ok := state.selectedCustomerCloudAccountAction()
+	require.True(t, ok)
+	require.Equal(t, servicePlanCustomerCloudAccountActionRetry, action)
+	state.moveCustomerCloudAccountActionCursor(1)
+	_, action, ok = state.selectedCustomerCloudAccountAction()
+	require.True(t, ok)
+	require.Equal(t, servicePlanCustomerCloudAccountActionDelete, action)
+}
+
+func TestServicePlanDeploymentCloudAccountActionTabSwitchesAccountButtons(t *testing.T) {
+	state := newServicePlanDeploymentFormState(servicePlanDeploymentForm{
+		AccountResource:         servicePlanDeploymentResource{ID: "r-injectedaccountconfig", Name: "Cloud Provider Account", URLKey: "omnistrateCloudAccountConfig"},
+		Resources:               []servicePlanDeploymentResource{{ID: "res-1", Name: "API", URLKey: "api"}},
+		CloudProviders:          []string{"aws"},
+		RegionsByCloud:          map[string][]string{"aws": []string{"us-west-2"}},
+		RequiresCustomerAccount: true,
+		CustomerCloudAccounts: []servicePlanCustomerCloudAccountRow{
+			{InstanceID: "acct-failed", CloudProvider: "aws", Status: "FAILED", AWSAccountID: "123456789012"},
+		},
+	}, 80)
+	require.NoError(t, state.advanceStep(80))
+	model := servicePlanBrowserModel{deploymentForm: &state, detailPanelWidth: 80}
+
+	updated, cmd := model.Update(tea.KeyMsg{Type: tea.KeyTab})
+	require.Nil(t, cmd)
+	model = updated.(servicePlanBrowserModel)
+	_, action, ok := model.deploymentForm.selectedCustomerCloudAccountAction()
+	require.True(t, ok)
+	require.Equal(t, servicePlanCustomerCloudAccountActionDelete, action)
+
+	updated, cmd = model.Update(tea.KeyMsg{Type: tea.KeyShiftTab})
+	require.Nil(t, cmd)
+	model = updated.(servicePlanBrowserModel)
+	_, action, ok = model.deploymentForm.selectedCustomerCloudAccountAction()
+	require.True(t, ok)
+	require.Equal(t, servicePlanCustomerCloudAccountActionRetry, action)
+}
+
+func TestServicePlanDeploymentPendingCloudAccountShowsConnectionInstructions(t *testing.T) {
+	state := newServicePlanDeploymentFormState(servicePlanDeploymentForm{
+		AccountResource:         servicePlanDeploymentResource{ID: "r-injectedaccountconfig", Name: "Cloud Provider Account", URLKey: "omnistrateCloudAccountConfig"},
+		Resources:               []servicePlanDeploymentResource{{ID: "res-1", Name: "API", URLKey: "api"}},
+		CloudProviders:          []string{"aws"},
+		RegionsByCloud:          map[string][]string{"aws": []string{"us-west-2"}},
+		RequiresCustomerAccount: true,
+		CustomerCloudAccounts: []servicePlanCustomerCloudAccountRow{
+			{
+				InstanceID:               "acct-pending",
+				AccountConfigID:          "ac-123",
+				CloudProvider:            "aws",
+				Status:                   "DEPLOYING",
+				StatusMessage:            "reconciling instance",
+				AWSAccountID:             "767925118737",
+				AWSCloudFormationURL:     "https://example.com/template.yml",
+				AWSCloudFormationNoLBURL: "https://example.com/template-no-lb.yml",
+				CustomerEmail:            "alok@nistro.ai",
+				SubscriptionID:           "sub-KImOLdo2ke",
+			},
+		},
+	}, 80)
+	require.NoError(t, state.advanceStep(80))
+
+	rendered := strings.Join(state.renderDeploymentOptionLines(30, lipgloss.NewStyle(), lipgloss.NewStyle(), lipgloss.NewStyle()), "\n")
+	require.Contains(t, rendered, "1. AWS account 767925118737")
+	require.Contains(t, rendered, "Waiting")
+	require.Contains(t, rendered, "Account config ID: ac-123")
+	require.Contains(t, rendered, "CloudFormation template URL: https://example.com/template.yml")
+	require.NotContains(t, rendered, "CloudFormation no-LB template URL")
+	require.Contains(t, state.deploymentHelpLine(), "c: copy template URL")
+}
+
+func TestServicePlanDeploymentCloudAccountStatusIsStyled(t *testing.T) {
+	rendered := renderServicePlanCustomerCloudAccountDescription(servicePlanCustomerCloudAccountRow{
+		Status:         "READY",
+		StatusMessage:  "Instance deployed",
+		CustomerEmail:  "alok@nistro.ai",
+		SubscriptionID: "sub-KImOLdo2ke",
+	}, lipgloss.NewStyle().Foreground(lipgloss.Color("245")), "    ")
+
+	require.Contains(t, rendered, "READY")
+	require.Contains(t, rendered, "account verified")
+	require.NotContains(t, rendered, "Instance deployed")
+	require.Contains(t, rendered, "alok@nistro.ai")
+	require.Equal(t, lipgloss.Color("82"), servicePlanCustomerCloudAccountStatusStyle("READY", lipgloss.NewStyle()).GetForeground())
+}
+
+func TestServicePlanDeploymentCloudAccountBackfillsEmailFromSubscription(t *testing.T) {
+	state := newServicePlanDeploymentFormState(servicePlanDeploymentForm{
+		Resources:               []servicePlanDeploymentResource{{ID: "res-1", Name: "API", URLKey: "api"}},
+		CloudProviders:          []string{"aws"},
+		RegionsByCloud:          map[string][]string{"aws": []string{"us-west-2"}},
+		RequiresCustomerAccount: true,
+		Subscriptions:           []servicePlanSubscriptionRow{{ID: "sub-KImOLdo2ke", RootUserEmail: "alok@nistro.ai"}},
+		CustomerCloudAccounts: []servicePlanCustomerCloudAccountRow{
+			{InstanceID: "acct-1", CloudProvider: "aws", Status: "READY", StatusMessage: "account verified", AWSAccountID: "767925118737", SubscriptionID: "sub-KImOLdo2ke"},
+		},
+	}, 80)
+	require.NoError(t, state.advanceStep(80))
+
+	accounts := state.filteredCloudAccounts()
+	require.Len(t, accounts, 1)
+	require.Equal(t, "alok@nistro.ai", accounts[0].CustomerEmail)
+
+	rendered := strings.Join(state.renderDeploymentOptionLines(20, lipgloss.NewStyle(), lipgloss.NewStyle(), lipgloss.NewStyle()), "\n")
+	require.Contains(t, rendered, "READY")
+	require.Contains(t, rendered, "account verified")
+	require.Contains(t, rendered, "alok@nistro.ai")
+}
+
+func TestServicePlanDeploymentExistingPendingCloudAccountPollsOnCloudAccountStep(t *testing.T) {
+	catalog := buildServicePlanBrowserCatalog(testBrowserServicesWithHostingModels(), nil)
+	loader := &fakeServicePlanBrowserLoader{
+		details: testBrowserDetails(catalog),
+		refreshAccount: servicePlanCustomerCloudAccountRow{
+			InstanceID:           "acct-pending",
+			AccountConfigID:      "ac-123",
+			CloudProvider:        "aws",
+			Status:               "DEPLOYING",
+			StatusMessage:        "still reconciling",
+			AWSAccountID:         "767925118737",
+			AWSCloudFormationURL: "https://example.com/template.yml",
+		},
+	}
+	model := newServicePlanBrowserModel(context.Background(), "token", catalog, loader)
+	state := newServicePlanDeploymentFormState(servicePlanDeploymentForm{
+		Environment:             catalog.Services[0].Plans[0].Environments[0],
+		AccountResource:         servicePlanDeploymentResource{ID: "r-injectedaccountconfig", Name: "Cloud Provider Account", URLKey: "omnistrateCloudAccountConfig"},
+		Resources:               []servicePlanDeploymentResource{{ID: "res-1", Name: "API", URLKey: "api"}},
+		CloudProviders:          []string{"aws"},
+		RegionsByCloud:          map[string][]string{"aws": []string{"us-west-2"}},
+		RequiresCustomerAccount: true,
+		CustomerCloudAccounts: []servicePlanCustomerCloudAccountRow{
+			{
+				InstanceID:           "acct-pending",
+				AccountConfigID:      "ac-123",
+				CloudProvider:        "aws",
+				Status:               "DEPLOYING",
+				StatusMessage:        "reconciling instance",
+				AWSAccountID:         "767925118737",
+				AWSCloudFormationURL: "https://example.com/template.yml",
+			},
+		},
+	}, 80)
+	model.deploymentForm = &state
+
+	updated, cmd := model.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	require.NotNil(t, cmd)
+	model = updated.(servicePlanBrowserModel)
+	require.Equal(t, servicePlanDeploymentStepCloudAccount, model.deploymentForm.currentStep())
+	require.True(t, model.deploymentForm.CustomerAccountPollScheduled)
+
+	updated, cmd = model.Update(servicePlanCustomerCloudAccountPollTickMsg{})
+	require.NotNil(t, cmd)
+	model = updated.(servicePlanBrowserModel)
+	require.False(t, model.deploymentForm.CustomerAccountPollScheduled)
+
+	updated, cmd = model.Update(cmd())
+	require.NotNil(t, cmd)
+	model = updated.(servicePlanBrowserModel)
+	require.Equal(t, 1, loader.refreshCalls)
+	require.True(t, model.deploymentForm.CustomerAccountPollScheduled)
+	require.Equal(t, "still reconciling", model.deploymentForm.Form.CustomerCloudAccounts[0].StatusMessage)
+	require.Equal(t, servicePlanDeploymentStepCloudAccount, model.deploymentForm.currentStep())
+}
+
+func TestServicePlanDeploymentCopiesCloudFormationTemplateURL(t *testing.T) {
+	state := newServicePlanDeploymentFormState(servicePlanDeploymentForm{
+		AccountResource:         servicePlanDeploymentResource{ID: "r-injectedaccountconfig", Name: "Cloud Provider Account", URLKey: "omnistrateCloudAccountConfig"},
+		Resources:               []servicePlanDeploymentResource{{ID: "res-1", Name: "API", URLKey: "api"}},
+		CloudProviders:          []string{"aws"},
+		RegionsByCloud:          map[string][]string{"aws": []string{"us-west-2"}},
+		RequiresCustomerAccount: true,
+		CustomerCloudAccounts: []servicePlanCustomerCloudAccountRow{
+			{
+				InstanceID:               "acct-pending",
+				CloudProvider:            "aws",
+				Status:                   "DEPLOYING",
+				AWSAccountID:             "767925118737",
+				AWSCloudFormationURL:     "https://example.com/template.yml",
+				AWSCloudFormationNoLBURL: "https://example.com/template-no-lb.yml",
+			},
+		},
+	}, 80)
+	require.NoError(t, state.advanceStep(80))
+
+	originalCopy := servicePlanBrowserCopyToClipboard
+	var copied string
+	servicePlanBrowserCopyToClipboard = func(text string) error {
+		copied = text
+		return nil
+	}
+	t.Cleanup(func() {
+		servicePlanBrowserCopyToClipboard = originalCopy
+	})
+
+	model := servicePlanBrowserModel{deploymentForm: &state, detailPanelWidth: 80}
+	updated, cmd := model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'c'}})
+	require.NotNil(t, cmd)
+	model = updated.(servicePlanBrowserModel)
+	msg := cmd()
+	require.Equal(t, "https://example.com/template.yml", copied)
+
+	updated, cmd = model.Update(msg)
+	require.Nil(t, cmd)
+	model = updated.(servicePlanBrowserModel)
+	require.Equal(t, "Copied CloudFormation template URL", model.deploymentForm.Notice)
+}
+
+func TestServicePlanDeploymentConnectProgressShowsOnboardingInstructions(t *testing.T) {
+	catalog := buildServicePlanBrowserCatalog(testBrowserServicesWithHostingModels(), nil)
+	loader := &fakeServicePlanBrowserLoader{
+		details: testBrowserDetails(catalog),
+		connectAccount: servicePlanCustomerCloudAccountRow{
+			InstanceID:           "acct-pending",
+			AccountConfigID:      "ac-123",
+			CloudProvider:        "aws",
+			Status:               "DEPLOYING",
+			AWSAccountID:         "767925118737",
+			AWSCloudFormationURL: "https://example.com/template.yml",
+			SubscriptionID:       "sub-new",
+		},
+		refreshAccount: servicePlanCustomerCloudAccountRow{
+			InstanceID:           "acct-pending",
+			AccountConfigID:      "ac-123",
+			CloudProvider:        "aws",
+			Status:               "READY",
+			AWSAccountID:         "767925118737",
+			AWSCloudFormationURL: "https://example.com/template.yml",
+			SubscriptionID:       "sub-new",
+		},
+	}
+	model := newServicePlanBrowserModel(context.Background(), "token", catalog, loader)
+	model.detailPanelWidth = 80
+	env := catalog.Services[0].Plans[0].Environments[0]
+	state := newServicePlanDeploymentFormState(servicePlanDeploymentForm{
+		Environment:             env,
+		AccountResource:         servicePlanDeploymentResource{ID: "r-injectedaccountconfig", Name: "Cloud Provider Account", URLKey: "omnistrateCloudAccountConfig"},
+		Resources:               []servicePlanDeploymentResource{{ID: "res-1", Name: "API", URLKey: "api"}},
+		CloudProviders:          []string{"aws"},
+		RegionsByCloud:          map[string][]string{"aws": []string{"us-west-2"}},
+		RequiresCustomerAccount: true,
+	}, 80)
+	require.NoError(t, state.advanceStep(80))
+	require.NoError(t, state.advanceStep(80))
+	state.ParamFields[0].Input.SetValue("767925118737")
+	model.deploymentForm = &state
+
+	updated, cmd := model.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	require.NotNil(t, cmd)
+	model = updated.(servicePlanBrowserModel)
+	batch, ok := cmd().(tea.BatchMsg)
+	require.True(t, ok)
+	require.Len(t, batch, 2)
+
+	updated, cmd = model.Update(batch[1]())
+	require.NotNil(t, cmd)
+	model = updated.(servicePlanBrowserModel)
+	require.True(t, model.deploymentForm.ConnectingAccount)
+	rendered := model.renderDeploymentForm()
+	require.Contains(t, rendered, "Waiting for account to become READY")
+	require.NotContains(t, rendered, "Connecting aws account and waiting for READY")
+	require.Contains(t, rendered, "Account config ID: ac-123")
+	require.Contains(t, rendered, "CloudFormation template URL: https://example.com/template.yml")
+	require.Contains(t, model.deploymentForm.deploymentHelpLine(), "c: copy template URL")
+
+	updated, cmd = model.Update(servicePlanCustomerCloudAccountPollTickMsg{})
+	require.NotNil(t, cmd)
+	model = updated.(servicePlanBrowserModel)
+	updated, cmd = model.Update(cmd())
+	require.NotNil(t, cmd)
+	model = updated.(servicePlanBrowserModel)
+	require.False(t, model.deploymentForm.ConnectingAccount)
+	require.Equal(t, servicePlanDeploymentStepRegion, model.deploymentForm.currentStep())
+	require.Equal(t, 1, loader.refreshCalls)
+}
+
+func TestServicePlanCustomerCloudAccountRowExtractsCloudIdentityFromInstance(t *testing.T) {
+	row := servicePlanCustomerCloudAccountRowWithInstanceDetails(servicePlanCustomerCloudAccountRow{
+		InstanceID: "instance-qu9xnfp2x",
+		Status:     "FAILED",
+	}, &openapiclientfleet.ResourceInstance{
+		CloudProvider: "aws",
+		ConsumptionResourceInstanceResult: openapiclientfleet.DescribeResourceInstanceResult{
+			LaunchInputParams: map[string]any{
+				servicePlanCustomerAccountAWSAccountIDKey: "123456789012",
+			},
+		},
+	})
+
+	require.Equal(t, "aws", row.CloudProvider)
+	require.Equal(t, "123456789012", row.AWSAccountID)
+	require.Equal(t, "AWS account 123456789012", servicePlanCustomerCloudAccountLabel(row))
+}
+
+func TestServicePlanDeploymentFormFieldEditsDirectlyAndEnterContinues(t *testing.T) {
+	state := newServicePlanDeploymentFormState(servicePlanDeploymentForm{
+		AccountResource:         servicePlanDeploymentResource{ID: "r-injectedaccountconfig", Name: "Cloud Provider Account", URLKey: "omnistrateCloudAccountConfig"},
+		Resources:               []servicePlanDeploymentResource{{ID: "res-1", Name: "API", URLKey: "api"}},
+		CloudProviders:          []string{"aws"},
+		RegionsByCloud:          map[string][]string{"aws": []string{"us-west-2"}},
+		RequiresCustomerAccount: true,
+	}, 80)
+	require.NoError(t, state.advanceStep(80))
+	require.NoError(t, state.advanceStep(80))
+	state.ParamFields[0].Input.SetValue("123")
+
+	model := servicePlanBrowserModel{deploymentForm: &state, detailPanelWidth: 80}
+	updated, cmd := model.Update(tea.KeyMsg{Type: tea.KeyBackspace})
+	require.NotNil(t, cmd)
+	model = updated.(servicePlanBrowserModel)
+	require.Equal(t, servicePlanDeploymentStepConnectAccount, model.deploymentForm.currentStep())
+	require.Equal(t, "12", model.deploymentForm.ParamFields[0].Input.Value())
+
+	updated, cmd = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'4'}})
+	require.NotNil(t, cmd)
+	model = updated.(servicePlanBrowserModel)
+	require.Equal(t, "124", model.deploymentForm.ParamFields[0].Input.Value())
+
+	updated, cmd = model.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	require.Nil(t, cmd)
+	model = updated.(servicePlanBrowserModel)
+	require.Equal(t, "customer cloud account connection is not available", model.deploymentForm.Err)
+}
+
+func TestServicePlanDeploymentInlineConnectSelectsNewAccountAndContinues(t *testing.T) {
+	catalog := buildServicePlanBrowserCatalog(testBrowserServicesWithHostingModels(), nil)
+	loader := &fakeServicePlanBrowserLoader{
+		details:        testBrowserDetails(catalog),
+		connectAccount: servicePlanCustomerCloudAccountRow{InstanceID: "acct-new", CloudProvider: "aws", Status: "READY", SubscriptionID: "sub-new"},
+	}
+	model := newServicePlanBrowserModel(context.Background(), "token", catalog, loader)
+	model.list.Select(2)
+	model.syncSelectionFromList()
+	env := model.selectedEnvironment()
+	require.NotNil(t, env)
+
+	state := newServicePlanDeploymentFormState(servicePlanDeploymentForm{
+		Environment:             *env,
+		AccountResource:         servicePlanDeploymentResource{ID: "r-injectedaccountconfig", Name: "Cloud Provider Account", URLKey: "omnistrateCloudAccountConfig"},
+		Resources:               []servicePlanDeploymentResource{{ID: "res-1", Name: "API", URLKey: "api"}},
+		CloudProviders:          []string{"aws"},
+		RegionsByCloud:          map[string][]string{"aws": []string{"us-west-2"}},
+		RequiresCustomerAccount: true,
+		Customers:               []servicePlanDeploymentCustomer{{UserID: "user-1", Email: "alice@example.com", Name: "Alice"}},
+	}, 80)
+	require.NoError(t, state.advanceStep(80))
+	require.NoError(t, state.advanceStep(80))
+	state.ParamFields[0].Input.SetValue("123456789012")
+	model.deploymentForm = &state
+
+	updated, cmd := model.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	require.NotNil(t, cmd)
+	model = updated.(servicePlanBrowserModel)
+	require.True(t, model.deploymentForm.ConnectingAccount)
+
+	batch, ok := cmd().(tea.BatchMsg)
+	require.True(t, ok)
+	require.Len(t, batch, 2)
+	connected := batch[1]()
+	updated, cmd = model.Update(connected)
+	require.NotNil(t, cmd)
+	model = updated.(servicePlanBrowserModel)
+
+	require.Equal(t, 1, loader.connectCalls)
+	require.Equal(t, "123456789012", loader.connectReq.Values[servicePlanCustomerAccountAWSAccountIDKey])
+	require.False(t, model.deploymentForm.ConnectingAccount)
+	require.Equal(t, "acct-new", model.deploymentForm.CustomerAccountID)
+	require.Equal(t, servicePlanDeploymentStepRegion, model.deploymentForm.currentStep())
+	require.Len(t, model.deploymentForm.Form.CustomerCloudAccounts, 1)
+	require.Equal(t, "acct-new", model.deploymentForm.Form.CustomerCloudAccounts[0].InstanceID)
+}
+
+func TestServicePlanDeploymentFailedCloudAccountRetryAction(t *testing.T) {
+	catalog := buildServicePlanBrowserCatalog(testBrowserServicesWithHostingModels(), nil)
+	loader := &fakeServicePlanBrowserLoader{
+		details:      testBrowserDetails(catalog),
+		retryAccount: servicePlanCustomerCloudAccountRow{InstanceID: "acct-failed", CloudProvider: "aws", Status: "READY", AWSAccountID: "123456789012"},
+	}
+	model := newServicePlanBrowserModel(context.Background(), "token", catalog, loader)
+	model.detailPanelWidth = 80
+	state := newServicePlanDeploymentFormState(servicePlanDeploymentForm{
+		AccountResource:         servicePlanDeploymentResource{ID: "r-injectedaccountconfig", Name: "Cloud Provider Account", URLKey: "omnistrateCloudAccountConfig"},
+		Resources:               []servicePlanDeploymentResource{{ID: "res-1", Name: "API", URLKey: "api"}},
+		CloudProviders:          []string{"aws"},
+		RegionsByCloud:          map[string][]string{"aws": []string{"us-west-2"}},
+		RequiresCustomerAccount: true,
+		CustomerCloudAccounts: []servicePlanCustomerCloudAccountRow{
+			{InstanceID: "acct-failed", CloudProvider: "aws", Status: "FAILED", AWSAccountID: "123456789012"},
+		},
+	}, 80)
+	require.NoError(t, state.advanceStep(80))
+	model.deploymentForm = &state
+
+	updated, cmd := model.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	require.NotNil(t, cmd)
+	model = updated.(servicePlanBrowserModel)
+	require.True(t, model.deploymentForm.AccountActionRunning)
+
+	batch, ok := cmd().(tea.BatchMsg)
+	require.True(t, ok)
+	require.Len(t, batch, 2)
+	updated, cmd = model.Update(batch[1]())
+	require.NotNil(t, cmd)
+	model = updated.(servicePlanBrowserModel)
+
+	require.Equal(t, 1, loader.retryCalls)
+	require.Equal(t, "acct-failed", loader.retryReq.Account.InstanceID)
+	require.False(t, model.deploymentForm.AccountActionRunning)
+	require.Equal(t, "acct-failed", model.deploymentForm.CustomerAccountID)
+	require.Equal(t, servicePlanDeploymentStepRegion, model.deploymentForm.currentStep())
+}
+
+func TestServicePlanDeploymentFailedCloudAccountDeleteAction(t *testing.T) {
+	catalog := buildServicePlanBrowserCatalog(testBrowserServicesWithHostingModels(), nil)
+	loader := &fakeServicePlanBrowserLoader{details: testBrowserDetails(catalog)}
+	model := newServicePlanBrowserModel(context.Background(), "token", catalog, loader)
+	model.detailPanelWidth = 80
+	state := newServicePlanDeploymentFormState(servicePlanDeploymentForm{
+		AccountResource:         servicePlanDeploymentResource{ID: "r-injectedaccountconfig", Name: "Cloud Provider Account", URLKey: "omnistrateCloudAccountConfig"},
+		Resources:               []servicePlanDeploymentResource{{ID: "res-1", Name: "API", URLKey: "api"}},
+		CloudProviders:          []string{"aws"},
+		RegionsByCloud:          map[string][]string{"aws": []string{"us-west-2"}},
+		RequiresCustomerAccount: true,
+		CustomerCloudAccounts: []servicePlanCustomerCloudAccountRow{
+			{InstanceID: "acct-failed", CloudProvider: "aws", Status: "FAILED", AWSAccountID: "123456789012"},
+		},
+	}, 80)
+	require.NoError(t, state.advanceStep(80))
+	state.AccountActionCursor = 1
+	model.deploymentForm = &state
+
+	updated, cmd := model.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	require.NotNil(t, cmd)
+	model = updated.(servicePlanBrowserModel)
+	require.True(t, model.deploymentForm.AccountActionRunning)
+
+	batch, ok := cmd().(tea.BatchMsg)
+	require.True(t, ok)
+	require.Len(t, batch, 2)
+	updated, cmd = model.Update(batch[1]())
+	require.NotNil(t, cmd)
+	model = updated.(servicePlanBrowserModel)
+
+	require.Equal(t, 1, loader.deleteCalls)
+	require.Equal(t, "acct-failed", loader.deleteReq.Account.InstanceID)
+	require.False(t, model.deploymentForm.AccountActionRunning)
+	require.Empty(t, model.deploymentForm.Form.CustomerCloudAccounts)
+	require.Equal(t, servicePlanDeploymentStepCloudAccount, model.deploymentForm.currentStep())
+}
+
+func TestServicePlanDeploymentReadyCloudAccountDeleteAction(t *testing.T) {
+	catalog := buildServicePlanBrowserCatalog(testBrowserServicesWithHostingModels(), nil)
+	loader := &fakeServicePlanBrowserLoader{details: testBrowserDetails(catalog)}
+	model := newServicePlanBrowserModel(context.Background(), "token", catalog, loader)
+	model.detailPanelWidth = 80
+	state := newServicePlanDeploymentFormState(servicePlanDeploymentForm{
+		AccountResource:         servicePlanDeploymentResource{ID: "r-injectedaccountconfig", Name: "Cloud Provider Account", URLKey: "omnistrateCloudAccountConfig"},
+		Resources:               []servicePlanDeploymentResource{{ID: "res-1", Name: "API", URLKey: "api"}},
+		CloudProviders:          []string{"aws"},
+		RegionsByCloud:          map[string][]string{"aws": []string{"us-west-2"}},
+		RequiresCustomerAccount: true,
+		CustomerCloudAccounts: []servicePlanCustomerCloudAccountRow{
+			{InstanceID: "acct-ready", CloudProvider: "aws", Status: "READY", AWSAccountID: "123456789012"},
+		},
+	}, 80)
+	require.NoError(t, state.advanceStep(80))
+
+	options := state.currentOptions()
+	require.Len(t, options, 2)
+	buttons := state.customerCloudAccountActionButtons(options[0])
+	require.Len(t, buttons, 2)
+	require.Equal(t, "Use", buttons[0].Label)
+	require.Equal(t, "Delete", buttons[1].Label)
+
+	state.AccountActionCursor = 1
+	model.deploymentForm = &state
+
+	updated, cmd := model.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	require.NotNil(t, cmd)
+	model = updated.(servicePlanBrowserModel)
+	require.True(t, model.deploymentForm.AccountActionRunning)
+
+	batch, ok := cmd().(tea.BatchMsg)
+	require.True(t, ok)
+	require.Len(t, batch, 2)
+	updated, cmd = model.Update(batch[1]())
+	require.NotNil(t, cmd)
+	model = updated.(servicePlanBrowserModel)
+
+	require.Equal(t, 1, loader.deleteCalls)
+	require.Equal(t, "acct-ready", loader.deleteReq.Account.InstanceID)
+	require.False(t, model.deploymentForm.AccountActionRunning)
+	require.Empty(t, model.deploymentForm.Form.CustomerCloudAccounts)
+	require.Equal(t, servicePlanDeploymentStepCloudAccount, model.deploymentForm.currentStep())
 }
 
 func TestServicePlanBrowserRefreshHotkeyReloadsRightPane(t *testing.T) {
