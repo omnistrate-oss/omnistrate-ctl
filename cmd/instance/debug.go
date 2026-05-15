@@ -110,9 +110,10 @@ func fetchDebugData(instanceID, token string) tea.Cmd {
 				Errors: []string{err.Error()},
 			}
 		}
-		// Extract result_params (resolved output values) from instance additional properties
+		// Extract result_params (resolved output values) from consumption result
 		var resultParams map[string]interface{}
-		if rp, ok := instanceData.AdditionalProperties["result_params"]; ok {
+		consumptionResult := instanceData.GetConsumptionResourceInstanceResult()
+		if rp := consumptionResult.GetResultParams(); rp != nil {
 			if rpMap, ok := rp.(map[string]interface{}); ok {
 				resultParams = rpMap
 			}
@@ -204,9 +205,10 @@ func runDebugJSON(instanceID, token string) error {
 		}
 	}
 
-	// Extract result_params (resolved output values) from instance additional properties
+	// Extract result_params (resolved output values) from consumption result
 	var resultParams map[string]interface{}
-	if rp, ok := instanceData.AdditionalProperties["result_params"]; ok {
+	consumptionResult := instanceData.GetConsumptionResourceInstanceResult()
+	if rp := consumptionResult.GetResultParams(); rp != nil {
 		if rpMap, ok := rp.(map[string]interface{}); ok {
 			resultParams = rpMap
 		}
@@ -261,7 +263,8 @@ func collectResourceDebugInfo(ctx context.Context, token, serviceID, environment
 
 	// Extract result_params for resolving output parameter values
 	var resultParams map[string]interface{}
-	if rp, ok := instanceData.AdditionalProperties["result_params"]; ok {
+	consumptionResult := instanceData.GetConsumptionResourceInstanceResult()
+	if rp := consumptionResult.GetResultParams(); rp != nil {
 		if rpMap, ok := rp.(map[string]interface{}); ok {
 			resultParams = rpMap
 		}
