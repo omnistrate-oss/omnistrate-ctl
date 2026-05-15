@@ -198,6 +198,8 @@ func runDebugJSON(instanceID, token string) error {
 		InstanceID:    instanceID,
 		ServiceID:     serviceID,
 		EnvironmentID: environmentID,
+		ProductTierID: instanceData.ProductTierId,
+		TierVersion:   instanceData.TierVersion,
 		PlanDAG:       planDAG,
 	}
 
