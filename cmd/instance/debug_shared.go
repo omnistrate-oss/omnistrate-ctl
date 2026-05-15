@@ -1,6 +1,11 @@
 package instance
 
-import "encoding/json"
+import (
+	"context"
+	"encoding/json"
+
+	"github.com/omnistrate-oss/omnistrate-ctl/internal/dataaccess"
+)
 
 type HelmData struct {
 	ChartRepoName string                 `json:"chartRepoName"`
@@ -116,4 +121,65 @@ func parseHelmData(debugData map[string]interface{}) *HelmData {
 	}
 
 	return helmData
+}
+
+// fetchInputParams fetches input parameters from the ListInputParameter V1 API
+// and converts them to OperatorInputParam structs. Used by both helm and operator TUIs.
+func fetchInputParams(ctx context.Context, token, serviceID, resourceID, productTierID, tierVersion string) ([]OperatorInputParam, error) {
+	result, err := dataaccess.ListInputParameters(ctx, token, serviceID, resourceID, productTierID, tierVersion)
+	if err != nil {
+		return nil, err
+	}
+	if result == nil {
+		return nil, nil
+	}
+
+	var params []OperatorInputParam
+	for _, ip := range result.InputParameters {
+		param := OperatorInputParam{
+			Key:         ip.Key,
+			DisplayName: ip.Name,
+			Description: ip.Description,
+			Type:        ip.Type,
+			Required:    ip.Required,
+			Modifiable:  ip.Modifiable,
+		}
+		if ip.DefaultValue != nil {
+			param.DefaultValue = *ip.DefaultValue
+		}
+		params = append(params, param)
+	}
+	return params, nil
+}
+
+// fetchOutputParams fetches output parameters from the ListOutputParameter V1 API
+// and converts them to OperatorOutputParam structs. Used by both helm and operator TUIs.
+func fetchOutputParams(ctx context.Context, token, serviceID, resourceID, productTierID, tierVersion string) ([]OperatorOutputParam, error) {
+	result, err := dataaccess.ListOutputParameters(ctx, token, serviceID, resourceID, productTierID, tierVersion)
+	if err != nil {
+		return nil, err
+	}
+	if result == nil {
+		return nil, nil
+	}
+
+	var params []OperatorOutputParam
+	for _, op := range result.OutputParameters {
+		param := OperatorOutputParam{
+			Key:         op.Key,
+			DisplayName: op.Name,
+			Description: op.Description,
+		}
+		if op.Value != nil {
+			param.Value = *op.Value
+		}
+		if op.ValueRef != nil {
+			param.ValueRef = *op.ValueRef
+		}
+		if op.ValueType != nil {
+			param.Type = *op.ValueType
+		}
+		params = append(params, param)
+	}
+	return params, nil
 }

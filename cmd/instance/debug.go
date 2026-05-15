@@ -307,51 +307,18 @@ func collectHelmDebugInfo(ctx context.Context, token, serviceID, environmentID, 
 
 			if nodeID != "" && instanceData != nil {
 				// Fetch input parameters
-				inputParamsResult, inputErr := dataaccess.ListInputParameters(
+				inputParams, _ := fetchInputParams(
 					ctx, token, serviceID, nodeID,
 					instanceData.ProductTierId, instanceData.TierVersion,
 				)
-				if inputErr == nil && inputParamsResult != nil {
-					for _, ip := range inputParamsResult.InputParameters {
-						param := OperatorInputParam{
-							Key:         ip.Key,
-							DisplayName: ip.Name,
-							Description: ip.Description,
-							Type:        ip.Type,
-							Required:    ip.Required,
-							Modifiable:  ip.Modifiable,
-						}
-						if ip.DefaultValue != nil {
-							param.DefaultValue = *ip.DefaultValue
-						}
-						info.Helm.InputParams = append(info.Helm.InputParams, param)
-					}
-				}
+				info.Helm.InputParams = inputParams
 
 				// Fetch output parameters
-				outputParamsResult, outputErr := dataaccess.ListOutputParameters(
+				outputParams, _ := fetchOutputParams(
 					ctx, token, serviceID, nodeID,
 					instanceData.ProductTierId, instanceData.TierVersion,
 				)
-				if outputErr == nil && outputParamsResult != nil {
-					for _, op := range outputParamsResult.OutputParameters {
-						param := OperatorOutputParam{
-							Key:         op.Key,
-							DisplayName: op.Name,
-							Description: op.Description,
-						}
-						if op.Value != nil {
-							param.Value = *op.Value
-						}
-						if op.ValueRef != nil {
-							param.ValueRef = *op.ValueRef
-						}
-						if op.ValueType != nil {
-							param.Type = *op.ValueType
-						}
-						info.Helm.OutputParams = append(info.Helm.OutputParams, param)
-					}
-				}
+				info.Helm.OutputParams = outputParams
 			}
 		}
 	}
@@ -444,51 +411,22 @@ func collectOperatorDebugInfo(ctx context.Context, token, serviceID string, plan
 
 		opData := &OperatorData{}
 
-		// Fetch all input parameters from ListInputParameter V1 API
-		inputParamsResult, inputErr := dataaccess.ListInputParameters(
+		// Fetch all input parameters
+		inputParams, inputErr := fetchInputParams(
 			ctx, token, serviceID, node.ID,
 			instanceData.ProductTierId, instanceData.TierVersion,
 		)
-		if inputErr == nil && inputParamsResult != nil {
-			for _, ip := range inputParamsResult.InputParameters {
-				param := OperatorInputParam{
-					Key:         ip.Key,
-					DisplayName: ip.Name,
-					Description: ip.Description,
-					Type:        ip.Type,
-					Required:    ip.Required,
-					Modifiable:  ip.Modifiable,
-				}
-				if ip.DefaultValue != nil {
-					param.DefaultValue = *ip.DefaultValue
-				}
-				opData.InputParams = append(opData.InputParams, param)
-			}
+		if inputErr == nil {
+			opData.InputParams = inputParams
 		}
 
-		// Fetch exported output parameters from ListOutputParameter V1 API
-		outputParamsResult, listErr := dataaccess.ListOutputParameters(
+		// Fetch exported output parameters
+		outputParams, listErr := fetchOutputParams(
 			ctx, token, serviceID, node.ID,
 			instanceData.ProductTierId, instanceData.TierVersion,
 		)
-		if listErr == nil && outputParamsResult != nil {
-			for _, op := range outputParamsResult.OutputParameters {
-				param := OperatorOutputParam{
-					Key:         op.Key,
-					DisplayName: op.Name,
-					Description: op.Description,
-				}
-				if op.Value != nil {
-					param.Value = *op.Value
-				}
-				if op.ValueRef != nil {
-					param.ValueRef = *op.ValueRef
-				}
-				if op.ValueType != nil {
-					param.Type = *op.ValueType
-				}
-				opData.OutputParams = append(opData.OutputParams, param)
-			}
+		if listErr == nil {
+			opData.OutputParams = outputParams
 		}
 
 		// Fetch CRD output parameters from DescribeResource (operatorCRDConfiguration.outputParameters)

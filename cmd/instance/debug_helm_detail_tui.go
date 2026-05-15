@@ -139,54 +139,21 @@ func (m helmDetailModel) fetchHelmData() tea.Cmd {
 
 			helmData := parseHelmData(actualDebugData)
 
-			// Fetch input parameters from ListInputParameter V1 API
-			inputParamsResult, inputErr := dataaccess.ListInputParameters(
+			// Fetch input parameters
+			inputParams, _ := fetchInputParams(
 				ctx, m.debugData.Token,
 				m.debugData.ServiceID, m.node.ID,
 				m.debugData.ProductTierID, m.debugData.TierVersion,
 			)
-			if inputErr == nil && inputParamsResult != nil {
-				for _, ip := range inputParamsResult.InputParameters {
-					param := OperatorInputParam{
-						Key:         ip.Key,
-						DisplayName: ip.Name,
-						Description: ip.Description,
-						Type:        ip.Type,
-						Required:    ip.Required,
-						Modifiable:  ip.Modifiable,
-					}
-					if ip.DefaultValue != nil {
-						param.DefaultValue = *ip.DefaultValue
-					}
-					helmData.InputParams = append(helmData.InputParams, param)
-				}
-			}
+			helmData.InputParams = inputParams
 
-			// Fetch output parameters from ListOutputParameter V1 API
-			outputParamsResult, outputErr := dataaccess.ListOutputParameters(
+			// Fetch output parameters
+			outputParams, _ := fetchOutputParams(
 				ctx, m.debugData.Token,
 				m.debugData.ServiceID, m.node.ID,
 				m.debugData.ProductTierID, m.debugData.TierVersion,
 			)
-			if outputErr == nil && outputParamsResult != nil {
-				for _, op := range outputParamsResult.OutputParameters {
-					param := OperatorOutputParam{
-						Key:         op.Key,
-						DisplayName: op.Name,
-						Description: op.Description,
-					}
-					if op.Value != nil {
-						param.Value = *op.Value
-					}
-					if op.ValueRef != nil {
-						param.ValueRef = *op.ValueRef
-					}
-					if op.ValueType != nil {
-						param.Type = *op.ValueType
-					}
-					helmData.OutputParams = append(helmData.OutputParams, param)
-				}
-			}
+			helmData.OutputParams = outputParams
 
 			return helmDataMsg{helmData: helmData}
 		}

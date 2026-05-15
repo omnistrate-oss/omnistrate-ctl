@@ -95,53 +95,24 @@ func (m operatorDetailModel) fetchOperatorData() tea.Cmd {
 
 		opData := &OperatorData{}
 
-		// Fetch all input parameters from ListInputParameter V1 API
-		inputParamsResult, err := dataaccess.ListInputParameters(
+		// Fetch all input parameters
+		inputParams, err := fetchInputParams(
 			ctx, m.debugData.Token,
 			m.debugData.ServiceID, m.node.ID,
 			m.debugData.ProductTierID, m.debugData.TierVersion,
 		)
-		if err == nil && inputParamsResult != nil {
-			for _, ip := range inputParamsResult.InputParameters {
-				param := OperatorInputParam{
-					Key:         ip.Key,
-					DisplayName: ip.Name,
-					Description: ip.Description,
-					Type:        ip.Type,
-					Required:    ip.Required,
-					Modifiable:  ip.Modifiable,
-				}
-				if ip.DefaultValue != nil {
-					param.DefaultValue = *ip.DefaultValue
-				}
-				opData.InputParams = append(opData.InputParams, param)
-			}
+		if err == nil {
+			opData.InputParams = inputParams
 		}
 
-		// Fetch exported output parameters from ListOutputParameter V1 API
-		outputParamsResult, listErr := dataaccess.ListOutputParameters(
+		// Fetch exported output parameters
+		outputParams, listErr := fetchOutputParams(
 			ctx, m.debugData.Token,
 			m.debugData.ServiceID, m.node.ID,
 			m.debugData.ProductTierID, m.debugData.TierVersion,
 		)
-		if listErr == nil && outputParamsResult != nil {
-			for _, op := range outputParamsResult.OutputParameters {
-				param := OperatorOutputParam{
-					Key:         op.Key,
-					DisplayName: op.Name,
-					Description: op.Description,
-				}
-				if op.Value != nil {
-					param.Value = *op.Value
-				}
-				if op.ValueRef != nil {
-					param.ValueRef = *op.ValueRef
-				}
-				if op.ValueType != nil {
-					param.Type = *op.ValueType
-				}
-				opData.OutputParams = append(opData.OutputParams, param)
-			}
+		if listErr == nil {
+			opData.OutputParams = outputParams
 		}
 
 		// Fetch CRD output parameters from DescribeResource (operatorCRDConfiguration.outputParameters)
