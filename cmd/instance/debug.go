@@ -245,7 +245,7 @@ func collectResourceDebugInfo(ctx context.Context, token, serviceID, environment
 	collectTerraformDebugInfo(ctx, token, instanceData, instanceID, planDAG, result)
 
 	// Collect operator debug data (input/output parameters) for non-helm, non-terraform resources
-	collectOperatorDebugInfo(ctx, token, serviceID, instanceID, planDAG, instanceData, result)
+	collectOperatorDebugInfo(ctx, token, serviceID, planDAG, instanceData, result)
 
 	// Remove entries that have no debug data
 	for key, info := range result {
@@ -360,7 +360,7 @@ func collectTerraformDebugInfo(ctx context.Context, token string, instanceData *
 
 // collectOperatorDebugInfo fetches operator debug data (input/output parameters, CRD outputs)
 // for operator-type resources.
-func collectOperatorDebugInfo(ctx context.Context, token, serviceID, instanceID string, planDAG *PlanDAG, instanceData *openapiclientfleet.ResourceInstance, result map[string]*ResourceDebugInfo) {
+func collectOperatorDebugInfo(ctx context.Context, token, serviceID string, planDAG *PlanDAG, instanceData *openapiclientfleet.ResourceInstance, result map[string]*ResourceDebugInfo) {
 	for _, node := range planDAG.Nodes {
 		lower := strings.ToLower(node.Type)
 		if !strings.Contains(lower, "operator") {
