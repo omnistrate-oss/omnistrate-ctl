@@ -28,13 +28,14 @@ type TerraformData struct {
 // OperatorInputParam describes a single input parameter for an operator resource.
 // These are fetched from the ListInputParameter V1 API.
 type OperatorInputParam struct {
-	Key          string `json:"key"`
-	DisplayName  string `json:"displayName"`
-	Description  string `json:"description"`
-	Type         string `json:"type"`
-	Required     bool   `json:"required"`
-	Modifiable   bool   `json:"modifiable"`
-	DefaultValue string `json:"defaultValue,omitempty"`
+	Key           string `json:"key"`
+	DisplayName   string `json:"displayName"`
+	Description   string `json:"description"`
+	Type          string `json:"type"`
+	Required      bool   `json:"required"`
+	Modifiable    bool   `json:"modifiable"`
+	DefaultValue  string `json:"defaultValue,omitempty"`
+	ResolvedValue string `json:"resolvedValue,omitempty"`
 }
 
 // OperatorOutputParam describes a single output parameter for a resource.
@@ -126,8 +127,9 @@ func parseHelmData(debugData map[string]interface{}) *HelmData {
 }
 
 // fetchInputParams fetches input parameters from the ListInputParameter V1 API
-// and converts them to OperatorInputParam structs. Used by both helm and operator TUIs.
-func fetchInputParams(ctx context.Context, token, serviceID, resourceID, productTierID, tierVersion string) ([]OperatorInputParam, error) {
+// and converts them to OperatorInputParam structs. If inputParams is provided,
+// resolved values are looked up by key and populated. Used by both helm and operator TUIs.
+func fetchInputParams(ctx context.Context, token, serviceID, resourceID, productTierID, tierVersion string, inputParams map[string]interface{}) ([]OperatorInputParam, error) {
 	result, err := dataaccess.ListInputParameters(ctx, token, serviceID, resourceID, productTierID, tierVersion)
 	if err != nil {
 		return nil, err
@@ -148,6 +150,12 @@ func fetchInputParams(ctx context.Context, token, serviceID, resourceID, product
 		}
 		if ip.DefaultValue != nil {
 			param.DefaultValue = *ip.DefaultValue
+		}
+		// Resolve value from instance input_params
+		if inputParams != nil {
+			if v, ok := inputParams[ip.Key]; ok {
+				param.ResolvedValue = fmt.Sprintf("%v", v)
+			}
 		}
 		params = append(params, param)
 	}

@@ -100,6 +100,7 @@ func (m operatorDetailModel) fetchOperatorData() tea.Cmd {
 			ctx, m.debugData.Token,
 			m.debugData.ServiceID, m.node.ID,
 			m.debugData.ProductTierID, m.debugData.TierVersion,
+			m.debugData.InputParams,
 		)
 		if err == nil {
 			opData.InputParams = inputParams
@@ -780,7 +781,9 @@ func buildOperatorParamTree(params []OperatorInputParam) []outputNode {
 			"required":    p.Required,
 			"modifiable":  p.Modifiable,
 		}
-		if p.DefaultValue != "" {
+		if p.ResolvedValue != "" {
+			details["value"] = p.ResolvedValue
+		} else if p.DefaultValue != "" {
 			details["defaultValue"] = p.DefaultValue
 		}
 

@@ -421,7 +421,7 @@ func TestResourceDebugInfoOperatorJSON(t *testing.T) {
 		ResourceType: "OperatorCRD",
 		Operator: &OperatorData{
 			InputParams: []OperatorInputParam{
-				{Key: "replicas", DisplayName: "Replicas", Description: "Number of replicas", Type: "int", Required: true, Modifiable: true, DefaultValue: "3"},
+				{Key: "replicas", DisplayName: "Replicas", Description: "Number of replicas", Type: "int", Required: true, Modifiable: true, DefaultValue: "3", ResolvedValue: "5"},
 				{Key: "storage", DisplayName: "Storage Size", Description: "Storage in GB", Type: "string", Required: true},
 			},
 			OutputParams: []OperatorOutputParam{
@@ -459,6 +459,7 @@ func TestResourceDebugInfoOperatorJSON(t *testing.T) {
 	require.Equal(true, param0["required"])
 	require.Equal(true, param0["modifiable"])
 	require.Equal("3", param0["defaultValue"])
+	require.Equal("5", param0["resolvedValue"])
 
 	outputParams, ok := op["outputParams"].([]interface{})
 	require.True(ok, "outputParams should be an array")

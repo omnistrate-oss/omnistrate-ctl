@@ -144,6 +144,7 @@ func (m helmDetailModel) fetchHelmData() tea.Cmd {
 				ctx, m.debugData.Token,
 				m.debugData.ServiceID, m.node.ID,
 				m.debugData.ProductTierID, m.debugData.TierVersion,
+				m.debugData.InputParams,
 			)
 			helmData.InputParams = inputParams
 

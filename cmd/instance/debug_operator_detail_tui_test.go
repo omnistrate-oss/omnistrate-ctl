@@ -75,6 +75,40 @@ func TestBuildOperatorParamTree(t *testing.T) {
 		require.Len(t, result, 1)
 		require.Equal(t, "replicas", result[0].key)
 	})
+
+	t.Run("resolved value shown", func(t *testing.T) {
+		params := []OperatorInputParam{
+			{Key: "instanceType", DisplayName: "Instance Type", Description: "Instance Type", Type: "String", DefaultValue: "t3.medium", ResolvedValue: "t3.large"},
+		}
+		result := buildOperatorParamTree(params)
+		require.Len(t, result, 1)
+		found := false
+		for _, child := range result[0].children {
+			if child.key == "value" && child.value == "t3.large" {
+				found = true
+			}
+		}
+		require.True(t, found, "expected resolved value in children")
+		// defaultValue should NOT appear when resolvedValue is set
+		for _, child := range result[0].children {
+			require.NotEqual(t, "defaultValue", child.key, "defaultValue should not appear when resolved value is present")
+		}
+	})
+
+	t.Run("fallback to defaultValue when no resolved value", func(t *testing.T) {
+		params := []OperatorInputParam{
+			{Key: "replicas", Description: "Replicas", Type: "int", DefaultValue: "3"},
+		}
+		result := buildOperatorParamTree(params)
+		require.Len(t, result, 1)
+		found := false
+		for _, child := range result[0].children {
+			if child.key == "defaultValue" && child.value == "3" {
+				found = true
+			}
+		}
+		require.True(t, found, "expected defaultValue in children when no resolved value")
+	})
 }
 
 func TestBuildOperatorOutputParamTree(t *testing.T) {
