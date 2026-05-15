@@ -95,53 +95,26 @@ func (m operatorDetailModel) fetchOperatorData() tea.Cmd {
 
 		opData := &OperatorData{}
 
-		// Fetch all input parameters from ListInputParameter V1 API
-		inputParamsResult, err := dataaccess.ListInputParameters(
+		// Fetch all input parameters
+		inputParams, err := fetchInputParams(
 			ctx, m.debugData.Token,
 			m.debugData.ServiceID, m.node.ID,
 			m.debugData.ProductTierID, m.debugData.TierVersion,
+			m.debugData.InputParams,
 		)
-		if err == nil && inputParamsResult != nil {
-			for _, ip := range inputParamsResult.InputParameters {
-				param := OperatorInputParam{
-					Key:         ip.Key,
-					DisplayName: ip.Name,
-					Description: ip.Description,
-					Type:        ip.Type,
-					Required:    ip.Required,
-					Modifiable:  ip.Modifiable,
-				}
-				if ip.DefaultValue != nil {
-					param.DefaultValue = *ip.DefaultValue
-				}
-				opData.InputParams = append(opData.InputParams, param)
-			}
+		if err == nil {
+			opData.InputParams = inputParams
 		}
 
-		// Fetch exported output parameters from ListOutputParameter V1 API
-		outputParamsResult, listErr := dataaccess.ListOutputParameters(
+		// Fetch exported output parameters
+		outputParams, listErr := fetchOutputParams(
 			ctx, m.debugData.Token,
 			m.debugData.ServiceID, m.node.ID,
 			m.debugData.ProductTierID, m.debugData.TierVersion,
+			m.debugData.ResultParams,
 		)
-		if listErr == nil && outputParamsResult != nil {
-			for _, op := range outputParamsResult.OutputParameters {
-				param := OperatorOutputParam{
-					Key:         op.Key,
-					DisplayName: op.Name,
-					Description: op.Description,
-				}
-				if op.Value != nil {
-					param.Value = *op.Value
-				}
-				if op.ValueRef != nil {
-					param.ValueRef = *op.ValueRef
-				}
-				if op.ValueType != nil {
-					param.Type = *op.ValueType
-				}
-				opData.OutputParams = append(opData.OutputParams, param)
-			}
+		if listErr == nil {
+			opData.OutputParams = outputParams
 		}
 
 		// Fetch CRD output parameters from DescribeResource (operatorCRDConfiguration.outputParameters)
@@ -155,10 +128,16 @@ func (m operatorDetailModel) fetchOperatorData() tea.Cmd {
 			if ok && crdConfig != nil {
 				outputParams := crdConfig.GetOutputParameters()
 				for k, v := range outputParams {
-					opData.CRDOutputParams = append(opData.CRDOutputParams, OperatorCRDOutputParam{
+					crdParam := OperatorCRDOutputParam{
 						Key:   k,
 						Value: v,
-					})
+					}
+					if m.debugData.ResultParams != nil {
+						if rv, ok := m.debugData.ResultParams[k]; ok {
+							crdParam.ResolvedValue = fmt.Sprintf("%v", rv)
+						}
+					}
+					opData.CRDOutputParams = append(opData.CRDOutputParams, crdParam)
 				}
 			}
 		}
@@ -808,7 +787,9 @@ func buildOperatorParamTree(params []OperatorInputParam) []outputNode {
 			"required":    p.Required,
 			"modifiable":  p.Modifiable,
 		}
-		if p.DefaultValue != "" {
+		if p.ResolvedValue != "" {
+			details["value"] = p.ResolvedValue
+		} else if p.DefaultValue != "" {
 			details["defaultValue"] = p.DefaultValue
 		}
 
@@ -841,7 +822,9 @@ func buildOperatorOutputParamTree(params []OperatorOutputParam) []outputNode {
 		if p.Type != "" {
 			details["type"] = p.Type
 		}
-		if p.Value != "" {
+		if p.ResolvedValue != "" {
+			details["value"] = p.ResolvedValue
+		} else if p.Value != "" {
 			details["value"] = p.Value
 		}
 		if p.ValueRef != "" {
@@ -872,7 +855,10 @@ func buildOperatorCRDOutputParamTree(params []OperatorCRDOutputParam) []outputNo
 	var roots []outputNode
 	for _, p := range params {
 		details := map[string]interface{}{
-			"value": p.Value,
+			"jsonPath": p.Value,
+		}
+		if p.ResolvedValue != "" {
+			details["value"] = p.ResolvedValue
 		}
 
 		node := buildJSONNode(p.Key, details, 0)

@@ -15,13 +15,21 @@ import (
 )
 
 const (
-	helmTabLogs     = 0
-	helmTabValues   = 1
-	helmTabWfErrors = 2
-	helmNumTabs     = 3
+	helmTabLogs       = 0
+	helmTabValues     = 1
+	helmTabInputVars  = 2
+	helmTabOutputVars = 3
+	helmTabWfErrors   = 4
+	helmNumTabs       = 5
 )
 
-var helmTabNames = []string{"Helm Logs", "Chart Values", "Workflow Events"}
+var helmTabNames = []string{"Helm Logs", "Chart Values", "Input Parameters", "Output Parameters", "Workflow Events"}
+
+func init() {
+	if len(helmTabNames) != helmNumTabs {
+		panic(fmt.Sprintf("helmTabNames length %d does not match helmNumTabs %d", len(helmTabNames), helmNumTabs))
+	}
+}
 
 // helmDataMsg is sent when helm debug data has been fetched
 type helmDataMsg struct {
@@ -58,6 +66,16 @@ type helmDetailModel struct {
 	valuesTree   []outputNode
 	valuesCursor int
 	valuesScroll int
+
+	// Input Parameters tab (tree explorer)
+	inputTree   []outputNode
+	inputCursor int
+	inputScroll int
+
+	// Output Parameters tab (tree explorer)
+	outputTree   []outputNode
+	outputCursor int
+	outputScroll int
 
 	// Workflow Errors tab
 	wfErrors *workflowErrorsState
@@ -120,6 +138,25 @@ func (m helmDetailModel) fetchHelmData() tea.Cmd {
 			}
 
 			helmData := parseHelmData(actualDebugData)
+
+			// Fetch input parameters
+			inputParams, _ := fetchInputParams(
+				ctx, m.debugData.Token,
+				m.debugData.ServiceID, m.node.ID,
+				m.debugData.ProductTierID, m.debugData.TierVersion,
+				m.debugData.InputParams,
+			)
+			helmData.InputParams = inputParams
+
+			// Fetch output parameters
+			outputParams, _ := fetchOutputParams(
+				ctx, m.debugData.Token,
+				m.debugData.ServiceID, m.node.ID,
+				m.debugData.ProductTierID, m.debugData.TierVersion,
+				m.debugData.ResultParams,
+			)
+			helmData.OutputParams = outputParams
+
 			return helmDataMsg{helmData: helmData}
 		}
 
@@ -249,6 +286,9 @@ func (m helmDetailModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.valuesTree = buildHelmValuesTree(m.helmData.ChartValues, string(raw))
 				}
 			}
+			// Build input/output param trees
+			m.inputTree = buildOperatorParamTree(m.helmData.InputParams)
+			m.outputTree = buildOperatorOutputParamTree(m.helmData.OutputParams)
 			// Start log polling
 			ctx, cancel := context.WithCancel(context.Background()) //nolint:gosec // cancel stored in m.logCancel for later use
 			m.logCancel = cancel
@@ -382,6 +422,28 @@ func (m helmDetailModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					len(visibleNodes),
 					m.helmValuesVisibleRows(),
 				)
+			} else if m.activeTab == helmTabInputVars && len(m.inputTree) > 0 {
+				visibleNodes := flattenOutputTree(m.inputTree)
+				if m.inputCursor > 0 {
+					m.inputCursor--
+				}
+				m.inputCursor, m.inputScroll = normalizeViewport(
+					m.inputCursor,
+					m.inputScroll,
+					len(visibleNodes),
+					m.helmValuesVisibleRows(),
+				)
+			} else if m.activeTab == helmTabOutputVars && len(m.outputTree) > 0 {
+				visibleNodes := flattenOutputTree(m.outputTree)
+				if m.outputCursor > 0 {
+					m.outputCursor--
+				}
+				m.outputCursor, m.outputScroll = normalizeViewport(
+					m.outputCursor,
+					m.outputScroll,
+					len(visibleNodes),
+					m.helmValuesVisibleRows(),
+				)
 			} else if m.activeTab == helmTabWfErrors {
 				items := flattenWfEventItems(m.getWfEvents())
 				if m.wfErrors.cursor > 0 {
@@ -412,6 +474,28 @@ func (m helmDetailModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.valuesCursor, m.valuesScroll = normalizeViewport(
 					m.valuesCursor,
 					m.valuesScroll,
+					len(visibleNodes),
+					m.helmValuesVisibleRows(),
+				)
+			} else if m.activeTab == helmTabInputVars && len(m.inputTree) > 0 {
+				visibleNodes := flattenOutputTree(m.inputTree)
+				if m.inputCursor < len(visibleNodes)-1 {
+					m.inputCursor++
+				}
+				m.inputCursor, m.inputScroll = normalizeViewport(
+					m.inputCursor,
+					m.inputScroll,
+					len(visibleNodes),
+					m.helmValuesVisibleRows(),
+				)
+			} else if m.activeTab == helmTabOutputVars && len(m.outputTree) > 0 {
+				visibleNodes := flattenOutputTree(m.outputTree)
+				if m.outputCursor < len(visibleNodes)-1 {
+					m.outputCursor++
+				}
+				m.outputCursor, m.outputScroll = normalizeViewport(
+					m.outputCursor,
+					m.outputScroll,
 					len(visibleNodes),
 					m.helmValuesVisibleRows(),
 				)
@@ -516,6 +600,30 @@ func (m helmDetailModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 						m.helmValuesVisibleRows(),
 					)
 				}
+			} else if m.activeTab == helmTabInputVars && len(m.inputTree) > 0 {
+				visibleNodes := flattenOutputTree(m.inputTree)
+				if m.inputCursor >= 0 && m.inputCursor < len(visibleNodes) {
+					toggleOutputNode(visibleNodes[m.inputCursor])
+					visibleNodes = flattenOutputTree(m.inputTree)
+					m.inputCursor, m.inputScroll = normalizeViewport(
+						m.inputCursor,
+						m.inputScroll,
+						len(visibleNodes),
+						m.helmValuesVisibleRows(),
+					)
+				}
+			} else if m.activeTab == helmTabOutputVars && len(m.outputTree) > 0 {
+				visibleNodes := flattenOutputTree(m.outputTree)
+				if m.outputCursor >= 0 && m.outputCursor < len(visibleNodes) {
+					toggleOutputNode(visibleNodes[m.outputCursor])
+					visibleNodes = flattenOutputTree(m.outputTree)
+					m.outputCursor, m.outputScroll = normalizeViewport(
+						m.outputCursor,
+						m.outputScroll,
+						len(visibleNodes),
+						m.helmValuesVisibleRows(),
+					)
+				}
 			}
 		case "right", "l":
 			if m.activeTab == helmTabValues && len(m.valuesTree) > 0 {
@@ -533,6 +641,36 @@ func (m helmDetailModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 						)
 					}
 				}
+			} else if m.activeTab == helmTabInputVars && len(m.inputTree) > 0 {
+				visibleNodes := flattenOutputTree(m.inputTree)
+				if m.inputCursor >= 0 && m.inputCursor < len(visibleNodes) {
+					node := visibleNodes[m.inputCursor]
+					if node.expandable && !node.expanded {
+						node.expanded = true
+						visibleNodes = flattenOutputTree(m.inputTree)
+						m.inputCursor, m.inputScroll = normalizeViewport(
+							m.inputCursor,
+							m.inputScroll,
+							len(visibleNodes),
+							m.helmValuesVisibleRows(),
+						)
+					}
+				}
+			} else if m.activeTab == helmTabOutputVars && len(m.outputTree) > 0 {
+				visibleNodes := flattenOutputTree(m.outputTree)
+				if m.outputCursor >= 0 && m.outputCursor < len(visibleNodes) {
+					node := visibleNodes[m.outputCursor]
+					if node.expandable && !node.expanded {
+						node.expanded = true
+						visibleNodes = flattenOutputTree(m.outputTree)
+						m.outputCursor, m.outputScroll = normalizeViewport(
+							m.outputCursor,
+							m.outputScroll,
+							len(visibleNodes),
+							m.helmValuesVisibleRows(),
+						)
+					}
+				}
 			}
 		case "left", "h":
 			if m.activeTab == helmTabValues && len(m.valuesTree) > 0 {
@@ -545,6 +683,36 @@ func (m helmDetailModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 						m.valuesCursor, m.valuesScroll = normalizeViewport(
 							m.valuesCursor,
 							m.valuesScroll,
+							len(visibleNodes),
+							m.helmValuesVisibleRows(),
+						)
+					}
+				}
+			} else if m.activeTab == helmTabInputVars && len(m.inputTree) > 0 {
+				visibleNodes := flattenOutputTree(m.inputTree)
+				if m.inputCursor >= 0 && m.inputCursor < len(visibleNodes) {
+					node := visibleNodes[m.inputCursor]
+					if node.expandable && node.expanded {
+						node.expanded = false
+						visibleNodes = flattenOutputTree(m.inputTree)
+						m.inputCursor, m.inputScroll = normalizeViewport(
+							m.inputCursor,
+							m.inputScroll,
+							len(visibleNodes),
+							m.helmValuesVisibleRows(),
+						)
+					}
+				}
+			} else if m.activeTab == helmTabOutputVars && len(m.outputTree) > 0 {
+				visibleNodes := flattenOutputTree(m.outputTree)
+				if m.outputCursor >= 0 && m.outputCursor < len(visibleNodes) {
+					node := visibleNodes[m.outputCursor]
+					if node.expandable && node.expanded {
+						node.expanded = false
+						visibleNodes = flattenOutputTree(m.outputTree)
+						m.outputCursor, m.outputScroll = normalizeViewport(
+							m.outputCursor,
+							m.outputScroll,
 							len(visibleNodes),
 							m.helmValuesVisibleRows(),
 						)
@@ -697,6 +865,10 @@ func (m helmDetailModel) getHelmTabContent() string {
 		return m.renderHelmLogsTab()
 	case helmTabValues:
 		return m.renderHelmValuesTab()
+	case helmTabInputVars:
+		return m.renderHelmParamTreeTab("Input Parameters", m.inputTree, m.inputCursor, m.inputScroll)
+	case helmTabOutputVars:
+		return m.renderHelmParamTreeTab("Output Parameters", m.outputTree, m.outputCursor, m.outputScroll)
 	case helmTabWfErrors:
 		return m.renderHelmWfErrorsTab()
 	}
@@ -933,6 +1105,10 @@ func (m helmDetailModel) renderHelmFooter() string {
 		text = fmt.Sprintf("↑↓/pgup/pgdn: scroll  %s  y: copy  tab/shift+tab: switch tabs  esc: back  q: quit", followHint)
 	} else if m.activeTab == helmTabValues && len(m.valuesTree) > 0 {
 		text = "↑↓: navigate  ←→/enter: expand/collapse  y: copy  tab/shift+tab: switch tabs  esc: back  q: quit"
+	} else if m.activeTab == helmTabInputVars && len(m.inputTree) > 0 {
+		text = "↑↓: navigate  ←→/enter: expand/collapse  y: copy  tab/shift+tab: switch tabs  esc: back  q: quit"
+	} else if m.activeTab == helmTabOutputVars && len(m.outputTree) > 0 {
+		text = "↑↓: navigate  ←→/enter: expand/collapse  y: copy  tab/shift+tab: switch tabs  esc: back  q: quit"
 	} else if m.activeTab == helmTabWfErrors {
 		text = "↑↓/pgup/pgdn: scroll  y: copy  tab/shift+tab: switch tabs  esc: back  q: quit"
 	} else {
@@ -955,6 +1131,20 @@ func (m helmDetailModel) helmCopyableContent() string {
 	case helmTabValues:
 		if m.helmData != nil && len(m.helmData.ChartValues) > 0 {
 			raw, err := json.Marshal(m.helmData.ChartValues)
+			if err == nil {
+				return string(raw)
+			}
+		}
+	case helmTabInputVars:
+		if m.helmData != nil && len(m.helmData.InputParams) > 0 {
+			raw, err := json.Marshal(m.helmData.InputParams)
+			if err == nil {
+				return string(raw)
+			}
+		}
+	case helmTabOutputVars:
+		if m.helmData != nil && len(m.helmData.OutputParams) > 0 {
+			raw, err := json.Marshal(m.helmData.OutputParams)
 			if err == nil {
 				return string(raw)
 			}
@@ -1020,6 +1210,118 @@ func (m helmDetailModel) renderHelmWfErrorsTab() string {
 	enrichBootstrapSteps(steps, m.node.Key, m.debugData.PlanDAG)
 	isLive := isWorkflowInProgress(steps)
 	return renderWorkflowEventsTab(steps, m.wfErrors, m.helmBodyHeight(), m.helmContentWidth(), loading, m.spinner.View(), isLive)
+}
+
+// renderHelmParamTreeTab renders a generic parameter tree tab (used for Input/Output Parameters).
+func (m helmDetailModel) renderHelmParamTreeTab(title string, tree []outputNode, cursor, scroll int) string {
+	if m.loading {
+		return fmt.Sprintf("\n  %s Fetching %s...", m.spinner.View(), strings.ToLower(title))
+	}
+	if m.loadErr != nil {
+		errStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("203"))
+		return fmt.Sprintf("\n  %s\n", errStyle.Render(fmt.Sprintf("Error: %v", m.loadErr)))
+	}
+	if len(tree) == 0 {
+		subtleStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("245"))
+		return fmt.Sprintf("\n  %s\n", subtleStyle.Render(fmt.Sprintf("No %s available for this resource.", strings.ToLower(title))))
+	}
+
+	var b strings.Builder
+
+	headerStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("255"))
+	fmt.Fprintf(&b, "  %s\n\n", headerStyle.Render(title))
+
+	visibleNodes := flattenOutputTree(tree)
+
+	visibleRows := m.helmValuesVisibleRows()
+	totalEntries := len(visibleNodes)
+	cursorIndex, scrollOffset := normalizeViewport(cursor, scroll, totalEntries, visibleRows)
+
+	end := scrollOffset + visibleRows
+	if end > totalEntries {
+		end = totalEntries
+	}
+
+	keyStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("117"))
+	strStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("114"))
+	numStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("178"))
+	boolStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("178"))
+	nullStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("241"))
+	braceStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("245"))
+	selectedBg := lipgloss.NewStyle().Background(lipgloss.Color("236"))
+	maxLineWidth := m.helmContentWidth() - 4
+	if maxLineWidth < 1 {
+		maxLineWidth = 1
+	}
+	rowStyle := lipgloss.NewStyle().MaxWidth(maxLineWidth)
+	selectedRowStyle := selectedBg.MaxWidth(maxLineWidth)
+
+	for idx := scrollOffset; idx < end; idx++ {
+		node := visibleNodes[idx]
+		indent := strings.Repeat("  ", node.depth)
+
+		cursorMarker := "  "
+		if idx == cursorIndex {
+			cursorMarker = "▶ "
+		}
+
+		var line string
+		if node.expandable {
+			arrow := "▸"
+			if node.expanded {
+				arrow = "▾"
+			}
+			childCount := len(node.children)
+			typeMark := braceStyle.Render("{}")
+			if node.nodeType == "array" {
+				typeMark = braceStyle.Render("[]")
+			}
+			countStr := lipgloss.NewStyle().Foreground(lipgloss.Color("241")).Render(fmt.Sprintf("  %d items", childCount))
+			line = fmt.Sprintf("%s%s %s %s%s", indent, arrow, keyStyle.Render(node.key), typeMark, countStr)
+		} else {
+			var styledVal string
+			switch node.nodeType {
+			case "string":
+				styledVal = strStyle.Render(fmt.Sprintf("%q", node.value))
+			case "number":
+				styledVal = numStyle.Render(node.value)
+			case "bool":
+				styledVal = boolStyle.Render(node.value)
+			case "null":
+				styledVal = nullStyle.Render("null")
+			default:
+				styledVal = lipgloss.NewStyle().Foreground(lipgloss.Color("252")).Render(node.value)
+			}
+			line = fmt.Sprintf("%s  %s: %s", indent, keyStyle.Render(node.key), styledVal)
+		}
+
+		if idx == cursorIndex {
+			line = selectedRowStyle.Render(line)
+		} else {
+			line = rowStyle.Render(line)
+		}
+
+		fmt.Fprintf(&b, "  %s%s\n", cursorMarker, line)
+	}
+
+	// Scroll indicator
+	if totalEntries > visibleRows {
+		dimStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("241"))
+		pos := ""
+		if scrollOffset == 0 {
+			pos = "top"
+		} else if end >= totalEntries {
+			pos = "end"
+		} else {
+			pct := (scrollOffset * 100) / (totalEntries - visibleRows)
+			pos = fmt.Sprintf("%d%%", pct)
+		}
+		fmt.Fprintf(&b, "\n  %s\n", dimStyle.Render(fmt.Sprintf("↑↓: navigate  enter: expand/collapse  [%d/%d %s]", cursorIndex+1, totalEntries, pos)))
+	} else {
+		fmt.Fprintf(&b, "\n  %s\n", lipgloss.NewStyle().Foreground(lipgloss.Color("241")).Render("↑↓: navigate  enter: expand/collapse"))
+	}
+
+	return b.String()
 }
 
 // buildHelmValuesTree builds a tree of outputNodes from helm chart values (a plain map).

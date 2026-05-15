@@ -35,6 +35,8 @@ type DebugData struct {
 	ProductTierID     string                        `json:"productTierId,omitempty"`
 	TierVersion       string                        `json:"tierVersion,omitempty"`
 	Token             string                        `json:"-"`
+	ResultParams      map[string]interface{}         `json:"-"`
+	InputParams       map[string]interface{}         `json:"-"`
 	ResourceDebugInfo map[string]*ResourceDebugInfo `json:"resourceDebugInfo,omitempty"`
 }
 
@@ -109,6 +111,23 @@ func fetchDebugData(instanceID, token string) tea.Cmd {
 				Errors: []string{err.Error()},
 			}
 		}
+		// Extract result_params (resolved output values) from consumption result
+		var resultParams map[string]interface{}
+		consumptionResult := instanceData.GetConsumptionResourceInstanceResult()
+		if rp := consumptionResult.GetResultParams(); rp != nil {
+			if rpMap, ok := rp.(map[string]interface{}); ok {
+				resultParams = rpMap
+			}
+		}
+
+		// Extract input_params (resolved input values) from instance
+		var inputParams map[string]interface{}
+		if ip := instanceData.GetInputParams(); ip != nil {
+			if ipMap, ok := ip.(map[string]interface{}); ok {
+				inputParams = ipMap
+			}
+		}
+
 		return debugDataMsg{
 			data: DebugData{
 				InstanceID:    instanceID,
@@ -118,6 +137,8 @@ func fetchDebugData(instanceID, token string) tea.Cmd {
 				ProductTierID: instanceData.ProductTierId,
 				TierVersion:   instanceData.TierVersion,
 				Token:         token,
+				ResultParams:  resultParams,
+				InputParams:   inputParams,
 			},
 		}
 	}
@@ -194,6 +215,23 @@ func runDebugJSON(instanceID, token string) error {
 		}
 	}
 
+	// Extract result_params (resolved output values) from consumption result
+	var resultParams map[string]interface{}
+	consumptionResult := instanceData.GetConsumptionResourceInstanceResult()
+	if rp := consumptionResult.GetResultParams(); rp != nil {
+		if rpMap, ok := rp.(map[string]interface{}); ok {
+			resultParams = rpMap
+		}
+	}
+
+	// Extract input_params (resolved input values) from instance
+	var inputParams map[string]interface{}
+	if ip := instanceData.GetInputParams(); ip != nil {
+		if ipMap, ok := ip.(map[string]interface{}); ok {
+			inputParams = ipMap
+		}
+	}
+
 	data := DebugData{
 		InstanceID:    instanceID,
 		ServiceID:     serviceID,
@@ -201,6 +239,8 @@ func runDebugJSON(instanceID, token string) error {
 		ProductTierID: instanceData.ProductTierId,
 		TierVersion:   instanceData.TierVersion,
 		PlanDAG:       planDAG,
+		ResultParams:  resultParams,
+		InputParams:   inputParams,
 	}
 
 	// Collect per-resource debug info (helm data, terraform progress/files/logs)
@@ -240,14 +280,31 @@ func collectResourceDebugInfo(ctx context.Context, token, serviceID, environment
 		}
 	}
 
+	// Extract result_params for resolving output parameter values
+	var resultParams map[string]interface{}
+	consumptionResult := instanceData.GetConsumptionResourceInstanceResult()
+	if rp := consumptionResult.GetResultParams(); rp != nil {
+		if rpMap, ok := rp.(map[string]interface{}); ok {
+			resultParams = rpMap
+		}
+	}
+
+	// Extract input_params for resolving input parameter values
+	var inputParams map[string]interface{}
+	if ip := instanceData.GetInputParams(); ip != nil {
+		if ipMap, ok := ip.(map[string]interface{}); ok {
+			inputParams = ipMap
+		}
+	}
+
 	// Collect helm debug data from the DebugResourceInstance API
-	collectHelmDebugInfo(ctx, token, serviceID, environmentID, instanceID, result)
+	collectHelmDebugInfo(ctx, token, serviceID, environmentID, instanceID, planDAG, instanceData, inputParams, resultParams, result)
 
 	// Collect terraform debug data from k8s ConfigMaps
 	collectTerraformDebugInfo(ctx, token, instanceData, instanceID, planDAG, result)
 
 	// Collect operator debug data (input/output parameters) for non-helm, non-terraform resources
-	collectOperatorDebugInfo(ctx, token, serviceID, planDAG, instanceData, result)
+	collectOperatorDebugInfo(ctx, token, serviceID, planDAG, instanceData, inputParams, resultParams, result)
 
 	// Remove entries that have no debug data
 	for key, info := range result {
@@ -259,8 +316,8 @@ func collectResourceDebugInfo(ctx context.Context, token, serviceID, environment
 	return result
 }
 
-// collectHelmDebugInfo fetches helm debug data (logs, chart values) for all helm resources.
-func collectHelmDebugInfo(ctx context.Context, token, serviceID, environmentID, instanceID string, result map[string]*ResourceDebugInfo) {
+// collectHelmDebugInfo fetches helm debug data (logs, chart values) and input/output parameters for all helm resources.
+func collectHelmDebugInfo(ctx context.Context, token, serviceID, environmentID, instanceID string, planDAG *PlanDAG, instanceData *openapiclientfleet.ResourceInstance, inputParams map[string]interface{}, resultParams map[string]interface{}, result map[string]*ResourceDebugInfo) {
 	debugResult, err := dataaccess.DebugResourceInstance(ctx, token, serviceID, environmentID, instanceID)
 	if err != nil || debugResult.ResourcesDebug == nil {
 		return
@@ -289,6 +346,39 @@ func collectHelmDebugInfo(ctx context.Context, token, serviceID, environmentID, 
 		// Check if it's a helm resource (has chart metadata)
 		if _, hasChart := actualDebugData["chartRepoName"]; hasChart {
 			info.Helm = parseHelmData(actualDebugData)
+
+			// Find the node ID for this resource to fetch input/output params
+			var nodeID string
+			if planDAG != nil {
+				for _, node := range planDAG.Nodes {
+					nodeKey := node.Key
+					if nodeKey == "" {
+						nodeKey = node.ID
+					}
+					if nodeKey == resourceKey {
+						nodeID = node.ID
+						break
+					}
+				}
+			}
+
+			if nodeID != "" && instanceData != nil {
+				// Fetch input parameters
+				fetchedInputParams, _ := fetchInputParams(
+					ctx, token, serviceID, nodeID,
+					instanceData.ProductTierId, instanceData.TierVersion,
+					inputParams,
+				)
+				info.Helm.InputParams = fetchedInputParams
+
+				// Fetch output parameters
+				outputParams, _ := fetchOutputParams(
+					ctx, token, serviceID, nodeID,
+					instanceData.ProductTierId, instanceData.TierVersion,
+					resultParams,
+				)
+				info.Helm.OutputParams = outputParams
+			}
 		}
 	}
 }
@@ -362,7 +452,7 @@ func collectTerraformDebugInfo(ctx context.Context, token string, instanceData *
 
 // collectOperatorDebugInfo fetches operator debug data (input/output parameters, CRD outputs)
 // for operator-type resources.
-func collectOperatorDebugInfo(ctx context.Context, token, serviceID string, planDAG *PlanDAG, instanceData *openapiclientfleet.ResourceInstance, result map[string]*ResourceDebugInfo) {
+func collectOperatorDebugInfo(ctx context.Context, token, serviceID string, planDAG *PlanDAG, instanceData *openapiclientfleet.ResourceInstance, inputParams map[string]interface{}, resultParams map[string]interface{}, result map[string]*ResourceDebugInfo) {
 	for _, node := range planDAG.Nodes {
 		lower := strings.ToLower(node.Type)
 		if !strings.Contains(lower, "operator") {
@@ -380,51 +470,24 @@ func collectOperatorDebugInfo(ctx context.Context, token, serviceID string, plan
 
 		opData := &OperatorData{}
 
-		// Fetch all input parameters from ListInputParameter V1 API
-		inputParamsResult, inputErr := dataaccess.ListInputParameters(
+		// Fetch all input parameters
+		fetchedInputParams, inputErr := fetchInputParams(
 			ctx, token, serviceID, node.ID,
 			instanceData.ProductTierId, instanceData.TierVersion,
+			inputParams,
 		)
-		if inputErr == nil && inputParamsResult != nil {
-			for _, ip := range inputParamsResult.InputParameters {
-				param := OperatorInputParam{
-					Key:         ip.Key,
-					DisplayName: ip.Name,
-					Description: ip.Description,
-					Type:        ip.Type,
-					Required:    ip.Required,
-					Modifiable:  ip.Modifiable,
-				}
-				if ip.DefaultValue != nil {
-					param.DefaultValue = *ip.DefaultValue
-				}
-				opData.InputParams = append(opData.InputParams, param)
-			}
+		if inputErr == nil {
+			opData.InputParams = fetchedInputParams
 		}
 
-		// Fetch exported output parameters from ListOutputParameter V1 API
-		outputParamsResult, listErr := dataaccess.ListOutputParameters(
+		// Fetch exported output parameters
+		outputParams, listErr := fetchOutputParams(
 			ctx, token, serviceID, node.ID,
 			instanceData.ProductTierId, instanceData.TierVersion,
+			resultParams,
 		)
-		if listErr == nil && outputParamsResult != nil {
-			for _, op := range outputParamsResult.OutputParameters {
-				param := OperatorOutputParam{
-					Key:         op.Key,
-					DisplayName: op.Name,
-					Description: op.Description,
-				}
-				if op.Value != nil {
-					param.Value = *op.Value
-				}
-				if op.ValueRef != nil {
-					param.ValueRef = *op.ValueRef
-				}
-				if op.ValueType != nil {
-					param.Type = *op.ValueType
-				}
-				opData.OutputParams = append(opData.OutputParams, param)
-			}
+		if listErr == nil {
+			opData.OutputParams = outputParams
 		}
 
 		// Fetch CRD output parameters from DescribeResource (operatorCRDConfiguration.outputParameters)
@@ -435,12 +498,18 @@ func collectOperatorDebugInfo(ctx context.Context, token, serviceID string, plan
 		if descErr == nil && resourceResult != nil {
 			crdConfig, ok := resourceResult.GetOperatorCRDConfigurationOk()
 			if ok && crdConfig != nil {
-				outputParams := crdConfig.GetOutputParameters()
-				for k, v := range outputParams {
-					opData.CRDOutputParams = append(opData.CRDOutputParams, OperatorCRDOutputParam{
+				crdOutputParams := crdConfig.GetOutputParameters()
+				for k, v := range crdOutputParams {
+					crdParam := OperatorCRDOutputParam{
 						Key:   k,
 						Value: v,
-					})
+					}
+					if resultParams != nil {
+						if rv, ok := resultParams[k]; ok {
+							crdParam.ResolvedValue = fmt.Sprintf("%v", rv)
+						}
+					}
+					opData.CRDOutputParams = append(opData.CRDOutputParams, crdParam)
 				}
 			}
 		}

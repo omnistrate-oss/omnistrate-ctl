@@ -75,6 +75,40 @@ func TestBuildOperatorParamTree(t *testing.T) {
 		require.Len(t, result, 1)
 		require.Equal(t, "replicas", result[0].key)
 	})
+
+	t.Run("resolved value shown", func(t *testing.T) {
+		params := []OperatorInputParam{
+			{Key: "instanceType", DisplayName: "Instance Type", Description: "Instance Type", Type: "String", DefaultValue: "t3.medium", ResolvedValue: "t3.large"},
+		}
+		result := buildOperatorParamTree(params)
+		require.Len(t, result, 1)
+		found := false
+		for _, child := range result[0].children {
+			if child.key == "value" && child.value == "t3.large" {
+				found = true
+			}
+		}
+		require.True(t, found, "expected resolved value in children")
+		// defaultValue should NOT appear when resolvedValue is set
+		for _, child := range result[0].children {
+			require.NotEqual(t, "defaultValue", child.key, "defaultValue should not appear when resolved value is present")
+		}
+	})
+
+	t.Run("fallback to defaultValue when no resolved value", func(t *testing.T) {
+		params := []OperatorInputParam{
+			{Key: "replicas", Description: "Replicas", Type: "int", DefaultValue: "3"},
+		}
+		result := buildOperatorParamTree(params)
+		require.Len(t, result, 1)
+		found := false
+		for _, child := range result[0].children {
+			if child.key == "defaultValue" && child.value == "3" {
+				found = true
+			}
+		}
+		require.True(t, found, "expected defaultValue in children when no resolved value")
+	})
 }
 
 func TestBuildOperatorOutputParamTree(t *testing.T) {
@@ -108,6 +142,38 @@ func TestBuildOperatorOutputParamTree(t *testing.T) {
 		require.Contains(t, result[0].key, "image")
 		require.Contains(t, result[1].key, "topology")
 	})
+
+	t.Run("resolved value shown", func(t *testing.T) {
+		params := []OperatorOutputParam{
+			{Key: "endpoint", DisplayName: "Endpoint", Description: "Connection endpoint", ValueRef: "$var.endpoint", ResolvedValue: "db.example.com:5432"},
+		}
+		result := buildOperatorOutputParamTree(params)
+		require.Len(t, result, 1)
+		require.True(t, result[0].expandable)
+		// Expand to check children contain "value" with resolved value
+		found := false
+		for _, child := range result[0].children {
+			if child.key == "value" && child.value == "db.example.com:5432" {
+				found = true
+			}
+		}
+		require.True(t, found, "expected resolved value in children")
+	})
+
+	t.Run("fallback to static value when no resolved value", func(t *testing.T) {
+		params := []OperatorOutputParam{
+			{Key: "endpoint", Description: "Connection endpoint", Value: "static-val"},
+		}
+		result := buildOperatorOutputParamTree(params)
+		require.Len(t, result, 1)
+		found := false
+		for _, child := range result[0].children {
+			if child.key == "value" && child.value == "static-val" {
+				found = true
+			}
+		}
+		require.True(t, found, "expected static value in children when no resolved value")
+	})
 }
 
 func TestBuildOperatorCRDOutputParamTree(t *testing.T) {
@@ -140,6 +206,37 @@ func TestBuildOperatorCRDOutputParamTree(t *testing.T) {
 		require.Len(t, result, 2)
 		require.Contains(t, result[0].key, "image")
 		require.Contains(t, result[1].key, "topology")
+	})
+
+	t.Run("resolved value shown", func(t *testing.T) {
+		params := []OperatorCRDOutputParam{
+			{Key: "endpoint", Value: ".status.endpoint", ResolvedValue: "db.example.com:5432"},
+		}
+		result := buildOperatorCRDOutputParamTree(params)
+		require.Len(t, result, 1)
+		foundJsonPath := false
+		foundValue := false
+		for _, child := range result[0].children {
+			if child.key == "jsonPath" && child.value == ".status.endpoint" {
+				foundJsonPath = true
+			}
+			if child.key == "value" && child.value == "db.example.com:5432" {
+				foundValue = true
+			}
+		}
+		require.True(t, foundJsonPath, "expected jsonPath in children")
+		require.True(t, foundValue, "expected resolved value in children")
+	})
+
+	t.Run("no resolved value", func(t *testing.T) {
+		params := []OperatorCRDOutputParam{
+			{Key: "endpoint", Value: ".status.endpoint"},
+		}
+		result := buildOperatorCRDOutputParamTree(params)
+		require.Len(t, result, 1)
+		for _, child := range result[0].children {
+			require.NotEqual(t, "value", child.key, "value should not appear without resolved value")
+		}
 	})
 }
 

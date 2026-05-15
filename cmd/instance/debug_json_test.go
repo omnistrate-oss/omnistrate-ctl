@@ -421,14 +421,14 @@ func TestResourceDebugInfoOperatorJSON(t *testing.T) {
 		ResourceType: "OperatorCRD",
 		Operator: &OperatorData{
 			InputParams: []OperatorInputParam{
-				{Key: "replicas", DisplayName: "Replicas", Description: "Number of replicas", Type: "int", Required: true, Modifiable: true, DefaultValue: "3"},
+				{Key: "replicas", DisplayName: "Replicas", Description: "Number of replicas", Type: "int", Required: true, Modifiable: true, DefaultValue: "3", ResolvedValue: "5"},
 				{Key: "storage", DisplayName: "Storage Size", Description: "Storage in GB", Type: "string", Required: true},
 			},
 			OutputParams: []OperatorOutputParam{
-				{Key: "endpoint", DisplayName: "Endpoint", Description: "Connection endpoint", Type: "string", ValueRef: "$var.endpoint"},
+				{Key: "endpoint", DisplayName: "Endpoint", Description: "Connection endpoint", Type: "string", ValueRef: "$var.endpoint", ResolvedValue: "db.example.com:5432"},
 			},
 			CRDOutputParams: []OperatorCRDOutputParam{
-				{Key: "status", Value: ".status.conditions"},
+				{Key: "status", Value: ".status.conditions", ResolvedValue: "Ready"},
 			},
 		},
 	}
@@ -459,6 +459,7 @@ func TestResourceDebugInfoOperatorJSON(t *testing.T) {
 	require.Equal(true, param0["required"])
 	require.Equal(true, param0["modifiable"])
 	require.Equal("3", param0["defaultValue"])
+	require.Equal("5", param0["resolvedValue"])
 
 	outputParams, ok := op["outputParams"].([]interface{})
 	require.True(ok, "outputParams should be an array")
@@ -467,7 +468,7 @@ func TestResourceDebugInfoOperatorJSON(t *testing.T) {
 	require.True(ok)
 	require.Equal("endpoint", out0["key"])
 	require.Equal("$var.endpoint", out0["valueRef"])
-
+	require.Equal("db.example.com:5432", out0["resolvedValue"])
 	crdOutputParams, ok := op["crdOutputParams"].([]interface{})
 	require.True(ok, "crdOutputParams should be an array")
 	require.Len(crdOutputParams, 1)
@@ -475,6 +476,7 @@ func TestResourceDebugInfoOperatorJSON(t *testing.T) {
 	require.True(ok)
 	require.Equal("status", crd0["key"])
 	require.Equal(".status.conditions", crd0["value"])
+	require.Equal("Ready", crd0["resolvedValue"])
 
 	// Verify helm and terraform fields are omitted
 	require.NotContains(decoded, "helm")
