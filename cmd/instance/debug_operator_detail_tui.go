@@ -128,10 +128,16 @@ func (m operatorDetailModel) fetchOperatorData() tea.Cmd {
 			if ok && crdConfig != nil {
 				outputParams := crdConfig.GetOutputParameters()
 				for k, v := range outputParams {
-					opData.CRDOutputParams = append(opData.CRDOutputParams, OperatorCRDOutputParam{
+					crdParam := OperatorCRDOutputParam{
 						Key:   k,
 						Value: v,
-					})
+					}
+					if m.debugData.ResultParams != nil {
+						if rv, ok := m.debugData.ResultParams[k]; ok {
+							crdParam.ResolvedValue = fmt.Sprintf("%v", rv)
+						}
+					}
+					opData.CRDOutputParams = append(opData.CRDOutputParams, crdParam)
 				}
 			}
 		}
@@ -849,7 +855,10 @@ func buildOperatorCRDOutputParamTree(params []OperatorCRDOutputParam) []outputNo
 	var roots []outputNode
 	for _, p := range params {
 		details := map[string]interface{}{
-			"value": p.Value,
+			"jsonPath": p.Value,
+		}
+		if p.ResolvedValue != "" {
+			details["value"] = p.ResolvedValue
 		}
 
 		node := buildJSONNode(p.Key, details, 0)

@@ -52,8 +52,9 @@ type OperatorOutputParam struct {
 
 // OperatorCRDOutputParam describes a single output parameter from operatorCRDConfiguration.
 type OperatorCRDOutputParam struct {
-	Key   string `json:"key"`
-	Value string `json:"value"`
+	Key           string `json:"key"`
+	Value         string `json:"value"`
+	ResolvedValue string `json:"resolvedValue,omitempty"`
 }
 
 // OperatorData holds debug information specific to operator-type resources.

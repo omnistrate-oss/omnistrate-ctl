@@ -498,12 +498,18 @@ func collectOperatorDebugInfo(ctx context.Context, token, serviceID string, plan
 		if descErr == nil && resourceResult != nil {
 			crdConfig, ok := resourceResult.GetOperatorCRDConfigurationOk()
 			if ok && crdConfig != nil {
-				outputParams := crdConfig.GetOutputParameters()
-				for k, v := range outputParams {
-					opData.CRDOutputParams = append(opData.CRDOutputParams, OperatorCRDOutputParam{
+				crdOutputParams := crdConfig.GetOutputParameters()
+				for k, v := range crdOutputParams {
+					crdParam := OperatorCRDOutputParam{
 						Key:   k,
 						Value: v,
-					})
+					}
+					if resultParams != nil {
+						if rv, ok := resultParams[k]; ok {
+							crdParam.ResolvedValue = fmt.Sprintf("%v", rv)
+						}
+					}
+					opData.CRDOutputParams = append(opData.CRDOutputParams, crdParam)
 				}
 			}
 		}

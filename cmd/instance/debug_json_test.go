@@ -428,7 +428,7 @@ func TestResourceDebugInfoOperatorJSON(t *testing.T) {
 				{Key: "endpoint", DisplayName: "Endpoint", Description: "Connection endpoint", Type: "string", ValueRef: "$var.endpoint", ResolvedValue: "db.example.com:5432"},
 			},
 			CRDOutputParams: []OperatorCRDOutputParam{
-				{Key: "status", Value: ".status.conditions"},
+				{Key: "status", Value: ".status.conditions", ResolvedValue: "Ready"},
 			},
 		},
 	}
@@ -476,6 +476,7 @@ func TestResourceDebugInfoOperatorJSON(t *testing.T) {
 	require.True(ok)
 	require.Equal("status", crd0["key"])
 	require.Equal(".status.conditions", crd0["value"])
+	require.Equal("Ready", crd0["resolvedValue"])
 
 	// Verify helm and terraform fields are omitted
 	require.NotContains(decoded, "helm")

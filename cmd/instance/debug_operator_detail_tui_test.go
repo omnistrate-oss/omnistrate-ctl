@@ -207,6 +207,37 @@ func TestBuildOperatorCRDOutputParamTree(t *testing.T) {
 		require.Contains(t, result[0].key, "image")
 		require.Contains(t, result[1].key, "topology")
 	})
+
+	t.Run("resolved value shown", func(t *testing.T) {
+		params := []OperatorCRDOutputParam{
+			{Key: "endpoint", Value: ".status.endpoint", ResolvedValue: "db.example.com:5432"},
+		}
+		result := buildOperatorCRDOutputParamTree(params)
+		require.Len(t, result, 1)
+		foundJsonPath := false
+		foundValue := false
+		for _, child := range result[0].children {
+			if child.key == "jsonPath" && child.value == ".status.endpoint" {
+				foundJsonPath = true
+			}
+			if child.key == "value" && child.value == "db.example.com:5432" {
+				foundValue = true
+			}
+		}
+		require.True(t, foundJsonPath, "expected jsonPath in children")
+		require.True(t, foundValue, "expected resolved value in children")
+	})
+
+	t.Run("no resolved value", func(t *testing.T) {
+		params := []OperatorCRDOutputParam{
+			{Key: "endpoint", Value: ".status.endpoint"},
+		}
+		result := buildOperatorCRDOutputParamTree(params)
+		require.Len(t, result, 1)
+		for _, child := range result[0].children {
+			require.NotEqual(t, "value", child.key, "value should not appear without resolved value")
+		}
+	})
 }
 
 func TestOperatorCopyableContent(t *testing.T) {
