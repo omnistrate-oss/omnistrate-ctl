@@ -8,8 +8,9 @@ import (
 
 func TestOperatorTabNames(t *testing.T) {
 	require.Equal(t, opNumTabs, len(opTabNames), "opTabNames length must match opNumTabs")
-	require.Equal(t, "Input Variables", opTabNames[opTabInputVars])
-	require.Equal(t, "Output Variables", opTabNames[opTabOutputVars])
+	require.Equal(t, "Input Parameters", opTabNames[opTabInputVars])
+	require.Equal(t, "Output Parameters", opTabNames[opTabOutputVars])
+	require.Equal(t, "Operator CRD Outputs", opTabNames[opTabCRDOutputVars])
 	require.Equal(t, "Workflow Events", opTabNames[opTabWfErrors])
 }
 
@@ -99,10 +100,43 @@ func TestBuildOperatorOutputParamTree(t *testing.T) {
 
 	t.Run("multiple params sorted", func(t *testing.T) {
 		params := []OperatorOutputParam{
-			{Key: "topology", Type: "string"},
-			{Key: "image", Type: "string"},
+			{Key: "topology", Description: "Topology info"},
+			{Key: "image", Description: "Image name"},
 		}
 		result := buildOperatorOutputParamTree(params)
+		require.Len(t, result, 2)
+		require.Contains(t, result[0].key, "image")
+		require.Contains(t, result[1].key, "topology")
+	})
+}
+
+func TestBuildOperatorCRDOutputParamTree(t *testing.T) {
+	t.Run("nil input", func(t *testing.T) {
+		result := buildOperatorCRDOutputParamTree(nil)
+		require.Nil(t, result)
+	})
+
+	t.Run("empty input", func(t *testing.T) {
+		result := buildOperatorCRDOutputParamTree([]OperatorCRDOutputParam{})
+		require.Nil(t, result)
+	})
+
+	t.Run("single param", func(t *testing.T) {
+		params := []OperatorCRDOutputParam{
+			{Key: "endpoint", Value: ".status.endpoint"},
+		}
+		result := buildOperatorCRDOutputParamTree(params)
+		require.Len(t, result, 1)
+		require.Contains(t, result[0].key, "endpoint")
+		require.True(t, result[0].expandable)
+	})
+
+	t.Run("multiple params sorted", func(t *testing.T) {
+		params := []OperatorCRDOutputParam{
+			{Key: "topology", Value: ".status.topology"},
+			{Key: "image", Value: ".spec.image"},
+		}
+		result := buildOperatorCRDOutputParamTree(params)
 		require.Len(t, result, 2)
 		require.Contains(t, result[0].key, "image")
 		require.Contains(t, result[1].key, "topology")
@@ -117,10 +151,13 @@ func TestOperatorCopyableContent(t *testing.T) {
 	m.loading = false
 	m.operatorData = &OperatorData{
 		InputParams: []OperatorInputParam{
-			{Key: "replicas", Type: "int"},
+			{Key: "replicas", Type: "int", Required: true},
 		},
 		OutputParams: []OperatorOutputParam{
-			{Key: "status", Type: "string"},
+			{Key: "status", Description: "CRD status", Type: "string"},
+		},
+		CRDOutputParams: []OperatorCRDOutputParam{
+			{Key: "endpoint", Value: ".status.endpoint"},
 		},
 	}
 
@@ -134,6 +171,12 @@ func TestOperatorCopyableContent(t *testing.T) {
 		m.activeTab = opTabOutputVars
 		content := m.opCopyableContent()
 		require.Contains(t, content, "status")
+	})
+
+	t.Run("crd output vars tab", func(t *testing.T) {
+		m.activeTab = opTabCRDOutputVars
+		content := m.opCopyableContent()
+		require.Contains(t, content, "endpoint")
 	})
 
 	t.Run("wf errors tab empty", func(t *testing.T) {

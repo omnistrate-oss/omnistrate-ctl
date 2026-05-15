@@ -18,30 +18,39 @@ type TerraformData struct {
 }
 
 // OperatorInputParam describes a single input parameter for an operator resource.
+// These are fetched from the ListInputParameter V1 API.
 type OperatorInputParam struct {
 	Key          string `json:"key"`
 	DisplayName  string `json:"displayName"`
 	Description  string `json:"description"`
 	Type         string `json:"type"`
-	DefaultValue string `json:"defaultValue,omitempty"`
 	Required     bool   `json:"required"`
 	Modifiable   bool   `json:"modifiable"`
-	Custom       bool   `json:"custom"`
+	DefaultValue string `json:"defaultValue,omitempty"`
 }
 
 // OperatorOutputParam describes a single output parameter for an operator resource.
+// These are API parameters with export: true, fetched from the ListOutputParameter V1 API.
 type OperatorOutputParam struct {
 	Key         string `json:"key"`
 	DisplayName string `json:"displayName"`
 	Description string `json:"description"`
-	Type        string `json:"type"`
-	Custom      bool   `json:"custom"`
+	Value       string `json:"value,omitempty"`
+	ValueRef    string `json:"valueRef,omitempty"`
+	Type        string `json:"type,omitempty"`
+}
+
+// OperatorCRDOutputParam describes a single output parameter from operatorCRDConfiguration.
+type OperatorCRDOutputParam struct {
+	Key   string `json:"key"`
+	Value string `json:"value"`
 }
 
 // OperatorData holds debug information specific to operator-type resources.
 type OperatorData struct {
-	InputParams  []OperatorInputParam  `json:"inputParams,omitempty"`
-	OutputParams []OperatorOutputParam `json:"outputParams,omitempty"`
+	InputParams    []OperatorInputParam     `json:"inputParams,omitempty"`
+	OutputParams   []OperatorOutputParam    `json:"outputParams,omitempty"`
+	CRDOutputParams []OperatorCRDOutputParam `json:"crdOutputParams,omitempty"`
 }
 
 // ResourceDebugInfo holds all debug information for a specific resource in the plan DAG.

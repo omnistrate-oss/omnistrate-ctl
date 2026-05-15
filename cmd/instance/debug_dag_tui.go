@@ -738,7 +738,11 @@ func (m dagModel) openNodeDetail() (tea.Model, tea.Cmd) {
 		return m, detail.Init()
 	}
 
-	// For other resource types, open the operator detail TUI
+	if !strings.Contains(lower, "operator") {
+		return m, nil
+	}
+
+	// For operator resource types, open the operator detail TUI
 	detail := newOperatorDetailModel(node, m.debugData)
 	detail.width = m.width
 	detail.height = m.height

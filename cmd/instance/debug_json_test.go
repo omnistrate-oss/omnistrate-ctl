@@ -421,11 +421,14 @@ func TestResourceDebugInfoOperatorJSON(t *testing.T) {
 		ResourceType: "OperatorCRD",
 		Operator: &OperatorData{
 			InputParams: []OperatorInputParam{
-				{Key: "replicas", DisplayName: "Replicas", Description: "Number of replicas", Type: "int", Required: true, Modifiable: true, Custom: true, DefaultValue: "3"},
+				{Key: "replicas", DisplayName: "Replicas", Description: "Number of replicas", Type: "int", Required: true, Modifiable: true, DefaultValue: "3"},
 				{Key: "storage", DisplayName: "Storage Size", Description: "Storage in GB", Type: "string", Required: true},
 			},
 			OutputParams: []OperatorOutputParam{
-				{Key: "endpoint", DisplayName: "Endpoint", Description: "Connection endpoint", Type: "string", Custom: true},
+				{Key: "endpoint", DisplayName: "Endpoint", Description: "Connection endpoint", Type: "string", ValueRef: "$var.endpoint"},
+			},
+			CRDOutputParams: []OperatorCRDOutputParam{
+				{Key: "status", Value: ".status.conditions"},
 			},
 		},
 	}
@@ -455,7 +458,6 @@ func TestResourceDebugInfoOperatorJSON(t *testing.T) {
 	require.Equal("int", param0["type"])
 	require.Equal(true, param0["required"])
 	require.Equal(true, param0["modifiable"])
-	require.Equal(true, param0["custom"])
 	require.Equal("3", param0["defaultValue"])
 
 	outputParams, ok := op["outputParams"].([]interface{})
@@ -464,8 +466,15 @@ func TestResourceDebugInfoOperatorJSON(t *testing.T) {
 	out0, ok := outputParams[0].(map[string]interface{})
 	require.True(ok)
 	require.Equal("endpoint", out0["key"])
-	require.Equal("string", out0["type"])
-	require.Equal(true, out0["custom"])
+	require.Equal("$var.endpoint", out0["valueRef"])
+
+	crdOutputParams, ok := op["crdOutputParams"].([]interface{})
+	require.True(ok, "crdOutputParams should be an array")
+	require.Len(crdOutputParams, 1)
+	crd0, ok := crdOutputParams[0].(map[string]interface{})
+	require.True(ok)
+	require.Equal("status", crd0["key"])
+	require.Equal(".status.conditions", crd0["value"])
 
 	// Verify helm and terraform fields are omitted
 	require.NotContains(decoded, "helm")
@@ -895,7 +904,7 @@ func TestResourceDebugInfoHasDataWithOperator(t *testing.T) {
 		ResourceType: "OperatorCRD",
 		Operator: &OperatorData{
 			OutputParams: []OperatorOutputParam{
-				{Key: "status", Type: "string"},
+				{Key: "status", Description: "CRD status", Type: "string"},
 			},
 		},
 	}
@@ -1102,11 +1111,14 @@ func TestDebugDataJSONRoundTripWithOperator(t *testing.T) {
 				ResourceType: "OperatorCRD",
 				Operator: &OperatorData{
 					InputParams: []OperatorInputParam{
-						{Key: "replicas", DisplayName: "Replicas", Description: "Number of replicas", Type: "int", Required: true, Modifiable: true, Custom: true, DefaultValue: "3"},
+						{Key: "replicas", DisplayName: "Replicas", Description: "Number of replicas", Type: "int", Required: true, Modifiable: true, DefaultValue: "3"},
 						{Key: "storage", DisplayName: "Storage", Description: "Storage size", Type: "string", Required: true},
 					},
 					OutputParams: []OperatorOutputParam{
-						{Key: "endpoint", DisplayName: "Endpoint", Description: "Connection endpoint", Type: "string", Custom: true},
+						{Key: "endpoint", DisplayName: "Endpoint", Description: "Connection endpoint", Type: "string", ValueRef: "$var.endpoint"},
+					},
+					CRDOutputParams: []OperatorCRDOutputParam{
+						{Key: "status", Value: ".status.conditions"},
 					},
 				},
 			},
@@ -1136,11 +1148,14 @@ func TestDebugDataJSONRoundTripWithOperator(t *testing.T) {
 	require.Equal("3", cnpgInfo.Operator.InputParams[0].DefaultValue)
 	require.True(cnpgInfo.Operator.InputParams[0].Required)
 	require.True(cnpgInfo.Operator.InputParams[0].Modifiable)
-	require.True(cnpgInfo.Operator.InputParams[0].Custom)
 
 	require.Len(cnpgInfo.Operator.OutputParams, 1)
 	require.Equal("endpoint", cnpgInfo.Operator.OutputParams[0].Key)
-	require.True(cnpgInfo.Operator.OutputParams[0].Custom)
+	require.Equal("$var.endpoint", cnpgInfo.Operator.OutputParams[0].ValueRef)
+
+	require.Len(cnpgInfo.Operator.CRDOutputParams, 1)
+	require.Equal("status", cnpgInfo.Operator.CRDOutputParams[0].Key)
+	require.Equal(".status.conditions", cnpgInfo.Operator.CRDOutputParams[0].Value)
 }
 
 func TestDebugDataJSONIncludesProductTierIDAndVersion(t *testing.T) {

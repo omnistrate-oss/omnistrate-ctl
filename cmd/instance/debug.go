@@ -358,12 +358,12 @@ func collectTerraformDebugInfo(ctx context.Context, token string, instanceData *
 	}
 }
 
-// collectOperatorDebugInfo fetches operator debug data (input/output parameters)
-// for resources that are neither helm nor terraform.
+// collectOperatorDebugInfo fetches operator debug data (input/output parameters, CRD outputs)
+// for operator-type resources.
 func collectOperatorDebugInfo(ctx context.Context, token, serviceID, instanceID string, planDAG *PlanDAG, instanceData *openapiclientfleet.ResourceInstance, result map[string]*ResourceDebugInfo) {
 	for _, node := range planDAG.Nodes {
 		lower := strings.ToLower(node.Type)
-		if strings.Contains(lower, "helm") || strings.Contains(lower, "terraform") {
+		if !strings.Contains(lower, "operator") {
 			continue
 		}
 
@@ -376,46 +376,74 @@ func collectOperatorDebugInfo(ctx context.Context, token, serviceID, instanceID 
 			continue
 		}
 
-		offeringResult, err := dataaccess.DescribeServiceOfferingResource(
-			ctx, token, serviceID, node.ID, instanceID,
-			instanceData.ProductTierId, instanceData.TierVersion,
-		)
-		if err != nil {
-			continue
-		}
-
 		opData := &OperatorData{}
 
-		inner := offeringResult.GetConsumptionDescribeServiceOfferingResourceResult()
-		apis := inner.GetApis()
-		for _, api := range apis {
-			for _, ip := range api.InputParameters {
+		// Fetch all input parameters from ListInputParameter V1 API
+		inputParamsResult, inputErr := dataaccess.ListInputParameters(
+			ctx, token, serviceID, node.ID,
+			instanceData.ProductTierId, instanceData.TierVersion,
+		)
+		if inputErr == nil && inputParamsResult != nil {
+			for _, ip := range inputParamsResult.InputParameters {
 				param := OperatorInputParam{
 					Key:         ip.Key,
-					DisplayName: ip.DisplayName,
+					DisplayName: ip.Name,
 					Description: ip.Description,
 					Type:        ip.Type,
 					Required:    ip.Required,
 					Modifiable:  ip.Modifiable,
-					Custom:      ip.Custom,
 				}
 				if ip.DefaultValue != nil {
 					param.DefaultValue = *ip.DefaultValue
 				}
 				opData.InputParams = append(opData.InputParams, param)
 			}
-			for _, op := range api.OutputParameters {
-				opData.OutputParams = append(opData.OutputParams, OperatorOutputParam{
+		}
+
+		// Fetch exported output parameters from ListOutputParameter V1 API
+		outputParamsResult, listErr := dataaccess.ListOutputParameters(
+			ctx, token, serviceID, node.ID,
+			instanceData.ProductTierId, instanceData.TierVersion,
+		)
+		if listErr == nil && outputParamsResult != nil {
+			for _, op := range outputParamsResult.OutputParameters {
+				param := OperatorOutputParam{
 					Key:         op.Key,
-					DisplayName: op.DisplayName,
+					DisplayName: op.Name,
 					Description: op.Description,
-					Type:        op.Type,
-					Custom:      op.Custom,
-				})
+				}
+				if op.Value != nil {
+					param.Value = *op.Value
+				}
+				if op.ValueRef != nil {
+					param.ValueRef = *op.ValueRef
+				}
+				if op.ValueType != nil {
+					param.Type = *op.ValueType
+				}
+				opData.OutputParams = append(opData.OutputParams, param)
 			}
 		}
 
-		if len(opData.InputParams) > 0 || len(opData.OutputParams) > 0 {
+		// Fetch CRD output parameters from DescribeResource (operatorCRDConfiguration.outputParameters)
+		resourceResult, descErr := dataaccess.DescribeResource(
+			ctx, token, serviceID, node.ID,
+			&instanceData.ProductTierId, &instanceData.TierVersion,
+		)
+		if descErr == nil && resourceResult != nil {
+			crdConfig, ok := resourceResult.GetOperatorCRDConfigurationOk()
+			if ok && crdConfig != nil {
+				outputParams := crdConfig.GetOutputParameters()
+				for k, v := range outputParams {
+					opData.CRDOutputParams = append(opData.CRDOutputParams, OperatorCRDOutputParam{
+						Key:   k,
+						Value: v,
+					})
+				}
+			}
+		}
+
+		if len(opData.InputParams) > 0 || len(opData.OutputParams) > 0 || len(opData.CRDOutputParams) > 0 {
 			info.Operator = opData
 		}
 	}

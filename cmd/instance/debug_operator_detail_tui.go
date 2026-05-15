@@ -15,13 +15,14 @@ import (
 )
 
 const (
-	opTabInputVars  = 0
-	opTabOutputVars = 1
-	opTabWfErrors   = 2
-	opNumTabs       = 3
+	opTabInputVars     = 0
+	opTabOutputVars    = 1
+	opTabCRDOutputVars = 2
+	opTabWfErrors      = 3
+	opNumTabs          = 4
 )
 
-var opTabNames = []string{"Input Variables", "Output Variables", "Workflow Events"}
+var opTabNames = []string{"Input Parameters", "Output Parameters", "Operator CRD Outputs", "Workflow Events"}
 
 func init() {
 	if len(opTabNames) != opNumTabs {
@@ -49,14 +50,19 @@ type operatorDetailModel struct {
 	operatorData *OperatorData
 
 	// Input variables tree
-	inputTree    []outputNode
-	inputCursor  int
-	inputScroll  int
+	inputTree   []outputNode
+	inputCursor int
+	inputScroll int
 
 	// Output variables tree
 	outputTree   []outputNode
 	outputCursor int
 	outputScroll int
+
+	// CRD output parameters tree
+	crdOutputTree   []outputNode
+	crdOutputCursor int
+	crdOutputScroll int
 
 	// Workflow Events tab
 	wfErrors *workflowErrorsState
@@ -87,44 +93,78 @@ func (m operatorDetailModel) fetchOperatorData() tea.Cmd {
 	return func() tea.Msg {
 		ctx := context.Background()
 
-		offeringResult, err := dataaccess.DescribeServiceOfferingResource(
-			ctx, m.debugData.Token,
-			m.debugData.ServiceID, m.node.ID, m.debugData.InstanceID,
-			m.debugData.ProductTierID, m.debugData.TierVersion,
-		)
-		if err != nil {
-			return operatorDataMsg{err: fmt.Errorf("failed to get service offering resource: %w", err)}
-		}
-
 		opData := &OperatorData{}
 
-		inner := offeringResult.GetConsumptionDescribeServiceOfferingResourceResult()
-		apis := inner.GetApis()
-		for _, api := range apis {
-			for _, ip := range api.InputParameters {
+		// Fetch all input parameters from ListInputParameter V1 API
+		inputParamsResult, err := dataaccess.ListInputParameters(
+			ctx, m.debugData.Token,
+			m.debugData.ServiceID, m.node.ID,
+			m.debugData.ProductTierID, m.debugData.TierVersion,
+		)
+		if err == nil && inputParamsResult != nil {
+			for _, ip := range inputParamsResult.InputParameters {
 				param := OperatorInputParam{
 					Key:         ip.Key,
-					DisplayName: ip.DisplayName,
+					DisplayName: ip.Name,
 					Description: ip.Description,
 					Type:        ip.Type,
 					Required:    ip.Required,
 					Modifiable:  ip.Modifiable,
-					Custom:      ip.Custom,
 				}
 				if ip.DefaultValue != nil {
 					param.DefaultValue = *ip.DefaultValue
 				}
 				opData.InputParams = append(opData.InputParams, param)
 			}
-			for _, op := range api.OutputParameters {
-				opData.OutputParams = append(opData.OutputParams, OperatorOutputParam{
+		}
+
+		// Fetch exported output parameters from ListOutputParameter V1 API
+		outputParamsResult, listErr := dataaccess.ListOutputParameters(
+			ctx, m.debugData.Token,
+			m.debugData.ServiceID, m.node.ID,
+			m.debugData.ProductTierID, m.debugData.TierVersion,
+		)
+		if listErr == nil && outputParamsResult != nil {
+			for _, op := range outputParamsResult.OutputParameters {
+				param := OperatorOutputParam{
 					Key:         op.Key,
-					DisplayName: op.DisplayName,
+					DisplayName: op.Name,
 					Description: op.Description,
-					Type:        op.Type,
-					Custom:      op.Custom,
-				})
+				}
+				if op.Value != nil {
+					param.Value = *op.Value
+				}
+				if op.ValueRef != nil {
+					param.ValueRef = *op.ValueRef
+				}
+				if op.ValueType != nil {
+					param.Type = *op.ValueType
+				}
+				opData.OutputParams = append(opData.OutputParams, param)
 			}
+		}
+
+		// Fetch CRD output parameters from DescribeResource (operatorCRDConfiguration.outputParameters)
+		resourceResult, descErr := dataaccess.DescribeResource(
+			ctx, m.debugData.Token,
+			m.debugData.ServiceID, m.node.ID,
+			&m.debugData.ProductTierID, &m.debugData.TierVersion,
+		)
+		if descErr == nil && resourceResult != nil {
+			crdConfig, ok := resourceResult.GetOperatorCRDConfigurationOk()
+			if ok && crdConfig != nil {
+				outputParams := crdConfig.GetOutputParameters()
+				for k, v := range outputParams {
+					opData.CRDOutputParams = append(opData.CRDOutputParams, OperatorCRDOutputParam{
+						Key:   k,
+						Value: v,
+					})
+				}
+			}
+		}
+
+		if err != nil && listErr != nil && descErr != nil {
+			return operatorDataMsg{err: fmt.Errorf("failed to fetch operator data: %w", err)}
 		}
 
 		return operatorDataMsg{operatorData: opData}
@@ -156,6 +196,7 @@ func (m operatorDetailModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.operatorData != nil {
 			m.inputTree = buildOperatorParamTree(m.operatorData.InputParams)
 			m.outputTree = buildOperatorOutputParamTree(m.operatorData.OutputParams)
+			m.crdOutputTree = buildOperatorCRDOutputParamTree(m.operatorData.CRDOutputParams)
 		}
 		var cmds []tea.Cmd
 		if isWorkflowInProgress(m.getWfEvents()) {
@@ -243,6 +284,16 @@ func (m operatorDetailModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 						m.outputCursor, m.outputScroll, len(visibleNodes), m.opVisibleRows(),
 					)
 				}
+			case opTabCRDOutputVars:
+				if len(m.crdOutputTree) > 0 {
+					visibleNodes := flattenOutputTree(m.crdOutputTree)
+					if m.crdOutputCursor > 0 {
+						m.crdOutputCursor--
+					}
+					m.crdOutputCursor, m.crdOutputScroll = normalizeViewport(
+						m.crdOutputCursor, m.crdOutputScroll, len(visibleNodes), m.opVisibleRows(),
+					)
+				}
 			case opTabWfErrors:
 				items := flattenWfEventItems(m.getWfEvents())
 				if m.wfErrors.cursor > 0 {
@@ -280,6 +331,16 @@ func (m operatorDetailModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 						m.outputCursor, m.outputScroll, len(visibleNodes), m.opVisibleRows(),
 					)
 				}
+			case opTabCRDOutputVars:
+				if len(m.crdOutputTree) > 0 {
+					visibleNodes := flattenOutputTree(m.crdOutputTree)
+					if m.crdOutputCursor < len(visibleNodes)-1 {
+						m.crdOutputCursor++
+					}
+					m.crdOutputCursor, m.crdOutputScroll = normalizeViewport(
+						m.crdOutputCursor, m.crdOutputScroll, len(visibleNodes), m.opVisibleRows(),
+					)
+				}
 			case opTabWfErrors:
 				items := flattenWfEventItems(m.getWfEvents())
 				if m.wfErrors.cursor < len(items)-1 {
@@ -301,6 +362,13 @@ func (m operatorDetailModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					visibleNodes := flattenOutputTree(m.outputTree)
 					if m.outputCursor < len(visibleNodes) && visibleNodes[m.outputCursor].expandable {
 						visibleNodes[m.outputCursor].expanded = !visibleNodes[m.outputCursor].expanded
+					}
+				}
+			case opTabCRDOutputVars:
+				if len(m.crdOutputTree) > 0 {
+					visibleNodes := flattenOutputTree(m.crdOutputTree)
+					if m.crdOutputCursor < len(visibleNodes) && visibleNodes[m.crdOutputCursor].expandable {
+						visibleNodes[m.crdOutputCursor].expanded = !visibleNodes[m.crdOutputCursor].expanded
 					}
 				}
 			case opTabWfErrors:
@@ -330,6 +398,13 @@ func (m operatorDetailModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 						visibleNodes[m.outputCursor].expanded = true
 					}
 				}
+			case opTabCRDOutputVars:
+				if len(m.crdOutputTree) > 0 {
+					visibleNodes := flattenOutputTree(m.crdOutputTree)
+					if m.crdOutputCursor < len(visibleNodes) && visibleNodes[m.crdOutputCursor].expandable && !visibleNodes[m.crdOutputCursor].expanded {
+						visibleNodes[m.crdOutputCursor].expanded = true
+					}
+				}
 			}
 		case "left", "h":
 			switch m.activeTab {
@@ -345,6 +420,13 @@ func (m operatorDetailModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					visibleNodes := flattenOutputTree(m.outputTree)
 					if m.outputCursor < len(visibleNodes) && visibleNodes[m.outputCursor].expandable && visibleNodes[m.outputCursor].expanded {
 						visibleNodes[m.outputCursor].expanded = false
+					}
+				}
+			case opTabCRDOutputVars:
+				if len(m.crdOutputTree) > 0 {
+					visibleNodes := flattenOutputTree(m.crdOutputTree)
+					if m.crdOutputCursor < len(visibleNodes) && visibleNodes[m.crdOutputCursor].expandable && visibleNodes[m.crdOutputCursor].expanded {
+						visibleNodes[m.crdOutputCursor].expanded = false
 					}
 				}
 			}
@@ -488,6 +570,8 @@ func (m operatorDetailModel) getOpTabContent() string {
 		return m.renderInputVarsTab()
 	case opTabOutputVars:
 		return m.renderOutputVarsTab()
+	case opTabCRDOutputVars:
+		return m.renderCRDOutputVarsTab()
 	case opTabWfErrors:
 		return m.renderOpWfErrorsTab()
 	}
@@ -495,11 +579,15 @@ func (m operatorDetailModel) getOpTabContent() string {
 }
 
 func (m operatorDetailModel) renderInputVarsTab() string {
-	return m.renderParamTreeTab("Input Variables", m.inputTree, m.inputCursor, m.inputScroll)
+	return m.renderParamTreeTab("Input Parameters", m.inputTree, m.inputCursor, m.inputScroll)
 }
 
 func (m operatorDetailModel) renderOutputVarsTab() string {
-	return m.renderParamTreeTab("Output Variables", m.outputTree, m.outputCursor, m.outputScroll)
+	return m.renderParamTreeTab("Output Parameters", m.outputTree, m.outputCursor, m.outputScroll)
+}
+
+func (m operatorDetailModel) renderCRDOutputVarsTab() string {
+	return m.renderParamTreeTab("Operator CRD Outputs", m.crdOutputTree, m.crdOutputCursor, m.crdOutputScroll)
 }
 
 func (m operatorDetailModel) renderParamTreeTab(title string, tree []outputNode, cursor, scroll int) string {
@@ -622,9 +710,10 @@ func (m operatorDetailModel) renderOpFooter() string {
 	style := lipgloss.NewStyle().Foreground(lipgloss.Color("241")).Padding(0, 1)
 	var text string
 	switch m.activeTab {
-	case opTabInputVars, opTabOutputVars:
+	case opTabInputVars, opTabOutputVars, opTabCRDOutputVars:
 		if (m.activeTab == opTabInputVars && len(m.inputTree) > 0) ||
-			(m.activeTab == opTabOutputVars && len(m.outputTree) > 0) {
+			(m.activeTab == opTabOutputVars && len(m.outputTree) > 0) ||
+			(m.activeTab == opTabCRDOutputVars && len(m.crdOutputTree) > 0) {
 			text = "↑↓: navigate  ←→/enter: expand/collapse  y: copy  tab/shift+tab: switch tabs  esc: back  q: quit"
 		} else {
 			text = "tab/shift+tab: switch tabs  esc: back  q: quit"
@@ -653,6 +742,13 @@ func (m operatorDetailModel) opCopyableContent() string {
 	case opTabOutputVars:
 		if m.operatorData != nil && len(m.operatorData.OutputParams) > 0 {
 			raw, err := json.Marshal(m.operatorData.OutputParams)
+			if err == nil {
+				return string(raw)
+			}
+		}
+	case opTabCRDOutputVars:
+		if m.operatorData != nil && len(m.operatorData.CRDOutputParams) > 0 {
+			raw, err := json.Marshal(m.operatorData.CRDOutputParams)
 			if err == nil {
 				return string(raw)
 			}
@@ -711,7 +807,6 @@ func buildOperatorParamTree(params []OperatorInputParam) []outputNode {
 			"description": p.Description,
 			"required":    p.Required,
 			"modifiable":  p.Modifiable,
-			"custom":      p.Custom,
 		}
 		if p.DefaultValue != "" {
 			details["defaultValue"] = p.DefaultValue
@@ -741,9 +836,16 @@ func buildOperatorOutputParamTree(params []OperatorOutputParam) []outputNode {
 	var roots []outputNode
 	for _, p := range params {
 		details := map[string]interface{}{
-			"type":        p.Type,
 			"description": p.Description,
-			"custom":      p.Custom,
+		}
+		if p.Type != "" {
+			details["type"] = p.Type
+		}
+		if p.Value != "" {
+			details["value"] = p.Value
+		}
+		if p.ValueRef != "" {
+			details["valueRef"] = p.ValueRef
 		}
 
 		displayName := p.Key
@@ -752,6 +854,28 @@ func buildOperatorOutputParamTree(params []OperatorOutputParam) []outputNode {
 		}
 
 		node := buildJSONNode(displayName, details, 0)
+		roots = append(roots, *node)
+	}
+	return roots
+}
+
+// buildOperatorCRDOutputParamTree converts CRD output parameters to a navigable tree of outputNodes.
+func buildOperatorCRDOutputParamTree(params []OperatorCRDOutputParam) []outputNode {
+	if len(params) == 0 {
+		return nil
+	}
+
+	sort.Slice(params, func(i, j int) bool {
+		return params[i].Key < params[j].Key
+	})
+
+	var roots []outputNode
+	for _, p := range params {
+		details := map[string]interface{}{
+			"value": p.Value,
+		}
+
+		node := buildJSONNode(p.Key, details, 0)
 		roots = append(roots, *node)
 	}
 	return roots
