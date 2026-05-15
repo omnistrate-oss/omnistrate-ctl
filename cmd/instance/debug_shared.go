@@ -10,6 +10,8 @@ type HelmData struct {
 	InstallLog    string                 `json:"installLog"`
 	Namespace     string                 `json:"namespace"`
 	ReleaseName   string                 `json:"releaseName"`
+	InputParams   []OperatorInputParam   `json:"inputParams,omitempty"`
+	OutputParams  []OperatorOutputParam  `json:"outputParams,omitempty"`
 }
 
 type TerraformData struct {

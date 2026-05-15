@@ -241,7 +241,7 @@ func collectResourceDebugInfo(ctx context.Context, token, serviceID, environment
 	}
 
 	// Collect helm debug data from the DebugResourceInstance API
-	collectHelmDebugInfo(ctx, token, serviceID, environmentID, instanceID, result)
+	collectHelmDebugInfo(ctx, token, serviceID, environmentID, instanceID, planDAG, instanceData, result)
 
 	// Collect terraform debug data from k8s ConfigMaps
 	collectTerraformDebugInfo(ctx, token, instanceData, instanceID, planDAG, result)
@@ -259,8 +259,8 @@ func collectResourceDebugInfo(ctx context.Context, token, serviceID, environment
 	return result
 }
 
-// collectHelmDebugInfo fetches helm debug data (logs, chart values) for all helm resources.
-func collectHelmDebugInfo(ctx context.Context, token, serviceID, environmentID, instanceID string, result map[string]*ResourceDebugInfo) {
+// collectHelmDebugInfo fetches helm debug data (logs, chart values) and input/output parameters for all helm resources.
+func collectHelmDebugInfo(ctx context.Context, token, serviceID, environmentID, instanceID string, planDAG *PlanDAG, instanceData *openapiclientfleet.ResourceInstance, result map[string]*ResourceDebugInfo) {
 	debugResult, err := dataaccess.DebugResourceInstance(ctx, token, serviceID, environmentID, instanceID)
 	if err != nil || debugResult.ResourcesDebug == nil {
 		return
@@ -289,6 +289,70 @@ func collectHelmDebugInfo(ctx context.Context, token, serviceID, environmentID, 
 		// Check if it's a helm resource (has chart metadata)
 		if _, hasChart := actualDebugData["chartRepoName"]; hasChart {
 			info.Helm = parseHelmData(actualDebugData)
+
+			// Find the node ID for this resource to fetch input/output params
+			var nodeID string
+			if planDAG != nil {
+				for _, node := range planDAG.Nodes {
+					nodeKey := node.Key
+					if nodeKey == "" {
+						nodeKey = node.ID
+					}
+					if nodeKey == resourceKey {
+						nodeID = node.ID
+						break
+					}
+				}
+			}
+
+			if nodeID != "" && instanceData != nil {
+				// Fetch input parameters
+				inputParamsResult, inputErr := dataaccess.ListInputParameters(
+					ctx, token, serviceID, nodeID,
+					instanceData.ProductTierId, instanceData.TierVersion,
+				)
+				if inputErr == nil && inputParamsResult != nil {
+					for _, ip := range inputParamsResult.InputParameters {
+						param := OperatorInputParam{
+							Key:         ip.Key,
+							DisplayName: ip.Name,
+							Description: ip.Description,
+							Type:        ip.Type,
+							Required:    ip.Required,
+							Modifiable:  ip.Modifiable,
+						}
+						if ip.DefaultValue != nil {
+							param.DefaultValue = *ip.DefaultValue
+						}
+						info.Helm.InputParams = append(info.Helm.InputParams, param)
+					}
+				}
+
+				// Fetch output parameters
+				outputParamsResult, outputErr := dataaccess.ListOutputParameters(
+					ctx, token, serviceID, nodeID,
+					instanceData.ProductTierId, instanceData.TierVersion,
+				)
+				if outputErr == nil && outputParamsResult != nil {
+					for _, op := range outputParamsResult.OutputParameters {
+						param := OperatorOutputParam{
+							Key:         op.Key,
+							DisplayName: op.Name,
+							Description: op.Description,
+						}
+						if op.Value != nil {
+							param.Value = *op.Value
+						}
+						if op.ValueRef != nil {
+							param.ValueRef = *op.ValueRef
+						}
+						if op.ValueType != nil {
+							param.Type = *op.ValueType
+						}
+						info.Helm.OutputParams = append(info.Helm.OutputParams, param)
+					}
+				}
+			}
 		}
 	}
 }
