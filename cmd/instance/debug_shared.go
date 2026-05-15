@@ -3,6 +3,7 @@ package instance
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 
 	"github.com/omnistrate-oss/omnistrate-ctl/internal/dataaccess"
 )
@@ -36,15 +37,16 @@ type OperatorInputParam struct {
 	DefaultValue string `json:"defaultValue,omitempty"`
 }
 
-// OperatorOutputParam describes a single output parameter for an operator resource.
+// OperatorOutputParam describes a single output parameter for a resource.
 // These are API parameters with export: true, fetched from the ListOutputParameter V1 API.
 type OperatorOutputParam struct {
-	Key         string `json:"key"`
-	DisplayName string `json:"displayName"`
-	Description string `json:"description"`
-	Value       string `json:"value,omitempty"`
-	ValueRef    string `json:"valueRef,omitempty"`
-	Type        string `json:"type,omitempty"`
+	Key           string `json:"key"`
+	DisplayName   string `json:"displayName"`
+	Description   string `json:"description"`
+	Value         string `json:"value,omitempty"`
+	ValueRef      string `json:"valueRef,omitempty"`
+	Type          string `json:"type,omitempty"`
+	ResolvedValue string `json:"resolvedValue,omitempty"`
 }
 
 // OperatorCRDOutputParam describes a single output parameter from operatorCRDConfiguration.
@@ -153,8 +155,9 @@ func fetchInputParams(ctx context.Context, token, serviceID, resourceID, product
 }
 
 // fetchOutputParams fetches output parameters from the ListOutputParameter V1 API
-// and converts them to OperatorOutputParam structs. Used by both helm and operator TUIs.
-func fetchOutputParams(ctx context.Context, token, serviceID, resourceID, productTierID, tierVersion string) ([]OperatorOutputParam, error) {
+// and converts them to OperatorOutputParam structs. If resultParams is provided,
+// resolved values are looked up by key and populated. Used by both helm and operator TUIs.
+func fetchOutputParams(ctx context.Context, token, serviceID, resourceID, productTierID, tierVersion string, resultParams map[string]interface{}) ([]OperatorOutputParam, error) {
 	result, err := dataaccess.ListOutputParameters(ctx, token, serviceID, resourceID, productTierID, tierVersion)
 	if err != nil {
 		return nil, err
@@ -178,6 +181,12 @@ func fetchOutputParams(ctx context.Context, token, serviceID, resourceID, produc
 		}
 		if op.ValueType != nil {
 			param.Type = *op.ValueType
+		}
+		// Resolve value from instance result_params
+		if resultParams != nil {
+			if v, ok := resultParams[op.Key]; ok {
+				param.ResolvedValue = fmt.Sprintf("%v", v)
+			}
 		}
 		params = append(params, param)
 	}

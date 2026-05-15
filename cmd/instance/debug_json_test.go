@@ -425,7 +425,7 @@ func TestResourceDebugInfoOperatorJSON(t *testing.T) {
 				{Key: "storage", DisplayName: "Storage Size", Description: "Storage in GB", Type: "string", Required: true},
 			},
 			OutputParams: []OperatorOutputParam{
-				{Key: "endpoint", DisplayName: "Endpoint", Description: "Connection endpoint", Type: "string", ValueRef: "$var.endpoint"},
+				{Key: "endpoint", DisplayName: "Endpoint", Description: "Connection endpoint", Type: "string", ValueRef: "$var.endpoint", ResolvedValue: "db.example.com:5432"},
 			},
 			CRDOutputParams: []OperatorCRDOutputParam{
 				{Key: "status", Value: ".status.conditions"},
@@ -467,7 +467,7 @@ func TestResourceDebugInfoOperatorJSON(t *testing.T) {
 	require.True(ok)
 	require.Equal("endpoint", out0["key"])
 	require.Equal("$var.endpoint", out0["valueRef"])
-
+	require.Equal("db.example.com:5432", out0["resolvedValue"])
 	crdOutputParams, ok := op["crdOutputParams"].([]interface{})
 	require.True(ok, "crdOutputParams should be an array")
 	require.Len(crdOutputParams, 1)

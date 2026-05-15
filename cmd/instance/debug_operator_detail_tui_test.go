@@ -108,6 +108,38 @@ func TestBuildOperatorOutputParamTree(t *testing.T) {
 		require.Contains(t, result[0].key, "image")
 		require.Contains(t, result[1].key, "topology")
 	})
+
+	t.Run("resolved value shown", func(t *testing.T) {
+		params := []OperatorOutputParam{
+			{Key: "endpoint", DisplayName: "Endpoint", Description: "Connection endpoint", ValueRef: "$var.endpoint", ResolvedValue: "db.example.com:5432"},
+		}
+		result := buildOperatorOutputParamTree(params)
+		require.Len(t, result, 1)
+		require.True(t, result[0].expandable)
+		// Expand to check children contain "value" with resolved value
+		found := false
+		for _, child := range result[0].children {
+			if child.key == "value" && child.value == "db.example.com:5432" {
+				found = true
+			}
+		}
+		require.True(t, found, "expected resolved value in children")
+	})
+
+	t.Run("fallback to static value when no resolved value", func(t *testing.T) {
+		params := []OperatorOutputParam{
+			{Key: "endpoint", Description: "Connection endpoint", Value: "static-val"},
+		}
+		result := buildOperatorOutputParamTree(params)
+		require.Len(t, result, 1)
+		found := false
+		for _, child := range result[0].children {
+			if child.key == "value" && child.value == "static-val" {
+				found = true
+			}
+		}
+		require.True(t, found, "expected static value in children when no resolved value")
+	})
 }
 
 func TestBuildOperatorCRDOutputParamTree(t *testing.T) {

@@ -110,6 +110,7 @@ func (m operatorDetailModel) fetchOperatorData() tea.Cmd {
 			ctx, m.debugData.Token,
 			m.debugData.ServiceID, m.node.ID,
 			m.debugData.ProductTierID, m.debugData.TierVersion,
+			m.debugData.ResultParams,
 		)
 		if listErr == nil {
 			opData.OutputParams = outputParams
@@ -812,7 +813,9 @@ func buildOperatorOutputParamTree(params []OperatorOutputParam) []outputNode {
 		if p.Type != "" {
 			details["type"] = p.Type
 		}
-		if p.Value != "" {
+		if p.ResolvedValue != "" {
+			details["value"] = p.ResolvedValue
+		} else if p.Value != "" {
 			details["value"] = p.Value
 		}
 		if p.ValueRef != "" {
