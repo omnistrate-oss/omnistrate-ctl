@@ -738,6 +738,15 @@ func (m dagModel) openNodeDetail() (tea.Model, tea.Cmd) {
 		return m, detail.Init()
 	}
 
+	if strings.Contains(lower, "compose") {
+		detail := newComposeDetailModel(node, m.debugData)
+		detail.width = m.width
+		detail.height = m.height
+		m.detailModel = detail
+		m.inDetail = true
+		return m, detail.Init()
+	}
+
 	if !strings.Contains(lower, "operator") {
 		return m, nil
 	}

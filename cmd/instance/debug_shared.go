@@ -83,11 +83,14 @@ type ResourceDebugInfo struct {
 
 	// Operator-specific data (populated for operator resources)
 	Operator *OperatorData `json:"operator,omitempty"`
+
+	// Compose-specific data (populated for compose resources)
+	Compose *ComposeData `json:"compose,omitempty"`
 }
 
 // hasData returns true if any debug data has been populated for this resource.
 func (r *ResourceDebugInfo) hasData() bool {
-	return r.Helm != nil || r.Operator != nil || r.TerraformProgress != nil ||
+	return r.Helm != nil || r.Operator != nil || r.Compose != nil || r.TerraformProgress != nil ||
 		len(r.TerraformHistory) > 0 || len(r.TerraformFiles) > 0 || len(r.TerraformLogs) > 0 ||
 		len(r.TerraformPlanPreview) > 0 || len(r.TerraformPlanPreviewError) > 0
 }
