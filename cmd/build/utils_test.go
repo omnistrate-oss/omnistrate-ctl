@@ -141,6 +141,20 @@ func TestUniqueArtifactPathsFromTasks_SinglePath(t *testing.T) {
 	assert.Equal(t, "/only/path", paths[0])
 }
 
+func TestShouldCheckDistributionExtension(t *testing.T) {
+	require.False(t, shouldCheckDistributionExtension(nil))
+	require.False(t, shouldCheckDistributionExtension(&ServiceHierarchyResult{IsNewProductTier: false, ServiceID: "svc", EnvironmentID: "env"}))
+	require.False(t, shouldCheckDistributionExtension(&ServiceHierarchyResult{IsNewProductTier: true, ServiceID: "", EnvironmentID: "env"}))
+	require.False(t, shouldCheckDistributionExtension(&ServiceHierarchyResult{IsNewProductTier: true, ServiceID: "svc", EnvironmentID: ""}))
+	require.True(t, shouldCheckDistributionExtension(&ServiceHierarchyResult{IsNewProductTier: true, ServiceID: "svc", EnvironmentID: "env"}))
+}
+
+func TestShouldExtendDistributionToNewDeploymentModel(t *testing.T) {
+	require.False(t, shouldExtendDistributionToNewDeploymentModel(false, 2))
+	require.False(t, shouldExtendDistributionToNewDeploymentModel(true, 1))
+	require.True(t, shouldExtendDistributionToNewDeploymentModel(true, 2))
+}
+
 func TestArchiveArtifactPaths_CreatesBase64Archive(t *testing.T) {
 	// Create a temporary source directory with some files
 	sourceDir, err := os.MkdirTemp("", "test-source-*")
