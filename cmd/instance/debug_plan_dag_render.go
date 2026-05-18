@@ -578,6 +578,8 @@ func formatTypeTag(resourceType string) string {
 		return "Helm"
 	case strings.Contains(lower, "terraform"):
 		return "Terraform"
+	case strings.Contains(lower, "compose"):
+		return "Compose"
 	case strings.Contains(lower, "kustomize"):
 		return "Kustomize"
 	default:
@@ -606,6 +608,8 @@ func iconForType(tag string, theme cardTheme) (rune, lipgloss.Style) {
 		return 'H', style
 	case "Terraform":
 		return 'T', style
+	case "Compose":
+		return 'C', style
 	case "Kustomize":
 		return 'K', style
 	default:

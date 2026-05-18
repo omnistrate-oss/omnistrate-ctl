@@ -35,8 +35,8 @@ type DebugData struct {
 	ProductTierID     string                        `json:"productTierId,omitempty"`
 	TierVersion       string                        `json:"tierVersion,omitempty"`
 	Token             string                        `json:"-"`
-	ResultParams      map[string]interface{}         `json:"-"`
-	InputParams       map[string]interface{}         `json:"-"`
+	ResultParams      map[string]interface{}        `json:"-"`
+	InputParams       map[string]interface{}        `json:"-"`
 	ResourceDebugInfo map[string]*ResourceDebugInfo `json:"resourceDebugInfo,omitempty"`
 }
 
@@ -258,7 +258,8 @@ func runDebugJSON(instanceID, token string) error {
 
 // collectResourceDebugInfo fetches all per-resource debug data for the JSON output path.
 // It collects helm data (logs, values), terraform data (progress, history, files, logs),
-// and operator data (input/output parameters) for each resource in the plan DAG.
+// operator data (input/output parameters), and compose data (input/output parameters)
+// for each resource in the plan DAG.
 // Errors for individual resources or data sources are handled gracefully — partial data
 // is returned rather than failing the entire operation.
 func collectResourceDebugInfo(ctx context.Context, token, serviceID, environmentID, instanceID string, planDAG *PlanDAG, instanceData *openapiclientfleet.ResourceInstance) map[string]*ResourceDebugInfo {
@@ -526,6 +527,13 @@ func collectOperatorDebugInfo(ctx context.Context, token, serviceID string, plan
 // collectComposeDebugInfo fetches compose debug data (input/output parameters)
 // for compose-type resources.
 func collectComposeDebugInfo(ctx context.Context, token, serviceID string, planDAG *PlanDAG, instanceData *openapiclientfleet.ResourceInstance, inputParams map[string]interface{}, resultParams map[string]interface{}, result map[string]*ResourceDebugInfo) {
+	collectComposeDebugInfoWithFetchers(ctx, token, serviceID, planDAG, instanceData, inputParams, resultParams, result, fetchInputParams, fetchOutputParams)
+}
+
+type inputParamsFetcher func(context.Context, string, string, string, string, string, map[string]interface{}) ([]OperatorInputParam, error)
+type outputParamsFetcher func(context.Context, string, string, string, string, string, map[string]interface{}) ([]OperatorOutputParam, error)
+
+func collectComposeDebugInfoWithFetchers(ctx context.Context, token, serviceID string, planDAG *PlanDAG, instanceData *openapiclientfleet.ResourceInstance, inputParams map[string]interface{}, resultParams map[string]interface{}, result map[string]*ResourceDebugInfo, fetchInput inputParamsFetcher, fetchOutput outputParamsFetcher) {
 	for _, node := range planDAG.Nodes {
 		lower := strings.ToLower(node.Type)
 		if !strings.Contains(lower, "compose") {
@@ -544,7 +552,7 @@ func collectComposeDebugInfo(ctx context.Context, token, serviceID string, planD
 		cData := &ComposeData{}
 
 		// Fetch all input parameters
-		fetchedInputParams, inputErr := fetchInputParams(
+		fetchedInputParams, inputErr := fetchInput(
 			ctx, token, serviceID, node.ID,
 			instanceData.ProductTierId, instanceData.TierVersion,
 			inputParams,
@@ -554,7 +562,7 @@ func collectComposeDebugInfo(ctx context.Context, token, serviceID string, planD
 		}
 
 		// Fetch exported output parameters
-		outputParams, outputErr := fetchOutputParams(
+		outputParams, outputErr := fetchOutput(
 			ctx, token, serviceID, node.ID,
 			instanceData.ProductTierId, instanceData.TierVersion,
 			resultParams,

@@ -89,6 +89,18 @@ func TestBreakpointStatusForNode(t *testing.T) {
 	}
 }
 
+func TestComposeResourceTypeTagAndIcon(t *testing.T) {
+	tag := formatTypeTag("DockerCompose")
+	if tag != "Compose" {
+		t.Fatalf("expected Compose tag, got %q", tag)
+	}
+
+	icon, _ := iconForType(tag, cardTheme{icon: "255"})
+	if icon != 'C' {
+		t.Fatalf("expected Compose icon C, got %q", icon)
+	}
+}
+
 func TestPlanHasHitBreakpoint(t *testing.T) {
 	planWithoutHit := &PlanDAG{
 		BreakpointByID: map[string]string{

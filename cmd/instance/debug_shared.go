@@ -59,9 +59,15 @@ type OperatorCRDOutputParam struct {
 
 // OperatorData holds debug information specific to operator-type resources.
 type OperatorData struct {
-	InputParams    []OperatorInputParam     `json:"inputParams,omitempty"`
-	OutputParams   []OperatorOutputParam    `json:"outputParams,omitempty"`
+	InputParams     []OperatorInputParam     `json:"inputParams,omitempty"`
+	OutputParams    []OperatorOutputParam    `json:"outputParams,omitempty"`
 	CRDOutputParams []OperatorCRDOutputParam `json:"crdOutputParams,omitempty"`
+}
+
+// ComposeData holds debug information specific to compose-type resources.
+type ComposeData struct {
+	InputParams  []OperatorInputParam  `json:"inputParams,omitempty"`
+	OutputParams []OperatorOutputParam `json:"outputParams,omitempty"`
 }
 
 // ResourceDebugInfo holds all debug information for a specific resource in the plan DAG.

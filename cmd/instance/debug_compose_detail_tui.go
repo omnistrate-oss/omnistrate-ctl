@@ -27,16 +27,11 @@ func init() {
 	}
 }
 
-// ComposeData holds debug information specific to compose-type resources.
-type ComposeData struct {
-	InputParams  []OperatorInputParam  `json:"inputParams,omitempty"`
-	OutputParams []OperatorOutputParam `json:"outputParams,omitempty"`
-}
-
 // composeDataMsg is sent when compose debug data has been fetched.
 type composeDataMsg struct {
 	composeData *ComposeData
-	err         error
+	inputErr    error
+	outputErr   error
 }
 
 type composeDetailModel struct {
@@ -46,9 +41,11 @@ type composeDetailModel struct {
 	width     int
 	height    int
 
-	loading bool
-	loadErr error
-	spinner spinner.Model
+	loading   bool
+	loadErr   error
+	inputErr  error
+	outputErr error
+	spinner   spinner.Model
 
 	composeData *ComposeData
 
@@ -115,11 +112,11 @@ func (m composeDetailModel) fetchComposeData() tea.Cmd {
 			cData.OutputParams = outputParams
 		}
 
-		if inputErr != nil && outputErr != nil {
-			return composeDataMsg{err: fmt.Errorf("failed to fetch compose data: %w", inputErr)}
+		return composeDataMsg{
+			composeData: cData,
+			inputErr:    inputErr,
+			outputErr:   outputErr,
 		}
-
-		return composeDataMsg{composeData: cData}
 	}
 }
 
@@ -140,10 +137,8 @@ func (m composeDetailModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case composeDataMsg:
 		m.loading = false
-		if msg.err != nil {
-			m.loadErr = msg.err
-			return m, nil
-		}
+		m.inputErr = msg.inputErr
+		m.outputErr = msg.outputErr
 		m.composeData = msg.composeData
 		if m.composeData != nil {
 			m.inputTree = buildOperatorParamTree(m.composeData.InputParams)
@@ -487,16 +482,20 @@ func (m composeDetailModel) getComposeTabContent() string {
 }
 
 func (m composeDetailModel) renderComposeInputVarsTab() string {
-	return m.renderComposeParamTreeTab("Input Parameters", m.inputTree, m.inputCursor, m.inputScroll)
+	return m.renderComposeParamTreeTab("Input Parameters", m.inputTree, m.inputCursor, m.inputScroll, m.inputErr)
 }
 
 func (m composeDetailModel) renderComposeOutputVarsTab() string {
-	return m.renderComposeParamTreeTab("Output Parameters", m.outputTree, m.outputCursor, m.outputScroll)
+	return m.renderComposeParamTreeTab("Output Parameters", m.outputTree, m.outputCursor, m.outputScroll, m.outputErr)
 }
 
-func (m composeDetailModel) renderComposeParamTreeTab(title string, tree []outputNode, cursor, scroll int) string {
+func (m composeDetailModel) renderComposeParamTreeTab(title string, tree []outputNode, cursor, scroll int, fetchErr error) string {
 	if m.loading {
 		return fmt.Sprintf("\n  %s Fetching %s...", m.spinner.View(), strings.ToLower(title))
+	}
+	if fetchErr != nil {
+		errStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("203"))
+		return fmt.Sprintf("\n  %s\n", errStyle.Render(fmt.Sprintf("Error fetching %s: %v", strings.ToLower(title), fetchErr)))
 	}
 	if m.loadErr != nil {
 		errStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("203"))
@@ -596,7 +595,7 @@ func (m composeDetailModel) renderComposeParamTreeTab(title string, tree []outpu
 			pct := (scrollOffset * 100) / (totalEntries - visibleRows)
 			pos = fmt.Sprintf("%d%%", pct)
 		}
-		fmt.Fprintf(&b, "\n  %s\n", dimStyle.Render(fmt.Sprintf("↑↓: navigate  ←→/enter: expand/collapse  [%d/%d %s]", cursorIndex+1, totalEntries, pos)))
+		fmt.Fprintf(&b, "\n  %s\n", dimStyle.Render(fmt.Sprintf("↑↓: navigate  [%d/%d %s]", cursorIndex+1, totalEntries, pos)))
 	}
 
 	return b.String()
@@ -617,7 +616,7 @@ func (m composeDetailModel) renderComposeFooter() string {
 	case composeTabInputVars, composeTabOutputVars:
 		if (m.activeTab == composeTabInputVars && len(m.inputTree) > 0) ||
 			(m.activeTab == composeTabOutputVars && len(m.outputTree) > 0) {
-			text = "↑↓: navigate  ←→/enter: expand/collapse  y: copy  tab/shift+tab: switch tabs  esc: back  q: quit"
+			text = "↑↓: navigate  y: copy  tab/shift+tab: switch tabs  esc: back  q: quit"
 		} else {
 			text = "tab/shift+tab: switch tabs  esc: back  q: quit"
 		}

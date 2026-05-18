@@ -2,6 +2,7 @@ package instance
 
 import (
 	"encoding/json"
+	"errors"
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -190,7 +191,7 @@ func TestComposeRenderParamTreeTabShowsTitle(t *testing.T) {
 		wfErrors:    &workflowErrorsState{},
 	}
 
-	rendered := model.renderComposeParamTreeTab("Input Parameters", model.inputTree, model.inputCursor, model.inputScroll)
+	rendered := model.renderComposeParamTreeTab("Input Parameters", model.inputTree, model.inputCursor, model.inputScroll, nil)
 	require.Contains(t, rendered, "Input Parameters")
 }
 
@@ -203,11 +204,25 @@ func TestComposeRenderParamTreeTabEmptyShowsNoDataMessage(t *testing.T) {
 		wfErrors:  &workflowErrorsState{},
 	}
 
-	rendered := model.renderComposeParamTreeTab("Input Parameters", model.inputTree, 0, 0)
+	rendered := model.renderComposeParamTreeTab("Input Parameters", model.inputTree, 0, 0, nil)
 	require.Contains(t, rendered, "No input parameters available")
 }
 
-func TestComposeFooterShowsTreeNavForInputOutputTabs(t *testing.T) {
+func TestComposeRenderParamTreeTabShowsFetchError(t *testing.T) {
+	model := composeDetailModel{
+		activeTab: composeTabInputVars,
+		width:     80,
+		height:    20,
+		wfErrors:  &workflowErrorsState{},
+	}
+
+	rendered := model.renderComposeParamTreeTab("Input Parameters", model.inputTree, 0, 0, errors.New("request failed"))
+	require.Contains(t, rendered, "Error fetching input parameters")
+	require.Contains(t, rendered, "request failed")
+	require.NotContains(t, rendered, "No input parameters available")
+}
+
+func TestComposeFooterShowsNavigationForInputOutputTabs(t *testing.T) {
 	model := composeDetailModel{
 		width:    80,
 		height:   20,
@@ -222,11 +237,15 @@ func TestComposeFooterShowsTreeNavForInputOutputTabs(t *testing.T) {
 
 	model.activeTab = composeTabInputVars
 	footer := model.renderComposeFooter()
-	require.Contains(t, footer, "expand/collapse")
+	require.Contains(t, footer, "↑↓: navigate")
+	require.Contains(t, footer, "y: copy")
+	require.NotContains(t, footer, "expand/collapse")
 
 	model.activeTab = composeTabOutputVars
 	footer = model.renderComposeFooter()
-	require.Contains(t, footer, "expand/collapse")
+	require.Contains(t, footer, "↑↓: navigate")
+	require.Contains(t, footer, "y: copy")
+	require.NotContains(t, footer, "expand/collapse")
 
 	model.activeTab = composeTabWfErrors
 	footer = model.renderComposeFooter()
