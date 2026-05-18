@@ -23,26 +23,27 @@ omnistrate-ctl service-plan describe-version [service-name] [plan-name] --versio
 omnistrate-ctl service-plan describe-version --service-id [service-id] --plan-id [plan-id] --version [version]`
 )
 
-var describeVersionCmd = &cobra.Command{
-	Use:          "describe-version [service-name] [plan-name] [flags]",
-	Short:        "Describe a specific version of a Service Plan",
-	Long:         `This command helps you get details of a specific version of a Service Plan for your service. You can get environment, enabled features, and resource configuration details for the version.`,
-	Example:      describeVersionExample,
-	RunE:         runDescribeVersion,
-	SilenceUsage: true,
-}
-
-func init() {
-	describeVersionCmd.Flags().StringP("version", "v", "", "Service plan version (latest|preferred|1.0 etc.)")
-	describeVersionCmd.Flags().StringP("environment", "", "", "Environment name. Use this flag with service name and plan name to describe the version in a specific environment")
-	describeVersionCmd.Flags().StringP("service-id", "", "", "Service ID. Required if service name is not provided")
-	describeVersionCmd.Flags().StringP("plan-id", "", "", "Plan ID. Required if plan name is not provided")
-	describeVersionCmd.Flags().StringP("output", "o", "json", "Output format. Only json is supported")
-
-	err := describeVersionCmd.MarkFlagRequired("version")
-	if err != nil {
-		return
+func newDescribeVersionCmd(commandPath string) *cobra.Command {
+	cmd := &cobra.Command{
+		Use:          "describe-version [service-name] [plan-name] [flags]",
+		Short:        "Describe a specific version of a Service Plan",
+		Long:         `This command helps you get details of a specific version of a Service Plan for your service. You can get environment, enabled features, and resource configuration details for the version.`,
+		Example:      servicePlanExample(commandPath, describeVersionExample),
+		RunE:         runDescribeVersion,
+		SilenceUsage: true,
 	}
+
+	cmd.Flags().StringP("version", "v", "", "Service plan version (latest|preferred|1.0 etc.)")
+	cmd.Flags().StringP("environment", "", "", "Environment name. Use this flag with service name and plan name to describe the version in a specific environment")
+	cmd.Flags().StringP("service-id", "", "", "Service ID. Required if service name is not provided")
+	cmd.Flags().StringP("plan-id", "", "", "Plan ID. Required if plan name is not provided")
+	cmd.Flags().StringP("output", "o", "json", "Output format. Only json is supported")
+
+	err := cmd.MarkFlagRequired("version")
+	if err != nil {
+		return cmd
+	}
+	return cmd
 }
 
 func runDescribeVersion(cmd *cobra.Command, args []string) error {

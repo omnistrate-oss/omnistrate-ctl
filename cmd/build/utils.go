@@ -332,6 +332,25 @@ type ServiceHierarchyResult struct {
 	ArtifactUploadingTasks []ArtifactUploadingTask
 }
 
+func shouldCheckDistributionExtension(result *ServiceHierarchyResult) bool {
+	return result != nil && result.IsNewProductTier && result.ServiceID != "" && result.EnvironmentID != ""
+}
+
+func shouldExtendDistributionToNewDeploymentModel(isNewProductTier bool, servicePlanCount int) bool {
+	return isNewProductTier && servicePlanCount > 1
+}
+
+func serviceHasAdditionalPlans(ctx context.Context, token, serviceID, environmentID string) (bool, error) {
+	if serviceID == "" || environmentID == "" {
+		return false, nil
+	}
+	servicePlans, err := dataaccess.ListServicePlans(ctx, token, serviceID, environmentID)
+	if err != nil {
+		return false, err
+	}
+	return shouldExtendDistributionToNewDeploymentModel(true, len(servicePlans.GetServicePlans())), nil
+}
+
 // ArtifactUploadingTask represents a single artifact upload task returned by the prepare API.
 // It contains all the server-side resolved parameters needed to call the upload artifact API.
 type ArtifactUploadingTask struct {

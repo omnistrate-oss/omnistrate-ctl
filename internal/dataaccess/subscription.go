@@ -118,7 +118,20 @@ func GetSubscriptionByCustomerEmailInEnvironment(
 	return resp, nil
 }
 
+type ListSubscriptionsOptions struct {
+	ProductTierId   *string
+	IncludeInactive *bool
+	ExcludePricing  *bool
+	ExcludeStats    *bool
+	NextPageToken   string
+	PageSize        *int64
+}
+
 func ListSubscriptions(ctx context.Context, token string, serviceID, environmentID string) (resp *openapiclientfleet.FleetListSubscriptionsResult, err error) {
+	return ListSubscriptionsWithOptions(ctx, token, serviceID, environmentID, nil)
+}
+
+func ListSubscriptionsWithOptions(ctx context.Context, token string, serviceID, environmentID string, opts *ListSubscriptionsOptions) (resp *openapiclientfleet.FleetListSubscriptionsResult, err error) {
 	ctxWithToken := context.WithValue(ctx, openapiclientfleet.ContextAccessToken, token)
 	apiClient := getFleetClient()
 
@@ -127,6 +140,27 @@ func ListSubscriptions(ctx context.Context, token string, serviceID, environment
 		serviceID,
 		environmentID,
 	)
+
+	if opts != nil {
+		if opts.ProductTierId != nil {
+			req = req.ProductTierId(*opts.ProductTierId)
+		}
+		if opts.IncludeInactive != nil {
+			req = req.IncludeInactive(*opts.IncludeInactive)
+		}
+		if opts.ExcludePricing != nil {
+			req = req.ExcludePricing(*opts.ExcludePricing)
+		}
+		if opts.ExcludeStats != nil {
+			req = req.ExcludeStats(*opts.ExcludeStats)
+		}
+		if opts.NextPageToken != "" {
+			req = req.NextPageToken(opts.NextPageToken)
+		}
+		if opts.PageSize != nil {
+			req = req.PageSize(*opts.PageSize)
+		}
+	}
 
 	var r *http.Response
 	defer func() {
@@ -140,6 +174,98 @@ func ListSubscriptions(ctx context.Context, token string, serviceID, environment
 		return nil, handleFleetError(err)
 	}
 	return
+}
+
+func ListAllSubscriptions(ctx context.Context, token string, serviceID, environmentID string, opts *ListSubscriptionsOptions) (subscriptions []openapiclientfleet.FleetDescribeSubscriptionResult, err error) {
+	var nextPageToken string
+
+	for {
+		pageOptions := ListSubscriptionsOptions{}
+		if opts != nil {
+			pageOptions = *opts
+		}
+		pageOptions.NextPageToken = nextPageToken
+
+		res, err := ListSubscriptionsWithOptions(ctx, token, serviceID, environmentID, &pageOptions)
+		if err != nil {
+			return nil, err
+		}
+		subscriptions = append(subscriptions, res.GetSubscriptions()...)
+
+		nextPageToken = res.GetNextPageToken()
+		if nextPageToken == "" {
+			return subscriptions, nil
+		}
+	}
+}
+
+type ListUsersOptions struct {
+	NextPageToken  string
+	PageSize       *int64
+	SubscriptionId *string
+	ExcludeStats   *bool
+}
+
+func ListUsers(ctx context.Context, token string, serviceID, environmentID string, opts *ListUsersOptions) (resp *openapiclientfleet.FleetListUsersResult, err error) {
+	ctxWithToken := context.WithValue(ctx, openapiclientfleet.ContextAccessToken, token)
+	apiClient := getFleetClient()
+
+	req := apiClient.InventoryApiAPI.InventoryApiListUsers(
+		ctxWithToken,
+		serviceID,
+		environmentID,
+	)
+
+	if opts != nil {
+		if opts.NextPageToken != "" {
+			req = req.NextPageToken(opts.NextPageToken)
+		}
+		if opts.PageSize != nil {
+			req = req.PageSize(*opts.PageSize)
+		}
+		if opts.SubscriptionId != nil {
+			req = req.SubscriptionId(*opts.SubscriptionId)
+		}
+		if opts.ExcludeStats != nil {
+			req = req.ExcludeStats(*opts.ExcludeStats)
+		}
+	}
+
+	var r *http.Response
+	defer func() {
+		if r != nil {
+			_ = r.Body.Close()
+		}
+	}()
+
+	resp, r, err = req.Execute()
+	if err != nil {
+		return nil, handleFleetError(err)
+	}
+	return
+}
+
+func ListAllUsers(ctx context.Context, token string, serviceID, environmentID string, opts *ListUsersOptions) (users []openapiclientfleet.User, err error) {
+	var nextPageToken string
+
+	for {
+		pageOptions := ListUsersOptions{}
+		if opts != nil {
+			pageOptions = *opts
+		}
+		pageOptions.NextPageToken = nextPageToken
+
+		res, err := ListUsers(ctx, token, serviceID, environmentID, &pageOptions)
+		if err != nil {
+			return nil, err
+		}
+		users = append(users, res.GetUsers()...)
+
+		nextPageToken = res.GetNextPageToken()
+		if nextPageToken == "" {
+			return users, nil
+		}
+	}
 }
 
 func ListSubscriptionRequests(ctx context.Context, token string, serviceID, environmentID string) (resp *openapiclientfleet.ListSubscriptionRequestsResult, err error) {

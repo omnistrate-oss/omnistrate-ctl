@@ -529,7 +529,7 @@ func runBuild(cmd *cobra.Command, args []string) error {
 	var spinner1 *utils.Spinner
 	if output != "json" {
 		sm1 = utils.NewSpinnerManager()
-		spinner1 = sm1.AddSpinner("Building service...")
+		spinner1 = sm1.AddSpinner("Rendering spec file")
 		sm1.Start()
 	}
 
@@ -546,24 +546,16 @@ func runBuild(cmd *cobra.Command, args []string) error {
 		utils.HandleSpinnerError(spinner1, sm1, err)
 		return err
 	}
+	if spinner1 != nil {
+		spinner1.Complete()
+		spinner1 = nil
+	}
 
+	var hierarchyResult *ServiceHierarchyResult
+	extendDistribution := false
 	if specType == ServicePlanSpecType {
-		// Extract plan name from YAML for display purposes
-		if spinner1 != nil {
-			var yamlContent map[string]interface{}
-			if parseErr := yaml.Unmarshal(fileData, &yamlContent); parseErr == nil {
-				if planName, ok := yamlContent["name"].(string); ok && planName != "" {
-					spinner1.UpdateMessage(fmt.Sprintf("Building service '%s' with plan '%s'...", name, planName))
-				}
-			}
-		}
-
-		// Step 1: Prepare service build - find or create service hierarchy and get upload tasks
-		if spinner1 != nil {
-			spinner1.UpdateMessage("Preparing service build...")
-		}
-
-		hierarchyResult, hierarchyErr := FindOrCreateServiceHierarchy(
+		var hierarchyErr error
+		hierarchyResult, hierarchyErr = FindOrCreateServiceHierarchy(
 			cmd.Context(),
 			token,
 			name,
@@ -572,7 +564,7 @@ func runBuild(cmd *cobra.Command, args []string) error {
 			environmentTypePtr,
 		)
 		if hierarchyErr != nil {
-			utils.HandleSpinnerError(spinner1, sm1, hierarchyErr)
+			utils.HandleSpinnerError(nil, sm1, hierarchyErr)
 			return hierarchyErr
 		}
 
@@ -585,19 +577,26 @@ func runBuild(cmd *cobra.Command, args []string) error {
 			release = true
 		}
 
-		if spinner1 != nil {
-			spinner1.UpdateMessage("Service build prepared successfully")
+		if shouldCheckDistributionExtension(hierarchyResult) {
+			extendsDistribution, distributionErr := serviceHasAdditionalPlans(cmd.Context(), token, hierarchyResult.ServiceID, hierarchyResult.EnvironmentID)
+			if distributionErr == nil {
+				extendDistribution = extendsDistribution
+			}
 		}
+	}
 
-		// Step 2: Upload artifacts using tasks from prepare response
+	var buildProgress *specBuildProgress
+	if output != "json" {
+		buildProgress = addSpecBuildChecklist(sm1, fileData, specType, specChecklistOptions{extendDistribution: extendDistribution})
+		if streamErr := buildProgress.StreamFeatureChecks(cmd.Context()); streamErr != nil {
+			utils.HandleSpinnerError(nil, sm1, streamErr)
+			return streamErr
+		}
+	}
+
+	if specType == ServicePlanSpecType && hierarchyResult != nil {
 		if len(hierarchyResult.ArtifactUploadingTasks) > 0 && !dryRun {
 			uniquePaths := UniqueArtifactPathsFromTasks(hierarchyResult.ArtifactUploadingTasks)
-
-			// Complete the prepare spinner before warnings and per-task spinners
-			if spinner1 != nil {
-				spinner1.UpdateMessage("Service build prepared successfully")
-				spinner1.Complete()
-			}
 
 			// Warn if any artifact path refers to the current working directory
 			if output != "json" {
@@ -611,54 +610,17 @@ func runBuild(cmd *cobra.Command, args []string) error {
 			// Archive all unique artifact paths (gzip + tar + base64 encode)
 			artifactArchives, archiveErr := ArchiveArtifactPaths(cwd, uniquePaths)
 			if archiveErr != nil {
-				if sm1 != nil {
-					sm1.Stop()
-				}
-				utils.EnsureCursorRestoration()
-				utils.PrintError(archiveErr)
+				utils.HandleSpinnerError(spinner1, sm1, archiveErr)
 				return archiveErr
 			}
 
-			// Create per-task spinners for each upload task
-			type artifactSpinnerInfo struct {
-				spinner    *utils.Spinner
-				artifactID string
-			}
-			taskSpinners := make([]artifactSpinnerInfo, 0, len(hierarchyResult.ArtifactUploadingTasks))
-
-			for i, task := range hierarchyResult.ArtifactUploadingTasks {
-				taskLabel := fmt.Sprintf("[%d/%d] %s -> %s: Uploading...",
-					i+1, len(hierarchyResult.ArtifactUploadingTasks),
-					task.ArtifactPath, task.AccountConfigID)
-				var taskSpinner *utils.Spinner
-				if sm1 != nil {
-					taskSpinner = sm1.AddSpinner(taskLabel)
-				}
-				taskSpinners = append(taskSpinners, artifactSpinnerInfo{spinner: taskSpinner})
-			}
-
-			// Upload each artifact and track per-task progress
-			for i, task := range hierarchyResult.ArtifactUploadingTasks {
+			var uploadedArtifactIDs []string
+			for _, task := range hierarchyResult.ArtifactUploadingTasks {
 				base64Content, exists := artifactArchives[task.ArtifactPath]
 				if !exists {
 					uploadErr := fmt.Errorf("artifact archive not found for path '%s'", task.ArtifactPath)
-					if taskSpinners[i].spinner != nil {
-						taskSpinners[i].spinner.Error()
-						utils.PrintError(errors.Errorf("[%d/%d] %s -> %s: %v",
-							i+1, len(hierarchyResult.ArtifactUploadingTasks), task.ArtifactPath, task.AccountConfigID, uploadErr))
-					}
-					if sm1 != nil {
-						sm1.Stop()
-					}
-					utils.EnsureCursorRestoration()
-					utils.PrintError(uploadErr)
+					utils.HandleSpinnerError(spinner1, sm1, uploadErr)
 					return uploadErr
-				}
-
-				if taskSpinners[i].spinner != nil {
-					taskSpinners[i].spinner.UpdateMessage(fmt.Sprintf("[%d/%d] %s -> %s: Uploading...",
-						i+1, len(hierarchyResult.ArtifactUploadingTasks),
-						task.ArtifactPath, task.AccountConfigID))
 				}
 
 				uploadResult, uploadErr := dataaccess.UploadArtifact(
@@ -672,76 +634,18 @@ func runBuild(cmd *cobra.Command, args []string) error {
 					task.EnvironmentType,
 				)
 				if uploadErr != nil {
-					if taskSpinners[i].spinner != nil {
-						taskSpinners[i].spinner.Error()
-						utils.PrintError(errors.Errorf("[%d/%d] %s -> %s: Failed to upload",
-							i+1, len(hierarchyResult.ArtifactUploadingTasks),
-							task.ArtifactPath, task.AccountConfigID))
-					}
-					if sm1 != nil {
-						sm1.Stop()
-					}
-					utils.EnsureCursorRestoration()
-					utils.PrintError(fmt.Errorf("failed to upload artifact '%s': %w", task.ArtifactPath, uploadErr))
-					return uploadErr
+					err = fmt.Errorf("failed to upload artifact '%s': %w", task.ArtifactPath, uploadErr)
+					utils.HandleSpinnerError(spinner1, sm1, err)
+					return err
 				}
 
-				taskSpinners[i].artifactID = uploadResult.ArtifactID
-				if taskSpinners[i].spinner != nil {
-					taskSpinners[i].spinner.UpdateMessage(fmt.Sprintf("[%d/%d] %s -> %s: Uploaded, processing...",
-						i+1, len(hierarchyResult.ArtifactUploadingTasks),
-						task.ArtifactPath, task.AccountConfigID))
-				}
+				uploadedArtifactIDs = append(uploadedArtifactIDs, uploadResult.ArtifactID)
 			}
 
-			// Build artifact ID to spinner index map for the polling callback
-			artifactIDToIdx := make(map[string]int)
-			var uploadedArtifactIDs []string
-			for i, info := range taskSpinners {
-				if info.artifactID != "" {
-					artifactIDToIdx[info.artifactID] = i
-					uploadedArtifactIDs = append(uploadedArtifactIDs, info.artifactID)
-				}
-			}
-
-			// Wait for all artifacts to be in READY status with per-spinner updates
 			if len(uploadedArtifactIDs) > 0 {
-				waitErr := waitForArtifactsReady(cmd.Context(), token, uploadedArtifactIDs,
-					func(artifactID string, status string) {
-						idx, ok := artifactIDToIdx[artifactID]
-						if !ok || taskSpinners[idx].spinner == nil {
-							return
-						}
-						task := hierarchyResult.ArtifactUploadingTasks[idx]
-						switch status {
-						case StatusReady:
-							taskSpinners[idx].spinner.Complete()
-							utils.PrintInfo(fmt.Sprintf("[%d/%d] %s -> %s: Ready",
-								idx+1, len(hierarchyResult.ArtifactUploadingTasks),
-								task.ArtifactPath, task.AccountConfigID))
-						case StatusFailed:
-							taskSpinners[idx].spinner.Error()
-							utils.PrintError(errors.Errorf("[%d/%d] %s -> %s: Failed",
-								idx+1, len(hierarchyResult.ArtifactUploadingTasks),
-								task.ArtifactPath, task.AccountConfigID))
-						default:
-							taskSpinners[idx].spinner.UpdateMessage(fmt.Sprintf("[%d/%d] %s -> %s: %s",
-								idx+1, len(hierarchyResult.ArtifactUploadingTasks),
-								task.ArtifactPath, task.AccountConfigID, status))
-						}
-					})
+				waitErr := waitForArtifactsReady(cmd.Context(), token, uploadedArtifactIDs, nil)
 				if waitErr != nil {
-					// Mark any remaining spinners as errored
-					for _, info := range taskSpinners {
-						if info.spinner != nil {
-							info.spinner.Error()
-						}
-					}
-					if sm1 != nil {
-						sm1.Stop()
-					}
-					utils.EnsureCursorRestoration()
-					utils.PrintError(waitErr)
+					utils.HandleSpinnerError(spinner1, sm1, waitErr)
 					return waitErr
 				}
 			}
@@ -750,6 +654,9 @@ func runBuild(cmd *cobra.Command, args []string) error {
 
 	var undefinedResources map[string]string
 	var isNewVersionCreated bool
+	if buildProgress != nil {
+		spinner1 = buildProgress.StartFinalizing()
+	}
 	ServiceID, EnvironmentID, ProductTierID, undefinedResources, isNewVersionCreated, err = BuildService(
 		cmd.Context(),
 		fileData,
@@ -770,11 +677,14 @@ func runBuild(cmd *cobra.Command, args []string) error {
 		utils.HandleSpinnerError(spinner1, sm1, err)
 		return err
 	}
+	if buildProgress != nil {
+		buildProgress.CompleteFinalizing()
+	}
 	header := "Successfully built service"
 	if dryRun {
 		header = "Simulated service build completed successfully (dry run)"
 	}
-	utils.HandleSpinnerSuccess(spinner1, sm1, header)
+	utils.HandleSpinnerSuccess(nil, sm1, header)
 
 	// Get product tier name
 	productTier, err := dataaccess.DescribeProductTier(cmd.Context(), token, ServiceID, ProductTierID)

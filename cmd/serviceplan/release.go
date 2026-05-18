@@ -21,23 +21,24 @@ omnistrate-ctl service-plan release [service-name] [plan-name]
 omnistrate-ctl service-plan release --service-id=[service-id] --plan-id=[plan-id]`
 )
 
-var releaseCmd = &cobra.Command{
-	Use:          "release [service-name] [plan-name] [flags]",
-	Short:        "Release a Service Plan",
-	Long:         `This command helps you release a Service Plan for your service. You can specify a custom release description and set the service plan as preferred if needed.`,
-	Example:      releaseExample,
-	RunE:         runRelease,
-	SilenceUsage: true,
-}
+func newReleaseCmd(commandPath string) *cobra.Command {
+	cmd := &cobra.Command{
+		Use:          "release [service-name] [plan-name] [flags]",
+		Short:        "Release a Service Plan",
+		Long:         `This command helps you release a Service Plan for your service. You can specify a custom release description and set the service plan as preferred if needed.`,
+		Example:      servicePlanExample(commandPath, releaseExample),
+		RunE:         runRelease,
+		SilenceUsage: true,
+	}
 
-func init() {
-	releaseCmd.Flags().String("release-description", "", "Set custom release description for this release version")
-	releaseCmd.Flags().Bool("release-as-preferred", false, "Release the service plan as preferred")
-	releaseCmd.Flags().Bool("dryrun", false, "Perform a dry run without making any changes")
-	releaseCmd.Flags().StringP("environment", "", "", "Environment name. Use this flag with service name and plan name to release the service plan in a specific environment")
+	cmd.Flags().String("release-description", "", "Set custom release description for this release version")
+	cmd.Flags().Bool("release-as-preferred", false, "Release the service plan as preferred")
+	cmd.Flags().Bool("dryrun", false, "Perform a dry run without making any changes")
+	cmd.Flags().StringP("environment", "", "", "Environment name. Use this flag with service name and plan name to release the service plan in a specific environment")
 
-	releaseCmd.Flags().StringP("service-id", "", "", "Service ID. Required if service name is not provided")
-	releaseCmd.Flags().StringP("plan-id", "", "", "Plan ID. Required if plan name is not provided")
+	cmd.Flags().StringP("service-id", "", "", "Service ID. Required if service name is not provided")
+	cmd.Flags().StringP("plan-id", "", "", "Plan ID. Required if plan name is not provided")
+	return cmd
 }
 
 func runRelease(cmd *cobra.Command, args []string) error {

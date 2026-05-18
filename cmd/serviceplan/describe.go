@@ -24,20 +24,21 @@ omnistrate-ctl service-plan describe [service-name] [plan-name]
 omnistrate-ctl service-plan describe --service-id [service-id] --plan-id [plan-id]`
 )
 
-var describeCmd = &cobra.Command{
-	Use:          "describe [service-name] [plan-name] [flags]",
-	Short:        "Describe a Service Plan",
-	Long:         `This command helps you get details of a Service Plan for your service.`,
-	Example:      describeExample,
-	RunE:         runDescribe,
-	SilenceUsage: true,
-}
+func newDescribeCmd(commandPath string) *cobra.Command {
+	cmd := &cobra.Command{
+		Use:          "describe [service-name] [plan-name] [flags]",
+		Short:        "Describe a Service Plan",
+		Long:         `This command helps you get details of a Service Plan for your service.`,
+		Example:      servicePlanExample(commandPath, describeExample),
+		RunE:         runDescribe,
+		SilenceUsage: true,
+	}
 
-func init() {
-	describeCmd.Flags().StringP("environment", "", "", "Environment name. Use this flag with service name and plan name to describe the service plan in a specific environment")
-	describeCmd.Flags().StringP("output", "o", "json", "Output format. Only json is supported")
-	describeCmd.Flags().StringP("service-id", "", "", "Service ID. Required if service name is not provided")
-	describeCmd.Flags().StringP("plan-id", "", "", "Plan ID. Required if plan name is not provided")
+	cmd.Flags().StringP("environment", "", "", "Environment name. Use this flag with service name and plan name to describe the service plan in a specific environment")
+	cmd.Flags().StringP("output", "o", "json", "Output format. Only json is supported")
+	cmd.Flags().StringP("service-id", "", "", "Service ID. Required if service name is not provided")
+	cmd.Flags().StringP("plan-id", "", "", "Plan ID. Required if plan name is not provided")
+	return cmd
 }
 
 func runDescribe(cmd *cobra.Command, args []string) error {

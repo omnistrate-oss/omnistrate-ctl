@@ -1,6 +1,7 @@
 package service
 
 import (
+	"github.com/omnistrate-oss/omnistrate-ctl/cmd/serviceplan"
 	"github.com/spf13/cobra"
 )
 
@@ -17,6 +18,7 @@ func init() {
 	Cmd.AddCommand(describeCmd)
 	Cmd.AddCommand(deleteCmd)
 	Cmd.AddCommand(listCmd)
+	Cmd.AddCommand(serviceplan.NewNestedCommand())
 }
 
 func run(cmd *cobra.Command, args []string) {

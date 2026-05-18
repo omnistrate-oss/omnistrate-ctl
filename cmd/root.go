@@ -17,6 +17,7 @@ import (
 	"github.com/omnistrate-oss/omnistrate-ctl/cmd/auth/revoke"
 	"github.com/omnistrate-oss/omnistrate-ctl/cmd/build"
 	"github.com/omnistrate-oss/omnistrate-ctl/cmd/cost"
+	"github.com/omnistrate-oss/omnistrate-ctl/cmd/customer"
 	"github.com/omnistrate-oss/omnistrate-ctl/cmd/customnetwork"
 	"github.com/omnistrate-oss/omnistrate-ctl/cmd/deploy"
 	"github.com/omnistrate-oss/omnistrate-ctl/cmd/deploymentcell"
@@ -145,6 +146,7 @@ func init() {
 	RootCmd.AddCommand(secret.Cmd)
 	RootCmd.AddCommand(workflow.Cmd)
 	RootCmd.AddCommand(cost.Cmd)
+	RootCmd.AddCommand(customer.Cmd)
 	RootCmd.AddCommand(operations.Cmd)
 	RootCmd.AddCommand(audit.Cmd)
 	RootCmd.AddCommand(mcp.Cmd)

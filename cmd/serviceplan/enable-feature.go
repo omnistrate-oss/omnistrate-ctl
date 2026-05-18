@@ -19,26 +19,27 @@ omnistrate-ctl service-plan enable-feature [service-name] [plan-name] --feature 
 omnistrate-ctl service-plan enable-feature --service-id [service-id] --plan-id [plan-id] --feature [feature-name] --feature-configuration-file /path/to/feature-config-file.json`
 )
 
-var enableCmd = &cobra.Command{
-	Use:          "enable-feature [service-name] [plan-name] [flags]",
-	Short:        "Enable feature for a service plan",
-	Long:         `This command helps you enable & configure service plan features such as CUSTOM_TERRAFORM_POLICY.`,
-	Example:      enableFeatureExample,
-	RunE:         runEnableFeature,
-	SilenceUsage: true,
-}
-
-func init() {
-	enableCmd.Flags().StringP(EnvironmentFlag, "", "", "Environment name. Use this flag with service name and plan name to describe the service plan in a specific environment")
-	enableCmd.Flags().StringP(ServiceIDFlag, "", "", "Service ID. Required if service name is not provided")
-	enableCmd.Flags().StringP(PlanIDFlag, "", "", "Plan ID. Required if plan name is not provided")
-
-	enableCmd.Flags().String(FeatureNameFlag, "", "Name / identifier of the feature to enable")
-	enableCmd.Flags().String(FeatureConfigurationFlag, "", "Configuration of the feature")
-	enableCmd.Flags().String(FeatureConfigurationFileFlag, "", "Json file containing feature configuration")
-	if err := enableCmd.MarkFlagFilename(FeatureConfigurationFileFlag); err != nil {
-		return
+func newEnableCmd(commandPath string) *cobra.Command {
+	cmd := &cobra.Command{
+		Use:          "enable-feature [service-name] [plan-name] [flags]",
+		Short:        "Enable feature for a service plan",
+		Long:         `This command helps you enable & configure service plan features such as CUSTOM_TERRAFORM_POLICY.`,
+		Example:      servicePlanExample(commandPath, enableFeatureExample),
+		RunE:         runEnableFeature,
+		SilenceUsage: true,
 	}
+
+	cmd.Flags().StringP(EnvironmentFlag, "", "", "Environment name. Use this flag with service name and plan name to describe the service plan in a specific environment")
+	cmd.Flags().StringP(ServiceIDFlag, "", "", "Service ID. Required if service name is not provided")
+	cmd.Flags().StringP(PlanIDFlag, "", "", "Plan ID. Required if plan name is not provided")
+
+	cmd.Flags().String(FeatureNameFlag, "", "Name / identifier of the feature to enable")
+	cmd.Flags().String(FeatureConfigurationFlag, "", "Configuration of the feature")
+	cmd.Flags().String(FeatureConfigurationFileFlag, "", "Json file containing feature configuration")
+	if err := cmd.MarkFlagFilename(FeatureConfigurationFileFlag); err != nil {
+		return cmd
+	}
+	return cmd
 }
 
 func runEnableFeature(cmd *cobra.Command, args []string) error {
