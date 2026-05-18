@@ -16,6 +16,7 @@ const (
 	spinnerRunning  = 0
 	spinnerComplete = 1
 	spinnerError    = 2
+	spinnerPending  = 3
 )
 
 type spinnerEntry struct {
@@ -56,6 +57,24 @@ func (s *Spinner) UpdateMessage(msg string) {
 	defer s.mgr.mu.Unlock()
 	if s.idx < len(s.mgr.entries) {
 		s.mgr.entries[s.idx].message = msg
+	}
+}
+
+// Start marks the spinner entry as actively running.
+func (s *Spinner) Start() {
+	s.mgr.mu.Lock()
+	defer s.mgr.mu.Unlock()
+	if s.idx < len(s.mgr.entries) {
+		s.mgr.entries[s.idx].state = spinnerRunning
+	}
+}
+
+// Pending marks the spinner entry as queued but not currently running.
+func (s *Spinner) Pending() {
+	s.mgr.mu.Lock()
+	defer s.mgr.mu.Unlock()
+	if s.idx < len(s.mgr.entries) {
+		s.mgr.entries[s.idx].state = spinnerPending
 	}
 }
 
@@ -246,6 +265,7 @@ func (m spinnerModel) View() string {
 
 	completeIcon := lipgloss.NewStyle().Foreground(lipgloss.Color("82")).Render("✓")
 	errorIcon := lipgloss.NewStyle().Foreground(lipgloss.Color("203")).Render("✗")
+	pendingIcon := lipgloss.NewStyle().Foreground(lipgloss.Color("245")).Render("○")
 
 	entries := m.mgr.entries[m.mgr.startOffset:]
 	if len(entries) == 0 {
@@ -263,6 +283,8 @@ func (m spinnerModel) View() string {
 			lines = append(lines, fmt.Sprintf("  %s %s", completeIcon, e.message))
 		case spinnerError:
 			lines = append(lines, fmt.Sprintf("  %s %s", errorIcon, e.message))
+		case spinnerPending:
+			lines = append(lines, fmt.Sprintf("  %s %s", pendingIcon, e.message))
 		default:
 			lines = append(lines, fmt.Sprintf("  %s %s", m.spin.View(), e.message))
 		}
@@ -533,6 +555,8 @@ func spinnerStepIcon(state int, spinnerView string, completeStyle, runningStyle,
 		return completeStyle.Render("✓")
 	case spinnerError:
 		return errorStyle.Render("✗")
+	case spinnerPending:
+		return runningStyle.Render("○")
 	default:
 		if spinnerView == "" {
 			return runningStyle.Render("•")

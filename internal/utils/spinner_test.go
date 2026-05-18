@@ -116,6 +116,20 @@ func TestGroupedDeploymentViewKeepsInstanceDeploymentRunningBeforeSubmit(t *test
 	require.NotContains(t, view, "100%")
 }
 
+func TestSpinnerViewShowsPendingEntries(t *testing.T) {
+	mgr := &spinnerMgr{
+		entries: []*spinnerEntry{
+			{message: "queued feature", state: spinnerPending},
+			{message: "finished feature", state: spinnerComplete},
+		},
+	}
+
+	view := spinnerModel{mgr: mgr, width: 100}.View()
+
+	require.Contains(t, view, "○ queued feature")
+	require.Contains(t, view, "✓ finished feature")
+}
+
 func TestFinalGroupedDeploymentViewRendersCompleteFrame(t *testing.T) {
 	mgr := &spinnerMgr{
 		width: 96,
