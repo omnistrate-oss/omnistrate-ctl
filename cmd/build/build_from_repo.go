@@ -248,8 +248,9 @@ func runBuildFromRepo(cmd *cobra.Command, args []string) error {
 
 	// Check for incompatible flag combinations
 	if dryRun {
-		// If dry-run is set, other skip flags should not be explicitly set
-		if cmd.Flags().Changed("skip-docker-build") || cmd.Flags().Changed("skip-service-build") || cmd.Flags().Changed("skip-environment-promotion") || cmd.Flags().Changed("skip-saas-portal-init") {
+		// If dry-run is set, other skip flags should not be set
+		// Note: skip-environment-promotion is excluded since it defaults to true
+		if skipDockerBuild || skipServiceBuild || skipSaasPortalInit {
 			err = errors.New("--dry-run flag is not compatible with --skip-* flags (they are mutually exclusive)")
 			utils.PrintError(err)
 			return err
