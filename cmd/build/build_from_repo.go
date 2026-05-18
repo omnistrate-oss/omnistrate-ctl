@@ -45,7 +45,10 @@ omnistrate-ctl build-from-repo --product-name my-custom-service
 omnistrate-ctl build-from-repo --skip-docker-build
 
 # Skip multiple stages
-omnistrate-ctl build-from-repo --skip-docker-build --skip-environment-promotion
+omnistrate-ctl build-from-repo --skip-docker-build --skip-saas-portal-init
+
+# Enable environment promotion (disabled by default)
+omnistrate-ctl build-from-repo --skip-environment-promotion=false
 
 # Run in dry-run mode (build image locally but don't push or create service)
 omnistrate-ctl build-from-repo --dry-run
@@ -69,7 +72,7 @@ omnistrate-ctl build-from-repo
 var BuildFromRepoCmd = &cobra.Command{
 	Use:          "build-from-repo",
 	Short:        "Build Service from Git Repository",
-	Long:         "This command helps to build service from git repository. Run this command from the root of the repository. Make sure you have the Dockerfile in the repository and have the Docker daemon running on your machine. By default, the service name will be the repository name, but you can specify a custom service name with the --product-name flag.\n\nYou can also skip specific stages of the build process using the --skip-* flags. For example, you can skip building the Docker image with --skip-docker-build, skip creating the service with --skip-service-build, skip environment promotion with --skip-environment-promotion, or skip SaaS portal initialization with --skip-saas-portal-init.\n\nFor testing purposes, use the --dry-run flag to only build the Docker image locally without pushing, skip service creation, and generate a local spec file with a '-dry-run' suffix. Note that --dry-run cannot be used together with any of the --skip-* flags as they are mutually exclusive.",
+	Long:         "This command helps to build service from git repository. Run this command from the root of the repository. Make sure you have the Dockerfile in the repository and have the Docker daemon running on your machine. By default, the service name will be the repository name, but you can specify a custom service name with the --product-name flag.\n\nYou can also skip specific stages of the build process using the --skip-* flags. For example, you can skip building the Docker image with --skip-docker-build, skip creating the service with --skip-service-build, or skip SaaS portal initialization with --skip-saas-portal-init.\n\nEnvironment promotion is skipped by default. To promote the service to production, use --skip-environment-promotion=false.\n\nFor testing purposes, use the --dry-run flag to only build the Docker image locally without pushing, skip service creation, and generate a local spec file with a '-dry-run' suffix. Note that --dry-run cannot be used together with any of the --skip-* flags as they are mutually exclusive.",
 	Example:      buildFromRepoExample,
 	RunE:         runBuildFromRepo,
 	SilenceUsage: true,
@@ -92,7 +95,7 @@ func init() {
 	// Skip flags for different stages
 	BuildFromRepoCmd.Flags().Bool("skip-docker-build", false, "Skip building and pushing the Docker image")
 	BuildFromRepoCmd.Flags().Bool("skip-service-build", false, "Skip building the service from the compose spec")
-	BuildFromRepoCmd.Flags().Bool("skip-environment-promotion", false, "Skip creating and promoting to the production environment")
+	BuildFromRepoCmd.Flags().Bool("skip-environment-promotion", true, "Skip creating and promoting to the production environment (use --skip-environment-promotion=false to promote)")
 	BuildFromRepoCmd.Flags().Bool("skip-saas-portal-init", false, "Skip initializing the SaaS Portal")
 
 	// Dry run flag
@@ -245,8 +248,8 @@ func runBuildFromRepo(cmd *cobra.Command, args []string) error {
 
 	// Check for incompatible flag combinations
 	if dryRun {
-		// If dry-run is set, other skip flags should not be set
-		if skipDockerBuild || skipServiceBuild || skipEnvironmentPromotion || skipSaasPortalInit {
+		// If dry-run is set, other skip flags should not be explicitly set
+		if cmd.Flags().Changed("skip-docker-build") || cmd.Flags().Changed("skip-service-build") || cmd.Flags().Changed("skip-environment-promotion") || cmd.Flags().Changed("skip-saas-portal-init") {
 			err = errors.New("--dry-run flag is not compatible with --skip-* flags (they are mutually exclusive)")
 			utils.PrintError(err)
 			return err
@@ -361,7 +364,7 @@ func runBuildFromRepo(cmd *cobra.Command, args []string) error {
 	// Skip environment promotion if flag is set
 	var prodEnvironmentID string
 	if skipEnvironmentPromotion {
-		spinner = sm.AddSpinner("Skipping environment promotion (--skip-environment-promotion flag is set)")
+		spinner = sm.AddSpinner("Skipping environment promotion (disabled by default, use --skip-environment-promotion=false to enable)")
 		spinner.Complete()
 	} else {
 		// Step 16: Check if the production environment is set up
