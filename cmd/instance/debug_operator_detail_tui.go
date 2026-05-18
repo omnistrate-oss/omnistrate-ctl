@@ -781,25 +781,23 @@ func buildOperatorParamTree(params []OperatorInputParam) []outputNode {
 
 	var roots []outputNode
 	for _, p := range params {
-		details := map[string]interface{}{
-			"type":        p.Type,
-			"description": p.Description,
-			"required":    p.Required,
-			"modifiable":  p.Modifiable,
-		}
-		if p.ResolvedValue != "" {
-			details["value"] = p.ResolvedValue
-		} else if p.DefaultValue != "" {
-			details["defaultValue"] = p.DefaultValue
-		}
-
 		displayName := p.Key
 		if p.DisplayName != "" && p.DisplayName != p.Key {
 			displayName = fmt.Sprintf("%s (%s)", p.Key, p.DisplayName)
 		}
 
-		node := buildJSONNode(displayName, details, 0)
-		roots = append(roots, *node)
+		value := p.ResolvedValue
+		if value == "" {
+			value = p.DefaultValue
+		}
+
+		node := outputNode{
+			key:      displayName,
+			value:    value,
+			nodeType: "string",
+			depth:    0,
+		}
+		roots = append(roots, node)
 	}
 	return roots
 }
@@ -816,28 +814,23 @@ func buildOperatorOutputParamTree(params []OperatorOutputParam) []outputNode {
 
 	var roots []outputNode
 	for _, p := range params {
-		details := map[string]interface{}{
-			"description": p.Description,
-		}
-		if p.Type != "" {
-			details["type"] = p.Type
-		}
-		if p.ResolvedValue != "" {
-			details["value"] = p.ResolvedValue
-		} else if p.Value != "" {
-			details["value"] = p.Value
-		}
-		if p.ValueRef != "" {
-			details["valueRef"] = p.ValueRef
-		}
-
 		displayName := p.Key
 		if p.DisplayName != "" && p.DisplayName != p.Key {
 			displayName = fmt.Sprintf("%s (%s)", p.Key, p.DisplayName)
 		}
 
-		node := buildJSONNode(displayName, details, 0)
-		roots = append(roots, *node)
+		value := p.ResolvedValue
+		if value == "" {
+			value = p.Value
+		}
+
+		node := outputNode{
+			key:      displayName,
+			value:    value,
+			nodeType: "string",
+			depth:    0,
+		}
+		roots = append(roots, node)
 	}
 	return roots
 }
@@ -854,15 +847,18 @@ func buildOperatorCRDOutputParamTree(params []OperatorCRDOutputParam) []outputNo
 
 	var roots []outputNode
 	for _, p := range params {
-		details := map[string]interface{}{
-			"jsonPath": p.Value,
-		}
-		if p.ResolvedValue != "" {
-			details["value"] = p.ResolvedValue
+		value := p.ResolvedValue
+		if value == "" {
+			value = p.Value
 		}
 
-		node := buildJSONNode(p.Key, details, 0)
-		roots = append(roots, *node)
+		node := outputNode{
+			key:      p.Key,
+			value:    value,
+			nodeType: "string",
+			depth:    0,
+		}
+		roots = append(roots, node)
 	}
 	return roots
 }

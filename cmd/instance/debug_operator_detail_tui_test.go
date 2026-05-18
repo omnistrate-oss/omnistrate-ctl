@@ -44,7 +44,8 @@ func TestBuildOperatorParamTree(t *testing.T) {
 		result := buildOperatorParamTree(params)
 		require.Len(t, result, 1)
 		require.Contains(t, result[0].key, "replicas")
-		require.True(t, result[0].expandable)
+		require.False(t, result[0].expandable)
+		require.Equal(t, "3", result[0].value)
 	})
 
 	t.Run("multiple params sorted", func(t *testing.T) {
@@ -82,17 +83,8 @@ func TestBuildOperatorParamTree(t *testing.T) {
 		}
 		result := buildOperatorParamTree(params)
 		require.Len(t, result, 1)
-		found := false
-		for _, child := range result[0].children {
-			if child.key == "value" && child.value == "t3.large" {
-				found = true
-			}
-		}
-		require.True(t, found, "expected resolved value in children")
-		// defaultValue should NOT appear when resolvedValue is set
-		for _, child := range result[0].children {
-			require.NotEqual(t, "defaultValue", child.key, "defaultValue should not appear when resolved value is present")
-		}
+		require.Equal(t, "t3.large", result[0].value, "expected resolved value as node value")
+		require.False(t, result[0].expandable)
 	})
 
 	t.Run("fallback to defaultValue when no resolved value", func(t *testing.T) {
@@ -101,13 +93,8 @@ func TestBuildOperatorParamTree(t *testing.T) {
 		}
 		result := buildOperatorParamTree(params)
 		require.Len(t, result, 1)
-		found := false
-		for _, child := range result[0].children {
-			if child.key == "defaultValue" && child.value == "3" {
-				found = true
-			}
-		}
-		require.True(t, found, "expected defaultValue in children when no resolved value")
+		require.Equal(t, "3", result[0].value, "expected defaultValue as node value when no resolved value")
+		require.False(t, result[0].expandable)
 	})
 }
 
@@ -129,7 +116,7 @@ func TestBuildOperatorOutputParamTree(t *testing.T) {
 		result := buildOperatorOutputParamTree(params)
 		require.Len(t, result, 1)
 		require.Contains(t, result[0].key, "status")
-		require.True(t, result[0].expandable)
+		require.False(t, result[0].expandable)
 	})
 
 	t.Run("multiple params sorted", func(t *testing.T) {
@@ -149,15 +136,8 @@ func TestBuildOperatorOutputParamTree(t *testing.T) {
 		}
 		result := buildOperatorOutputParamTree(params)
 		require.Len(t, result, 1)
-		require.True(t, result[0].expandable)
-		// Expand to check children contain "value" with resolved value
-		found := false
-		for _, child := range result[0].children {
-			if child.key == "value" && child.value == "db.example.com:5432" {
-				found = true
-			}
-		}
-		require.True(t, found, "expected resolved value in children")
+		require.False(t, result[0].expandable)
+		require.Equal(t, "db.example.com:5432", result[0].value, "expected resolved value as node value")
 	})
 
 	t.Run("fallback to static value when no resolved value", func(t *testing.T) {
@@ -166,13 +146,8 @@ func TestBuildOperatorOutputParamTree(t *testing.T) {
 		}
 		result := buildOperatorOutputParamTree(params)
 		require.Len(t, result, 1)
-		found := false
-		for _, child := range result[0].children {
-			if child.key == "value" && child.value == "static-val" {
-				found = true
-			}
-		}
-		require.True(t, found, "expected static value in children when no resolved value")
+		require.Equal(t, "static-val", result[0].value, "expected static value as node value when no resolved value")
+		require.False(t, result[0].expandable)
 	})
 }
 
@@ -194,7 +169,8 @@ func TestBuildOperatorCRDOutputParamTree(t *testing.T) {
 		result := buildOperatorCRDOutputParamTree(params)
 		require.Len(t, result, 1)
 		require.Contains(t, result[0].key, "endpoint")
-		require.True(t, result[0].expandable)
+		require.False(t, result[0].expandable)
+		require.Equal(t, ".status.endpoint", result[0].value)
 	})
 
 	t.Run("multiple params sorted", func(t *testing.T) {
@@ -214,18 +190,8 @@ func TestBuildOperatorCRDOutputParamTree(t *testing.T) {
 		}
 		result := buildOperatorCRDOutputParamTree(params)
 		require.Len(t, result, 1)
-		foundJsonPath := false
-		foundValue := false
-		for _, child := range result[0].children {
-			if child.key == "jsonPath" && child.value == ".status.endpoint" {
-				foundJsonPath = true
-			}
-			if child.key == "value" && child.value == "db.example.com:5432" {
-				foundValue = true
-			}
-		}
-		require.True(t, foundJsonPath, "expected jsonPath in children")
-		require.True(t, foundValue, "expected resolved value in children")
+		require.Equal(t, "db.example.com:5432", result[0].value, "expected resolved value as node value")
+		require.False(t, result[0].expandable)
 	})
 
 	t.Run("no resolved value", func(t *testing.T) {
@@ -234,9 +200,8 @@ func TestBuildOperatorCRDOutputParamTree(t *testing.T) {
 		}
 		result := buildOperatorCRDOutputParamTree(params)
 		require.Len(t, result, 1)
-		for _, child := range result[0].children {
-			require.NotEqual(t, "value", child.key, "value should not appear without resolved value")
-		}
+		require.Equal(t, ".status.endpoint", result[0].value, "expected jsonPath as fallback value")
+		require.False(t, result[0].expandable)
 	})
 }
 

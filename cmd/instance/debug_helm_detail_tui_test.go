@@ -168,8 +168,8 @@ func TestHelmInputParamTreeBuildsFromOperatorInputParam(t *testing.T) {
 	// Params are sorted by key
 	require.Equal(t, "app_name (App Name)", tree[0].key)
 	require.Equal(t, "db_port (Database Port)", tree[1].key)
-	require.True(t, tree[0].expandable)
-	require.True(t, tree[1].expandable)
+	require.False(t, tree[0].expandable)
+	require.False(t, tree[1].expandable)
 }
 
 func TestHelmOutputParamTreeBuildsFromOperatorOutputParam(t *testing.T) {
@@ -187,7 +187,7 @@ func TestHelmOutputParamTreeBuildsFromOperatorOutputParam(t *testing.T) {
 	require.Equal(t, "status (Status)", tree[1].key)
 }
 
-func TestHelmInputTabEnterTogglesNode(t *testing.T) {
+func TestHelmInputTabEnterOnLeafNode(t *testing.T) {
 	params := []OperatorInputParam{
 		{Key: "port", DisplayName: "Port", Description: "Port number", Type: "String", Required: true},
 	}
@@ -199,24 +199,15 @@ func TestHelmInputTabEnterTogglesNode(t *testing.T) {
 	}
 
 	visibleNodes := flattenOutputTree(model.inputTree)
-	require.Len(t, visibleNodes, len(params[0].Key)+1) // root + children
-	require.True(t, visibleNodes[0].expandable)
-	require.True(t, visibleNodes[0].expanded)
+	require.Len(t, visibleNodes, 1) // single leaf node
+	require.False(t, visibleNodes[0].expandable)
 
-	// Collapse
+	// Enter on leaf node should be a no-op
 	updatedAny, _ := model.Update(tea.KeyMsg{Type: tea.KeyEnter})
 	updated := updatedAny.(helmDetailModel)
 
 	visibleNodes = flattenOutputTree(updated.inputTree)
 	require.Len(t, visibleNodes, 1)
-	require.False(t, visibleNodes[0].expanded)
-
-	// Re-expand
-	updatedAny, _ = updated.Update(tea.KeyMsg{Type: tea.KeyEnter})
-	updated = updatedAny.(helmDetailModel)
-
-	visibleNodes = flattenOutputTree(updated.inputTree)
-	require.True(t, visibleNodes[0].expanded)
 }
 
 func TestHelmOutputTabNavigationUpDown(t *testing.T) {
@@ -245,7 +236,7 @@ func TestHelmOutputTabNavigationUpDown(t *testing.T) {
 	require.Equal(t, 0, updated.outputCursor)
 }
 
-func TestHelmInputTabExpandCollapseLeftRight(t *testing.T) {
+func TestHelmInputTabLeftRightOnLeafNode(t *testing.T) {
 	params := []OperatorInputParam{
 		{Key: "config", DisplayName: "Config", Description: "Configuration", Type: "String"},
 	}
@@ -258,18 +249,19 @@ func TestHelmInputTabExpandCollapseLeftRight(t *testing.T) {
 		wfErrors:  &workflowErrorsState{},
 	}
 
-	// Collapse with left
+	// Left on leaf is a no-op
 	updatedAny, _ := model.Update(tea.KeyMsg{Type: tea.KeyLeft})
 	updated := updatedAny.(helmDetailModel)
 	visibleNodes := flattenOutputTree(updated.inputTree)
 	require.Len(t, visibleNodes, 1)
-	require.False(t, visibleNodes[0].expanded)
+	require.False(t, visibleNodes[0].expandable)
 
-	// Expand with right
+	// Right on leaf is a no-op
 	updatedAny, _ = updated.Update(tea.KeyMsg{Type: tea.KeyRight})
 	updated = updatedAny.(helmDetailModel)
 	visibleNodes = flattenOutputTree(updated.inputTree)
-	require.True(t, visibleNodes[0].expanded)
+	require.Len(t, visibleNodes, 1)
+	require.False(t, visibleNodes[0].expandable)
 }
 
 func TestHelmRenderParamTreeTabShowsTitle(t *testing.T) {
