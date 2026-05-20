@@ -23,7 +23,7 @@ const (
 	helmNumTabs       = 5
 )
 
-var helmTabNames = []string{"Helm Logs", "Chart Values", "Input Parameters", "Output Parameters", "Workflow Events"}
+var helmTabNames = []string{"Helm Logs", "Chart Values", "Deployment API parameters", "Deployment Output Parameters", "Workflow Events"}
 
 func init() {
 	if len(helmTabNames) != helmNumTabs {
@@ -67,12 +67,12 @@ type helmDetailModel struct {
 	valuesCursor int
 	valuesScroll int
 
-	// Input Parameters tab (tree explorer)
+	// Deployment API parameters tab (tree explorer)
 	inputTree   []outputNode
 	inputCursor int
 	inputScroll int
 
-	// Output Parameters tab (tree explorer)
+	// Deployment Output Parameters tab (tree explorer)
 	outputTree   []outputNode
 	outputCursor int
 	outputScroll int
@@ -866,9 +866,9 @@ func (m helmDetailModel) getHelmTabContent() string {
 	case helmTabValues:
 		return m.renderHelmValuesTab()
 	case helmTabInputVars:
-		return m.renderHelmParamTreeTab("Input Parameters", m.inputTree, m.inputCursor, m.inputScroll)
+		return m.renderHelmParamTreeTab("Deployment API parameters", m.inputTree, m.inputCursor, m.inputScroll)
 	case helmTabOutputVars:
-		return m.renderHelmParamTreeTab("Output Parameters", m.outputTree, m.outputCursor, m.outputScroll)
+		return m.renderHelmParamTreeTab("Deployment Output Parameters", m.outputTree, m.outputCursor, m.outputScroll)
 	case helmTabWfErrors:
 		return m.renderHelmWfErrorsTab()
 	}
@@ -1212,7 +1212,7 @@ func (m helmDetailModel) renderHelmWfErrorsTab() string {
 	return renderWorkflowEventsTab(steps, m.wfErrors, m.helmBodyHeight(), m.helmContentWidth(), loading, m.spinner.View(), isLive)
 }
 
-// renderHelmParamTreeTab renders a generic parameter tree tab (used for Input/Output Parameters).
+// renderHelmParamTreeTab renders a generic parameter tree tab.
 func (m helmDetailModel) renderHelmParamTreeTab(title string, tree []outputNode, cursor, scroll int) string {
 	if m.loading {
 		return fmt.Sprintf("\n  %s Fetching %s...", m.spinner.View(), strings.ToLower(title))

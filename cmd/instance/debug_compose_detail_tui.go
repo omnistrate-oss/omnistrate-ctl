@@ -18,7 +18,7 @@ const (
 	composeNumTabs       = 3
 )
 
-var composeTabNames = []string{"Input Parameters", "Output Parameters", "Workflow Events"}
+var composeTabNames = []string{"Deployment API parameters", "Deployment Output Parameters", "Workflow Events"}
 
 func init() {
 	if len(composeTabNames) != composeNumTabs {
@@ -320,11 +320,11 @@ func (m composeDetailModel) getComposeTabContent() string {
 }
 
 func (m composeDetailModel) renderComposeInputVarsTab() string {
-	return m.renderComposeParamTreeTab("Input Parameters", m.inputTree, m.inputCursor, m.inputScroll, m.inputErr)
+	return m.renderComposeParamTreeTab("Deployment API parameters", m.inputTree, m.inputCursor, m.inputScroll, m.inputErr)
 }
 
 func (m composeDetailModel) renderComposeOutputVarsTab() string {
-	return m.renderComposeParamTreeTab("Output Parameters", m.outputTree, m.outputCursor, m.outputScroll, m.outputErr)
+	return m.renderComposeParamTreeTab("Deployment Output Parameters", m.outputTree, m.outputCursor, m.outputScroll, m.outputErr)
 }
 
 func (m composeDetailModel) renderComposeParamTreeTab(title string, tree []outputNode, cursor, scroll int, fetchErr error) string {

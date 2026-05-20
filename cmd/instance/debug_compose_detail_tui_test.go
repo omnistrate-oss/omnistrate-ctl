@@ -11,8 +11,8 @@ import (
 
 func TestComposeTabNames(t *testing.T) {
 	require.Equal(t, composeNumTabs, len(composeTabNames), "composeTabNames length must match composeNumTabs")
-	require.Equal(t, "Input Parameters", composeTabNames[composeTabInputVars])
-	require.Equal(t, "Output Parameters", composeTabNames[composeTabOutputVars])
+	require.Equal(t, "Deployment API parameters", composeTabNames[composeTabInputVars])
+	require.Equal(t, "Deployment Output Parameters", composeTabNames[composeTabOutputVars])
 	require.Equal(t, "Workflow Events", composeTabNames[composeTabWfErrors])
 }
 
@@ -191,8 +191,8 @@ func TestComposeRenderParamTreeTabShowsTitle(t *testing.T) {
 		wfErrors:    &workflowErrorsState{},
 	}
 
-	rendered := model.renderComposeParamTreeTab("Input Parameters", model.inputTree, model.inputCursor, model.inputScroll, nil)
-	require.Contains(t, rendered, "Input Parameters")
+	rendered := model.renderComposeParamTreeTab("Deployment API parameters", model.inputTree, model.inputCursor, model.inputScroll, nil)
+	require.Contains(t, rendered, "Deployment API parameters")
 }
 
 func TestComposeRenderParamTreeTabEmptyShowsNoDataMessage(t *testing.T) {
@@ -204,8 +204,8 @@ func TestComposeRenderParamTreeTabEmptyShowsNoDataMessage(t *testing.T) {
 		wfErrors:  &workflowErrorsState{},
 	}
 
-	rendered := model.renderComposeParamTreeTab("Input Parameters", model.inputTree, 0, 0, nil)
-	require.Contains(t, rendered, "No input parameters available")
+	rendered := model.renderComposeParamTreeTab("Deployment API parameters", model.inputTree, 0, 0, nil)
+	require.Contains(t, rendered, "No deployment api parameters available")
 }
 
 func TestComposeRenderParamTreeTabShowsFetchError(t *testing.T) {
@@ -216,8 +216,8 @@ func TestComposeRenderParamTreeTabShowsFetchError(t *testing.T) {
 		wfErrors:  &workflowErrorsState{},
 	}
 
-	rendered := model.renderComposeParamTreeTab("Input Parameters", model.inputTree, 0, 0, errors.New("request failed"))
-	require.Contains(t, rendered, "Error fetching input parameters")
+	rendered := model.renderComposeParamTreeTab("Deployment API parameters", model.inputTree, 0, 0, errors.New("request failed"))
+	require.Contains(t, rendered, "Error fetching deployment api parameters")
 	require.Contains(t, rendered, "request failed")
 	require.NotContains(t, rendered, "No input parameters available")
 }

@@ -21,7 +21,7 @@ const (
 	opNumTabs          = 4
 )
 
-var opTabNames = []string{"Input Parameters", "Output Parameters", "Operator CRD Outputs", "Workflow Events"}
+var opTabNames = []string{"Deployment API parameters", "Deployment Output Parameters", "Operator CRD Outputs", "Workflow Events"}
 
 func init() {
 	if len(opTabNames) != opNumTabs {
@@ -365,11 +365,11 @@ func (m operatorDetailModel) getOpTabContent() string {
 }
 
 func (m operatorDetailModel) renderInputVarsTab() string {
-	return m.renderParamTreeTab("Input Parameters", m.inputTree, m.inputCursor, m.inputScroll)
+	return m.renderParamTreeTab("Deployment API parameters", m.inputTree, m.inputCursor, m.inputScroll)
 }
 
 func (m operatorDetailModel) renderOutputVarsTab() string {
-	return m.renderParamTreeTab("Output Parameters", m.outputTree, m.outputCursor, m.outputScroll)
+	return m.renderParamTreeTab("Deployment Output Parameters", m.outputTree, m.outputCursor, m.outputScroll)
 }
 
 func (m operatorDetailModel) renderCRDOutputVarsTab() string {

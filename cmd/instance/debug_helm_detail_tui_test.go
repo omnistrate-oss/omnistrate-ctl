@@ -151,8 +151,8 @@ func TestHelmTabConstants(t *testing.T) {
 	require.Equal(4, helmTabWfErrors)
 	require.Equal(5, helmNumTabs)
 	require.Len(helmTabNames, helmNumTabs)
-	require.Equal("Input Parameters", helmTabNames[helmTabInputVars])
-	require.Equal("Output Parameters", helmTabNames[helmTabOutputVars])
+	require.Equal("Deployment API parameters", helmTabNames[helmTabInputVars])
+	require.Equal("Deployment Output Parameters", helmTabNames[helmTabOutputVars])
 }
 
 func TestHelmInputParamTreeBuildsFromOperatorInputParam(t *testing.T) {
@@ -278,8 +278,8 @@ func TestHelmRenderParamTreeTabShowsTitle(t *testing.T) {
 		wfErrors:  &workflowErrorsState{},
 	}
 
-	rendered := model.renderHelmParamTreeTab("Input Parameters", model.inputTree, model.inputCursor, model.inputScroll)
-	require.Contains(t, rendered, "Input Parameters")
+	rendered := model.renderHelmParamTreeTab("Deployment API parameters", model.inputTree, model.inputCursor, model.inputScroll)
+	require.Contains(t, rendered, "Deployment API parameters")
 }
 
 func TestHelmRenderParamTreeTabEmptyShowsNoDataMessage(t *testing.T) {
@@ -291,8 +291,8 @@ func TestHelmRenderParamTreeTabEmptyShowsNoDataMessage(t *testing.T) {
 		wfErrors:  &workflowErrorsState{},
 	}
 
-	rendered := model.renderHelmParamTreeTab("Input Parameters", model.inputTree, 0, 0)
-	require.Contains(t, rendered, "No input parameters available")
+	rendered := model.renderHelmParamTreeTab("Deployment API parameters", model.inputTree, 0, 0)
+	require.Contains(t, rendered, "No deployment api parameters available")
 }
 
 func TestHelmCopyableContentInputOutputTabs(t *testing.T) {

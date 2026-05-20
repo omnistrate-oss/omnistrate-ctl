@@ -8,8 +8,8 @@ import (
 
 func TestOperatorTabNames(t *testing.T) {
 	require.Equal(t, opNumTabs, len(opTabNames), "opTabNames length must match opNumTabs")
-	require.Equal(t, "Input Parameters", opTabNames[opTabInputVars])
-	require.Equal(t, "Output Parameters", opTabNames[opTabOutputVars])
+	require.Equal(t, "Deployment API parameters", opTabNames[opTabInputVars])
+	require.Equal(t, "Deployment Output Parameters", opTabNames[opTabOutputVars])
 	require.Equal(t, "Operator CRD Outputs", opTabNames[opTabCRDOutputVars])
 	require.Equal(t, "Workflow Events", opTabNames[opTabWfErrors])
 }
