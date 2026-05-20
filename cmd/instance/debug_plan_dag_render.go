@@ -569,8 +569,8 @@ func buildNodeCard(node PlanDAGNode, progress ResourceProgress, hasProgress bool
 }
 
 func formatTypeTag(resourceType string) string {
-	if resourceType == "" {
-		return "Resource"
+	if isComposeResourceType(resourceType) {
+		return "Compose"
 	}
 	lower := strings.ToLower(resourceType)
 	switch {
@@ -578,8 +578,6 @@ func formatTypeTag(resourceType string) string {
 		return "Helm"
 	case strings.Contains(lower, "terraform"):
 		return "Terraform"
-	case strings.Contains(lower, "compose"):
-		return "Compose"
 	case strings.Contains(lower, "kustomize"):
 		return "Kustomize"
 	default:

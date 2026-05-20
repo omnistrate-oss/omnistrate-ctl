@@ -101,6 +101,174 @@ func TestComposeResourceTypeTagAndIcon(t *testing.T) {
 	}
 }
 
+func TestEmptyResourceTypeTagAndIcon(t *testing.T) {
+	tag := formatTypeTag("")
+	if tag != "Compose" {
+		t.Fatalf("expected empty type to render as Compose, got %q", tag)
+	}
+}
+
+func TestResourceTypeOpensComposeDetail(t *testing.T) {
+	model := dagModel{
+		debugData: DebugData{},
+		plan: &PlanDAG{
+			Nodes: map[string]PlanDAGNode{
+				"r-postgres": {ID: "r-postgres", Key: "postgres", Name: "postgres", Type: "Resource"},
+			},
+			Levels: [][]string{{"r-postgres"}},
+		},
+		selectableNodes: []string{"r-postgres"},
+		cursorIndex:     0,
+		width:           100,
+		height:          30,
+	}
+
+	updated, cmd := model.openNodeDetail()
+	updatedModel := updated.(dagModel)
+
+	if !updatedModel.inDetail {
+		t.Fatalf("expected resource node to enter detail view")
+	}
+	if updatedModel.detailModel == nil {
+		t.Fatalf("expected resource node to open a detail model")
+	}
+	if _, ok := updatedModel.detailModel.(composeDetailModel); !ok {
+		t.Fatalf("expected resource node to open compose detail model, got %T", updatedModel.detailModel)
+	}
+	if cmd == nil {
+		t.Fatalf("expected detail init command")
+	}
+}
+
+func TestEmptyResourceTypeOpensComposeDetail(t *testing.T) {
+	model := dagModel{
+		debugData: DebugData{},
+		plan: &PlanDAG{
+			Nodes: map[string]PlanDAGNode{
+				"r-postgres": {ID: "r-postgres", Key: "postgres", Name: "postgres"},
+			},
+			Levels: [][]string{{"r-postgres"}},
+		},
+		selectableNodes: []string{"r-postgres"},
+		cursorIndex:     0,
+		width:           100,
+		height:          30,
+	}
+
+	updated, cmd := model.openNodeDetail()
+	updatedModel := updated.(dagModel)
+
+	if !updatedModel.inDetail {
+		t.Fatalf("expected empty-type node to enter detail view")
+	}
+	if updatedModel.detailModel == nil {
+		t.Fatalf("expected empty-type node to open a detail model")
+	}
+	if _, ok := updatedModel.detailModel.(composeDetailModel); !ok {
+		t.Fatalf("expected empty-type node to open compose detail model, got %T", updatedModel.detailModel)
+	}
+	if cmd == nil {
+		t.Fatalf("expected detail init command")
+	}
+}
+
+func TestMergePlanNodeResourceTypeKeepsManagedTypeWhenDetailIsGeneric(t *testing.T) {
+	tests := []struct {
+		name        string
+		summaryType string
+		detailType  string
+		want        string
+	}{
+		{
+			name:        "keeps compose type over generic detail type",
+			summaryType: "DockerCompose",
+			detailType:  "Resource",
+			want:        "DockerCompose",
+		},
+		{
+			name:        "uses specific detail type",
+			summaryType: "Resource",
+			detailType:  "Terraform",
+			want:        "Terraform",
+		},
+		{
+			name:        "uses compose for generic detail type without summary type",
+			summaryType: "",
+			detailType:  "Resource",
+			want:        "Compose",
+		},
+		{
+			name:        "keeps summary type when detail type is empty",
+			summaryType: "Helm",
+			detailType:  "",
+			want:        "Helm",
+		},
+		{
+			name:        "uses compose when both types are empty",
+			summaryType: "",
+			detailType:  "",
+			want:        "Compose",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := mergePlanNodeResourceType(tt.summaryType, tt.detailType); got != tt.want {
+				t.Fatalf("expected %q, got %q", tt.want, got)
+			}
+		})
+	}
+}
+
+func TestDeploymentTypesByResourceIdentityMarksGenericDeploymentAsCompose(t *testing.T) {
+	resourceID := "r-postgres"
+	resourceName := "postgres"
+	summaries := []openapiclientfleet.ResourceVersionSummary{
+		{
+			ResourceId:                             &resourceID,
+			ResourceName:                           &resourceName,
+			GenericResourceDeploymentConfiguration: &openapiclientfleet.GenericResourceDeploymentConfiguration{},
+		},
+	}
+
+	types := deploymentTypesByResourceIdentity(summaries)
+
+	if got := types.byID[resourceID]; got != "Compose" {
+		t.Fatalf("expected compose deployment type by ID, got %q", got)
+	}
+	if got := types.byName[resourceName]; got != "Compose" {
+		t.Fatalf("expected compose deployment type by name, got %q", got)
+	}
+}
+
+func TestMergePlanNodeDeploymentTypeUsesComposeForGenericResource(t *testing.T) {
+	deploymentTypes := resourceDeploymentTypes{
+		byID: map[string]string{
+			"r-postgres": "Compose",
+		},
+		byName: map[string]string{},
+	}
+	node := PlanDAGNode{ID: "r-postgres", Key: "postgres", Name: "postgres"}
+
+	if got := mergePlanNodeDeploymentType(node, "Resource", deploymentTypes); got != "Compose" {
+		t.Fatalf("expected compose deployment type, got %q", got)
+	}
+}
+
+func TestMergePlanNodeDeploymentTypePreservesSpecificType(t *testing.T) {
+	deploymentTypes := resourceDeploymentTypes{
+		byID: map[string]string{
+			"r-operator": "Compose",
+		},
+		byName: map[string]string{},
+	}
+	node := PlanDAGNode{ID: "r-operator", Key: "operator", Name: "operator"}
+
+	if got := mergePlanNodeDeploymentType(node, "OperatorCRD", deploymentTypes); got != "OperatorCRD" {
+		t.Fatalf("expected specific type to be preserved, got %q", got)
+	}
+}
+
 func TestPlanHasHitBreakpoint(t *testing.T) {
 	planWithoutHit := &PlanDAG{
 		BreakpointByID: map[string]string{

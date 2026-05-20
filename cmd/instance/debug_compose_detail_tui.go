@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"strings"
 	"time"
 
 	"github.com/charmbracelet/bubbles/spinner"
@@ -66,16 +65,12 @@ type composeDetailModel struct {
 }
 
 func newComposeDetailModel(node PlanDAGNode, data DebugData) composeDetailModel {
-	s := spinner.New()
-	s.Spinner = spinner.Dot
-	s.Style = lipgloss.NewStyle().Foreground(lipgloss.Color("205"))
-
 	return composeDetailModel{
 		node:      node,
 		debugData: data,
 		activeTab: composeTabInputVars,
 		loading:   true,
-		spinner:   s,
+		spinner:   newResourceDetailSpinner(),
 		wfErrors:  &workflowErrorsState{},
 	}
 }
@@ -144,39 +139,14 @@ func (m composeDetailModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.inputTree = buildOperatorParamTree(m.composeData.InputParams)
 			m.outputTree = buildOperatorOutputParamTree(m.composeData.OutputParams)
 		}
-		var cmds []tea.Cmd
-		if isWorkflowInProgress(m.getWfEvents()) {
-			cmds = append(cmds, scheduleWfEventsRefresh(), scheduleWfCountdownTick())
-		}
-		if len(cmds) > 0 {
-			return m, tea.Batch(cmds...)
-		}
-		return m, nil
+		return m, scheduleResourceWorkflowRefreshIfNeeded(m.debugData, m.node)
 
 	case wfEventsRefreshTickMsg:
-		steps := m.getWfEvents()
-		if isWorkflowInProgress(steps) && !m.wfErrors.refreshing {
-			m.wfErrors.refreshing = true
-			return m, fetchWfEventsForResource(m.debugData, m.node.Key)
-		}
+		return m, handleResourceWorkflowRefreshTick(m.debugData, m.node, m.wfErrors)
 	case wfEventsRefreshMsg:
-		m.wfErrors.refreshing = false
-		m.wfErrors.lastRefresh = time.Now()
-		if msg.err == nil && msg.steps != nil {
-			if m.debugData.PlanDAG != nil {
-				if m.debugData.PlanDAG.WorkflowStepsByKey == nil {
-					m.debugData.PlanDAG.WorkflowStepsByKey = make(map[string]*ResourceWorkflowSteps)
-				}
-				m.debugData.PlanDAG.WorkflowStepsByKey[m.node.Key] = msg.steps
-			}
-		}
-		if isWorkflowInProgress(m.getWfEvents()) {
-			return m, tea.Batch(scheduleWfEventsRefresh(), scheduleWfCountdownTick())
-		}
+		return m, handleResourceWorkflowRefresh(m.debugData, m.node, m.wfErrors, msg)
 	case wfCountdownTickMsg:
-		if isWorkflowInProgress(m.getWfEvents()) {
-			return m, scheduleWfCountdownTick()
-		}
+		return m, handleResourceWorkflowCountdown(m.debugData, m.node)
 
 	case tea.KeyMsg:
 		switch msg.String() {
@@ -211,25 +181,9 @@ func (m composeDetailModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			switch m.activeTab {
 			case composeTabInputVars:
-				if len(m.inputTree) > 0 {
-					visibleNodes := flattenOutputTree(m.inputTree)
-					if m.inputCursor > 0 {
-						m.inputCursor--
-					}
-					m.inputCursor, m.inputScroll = normalizeViewport(
-						m.inputCursor, m.inputScroll, len(visibleNodes), m.composeVisibleRows(),
-					)
-				}
+				m.inputCursor, m.inputScroll = moveResourceDetailTreeUp(m.inputTree, m.inputCursor, m.inputScroll, m.composeVisibleRows())
 			case composeTabOutputVars:
-				if len(m.outputTree) > 0 {
-					visibleNodes := flattenOutputTree(m.outputTree)
-					if m.outputCursor > 0 {
-						m.outputCursor--
-					}
-					m.outputCursor, m.outputScroll = normalizeViewport(
-						m.outputCursor, m.outputScroll, len(visibleNodes), m.composeVisibleRows(),
-					)
-				}
+				m.outputCursor, m.outputScroll = moveResourceDetailTreeUp(m.outputTree, m.outputCursor, m.outputScroll, m.composeVisibleRows())
 			case composeTabWfErrors:
 				items := flattenWfEventItems(m.getWfEvents())
 				if m.wfErrors.cursor > 0 {
@@ -248,25 +202,9 @@ func (m composeDetailModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			switch m.activeTab {
 			case composeTabInputVars:
-				if len(m.inputTree) > 0 {
-					visibleNodes := flattenOutputTree(m.inputTree)
-					if m.inputCursor < len(visibleNodes)-1 {
-						m.inputCursor++
-					}
-					m.inputCursor, m.inputScroll = normalizeViewport(
-						m.inputCursor, m.inputScroll, len(visibleNodes), m.composeVisibleRows(),
-					)
-				}
+				m.inputCursor, m.inputScroll = moveResourceDetailTreeDown(m.inputTree, m.inputCursor, m.inputScroll, m.composeVisibleRows())
 			case composeTabOutputVars:
-				if len(m.outputTree) > 0 {
-					visibleNodes := flattenOutputTree(m.outputTree)
-					if m.outputCursor < len(visibleNodes)-1 {
-						m.outputCursor++
-					}
-					m.outputCursor, m.outputScroll = normalizeViewport(
-						m.outputCursor, m.outputScroll, len(visibleNodes), m.composeVisibleRows(),
-					)
-				}
+				m.outputCursor, m.outputScroll = moveResourceDetailTreeDown(m.outputTree, m.outputCursor, m.outputScroll, m.composeVisibleRows())
 			case composeTabWfErrors:
 				items := flattenWfEventItems(m.getWfEvents())
 				if m.wfErrors.cursor < len(items)-1 {
@@ -277,19 +215,9 @@ func (m composeDetailModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "enter":
 			switch m.activeTab {
 			case composeTabInputVars:
-				if len(m.inputTree) > 0 {
-					visibleNodes := flattenOutputTree(m.inputTree)
-					if m.inputCursor < len(visibleNodes) && visibleNodes[m.inputCursor].expandable {
-						visibleNodes[m.inputCursor].expanded = !visibleNodes[m.inputCursor].expanded
-					}
-				}
+				toggleResourceDetailTreeNode(m.inputTree, m.inputCursor)
 			case composeTabOutputVars:
-				if len(m.outputTree) > 0 {
-					visibleNodes := flattenOutputTree(m.outputTree)
-					if m.outputCursor < len(visibleNodes) && visibleNodes[m.outputCursor].expandable {
-						visibleNodes[m.outputCursor].expanded = !visibleNodes[m.outputCursor].expanded
-					}
-				}
+				toggleResourceDetailTreeNode(m.outputTree, m.outputCursor)
 			case composeTabWfErrors:
 				items := flattenWfEventItems(m.getWfEvents())
 				if m.wfErrors.cursor < len(items) {
@@ -304,36 +232,16 @@ func (m composeDetailModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "right", "l":
 			switch m.activeTab {
 			case composeTabInputVars:
-				if len(m.inputTree) > 0 {
-					visibleNodes := flattenOutputTree(m.inputTree)
-					if m.inputCursor < len(visibleNodes) && visibleNodes[m.inputCursor].expandable && !visibleNodes[m.inputCursor].expanded {
-						visibleNodes[m.inputCursor].expanded = true
-					}
-				}
+				expandResourceDetailTreeNode(m.inputTree, m.inputCursor)
 			case composeTabOutputVars:
-				if len(m.outputTree) > 0 {
-					visibleNodes := flattenOutputTree(m.outputTree)
-					if m.outputCursor < len(visibleNodes) && visibleNodes[m.outputCursor].expandable && !visibleNodes[m.outputCursor].expanded {
-						visibleNodes[m.outputCursor].expanded = true
-					}
-				}
+				expandResourceDetailTreeNode(m.outputTree, m.outputCursor)
 			}
 		case "left", "h":
 			switch m.activeTab {
 			case composeTabInputVars:
-				if len(m.inputTree) > 0 {
-					visibleNodes := flattenOutputTree(m.inputTree)
-					if m.inputCursor < len(visibleNodes) && visibleNodes[m.inputCursor].expandable && visibleNodes[m.inputCursor].expanded {
-						visibleNodes[m.inputCursor].expanded = false
-					}
-				}
+				collapseResourceDetailTreeNode(m.inputTree, m.inputCursor)
 			case composeTabOutputVars:
-				if len(m.outputTree) > 0 {
-					visibleNodes := flattenOutputTree(m.outputTree)
-					if m.outputCursor < len(visibleNodes) && visibleNodes[m.outputCursor].expandable && visibleNodes[m.outputCursor].expanded {
-						visibleNodes[m.outputCursor].expanded = false
-					}
-				}
+				collapseResourceDetailTreeNode(m.outputTree, m.outputCursor)
 			}
 		case "pgup":
 			switch m.activeTab {
@@ -392,81 +300,11 @@ func (m composeDetailModel) View() string {
 }
 
 func (m composeDetailModel) renderComposeHeader() string {
-	titleStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("230"))
-	dimStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("245"))
-
-	title := titleStyle.Render(m.node.Name)
-	if m.node.Name == "" {
-		title = titleStyle.Render(m.node.Key)
-	}
-
-	typeTag := dimStyle.Render(fmt.Sprintf("[%s]", m.node.Type))
-
-	return lipgloss.Place(m.width, 1, lipgloss.Left, lipgloss.Top,
-		lipgloss.NewStyle().Padding(0, 1).Render(fmt.Sprintf("%s  %s", title, typeTag)))
+	return renderResourceDetailHeader(m.width, m.node)
 }
 
 func (m composeDetailModel) renderComposeTabsWithBody() string {
-	inactiveTabBorder := tabBorderWithBottom("┴", "─", "┴")
-	activeTabBorder := tabBorderWithBottom("┘", " ", "└")
-
-	inactiveTabStyle := lipgloss.NewStyle().
-		Border(inactiveTabBorder, true).
-		BorderForeground(lipgloss.Color("240")).
-		Padding(0, 1)
-	activeTabStyle := lipgloss.NewStyle().
-		Border(activeTabBorder, true).
-		BorderForeground(lipgloss.Color("240")).
-		Padding(0, 1).
-		Bold(true).
-		Foreground(lipgloss.Color("230"))
-
-	var renderedTabs []string
-	for i, name := range composeTabNames {
-		style := inactiveTabStyle
-		isActive := i == m.activeTab
-
-		if isActive {
-			style = activeTabStyle
-		} else {
-			style = inactiveTabStyle
-		}
-
-		if i == 0 {
-			border := style.GetBorderStyle()
-			if isActive {
-				border.BottomLeft = "│"
-			} else {
-				border.BottomLeft = "├"
-			}
-			style = style.Border(border, true)
-		}
-		renderedTabs = append(renderedTabs, style.Render(name))
-	}
-
-	row := lipgloss.JoinHorizontal(lipgloss.Top, renderedTabs...)
-
-	rowWidth := lipgloss.Width(row)
-	gapWidth := m.width - rowWidth - 2
-	if gapWidth > 0 {
-		gap := lipgloss.NewStyle().Border(lipgloss.Border{
-			Bottom:      "─",
-			BottomLeft:  "┴",
-			BottomRight: "┐",
-		}, false, false, true).BorderForeground(lipgloss.Color("240")).Width(gapWidth).Render("")
-		row = lipgloss.JoinHorizontal(lipgloss.Bottom, row, gap)
-	}
-
-	content := m.getComposeTabContent()
-
-	window := lipgloss.NewStyle().
-		Border(lipgloss.Border{Left: "│", Right: "│", Bottom: "─", BottomLeft: "└", BottomRight: "┘"}, false, true, true).
-		BorderForeground(lipgloss.Color("240")).
-		Width(m.width - 2).
-		Height(m.composeBodyHeight()).
-		Render(content)
-
-	return lipgloss.JoinVertical(lipgloss.Left, row, window)
+	return renderResourceDetailTabsWithBody(m.width, m.composeBodyHeight(), composeTabNames, m.activeTab, m.getComposeTabContent())
 }
 
 func (m composeDetailModel) getComposeTabContent() string {
@@ -490,127 +328,14 @@ func (m composeDetailModel) renderComposeOutputVarsTab() string {
 }
 
 func (m composeDetailModel) renderComposeParamTreeTab(title string, tree []outputNode, cursor, scroll int, fetchErr error) string {
-	if m.loading {
-		return fmt.Sprintf("\n  %s Fetching %s...", m.spinner.View(), strings.ToLower(title))
-	}
-	if fetchErr != nil {
-		errStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("203"))
-		return fmt.Sprintf("\n  %s\n", errStyle.Render(fmt.Sprintf("Error fetching %s: %v", strings.ToLower(title), fetchErr)))
-	}
-	if m.loadErr != nil {
-		errStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("203"))
-		return fmt.Sprintf("\n  %s\n", errStyle.Render(fmt.Sprintf("Error: %v", m.loadErr)))
-	}
-	if len(tree) == 0 {
-		subtleStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("245"))
-		return fmt.Sprintf("\n  %s\n", subtleStyle.Render(fmt.Sprintf("No %s available for this resource.", strings.ToLower(title))))
-	}
-
-	var b strings.Builder
-
-	headerStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("255"))
-	fmt.Fprintf(&b, "  %s\n\n", headerStyle.Render(title))
-
-	visibleNodes := flattenOutputTree(tree)
-
-	visibleRows := m.composeVisibleRows()
-	totalEntries := len(visibleNodes)
-	cursorIndex, scrollOffset := normalizeViewport(cursor, scroll, totalEntries, visibleRows)
-
-	end := scrollOffset + visibleRows
-	if end > totalEntries {
-		end = totalEntries
-	}
-
-	keyStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("117"))
-	strStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("114"))
-	numStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("178"))
-	boolStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("178"))
-	nullStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("241"))
-	braceStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("245"))
-	selectedBg := lipgloss.NewStyle().Background(lipgloss.Color("236"))
-	maxLineWidth := m.composeContentWidth() - 4
-	if maxLineWidth < 1 {
-		maxLineWidth = 1
-	}
-	rowStyle := lipgloss.NewStyle().MaxWidth(maxLineWidth)
-	selectedRowStyle := selectedBg.MaxWidth(maxLineWidth)
-
-	for idx := scrollOffset; idx < end; idx++ {
-		node := visibleNodes[idx]
-		indent := strings.Repeat("  ", node.depth)
-
-		cursorMarker := "  "
-		if idx == cursorIndex {
-			cursorMarker = "▶ "
-		}
-
-		var line string
-		if node.expandable {
-			arrow := "▸"
-			if node.expanded {
-				arrow = "▾"
-			}
-			childCount := len(node.children)
-			typeMark := braceStyle.Render("{}")
-			if node.nodeType == "array" {
-				typeMark = braceStyle.Render("[]")
-			}
-			countStr := lipgloss.NewStyle().Foreground(lipgloss.Color("241")).Render(fmt.Sprintf("  %d items", childCount))
-			line = fmt.Sprintf("%s%s %s %s%s", indent, arrow, keyStyle.Render(node.key), typeMark, countStr)
-		} else {
-			var styledVal string
-			switch node.nodeType {
-			case "string":
-				styledVal = strStyle.Render(fmt.Sprintf("%q", node.value))
-			case "number":
-				styledVal = numStyle.Render(node.value)
-			case "bool":
-				styledVal = boolStyle.Render(node.value)
-			case "null":
-				styledVal = nullStyle.Render("null")
-			default:
-				styledVal = lipgloss.NewStyle().Foreground(lipgloss.Color("252")).Render(node.value)
-			}
-			line = fmt.Sprintf("%s  %s: %s", indent, keyStyle.Render(node.key), styledVal)
-		}
-
-		if idx == cursorIndex {
-			line = selectedRowStyle.Render(line)
-		} else {
-			line = rowStyle.Render(line)
-		}
-
-		fmt.Fprintf(&b, "  %s%s\n", cursorMarker, line)
-	}
-
-	if totalEntries > visibleRows {
-		dimStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("241"))
-		pos := ""
-		if scrollOffset == 0 {
-			pos = "top"
-		} else if end >= totalEntries {
-			pos = "end"
-		} else {
-			pct := (scrollOffset * 100) / (totalEntries - visibleRows)
-			pos = fmt.Sprintf("%d%%", pct)
-		}
-		fmt.Fprintf(&b, "\n  %s\n", dimStyle.Render(fmt.Sprintf("↑↓: navigate  [%d/%d %s]", cursorIndex+1, totalEntries, pos)))
-	}
-
-	return b.String()
+	return renderResourceDetailParamTreeTab(title, tree, cursor, scroll, m.composeVisibleRows(), m.composeContentWidth(), m.loading, m.spinner.View(), m.loadErr, fetchErr, false)
 }
 
 func (m composeDetailModel) renderComposeWfErrorsTab() string {
-	loading := m.debugData.PlanDAG != nil && m.debugData.PlanDAG.ProgressLoading
-	steps := m.getWfEvents()
-	enrichBootstrapSteps(steps, m.node.Key, m.debugData.PlanDAG)
-	isLive := isWorkflowInProgress(steps)
-	return renderWorkflowEventsTab(steps, m.wfErrors, m.composeBodyHeight(), m.composeContentWidth(), loading, m.spinner.View(), isLive)
+	return renderResourceWorkflowEventsTab(m.debugData, m.node, m.wfErrors, m.composeBodyHeight(), m.composeContentWidth(), m.spinner.View())
 }
 
 func (m composeDetailModel) renderComposeFooter() string {
-	style := lipgloss.NewStyle().Foreground(lipgloss.Color("241")).Padding(0, 1)
 	var text string
 	switch m.activeTab {
 	case composeTabInputVars, composeTabOutputVars:
@@ -625,11 +350,7 @@ func (m composeDetailModel) renderComposeFooter() string {
 	default:
 		text = "tab/shift+tab: switch tabs  esc: back  q: quit"
 	}
-	if m.clipboardMsg != "" {
-		clipStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("82"))
-		text = clipStyle.Render(m.clipboardMsg) + "  " + text
-	}
-	return lipgloss.Place(m.width, 1, lipgloss.Left, lipgloss.Top, style.Render(text))
+	return renderResourceDetailFooter(m.width, m.clipboardMsg, text)
 }
 
 func (m composeDetailModel) composeCopyableContent() string {
@@ -655,32 +376,17 @@ func (m composeDetailModel) composeCopyableContent() string {
 }
 
 func (m composeDetailModel) composeBodyHeight() int {
-	h := m.height - 8
-	if h < 1 {
-		h = 1
-	}
-	return h
+	return resourceDetailBodyHeight(m.height)
 }
 
 func (m composeDetailModel) composeVisibleRows() int {
-	rows := m.composeBodyHeight() - 4
-	if rows < 1 {
-		rows = 1
-	}
-	return rows
+	return resourceDetailVisibleRows(m.height)
 }
 
 func (m composeDetailModel) composeContentWidth() int {
-	w := m.width - 4
-	if w < 20 {
-		w = 20
-	}
-	return w
+	return resourceDetailContentWidth(m.width)
 }
 
 func (m composeDetailModel) getWfEvents() *ResourceWorkflowSteps {
-	if m.debugData.PlanDAG != nil && m.debugData.PlanDAG.WorkflowStepsByKey != nil {
-		return m.debugData.PlanDAG.WorkflowStepsByKey[m.node.Key]
-	}
-	return nil
+	return getResourceWorkflowEvents(m.debugData, m.node)
 }
