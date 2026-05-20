@@ -172,54 +172,6 @@ func TestEmptyResourceTypeOpensComposeDetail(t *testing.T) {
 	}
 }
 
-func TestMergePlanNodeResourceTypeKeepsManagedTypeWhenDetailIsGeneric(t *testing.T) {
-	tests := []struct {
-		name        string
-		summaryType string
-		detailType  string
-		want        string
-	}{
-		{
-			name:        "keeps compose type over generic detail type",
-			summaryType: "DockerCompose",
-			detailType:  "Resource",
-			want:        "DockerCompose",
-		},
-		{
-			name:        "uses specific detail type",
-			summaryType: "Resource",
-			detailType:  "Terraform",
-			want:        "Terraform",
-		},
-		{
-			name:        "uses compose for generic detail type without summary type",
-			summaryType: "",
-			detailType:  "Resource",
-			want:        "Compose",
-		},
-		{
-			name:        "keeps summary type when detail type is empty",
-			summaryType: "Helm",
-			detailType:  "",
-			want:        "Helm",
-		},
-		{
-			name:        "uses compose when both types are empty",
-			summaryType: "",
-			detailType:  "",
-			want:        "Compose",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			if got := mergePlanNodeResourceType(tt.summaryType, tt.detailType); got != tt.want {
-				t.Fatalf("expected %q, got %q", tt.want, got)
-			}
-		})
-	}
-}
-
 func TestDeploymentTypesByResourceIdentityMarksGenericDeploymentAsCompose(t *testing.T) {
 	resourceID := "r-postgres"
 	resourceName := "postgres"

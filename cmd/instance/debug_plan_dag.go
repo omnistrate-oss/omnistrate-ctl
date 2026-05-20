@@ -88,7 +88,7 @@ func buildPlanDAG(ctx context.Context, token, serviceID string, instanceData *op
 
 		node.Name = resourceDetails.Name
 		node.Key = resourceDetails.Key
-		node.Type = mergePlanNodeResourceType(node.Type, resourceDetails.ResourceType)
+		node.Type = resourceDetails.ResourceType
 		node.Type = mergePlanNodeDeploymentType(node, node.Type, deploymentTypes)
 		plan.Nodes[resourceID] = node
 
@@ -206,23 +206,6 @@ func deploymentTypeFromSummary(summary openapiclientfleet.ResourceVersionSummary
 	default:
 		return ""
 	}
-}
-
-func mergePlanNodeResourceType(summaryType, detailType string) string {
-	detailType = strings.TrimSpace(detailType)
-	if detailType == "" {
-		if strings.TrimSpace(summaryType) == "" {
-			return "Compose"
-		}
-		return summaryType
-	}
-	if strings.EqualFold(detailType, "resource") && strings.TrimSpace(summaryType) == "" {
-		return "Compose"
-	}
-	if strings.EqualFold(detailType, "resource") && strings.TrimSpace(summaryType) != "" {
-		return summaryType
-	}
-	return detailType
 }
 
 func isComposeResourceType(resourceType string) bool {
