@@ -62,7 +62,6 @@ func buildPlanDAG(ctx context.Context, token, serviceID string, instanceData *op
 		Edges:  []PlanDAGEdge{},
 		Errors: []string{},
 	}
-	deploymentTypes := deploymentTypesByResourceIdentity(instanceData.ResourceVersionSummaries)
 
 	for _, resource := range versionSet.Resources {
 		node := PlanDAGNode{
@@ -75,7 +74,6 @@ func buildPlanDAG(ctx context.Context, token, serviceID string, instanceData *op
 		if resource.ManagedResourceType != nil {
 			node.Type = *resource.ManagedResourceType
 		}
-		node.Type = mergePlanNodeDeploymentType(node, node.Type, deploymentTypes)
 		plan.Nodes[resource.Id] = node
 	}
 
@@ -89,7 +87,6 @@ func buildPlanDAG(ctx context.Context, token, serviceID string, instanceData *op
 		node.Name = resourceDetails.Name
 		node.Key = resourceDetails.Key
 		node.Type = resourceDetails.ResourceType
-		node.Type = mergePlanNodeDeploymentType(node, node.Type, deploymentTypes)
 		plan.Nodes[resourceID] = node
 
 		for _, dependency := range resourceDetails.Dependencies {
@@ -166,48 +163,6 @@ func shouldHidePlanNode(node PlanDAGNode) bool {
 	return false
 }
 
-type resourceDeploymentTypes struct {
-	byID   map[string]string
-	byName map[string]string
-}
-
-func deploymentTypesByResourceIdentity(summaries []openapiclientfleet.ResourceVersionSummary) resourceDeploymentTypes {
-	types := resourceDeploymentTypes{
-		byID:   make(map[string]string),
-		byName: make(map[string]string),
-	}
-
-	for _, summary := range summaries {
-		deploymentType := deploymentTypeFromSummary(summary)
-		if deploymentType == "" {
-			continue
-		}
-		if summary.ResourceId != nil && *summary.ResourceId != "" {
-			types.byID[*summary.ResourceId] = deploymentType
-		}
-		if summary.ResourceName != nil && *summary.ResourceName != "" {
-			types.byName[*summary.ResourceName] = deploymentType
-		}
-	}
-
-	return types
-}
-
-func deploymentTypeFromSummary(summary openapiclientfleet.ResourceVersionSummary) string {
-	switch {
-	case summary.HelmDeploymentConfiguration != nil:
-		return "Helm"
-	case summary.TerraformDeploymentConfiguration != nil:
-		return "Terraform"
-	case summary.KustomizeDeploymentConfiguration != nil:
-		return "Kustomize"
-	case summary.GenericResourceDeploymentConfiguration != nil:
-		return "Compose"
-	default:
-		return ""
-	}
-}
-
 func isComposeResourceType(resourceType string) bool {
 	resourceType = strings.TrimSpace(resourceType)
 	if resourceType == "" {
@@ -215,28 +170,6 @@ func isComposeResourceType(resourceType string) bool {
 	}
 	lower := strings.ToLower(resourceType)
 	return strings.Contains(lower, "compose") || lower == "resource"
-}
-
-func mergePlanNodeDeploymentType(node PlanDAGNode, currentType string, deploymentTypes resourceDeploymentTypes) string {
-	deploymentType := ""
-	if node.ID != "" {
-		deploymentType = deploymentTypes.byID[node.ID]
-	}
-	if deploymentType == "" && node.Key != "" {
-		deploymentType = deploymentTypes.byName[node.Key]
-	}
-	if deploymentType == "" && node.Name != "" {
-		deploymentType = deploymentTypes.byName[node.Name]
-	}
-	if deploymentType == "" {
-		return currentType
-	}
-
-	currentType = strings.TrimSpace(currentType)
-	if currentType == "" || strings.EqualFold(currentType, "resource") || strings.EqualFold(currentType, "generic") {
-		return deploymentType
-	}
-	return currentType
 }
 
 func computePlanLevels(nodes map[string]PlanDAGNode, edges []PlanDAGEdge) ([][]string, bool) {

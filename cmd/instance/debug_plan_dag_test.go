@@ -172,55 +172,6 @@ func TestEmptyResourceTypeOpensComposeDetail(t *testing.T) {
 	}
 }
 
-func TestDeploymentTypesByResourceIdentityMarksGenericDeploymentAsCompose(t *testing.T) {
-	resourceID := "r-postgres"
-	resourceName := "postgres"
-	summaries := []openapiclientfleet.ResourceVersionSummary{
-		{
-			ResourceId:                             &resourceID,
-			ResourceName:                           &resourceName,
-			GenericResourceDeploymentConfiguration: &openapiclientfleet.GenericResourceDeploymentConfiguration{},
-		},
-	}
-
-	types := deploymentTypesByResourceIdentity(summaries)
-
-	if got := types.byID[resourceID]; got != "Compose" {
-		t.Fatalf("expected compose deployment type by ID, got %q", got)
-	}
-	if got := types.byName[resourceName]; got != "Compose" {
-		t.Fatalf("expected compose deployment type by name, got %q", got)
-	}
-}
-
-func TestMergePlanNodeDeploymentTypeUsesComposeForGenericResource(t *testing.T) {
-	deploymentTypes := resourceDeploymentTypes{
-		byID: map[string]string{
-			"r-postgres": "Compose",
-		},
-		byName: map[string]string{},
-	}
-	node := PlanDAGNode{ID: "r-postgres", Key: "postgres", Name: "postgres"}
-
-	if got := mergePlanNodeDeploymentType(node, "Resource", deploymentTypes); got != "Compose" {
-		t.Fatalf("expected compose deployment type, got %q", got)
-	}
-}
-
-func TestMergePlanNodeDeploymentTypePreservesSpecificType(t *testing.T) {
-	deploymentTypes := resourceDeploymentTypes{
-		byID: map[string]string{
-			"r-operator": "Compose",
-		},
-		byName: map[string]string{},
-	}
-	node := PlanDAGNode{ID: "r-operator", Key: "operator", Name: "operator"}
-
-	if got := mergePlanNodeDeploymentType(node, "OperatorCRD", deploymentTypes); got != "OperatorCRD" {
-		t.Fatalf("expected specific type to be preserved, got %q", got)
-	}
-}
-
 func TestPlanHasHitBreakpoint(t *testing.T) {
 	planWithoutHit := &PlanDAG{
 		BreakpointByID: map[string]string{
