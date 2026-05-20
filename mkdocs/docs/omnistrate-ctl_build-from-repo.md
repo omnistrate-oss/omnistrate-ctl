@@ -6,7 +6,9 @@ Build Service from Git Repository
 
 This command helps to build service from git repository. Run this command from the root of the repository. Make sure you have the Dockerfile in the repository and have the Docker daemon running on your machine. By default, the service name will be the repository name, but you can specify a custom service name with the --product-name flag.
 
-You can also skip specific stages of the build process using the --skip-* flags. For example, you can skip building the Docker image with --skip-docker-build, skip creating the service with --skip-service-build, skip environment promotion with --skip-environment-promotion, or skip SaaS portal initialization with --skip-saas-portal-init.
+You can also skip specific stages of the build process using the --skip-* flags. For example, you can skip building the Docker image with --skip-docker-build, skip creating the service with --skip-service-build, or skip SaaS portal initialization with --skip-saas-portal-init.
+
+Environment promotion is skipped by default. To promote the service to production, use --skip-environment-promotion=false.
 
 For testing purposes, use the --dry-run flag to only build the Docker image locally without pushing, skip service creation, and generate a local spec file with a '-dry-run' suffix. Note that --dry-run cannot be used together with any of the --skip-* flags as they are mutually exclusive.
 
@@ -33,7 +35,10 @@ omnistrate-ctl build-from-repo --product-name my-custom-service
 omnistrate-ctl build-from-repo --skip-docker-build
 
 # Skip multiple stages
-omnistrate-ctl build-from-repo --skip-docker-build --skip-environment-promotion
+omnistrate-ctl build-from-repo --skip-docker-build --skip-saas-portal-init
+
+# Enable environment promotion (disabled by default)
+omnistrate-ctl build-from-repo --skip-environment-promotion=false
 
 # Run in dry-run mode (build image locally but don't push or create service)
 omnistrate-ctl build-from-repo --dry-run
@@ -70,7 +75,7 @@ omnistrate-ctl build-from-repo
       --release-description string          Provide a description for the release version
       --reset-pat                           Reset the GitHub Personal Access Token (PAT) for the current user.
       --skip-docker-build                   Skip building and pushing the Docker image
-      --skip-environment-promotion          Skip creating and promoting to the production environment
+      --skip-environment-promotion          Skip creating and promoting to the production environment (use --skip-environment-promotion=false to promote) (default true)
       --skip-saas-portal-init               Skip initializing the SaaS Portal
       --skip-service-build                  Skip building the service from the compose spec
 ```
