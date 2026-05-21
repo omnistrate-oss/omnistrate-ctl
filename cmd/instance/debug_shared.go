@@ -59,9 +59,15 @@ type OperatorCRDOutputParam struct {
 
 // OperatorData holds debug information specific to operator-type resources.
 type OperatorData struct {
-	InputParams    []OperatorInputParam     `json:"inputParams,omitempty"`
-	OutputParams   []OperatorOutputParam    `json:"outputParams,omitempty"`
+	InputParams     []OperatorInputParam     `json:"inputParams,omitempty"`
+	OutputParams    []OperatorOutputParam    `json:"outputParams,omitempty"`
 	CRDOutputParams []OperatorCRDOutputParam `json:"crdOutputParams,omitempty"`
+}
+
+// ComposeData holds debug information specific to compose-type resources.
+type ComposeData struct {
+	InputParams  []OperatorInputParam  `json:"inputParams,omitempty"`
+	OutputParams []OperatorOutputParam `json:"outputParams,omitempty"`
 }
 
 // ResourceDebugInfo holds all debug information for a specific resource in the plan DAG.
@@ -83,11 +89,14 @@ type ResourceDebugInfo struct {
 
 	// Operator-specific data (populated for operator resources)
 	Operator *OperatorData `json:"operator,omitempty"`
+
+	// Compose-specific data (populated for compose resources)
+	Compose *ComposeData `json:"compose,omitempty"`
 }
 
 // hasData returns true if any debug data has been populated for this resource.
 func (r *ResourceDebugInfo) hasData() bool {
-	return r.Helm != nil || r.Operator != nil || r.TerraformProgress != nil ||
+	return r.Helm != nil || r.Operator != nil || r.Compose != nil || r.TerraformProgress != nil ||
 		len(r.TerraformHistory) > 0 || len(r.TerraformFiles) > 0 || len(r.TerraformLogs) > 0 ||
 		len(r.TerraformPlanPreview) > 0 || len(r.TerraformPlanPreviewError) > 0
 }

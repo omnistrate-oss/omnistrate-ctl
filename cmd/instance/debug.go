@@ -35,8 +35,8 @@ type DebugData struct {
 	ProductTierID     string                        `json:"productTierId,omitempty"`
 	TierVersion       string                        `json:"tierVersion,omitempty"`
 	Token             string                        `json:"-"`
-	ResultParams      map[string]interface{}         `json:"-"`
-	InputParams       map[string]interface{}         `json:"-"`
+	ResultParams      map[string]interface{}        `json:"-"`
+	InputParams       map[string]interface{}        `json:"-"`
 	ResourceDebugInfo map[string]*ResourceDebugInfo `json:"resourceDebugInfo,omitempty"`
 }
 
@@ -258,7 +258,8 @@ func runDebugJSON(instanceID, token string) error {
 
 // collectResourceDebugInfo fetches all per-resource debug data for the JSON output path.
 // It collects helm data (logs, values), terraform data (progress, history, files, logs),
-// and operator data (input/output parameters) for each resource in the plan DAG.
+// operator data (input/output parameters), and compose data (input/output parameters)
+// for each resource in the plan DAG.
 // Errors for individual resources or data sources are handled gracefully — partial data
 // is returned rather than failing the entire operation.
 func collectResourceDebugInfo(ctx context.Context, token, serviceID, environmentID, instanceID string, planDAG *PlanDAG, instanceData *openapiclientfleet.ResourceInstance) map[string]*ResourceDebugInfo {
@@ -305,6 +306,9 @@ func collectResourceDebugInfo(ctx context.Context, token, serviceID, environment
 
 	// Collect operator debug data (input/output parameters) for non-helm, non-terraform resources
 	collectOperatorDebugInfo(ctx, token, serviceID, planDAG, instanceData, inputParams, resultParams, result)
+
+	// Collect compose debug data (input/output parameters) for compose resources
+	collectComposeDebugInfo(ctx, token, serviceID, planDAG, instanceData, inputParams, resultParams, result)
 
 	// Remove entries that have no debug data
 	for key, info := range result {
@@ -516,6 +520,59 @@ func collectOperatorDebugInfo(ctx context.Context, token, serviceID string, plan
 
 		if len(opData.InputParams) > 0 || len(opData.OutputParams) > 0 || len(opData.CRDOutputParams) > 0 {
 			info.Operator = opData
+		}
+	}
+}
+
+// collectComposeDebugInfo fetches compose debug data (input/output parameters)
+// for compose-type resources.
+func collectComposeDebugInfo(ctx context.Context, token, serviceID string, planDAG *PlanDAG, instanceData *openapiclientfleet.ResourceInstance, inputParams map[string]interface{}, resultParams map[string]interface{}, result map[string]*ResourceDebugInfo) {
+	collectComposeDebugInfoWithFetchers(ctx, token, serviceID, planDAG, instanceData, inputParams, resultParams, result, fetchInputParams, fetchOutputParams)
+}
+
+type inputParamsFetcher func(context.Context, string, string, string, string, string, map[string]interface{}) ([]OperatorInputParam, error)
+type outputParamsFetcher func(context.Context, string, string, string, string, string, map[string]interface{}) ([]OperatorOutputParam, error)
+
+func collectComposeDebugInfoWithFetchers(ctx context.Context, token, serviceID string, planDAG *PlanDAG, instanceData *openapiclientfleet.ResourceInstance, inputParams map[string]interface{}, resultParams map[string]interface{}, result map[string]*ResourceDebugInfo, fetchInput inputParamsFetcher, fetchOutput outputParamsFetcher) {
+	for _, node := range planDAG.Nodes {
+		lower := strings.ToLower(node.Type)
+		if !strings.Contains(lower, "compose") {
+			continue
+		}
+
+		key := node.Key
+		if key == "" {
+			key = node.ID
+		}
+		info, exists := result[key]
+		if !exists {
+			continue
+		}
+
+		cData := &ComposeData{}
+
+		// Fetch all input parameters
+		fetchedInputParams, inputErr := fetchInput(
+			ctx, token, serviceID, node.ID,
+			instanceData.ProductTierId, instanceData.TierVersion,
+			inputParams,
+		)
+		if inputErr == nil {
+			cData.InputParams = fetchedInputParams
+		}
+
+		// Fetch exported output parameters
+		outputParams, outputErr := fetchOutput(
+			ctx, token, serviceID, node.ID,
+			instanceData.ProductTierId, instanceData.TierVersion,
+			resultParams,
+		)
+		if outputErr == nil {
+			cData.OutputParams = outputParams
+		}
+
+		if len(cData.InputParams) > 0 || len(cData.OutputParams) > 0 {
+			info.Compose = cData
 		}
 	}
 }

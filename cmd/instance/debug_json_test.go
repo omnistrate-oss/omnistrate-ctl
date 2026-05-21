@@ -1,10 +1,12 @@
 package instance
 
 import (
+	"context"
 	"encoding/json"
 	"testing"
 
 	"github.com/omnistrate-oss/omnistrate-ctl/internal/dataaccess"
+	openapiclientfleet "github.com/omnistrate-oss/omnistrate-sdk-go/fleet"
 	"github.com/stretchr/testify/require"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -920,6 +922,63 @@ func TestResourceDebugInfoHasDataWithOperator(t *testing.T) {
 		Operator:     &OperatorData{},
 	}
 	require.True(info3.hasData())
+}
+
+func TestCollectComposeDebugInfoPopulatesComposeField(t *testing.T) {
+	require := require.New(t)
+
+	planDAG := &PlanDAG{
+		Nodes: map[string]PlanDAGNode{
+			"r-compose": {ID: "r-compose", Key: "compose", Name: "Compose", Type: "DockerCompose"},
+			"r-api":     {ID: "r-api", Key: "api", Name: "API", Type: "Generic"},
+		},
+	}
+	instanceData := &openapiclientfleet.ResourceInstance{
+		ProductTierId: "tier-1",
+		TierVersion:   "v1",
+	}
+	result := map[string]*ResourceDebugInfo{
+		"compose": {ResourceID: "r-compose", ResourceKey: "compose", ResourceType: "DockerCompose"},
+		"api":     {ResourceID: "r-api", ResourceKey: "api", ResourceType: "Generic"},
+	}
+	inputParams := map[string]interface{}{"image": "redis:7"}
+	resultParams := map[string]interface{}{"endpoint": "compose.example.com"}
+
+	collectComposeDebugInfoWithFetchers(
+		context.Background(),
+		"token",
+		"service-1",
+		planDAG,
+		instanceData,
+		inputParams,
+		resultParams,
+		result,
+		func(ctx context.Context, token, serviceID, resourceID, productTierID, tierVersion string, params map[string]interface{}) ([]OperatorInputParam, error) {
+			require.Equal("token", token)
+			require.Equal("service-1", serviceID)
+			require.Equal("r-compose", resourceID)
+			require.Equal("tier-1", productTierID)
+			require.Equal("v1", tierVersion)
+			require.Equal(inputParams, params)
+			return []OperatorInputParam{{Key: "image", ResolvedValue: "redis:7"}}, nil
+		},
+		func(ctx context.Context, token, serviceID, resourceID, productTierID, tierVersion string, params map[string]interface{}) ([]OperatorOutputParam, error) {
+			require.Equal("token", token)
+			require.Equal("service-1", serviceID)
+			require.Equal("r-compose", resourceID)
+			require.Equal("tier-1", productTierID)
+			require.Equal("v1", tierVersion)
+			require.Equal(resultParams, params)
+			return []OperatorOutputParam{{Key: "endpoint", ResolvedValue: "compose.example.com"}}, nil
+		},
+	)
+
+	require.NotNil(result["compose"].Compose)
+	require.Len(result["compose"].Compose.InputParams, 1)
+	require.Equal("image", result["compose"].Compose.InputParams[0].Key)
+	require.Len(result["compose"].Compose.OutputParams, 1)
+	require.Equal("endpoint", result["compose"].Compose.OutputParams[0].Key)
+	require.Nil(result["api"].Compose)
 }
 
 func TestResourceDebugInfoHasDataWithPlanPreview(t *testing.T) {
