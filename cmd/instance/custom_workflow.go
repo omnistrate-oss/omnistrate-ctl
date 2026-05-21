@@ -16,7 +16,6 @@ import (
 )
 
 const (
-	customWorkflowSourceLegacy         = "LEGACY"
 	customWorkflowSourceCustomWorkflow = "CUSTOM_WORKFLOW"
 	customWorkflowSourceSystemWorkflow = "SYSTEM_WORKFLOW"
 
@@ -235,7 +234,7 @@ func loadSupportedCustomWorkflows(cmd *cobra.Command, instanceID string) ([]open
 	if err != nil {
 		return nil, err
 	}
-	return instance.ConsumptionResourceInstanceResult.GetSupportedOperations(), nil
+	return customWorkflowOperations(instance.ConsumptionResourceInstanceResult.GetSupportedOperations()), nil
 }
 
 func findSupportedCustomWorkflow(customWorkflows []openapiclientfleet.ResourceInstanceSupportedOperation, selector string) (openapiclientfleet.ResourceInstanceSupportedOperation, error) {
@@ -275,11 +274,22 @@ func triggerSupportedCustomWorkflow(
 			WorkflowID:          customResult.GetWorkflowId(),
 			Status:              customResult.Status,
 		}, nil
-	case customWorkflowSourceSystemWorkflow, customWorkflowSourceLegacy:
+	case customWorkflowSourceSystemWorkflow:
 		return triggerSystemCustomWorkflow(cmd, token, serviceID, environmentID, resourceID, instanceID, customWorkflow, requestParams)
 	default:
 		return nil, fmt.Errorf("custom workflow source %q is not supported", customWorkflow.Source)
 	}
+}
+
+func customWorkflowOperations(supportedOperations []openapiclientfleet.ResourceInstanceSupportedOperation) []openapiclientfleet.ResourceInstanceSupportedOperation {
+	customWorkflows := make([]openapiclientfleet.ResourceInstanceSupportedOperation, 0, len(supportedOperations))
+	for _, operation := range supportedOperations {
+		switch strings.ToUpper(operation.Source) {
+		case customWorkflowSourceCustomWorkflow, customWorkflowSourceSystemWorkflow:
+			customWorkflows = append(customWorkflows, operation)
+		}
+	}
+	return customWorkflows
 }
 
 func triggerSystemCustomWorkflow(

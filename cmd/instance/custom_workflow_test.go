@@ -61,6 +61,33 @@ func TestFindSupportedCustomWorkflow(t *testing.T) {
 	require.ErrorContains(t, err, `custom workflow "missing" not found`)
 }
 
+func TestCustomWorkflowOperationsFiltersLegacyOperations(t *testing.T) {
+	customWorkflowID := "cwt-123"
+	operations := []openapiclientfleet.ResourceInstanceSupportedOperation{
+		{
+			Name:   "Legacy backup",
+			Source: "LEGACY",
+			Verb:   customWorkflowVerbBackup,
+		},
+		{
+			Id:     &customWorkflowID,
+			Name:   "Collect status",
+			Source: customWorkflowSourceCustomWorkflow,
+			Verb:   "collectStatus",
+		},
+		{
+			Name:   "System backup",
+			Source: customWorkflowSourceSystemWorkflow,
+			Verb:   customWorkflowVerbBackup,
+		},
+	}
+
+	customWorkflows := customWorkflowOperations(operations)
+	require.Len(t, customWorkflows, 2)
+	require.Equal(t, customWorkflowSourceCustomWorkflow, customWorkflows[0].Source)
+	require.Equal(t, customWorkflowSourceSystemWorkflow, customWorkflows[1].Source)
+}
+
 func TestCustomWorkflowParams(t *testing.T) {
 	cmd := &cobra.Command{}
 	cmd.Flags().Int64("capacity", 0, "")
