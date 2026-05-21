@@ -7,7 +7,7 @@ Manage Instance Deployments for your service
 This command helps you manage the deployment of your service instances.
 
 ```
-omnistrate-ctl instance [operation] [flags]
+omnistrate-ctl instance [command] [flags]
 ```
 
 ### Options
@@ -31,6 +31,7 @@ omnistrate-ctl instance [operation] [flags]
 * [omnistrate-ctl instance continue-deployment](omnistrate-ctl_instance_continue-deployment.md)	 - Continue instance deployment
 * [omnistrate-ctl instance copy-snapshot](omnistrate-ctl_instance_copy-snapshot.md)	 - Copy an instance snapshot to another region
 * [omnistrate-ctl instance create](omnistrate-ctl_instance_create.md)	 - Create an instance deployment
+* [omnistrate-ctl instance custom-workflow](omnistrate-ctl_instance_custom-workflow.md)	 - List, describe, and trigger instance custom workflows
 * [omnistrate-ctl instance dashboard](omnistrate-ctl_instance_dashboard.md)	 - Get Grafana dashboard access details for an instance
 * [omnistrate-ctl instance debug](omnistrate-ctl_instance_debug.md)	 - Visualize the instance plan DAG
 * [omnistrate-ctl instance delete](omnistrate-ctl_instance_delete.md)	 - Delete an instance deployment
