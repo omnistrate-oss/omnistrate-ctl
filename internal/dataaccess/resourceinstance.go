@@ -255,6 +255,127 @@ func TriggerResourceInstanceAutoBackup(ctx context.Context, token string, servic
 	return
 }
 
+func ExecuteResourceInstanceCustomWorkflow(ctx context.Context, token, serviceID, environmentID, instanceID, resourceID, workflowID string, requestParams map[string]any) (res *openapiclientfleet.ResourceInstanceCustomWorkflowResult, err error) {
+	ctxWithToken := context.WithValue(ctx, openapiclientfleet.ContextAccessToken, token)
+	apiClient := getFleetClient()
+
+	reqBody := openapiclientfleet.FleetResourceInstanceCustomWorkflowRequest2{
+		ResourceId: resourceID,
+	}
+	if requestParams != nil {
+		reqBody.SetRequestParams(requestParams)
+	}
+
+	req := apiClient.InventoryApiAPI.InventoryApiResourceInstanceCustomWorkflow(
+		ctxWithToken,
+		serviceID,
+		environmentID,
+		instanceID,
+		workflowID,
+	).FleetResourceInstanceCustomWorkflowRequest2(reqBody)
+
+	var r *http.Response
+	defer func() {
+		if r != nil {
+			_ = r.Body.Close()
+		}
+	}()
+
+	res, r, err = req.Execute()
+	if err != nil {
+		return nil, handleFleetError(err)
+	}
+	return
+}
+
+func AddCapacityToResourceInstance(ctx context.Context, token string, serviceID, environmentID, resourceID, instanceID string, capacity int64) (err error) {
+	ctxWithToken := context.WithValue(ctx, openapiclientfleet.ContextAccessToken, token)
+	apiClient := getFleetClient()
+
+	req := apiClient.InventoryApiAPI.InventoryApiAddCapacityToResourceInstance(
+		ctxWithToken,
+		serviceID,
+		environmentID,
+		instanceID,
+	).FleetAddCapacityToResourceInstanceRequest2(openapiclientfleet.FleetAddCapacityToResourceInstanceRequest2{
+		ResourceId:        resourceID,
+		CapacityToBeAdded: capacity,
+	})
+
+	var r *http.Response
+	defer func() {
+		if r != nil {
+			_ = r.Body.Close()
+		}
+	}()
+
+	r, err = req.Execute()
+	if err != nil {
+		return handleFleetError(err)
+	}
+	return
+}
+
+func RemoveCapacityFromResourceInstance(ctx context.Context, token string, serviceID, environmentID, resourceID, instanceID string, capacity int64) (err error) {
+	ctxWithToken := context.WithValue(ctx, openapiclientfleet.ContextAccessToken, token)
+	apiClient := getFleetClient()
+
+	req := apiClient.InventoryApiAPI.InventoryApiRemoveCapacityFromResourceInstance(
+		ctxWithToken,
+		serviceID,
+		environmentID,
+		instanceID,
+	).FleetRemoveCapacityFromResourceInstanceRequest2(openapiclientfleet.FleetRemoveCapacityFromResourceInstanceRequest2{
+		ResourceId:          resourceID,
+		CapacityToBeRemoved: capacity,
+	})
+
+	var r *http.Response
+	defer func() {
+		if r != nil {
+			_ = r.Body.Close()
+		}
+	}()
+
+	r, err = req.Execute()
+	if err != nil {
+		return handleFleetError(err)
+	}
+	return
+}
+
+func FailoverResourceInstance(ctx context.Context, token string, serviceID, environmentID, instanceID, failedReplicaID, failedReplicaAction string) (err error) {
+	ctxWithToken := context.WithValue(ctx, openapiclientfleet.ContextAccessToken, token)
+	apiClient := getFleetClient()
+
+	reqBody := openapiclientfleet.FleetFailoverResourceInstanceRequest2{
+		FailedReplicaID: failedReplicaID,
+	}
+	if failedReplicaAction != "" {
+		reqBody.FailedReplicaAction = &failedReplicaAction
+	}
+
+	req := apiClient.InventoryApiAPI.InventoryApiFailoverResourceInstance(
+		ctxWithToken,
+		serviceID,
+		environmentID,
+		instanceID,
+	).FleetFailoverResourceInstanceRequest2(reqBody)
+
+	var r *http.Response
+	defer func() {
+		if r != nil {
+			_ = r.Body.Close()
+		}
+	}()
+
+	r, err = req.Execute()
+	if err != nil {
+		return handleFleetError(err)
+	}
+	return
+}
+
 func CopyResourceInstanceSnapshot(ctx context.Context, token string, serviceID, environmentID, instanceID, sourceSnapshotID, targetRegion string) (res *openapiclientfleet.FleetCopyResourceInstanceSnapshotResult, err error) {
 	ctxWithToken := context.WithValue(ctx, openapiclientfleet.ContextAccessToken, token)
 	apiClient := getFleetClient()
