@@ -1,10 +1,12 @@
 package instance
 
 import (
+	"context"
 	"encoding/json"
 	"testing"
 
 	"github.com/omnistrate-oss/omnistrate-ctl/internal/dataaccess"
+	openapiclientfleet "github.com/omnistrate-oss/omnistrate-sdk-go/fleet"
 	"github.com/stretchr/testify/require"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -412,6 +414,80 @@ func TestResourceDebugInfoTerraformJSON(t *testing.T) {
 	require.Contains(decoded.TerraformLogs, "log/op-2-apply.log")
 }
 
+func TestResourceDebugInfoOperatorJSON(t *testing.T) {
+	require := require.New(t)
+
+	info := ResourceDebugInfo{
+		ResourceID:   "r-op-1",
+		ResourceKey:  "cnpg-db",
+		ResourceType: "OperatorCRD",
+		Operator: &OperatorData{
+			InputParams: []OperatorInputParam{
+				{Key: "replicas", DisplayName: "Replicas", Description: "Number of replicas", Type: "int", Required: true, Modifiable: true, DefaultValue: "3", ResolvedValue: "5"},
+				{Key: "storage", DisplayName: "Storage Size", Description: "Storage in GB", Type: "string", Required: true},
+			},
+			OutputParams: []OperatorOutputParam{
+				{Key: "endpoint", DisplayName: "Endpoint", Description: "Connection endpoint", Type: "string", ValueRef: "$var.endpoint", ResolvedValue: "db.example.com:5432"},
+			},
+			CRDOutputParams: []OperatorCRDOutputParam{
+				{Key: "status", Value: ".status.conditions", ResolvedValue: "Ready"},
+			},
+		},
+	}
+
+	jsonBytes, err := json.Marshal(info)
+	require.NoError(err)
+
+	var decoded map[string]interface{}
+	err = json.Unmarshal(jsonBytes, &decoded)
+	require.NoError(err)
+
+	require.Equal("r-op-1", decoded["resourceId"])
+	require.Equal("cnpg-db", decoded["resourceKey"])
+	require.Equal("OperatorCRD", decoded["resourceType"])
+
+	op, ok := decoded["operator"].(map[string]interface{})
+	require.True(ok, "operator should be a map")
+
+	inputParams, ok := op["inputParams"].([]interface{})
+	require.True(ok, "inputParams should be an array")
+	require.Len(inputParams, 2)
+
+	param0, ok := inputParams[0].(map[string]interface{})
+	require.True(ok)
+	require.Equal("replicas", param0["key"])
+	require.Equal("Replicas", param0["displayName"])
+	require.Equal("int", param0["type"])
+	require.Equal(true, param0["required"])
+	require.Equal(true, param0["modifiable"])
+	require.Equal("3", param0["defaultValue"])
+	require.Equal("5", param0["resolvedValue"])
+
+	outputParams, ok := op["outputParams"].([]interface{})
+	require.True(ok, "outputParams should be an array")
+	require.Len(outputParams, 1)
+	out0, ok := outputParams[0].(map[string]interface{})
+	require.True(ok)
+	require.Equal("endpoint", out0["key"])
+	require.Equal("$var.endpoint", out0["valueRef"])
+	require.Equal("db.example.com:5432", out0["resolvedValue"])
+	crdOutputParams, ok := op["crdOutputParams"].([]interface{})
+	require.True(ok, "crdOutputParams should be an array")
+	require.Len(crdOutputParams, 1)
+	crd0, ok := crdOutputParams[0].(map[string]interface{})
+	require.True(ok)
+	require.Equal("status", crd0["key"])
+	require.Equal(".status.conditions", crd0["value"])
+	require.Equal("Ready", crd0["resolvedValue"])
+
+	// Verify helm and terraform fields are omitted
+	require.NotContains(decoded, "helm")
+	require.NotContains(decoded, "terraformProgress")
+	require.NotContains(decoded, "terraformHistory")
+	require.NotContains(decoded, "terraformFiles")
+	require.NotContains(decoded, "terraformLogs")
+}
+
 func TestResourceDebugInfoOmitsEmptyFields(t *testing.T) {
 	require := require.New(t)
 
@@ -430,6 +506,7 @@ func TestResourceDebugInfoOmitsEmptyFields(t *testing.T) {
 
 	require.Equal("r-1", decoded["resourceId"])
 	require.NotContains(decoded, "helm")
+	require.NotContains(decoded, "operator")
 	require.NotContains(decoded, "terraformProgress")
 	require.NotContains(decoded, "terraformHistory")
 	require.NotContains(decoded, "terraformFiles")
@@ -808,6 +885,102 @@ func TestResourceDebugInfoOmitsEmptyPlanPreview(t *testing.T) {
 	require.NotContains(decoded, "terraformPlanPreviewError")
 }
 
+func TestResourceDebugInfoHasDataWithOperator(t *testing.T) {
+	require := require.New(t)
+
+	// Operator data makes hasData() return true
+	info := ResourceDebugInfo{
+		ResourceID:   "r-1",
+		ResourceKey:  "cnpg",
+		ResourceType: "OperatorCRD",
+		Operator: &OperatorData{
+			InputParams: []OperatorInputParam{
+				{Key: "replicas", Type: "int"},
+			},
+		},
+	}
+	require.True(info.hasData())
+
+	// Operator with only output params also returns true
+	info2 := ResourceDebugInfo{
+		ResourceID:   "r-1",
+		ResourceKey:  "cnpg",
+		ResourceType: "OperatorCRD",
+		Operator: &OperatorData{
+			OutputParams: []OperatorOutputParam{
+				{Key: "status", Description: "CRD status", Type: "string"},
+			},
+		},
+	}
+	require.True(info2.hasData())
+
+	// Empty operator (no params) but non-nil still returns true
+	info3 := ResourceDebugInfo{
+		ResourceID:   "r-1",
+		ResourceKey:  "cnpg",
+		ResourceType: "OperatorCRD",
+		Operator:     &OperatorData{},
+	}
+	require.True(info3.hasData())
+}
+
+func TestCollectComposeDebugInfoPopulatesComposeField(t *testing.T) {
+	require := require.New(t)
+
+	planDAG := &PlanDAG{
+		Nodes: map[string]PlanDAGNode{
+			"r-compose": {ID: "r-compose", Key: "compose", Name: "Compose", Type: "DockerCompose"},
+			"r-api":     {ID: "r-api", Key: "api", Name: "API", Type: "Generic"},
+		},
+	}
+	instanceData := &openapiclientfleet.ResourceInstance{
+		ProductTierId: "tier-1",
+		TierVersion:   "v1",
+	}
+	result := map[string]*ResourceDebugInfo{
+		"compose": {ResourceID: "r-compose", ResourceKey: "compose", ResourceType: "DockerCompose"},
+		"api":     {ResourceID: "r-api", ResourceKey: "api", ResourceType: "Generic"},
+	}
+	inputParams := map[string]interface{}{"image": "redis:7"}
+	resultParams := map[string]interface{}{"endpoint": "compose.example.com"}
+
+	collectComposeDebugInfoWithFetchers(
+		context.Background(),
+		"token",
+		"service-1",
+		planDAG,
+		instanceData,
+		inputParams,
+		resultParams,
+		result,
+		func(ctx context.Context, token, serviceID, resourceID, productTierID, tierVersion string, params map[string]interface{}) ([]OperatorInputParam, error) {
+			require.Equal("token", token)
+			require.Equal("service-1", serviceID)
+			require.Equal("r-compose", resourceID)
+			require.Equal("tier-1", productTierID)
+			require.Equal("v1", tierVersion)
+			require.Equal(inputParams, params)
+			return []OperatorInputParam{{Key: "image", ResolvedValue: "redis:7"}}, nil
+		},
+		func(ctx context.Context, token, serviceID, resourceID, productTierID, tierVersion string, params map[string]interface{}) ([]OperatorOutputParam, error) {
+			require.Equal("token", token)
+			require.Equal("service-1", serviceID)
+			require.Equal("r-compose", resourceID)
+			require.Equal("tier-1", productTierID)
+			require.Equal("v1", tierVersion)
+			require.Equal(resultParams, params)
+			return []OperatorOutputParam{{Key: "endpoint", ResolvedValue: "compose.example.com"}}, nil
+		},
+	)
+
+	require.NotNil(result["compose"].Compose)
+	require.Len(result["compose"].Compose.InputParams, 1)
+	require.Equal("image", result["compose"].Compose.InputParams[0].Key)
+	require.Len(result["compose"].Compose.OutputParams, 1)
+	require.Equal("endpoint", result["compose"].Compose.OutputParams[0].Key)
+	require.Nil(result["api"].Compose)
+}
+
 func TestResourceDebugInfoHasDataWithPlanPreview(t *testing.T) {
 	require := require.New(t)
 
@@ -981,4 +1154,107 @@ func TestDebugDataJSONRoundTripWithPlanPreview(t *testing.T) {
 	require.Empty(cacheInfo.TerraformPlanPreview)
 	require.Len(cacheInfo.TerraformPlanPreviewError, 1)
 	require.Equal("Error: Failed to refresh state for resource", cacheInfo.TerraformPlanPreviewError["op-2"])
+}
+
+func TestDebugDataJSONRoundTripWithOperator(t *testing.T) {
+	require := require.New(t)
+
+	original := DebugData{
+		InstanceID:    "inst-123",
+		ServiceID:     "svc-456",
+		EnvironmentID: "env-789",
+		ProductTierID: "pt-abc",
+		TierVersion:   "v2",
+		ResourceDebugInfo: map[string]*ResourceDebugInfo{
+			"cnpg": {
+				ResourceID:   "r-op-1",
+				ResourceKey:  "cnpg",
+				ResourceType: "OperatorCRD",
+				Operator: &OperatorData{
+					InputParams: []OperatorInputParam{
+						{Key: "replicas", DisplayName: "Replicas", Description: "Number of replicas", Type: "int", Required: true, Modifiable: true, DefaultValue: "3"},
+						{Key: "storage", DisplayName: "Storage", Description: "Storage size", Type: "string", Required: true},
+					},
+					OutputParams: []OperatorOutputParam{
+						{Key: "endpoint", DisplayName: "Endpoint", Description: "Connection endpoint", Type: "string", ValueRef: "$var.endpoint"},
+					},
+					CRDOutputParams: []OperatorCRDOutputParam{
+						{Key: "status", Value: ".status.conditions"},
+					},
+				},
+			},
+		},
+	}
+
+	jsonBytes, err := json.MarshalIndent(original, "", "  ")
+	require.NoError(err)
+
+	var roundTripped DebugData
+	err = json.Unmarshal(jsonBytes, &roundTripped)
+	require.NoError(err)
+
+	require.Equal("inst-123", roundTripped.InstanceID)
+	require.Equal("pt-abc", roundTripped.ProductTierID)
+	require.Equal("v2", roundTripped.TierVersion)
+
+	require.Contains(roundTripped.ResourceDebugInfo, "cnpg")
+	cnpgInfo := roundTripped.ResourceDebugInfo["cnpg"]
+	require.Equal("r-op-1", cnpgInfo.ResourceID)
+	require.Equal("OperatorCRD", cnpgInfo.ResourceType)
+	require.Nil(cnpgInfo.Helm)
+
+	require.NotNil(cnpgInfo.Operator)
+	require.Len(cnpgInfo.Operator.InputParams, 2)
+	require.Equal("replicas", cnpgInfo.Operator.InputParams[0].Key)
+	require.Equal("3", cnpgInfo.Operator.InputParams[0].DefaultValue)
+	require.True(cnpgInfo.Operator.InputParams[0].Required)
+	require.True(cnpgInfo.Operator.InputParams[0].Modifiable)
+
+	require.Len(cnpgInfo.Operator.OutputParams, 1)
+	require.Equal("endpoint", cnpgInfo.Operator.OutputParams[0].Key)
+	require.Equal("$var.endpoint", cnpgInfo.Operator.OutputParams[0].ValueRef)
+
+	require.Len(cnpgInfo.Operator.CRDOutputParams, 1)
+	require.Equal("status", cnpgInfo.Operator.CRDOutputParams[0].Key)
+	require.Equal(".status.conditions", cnpgInfo.Operator.CRDOutputParams[0].Value)
+}
+
+func TestDebugDataJSONIncludesProductTierIDAndVersion(t *testing.T) {
+	require := require.New(t)
+
+	data := DebugData{
+		InstanceID:    "inst-1",
+		ServiceID:     "svc-1",
+		EnvironmentID: "env-1",
+		ProductTierID: "pt-abc",
+		TierVersion:   "v3",
+	}
+
+	jsonBytes, err := json.Marshal(data)
+	require.NoError(err)
+
+	var decoded map[string]interface{}
+	err = json.Unmarshal(jsonBytes, &decoded)
+	require.NoError(err)
+
+	require.Equal("pt-abc", decoded["productTierId"])
+	require.Equal("v3", decoded["tierVersion"])
+}
+
+func TestDebugDataJSONOmitsEmptyProductTierIDAndVersion(t *testing.T) {
+	require := require.New(t)
+
+	data := DebugData{
+		InstanceID: "inst-1",
+	}
+
+	jsonBytes, err := json.Marshal(data)
+	require.NoError(err)
+
+	var decoded map[string]interface{}
+	err = json.Unmarshal(jsonBytes, &decoded)
+	require.NoError(err)
+
+	require.NotContains(decoded, "productTierId", "empty productTierId should be omitted")
+	require.NotContains(decoded, "tierVersion", "empty tierVersion should be omitted")
 }

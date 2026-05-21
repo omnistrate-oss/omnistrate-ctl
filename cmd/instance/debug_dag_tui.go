@@ -738,7 +738,25 @@ func (m dagModel) openNodeDetail() (tea.Model, tea.Cmd) {
 		return m, detail.Init()
 	}
 
-	// For other resource types, do nothing for now
+	if isComposeResourceType(node.Type) {
+		detail := newComposeDetailModel(node, m.debugData)
+		detail.width = m.width
+		detail.height = m.height
+		m.detailModel = detail
+		m.inDetail = true
+		return m, detail.Init()
+	}
+
+	if strings.Contains(lower, "operator") {
+		// For operator resource types, open the operator detail TUI
+		detail := newOperatorDetailModel(node, m.debugData)
+		detail.width = m.width
+		detail.height = m.height
+		m.detailModel = detail
+		m.inDetail = true
+		return m, detail.Init()
+	}
+
 	return m, nil
 }
 

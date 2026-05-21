@@ -1,11 +1,13 @@
 package instance
 
 import (
+	"encoding/json"
 	"strings"
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/stretchr/testify/require"
 )
 
 func TestHelmValuesEnterTogglesSelectedNode(t *testing.T) {
@@ -137,4 +139,279 @@ func TestHelmValuesUpFromBottomKeepsViewportFixed(t *testing.T) {
 	if updated.valuesScroll != 3 {
 		t.Fatalf("expected viewport to stay anchored at scroll 3, got %d", updated.valuesScroll)
 	}
+}
+
+func TestHelmTabConstants(t *testing.T) {
+	require := require.New(t)
+
+	require.Equal(0, helmTabLogs)
+	require.Equal(1, helmTabValues)
+	require.Equal(2, helmTabInputVars)
+	require.Equal(3, helmTabOutputVars)
+	require.Equal(4, helmTabWfErrors)
+	require.Equal(5, helmNumTabs)
+	require.Len(helmTabNames, helmNumTabs)
+	require.Equal("Deployment API parameters", helmTabNames[helmTabInputVars])
+	require.Equal("Deployment Output Parameters", helmTabNames[helmTabOutputVars])
+}
+
+func TestHelmInputParamTreeBuildsFromOperatorInputParam(t *testing.T) {
+	params := []OperatorInputParam{
+		{Key: "db_port", DisplayName: "Database Port", Description: "Port for DB", Type: "String", Required: true, Modifiable: false, DefaultValue: "5432"},
+		{Key: "app_name", DisplayName: "App Name", Description: "Application name", Type: "String", Required: false},
+	}
+
+	tree := buildOperatorParamTree(params)
+	require.NotNil(t, tree)
+	require.Len(t, tree, 2)
+
+	// Params are sorted by key
+	require.Equal(t, "app_name (App Name)", tree[0].key)
+	require.Equal(t, "db_port (Database Port)", tree[1].key)
+	require.False(t, tree[0].expandable)
+	require.False(t, tree[1].expandable)
+}
+
+func TestHelmOutputParamTreeBuildsFromOperatorOutputParam(t *testing.T) {
+	params := []OperatorOutputParam{
+		{Key: "endpoint", DisplayName: "Endpoint URL", Description: "Service endpoint", Value: "https://example.com", Type: "String"},
+		{Key: "status", DisplayName: "Status", Description: "Current status", ValueRef: "$.status"},
+	}
+
+	tree := buildOperatorOutputParamTree(params)
+	require.NotNil(t, tree)
+	require.Len(t, tree, 2)
+
+	// Params are sorted by key
+	require.Equal(t, "endpoint (Endpoint URL)", tree[0].key)
+	require.Equal(t, "status (Status)", tree[1].key)
+}
+
+func TestHelmInputTabEnterOnLeafNode(t *testing.T) {
+	params := []OperatorInputParam{
+		{Key: "port", DisplayName: "Port", Description: "Port number", Type: "String", Required: true},
+	}
+
+	model := helmDetailModel{
+		activeTab: helmTabInputVars,
+		inputTree: buildOperatorParamTree(params),
+		wfErrors:  &workflowErrorsState{},
+	}
+
+	visibleNodes := flattenOutputTree(model.inputTree)
+	require.Len(t, visibleNodes, 1) // single leaf node
+	require.False(t, visibleNodes[0].expandable)
+
+	// Enter on leaf node should be a no-op
+	updatedAny, _ := model.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	updated := updatedAny.(helmDetailModel)
+
+	visibleNodes = flattenOutputTree(updated.inputTree)
+	require.Len(t, visibleNodes, 1)
+}
+
+func TestHelmOutputTabNavigationUpDown(t *testing.T) {
+	params := []OperatorOutputParam{
+		{Key: "a", DisplayName: "A", Description: "Param A"},
+		{Key: "b", DisplayName: "B", Description: "Param B"},
+	}
+
+	model := helmDetailModel{
+		activeTab:    helmTabOutputVars,
+		width:        80,
+		height:       20,
+		outputTree:   buildOperatorOutputParamTree(params),
+		outputCursor: 0,
+		wfErrors:     &workflowErrorsState{},
+	}
+
+	// Move down
+	updatedAny, _ := model.Update(tea.KeyMsg{Type: tea.KeyDown})
+	updated := updatedAny.(helmDetailModel)
+	require.Equal(t, 1, updated.outputCursor)
+
+	// Move up
+	updatedAny, _ = updated.Update(tea.KeyMsg{Type: tea.KeyUp})
+	updated = updatedAny.(helmDetailModel)
+	require.Equal(t, 0, updated.outputCursor)
+}
+
+func TestHelmInputTabLeftRightOnLeafNode(t *testing.T) {
+	params := []OperatorInputParam{
+		{Key: "config", DisplayName: "Config", Description: "Configuration", Type: "String"},
+	}
+
+	model := helmDetailModel{
+		activeTab: helmTabInputVars,
+		width:     80,
+		height:    20,
+		inputTree: buildOperatorParamTree(params),
+		wfErrors:  &workflowErrorsState{},
+	}
+
+	// Left on leaf is a no-op
+	updatedAny, _ := model.Update(tea.KeyMsg{Type: tea.KeyLeft})
+	updated := updatedAny.(helmDetailModel)
+	visibleNodes := flattenOutputTree(updated.inputTree)
+	require.Len(t, visibleNodes, 1)
+	require.False(t, visibleNodes[0].expandable)
+
+	// Right on leaf is a no-op
+	updatedAny, _ = updated.Update(tea.KeyMsg{Type: tea.KeyRight})
+	updated = updatedAny.(helmDetailModel)
+	visibleNodes = flattenOutputTree(updated.inputTree)
+	require.Len(t, visibleNodes, 1)
+	require.False(t, visibleNodes[0].expandable)
+}
+
+func TestHelmRenderParamTreeTabShowsTitle(t *testing.T) {
+	params := []OperatorInputParam{
+		{Key: "name", DisplayName: "Name", Description: "Resource name", Type: "String"},
+	}
+
+	model := helmDetailModel{
+		activeTab: helmTabInputVars,
+		width:     80,
+		height:    20,
+		inputTree: buildOperatorParamTree(params),
+		helmData:  &HelmData{InputParams: params},
+		wfErrors:  &workflowErrorsState{},
+	}
+
+	rendered := model.renderHelmParamTreeTab("Deployment API parameters", model.inputTree, model.inputCursor, model.inputScroll)
+	require.Contains(t, rendered, "Deployment API parameters")
+}
+
+func TestHelmRenderParamTreeTabEmptyShowsNoDataMessage(t *testing.T) {
+	model := helmDetailModel{
+		activeTab: helmTabInputVars,
+		width:     80,
+		height:    20,
+		inputTree: nil,
+		wfErrors:  &workflowErrorsState{},
+	}
+
+	rendered := model.renderHelmParamTreeTab("Deployment API parameters", model.inputTree, 0, 0)
+	require.Contains(t, rendered, "No deployment api parameters available")
+}
+
+func TestHelmCopyableContentInputOutputTabs(t *testing.T) {
+	inputParams := []OperatorInputParam{
+		{Key: "port", DisplayName: "Port", Type: "String"},
+	}
+	outputParams := []OperatorOutputParam{
+		{Key: "endpoint", DisplayName: "Endpoint", Value: "https://example.com"},
+	}
+
+	model := helmDetailModel{
+		helmData: &HelmData{
+			InputParams:  inputParams,
+			OutputParams: outputParams,
+		},
+		wfErrors: &workflowErrorsState{},
+	}
+
+	// Input params copy
+	model.activeTab = helmTabInputVars
+	text := model.helmCopyableContent()
+	require.NotEmpty(t, text)
+	var decoded []OperatorInputParam
+	require.NoError(t, json.Unmarshal([]byte(text), &decoded))
+	require.Len(t, decoded, 1)
+	require.Equal(t, "port", decoded[0].Key)
+
+	// Output params copy
+	model.activeTab = helmTabOutputVars
+	text = model.helmCopyableContent()
+	require.NotEmpty(t, text)
+	var decodedOut []OperatorOutputParam
+	require.NoError(t, json.Unmarshal([]byte(text), &decodedOut))
+	require.Len(t, decodedOut, 1)
+	require.Equal(t, "endpoint", decodedOut[0].Key)
+}
+
+func TestHelmTabCyclesAllFiveTabs(t *testing.T) {
+	model := helmDetailModel{
+		activeTab: helmTabLogs,
+		wfErrors:  &workflowErrorsState{},
+	}
+
+	for i := 0; i < helmNumTabs; i++ {
+		require.Equal(t, i, model.activeTab)
+		updatedAny, _ := model.Update(tea.KeyMsg{Type: tea.KeyTab})
+		model = updatedAny.(helmDetailModel)
+	}
+	// Should wrap to 0
+	require.Equal(t, helmTabLogs, model.activeTab)
+}
+
+func TestHelmDataJSONIncludesInputOutputParams(t *testing.T) {
+	require := require.New(t)
+
+	helmData := &HelmData{
+		ChartRepoName: "test-repo",
+		ChartVersion:  "1.0.0",
+		InputParams: []OperatorInputParam{
+			{Key: "port", DisplayName: "Port", Type: "String", Required: true},
+		},
+		OutputParams: []OperatorOutputParam{
+			{Key: "endpoint", DisplayName: "Endpoint", Value: "https://example.com"},
+		},
+	}
+
+	jsonBytes, err := json.Marshal(helmData)
+	require.NoError(err)
+
+	var decoded map[string]interface{}
+	require.NoError(json.Unmarshal(jsonBytes, &decoded))
+
+	require.Contains(decoded, "inputParams")
+	require.Contains(decoded, "outputParams")
+
+	inputArr, ok := decoded["inputParams"].([]interface{})
+	require.True(ok)
+	require.Len(inputArr, 1)
+
+	outputArr, ok := decoded["outputParams"].([]interface{})
+	require.True(ok)
+	require.Len(outputArr, 1)
+}
+
+func TestHelmDataJSONOmitsEmptyInputOutputParams(t *testing.T) {
+	require := require.New(t)
+
+	helmData := &HelmData{
+		ChartRepoName: "test-repo",
+	}
+
+	jsonBytes, err := json.Marshal(helmData)
+	require.NoError(err)
+
+	var decoded map[string]interface{}
+	require.NoError(json.Unmarshal(jsonBytes, &decoded))
+
+	require.NotContains(decoded, "inputParams")
+	require.NotContains(decoded, "outputParams")
+}
+
+func TestHelmFooterShowsTreeNavForInputOutputTabs(t *testing.T) {
+	model := helmDetailModel{
+		width:    80,
+		height:   20,
+		wfErrors: &workflowErrorsState{},
+		inputTree: buildOperatorParamTree([]OperatorInputParam{
+			{Key: "x", DisplayName: "X", Description: "test"},
+		}),
+		outputTree: buildOperatorOutputParamTree([]OperatorOutputParam{
+			{Key: "y", DisplayName: "Y", Description: "test"},
+		}),
+	}
+
+	model.activeTab = helmTabInputVars
+	footer := model.renderHelmFooter()
+	require.Contains(t, footer, "expand/collapse")
+
+	model.activeTab = helmTabOutputVars
+	footer = model.renderHelmFooter()
+	require.Contains(t, footer, "expand/collapse")
 }

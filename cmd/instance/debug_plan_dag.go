@@ -163,6 +163,15 @@ func shouldHidePlanNode(node PlanDAGNode) bool {
 	return false
 }
 
+func isComposeResourceType(resourceType string) bool {
+	resourceType = strings.TrimSpace(resourceType)
+	if resourceType == "" {
+		return true
+	}
+	lower := strings.ToLower(resourceType)
+	return strings.Contains(lower, "compose") || lower == "resource"
+}
+
 func computePlanLevels(nodes map[string]PlanDAGNode, edges []PlanDAGEdge) ([][]string, bool) {
 	indegree := make(map[string]int)
 	adjacency := make(map[string][]string)

@@ -89,6 +89,89 @@ func TestBreakpointStatusForNode(t *testing.T) {
 	}
 }
 
+func TestComposeResourceTypeTagAndIcon(t *testing.T) {
+	tag := formatTypeTag("DockerCompose")
+	if tag != "Compose" {
+		t.Fatalf("expected Compose tag, got %q", tag)
+	}
+
+	icon, _ := iconForType(tag, cardTheme{icon: "255"})
+	if icon != 'C' {
+		t.Fatalf("expected Compose icon C, got %q", icon)
+	}
+}
+
+func TestEmptyResourceTypeTagAndIcon(t *testing.T) {
+	tag := formatTypeTag("")
+	if tag != "Compose" {
+		t.Fatalf("expected empty type to render as Compose, got %q", tag)
+	}
+}
+
+func TestResourceTypeOpensComposeDetail(t *testing.T) {
+	model := dagModel{
+		debugData: DebugData{},
+		plan: &PlanDAG{
+			Nodes: map[string]PlanDAGNode{
+				"r-postgres": {ID: "r-postgres", Key: "postgres", Name: "postgres", Type: "Resource"},
+			},
+			Levels: [][]string{{"r-postgres"}},
+		},
+		selectableNodes: []string{"r-postgres"},
+		cursorIndex:     0,
+		width:           100,
+		height:          30,
+	}
+
+	updated, cmd := model.openNodeDetail()
+	updatedModel := updated.(dagModel)
+
+	if !updatedModel.inDetail {
+		t.Fatalf("expected resource node to enter detail view")
+	}
+	if updatedModel.detailModel == nil {
+		t.Fatalf("expected resource node to open a detail model")
+	}
+	if _, ok := updatedModel.detailModel.(composeDetailModel); !ok {
+		t.Fatalf("expected resource node to open compose detail model, got %T", updatedModel.detailModel)
+	}
+	if cmd == nil {
+		t.Fatalf("expected detail init command")
+	}
+}
+
+func TestEmptyResourceTypeOpensComposeDetail(t *testing.T) {
+	model := dagModel{
+		debugData: DebugData{},
+		plan: &PlanDAG{
+			Nodes: map[string]PlanDAGNode{
+				"r-postgres": {ID: "r-postgres", Key: "postgres", Name: "postgres"},
+			},
+			Levels: [][]string{{"r-postgres"}},
+		},
+		selectableNodes: []string{"r-postgres"},
+		cursorIndex:     0,
+		width:           100,
+		height:          30,
+	}
+
+	updated, cmd := model.openNodeDetail()
+	updatedModel := updated.(dagModel)
+
+	if !updatedModel.inDetail {
+		t.Fatalf("expected empty-type node to enter detail view")
+	}
+	if updatedModel.detailModel == nil {
+		t.Fatalf("expected empty-type node to open a detail model")
+	}
+	if _, ok := updatedModel.detailModel.(composeDetailModel); !ok {
+		t.Fatalf("expected empty-type node to open compose detail model, got %T", updatedModel.detailModel)
+	}
+	if cmd == nil {
+		t.Fatalf("expected detail init command")
+	}
+}
+
 func TestPlanHasHitBreakpoint(t *testing.T) {
 	planWithoutHit := &PlanDAG{
 		BreakpointByID: map[string]string{
