@@ -20,6 +20,9 @@ Examples:
   # Generate template for Nebius cloud provider
   omnistrate-ctl deployment-cell generate-config-template --cloud nebius --output template-nebius.yaml
 
+  # Generate template for BYOC On-Prem cloud provider
+  omnistrate-ctl deployment-cell generate-config-template --cloud byoc-onprem --output template-byoc-onprem.yaml
+
   # Generate template for Azure cloud provider
   omnistrate-ctl deployment-cell generate-config-template --cloud azure --output template-azure.yaml
 
@@ -33,7 +36,7 @@ omnistrate-ctl deployment-cell generate-config-template [flags]
 ### Options
 
 ```
-  -c, --cloud string    Cloud provider to generate template for (aws, azure, gcp, nebius).
+  -c, --cloud string    Cloud provider to generate template for (aws, azure, gcp, nebius, byoc-onprem).
   -h, --help            help for generate-config-template
   -o, --output string   Output file path for the template (if not specified, outputs to stdout)
 ```

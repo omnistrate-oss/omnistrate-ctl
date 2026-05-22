@@ -1,0 +1,78 @@
+package deploymentcell
+
+import (
+	"testing"
+
+	"github.com/omnistrate-oss/omnistrate-ctl/internal/model"
+	"github.com/omnistrate-oss/omnistrate-ctl/internal/utils"
+	openapiclient "github.com/omnistrate-oss/omnistrate-sdk-go/v1"
+	"github.com/stretchr/testify/require"
+)
+
+func TestDeploymentCellTemplateForCloudProviderReturnsErrorForMissingDefaults(t *testing.T) {
+	_, err := deploymentCellTemplateForCloudProvider(nil, " BYOC-ONPREM ")
+	require.ErrorContains(t, err, "no default deployment cell configurations found in service provider organization")
+}
+
+func TestDeploymentCellTemplateForCloudProviderReturnsErrorForMissingBYOCOnPremConfig(t *testing.T) {
+	configs := map[string]openapiclient.DeploymentCellConfiguration{
+		"aws": {
+			Amenities: []openapiclient.Amenity{
+				apiAmenity("AWS Amenity", true),
+			},
+		},
+	}
+
+	_, err := deploymentCellTemplateForCloudProvider(&configs, "byoc-onprem")
+	require.ErrorContains(t, err, "no configuration found for cloud provider 'byoc-onprem'")
+}
+
+func TestDeploymentCellTemplateForCloudProviderNormalizesAndSelectsExistingConfig(t *testing.T) {
+	configs := map[string]openapiclient.DeploymentCellConfiguration{
+		"byoc-onprem": {
+			Amenities: []openapiclient.Amenity{
+				apiAmenity("Custom BYOC Template Amenity", true),
+			},
+		},
+	}
+
+	template, err := deploymentCellTemplateForCloudProvider(&configs, " BYOC-ONPREM ")
+	require.NoError(t, err)
+	requireManagedAmenity(t, template, "Custom BYOC Template Amenity")
+	require.NotContains(t, managedAmenityNames(template), "Headlamp")
+}
+
+func TestDeploymentCellTemplateForCloudProviderReturnsErrorForMissingNonBYOCConfig(t *testing.T) {
+	configs := map[string]openapiclient.DeploymentCellConfiguration{
+		"aws": {
+			Amenities: []openapiclient.Amenity{
+				apiAmenity("AWS Amenity", true),
+			},
+		},
+	}
+
+	_, err := deploymentCellTemplateForCloudProvider(&configs, "gcp")
+	require.ErrorContains(t, err, "no configuration found for cloud provider 'gcp'")
+}
+
+func apiAmenity(name string, isManaged bool) openapiclient.Amenity {
+	return openapiclient.Amenity{
+		Name:        utils.ToPtr(name),
+		Description: utils.ToPtr(name),
+		Type:        utils.ToPtr("Helm"),
+		IsManaged:   utils.ToPtr(isManaged),
+	}
+}
+
+func requireManagedAmenity(t *testing.T, template model.DeploymentCellTemplate, name string) {
+	t.Helper()
+	require.Contains(t, managedAmenityNames(template), name)
+}
+
+func managedAmenityNames(template model.DeploymentCellTemplate) map[string]struct{} {
+	names := make(map[string]struct{}, len(template.ManagedAmenities))
+	for _, amenity := range template.ManagedAmenities {
+		names[amenity.Name] = struct{}{}
+	}
+	return names
+}
