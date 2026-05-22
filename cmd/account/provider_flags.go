@@ -81,16 +81,16 @@ func cloudAccountParamsFromFlags(cmd *cobra.Command, name string) (CloudAccountP
 	}
 
 	params := CloudAccountParams{
-		Name:                name,
-		AwsAccountID:        awsAccountID,
-		GcpProjectID:        gcpProjectID,
-		GcpProjectNumber:    gcpProjectNumber,
-		AzureSubscriptionID: azureSubscriptionID,
-		AzureTenantID:       azureTenantID,
-		NebiusTenantID:      nebiusTenantID,
-		ClusterName:         clusterName,
-		ClusterRegion:       clusterRegion,
-		ClusterDescription:  clusterDescription,
+		Name:                       name,
+		AwsAccountID:               awsAccountID,
+		GcpProjectID:               gcpProjectID,
+		GcpProjectNumber:           gcpProjectNumber,
+		AzureSubscriptionID:        azureSubscriptionID,
+		AzureTenantID:              azureTenantID,
+		NebiusTenantID:             nebiusTenantID,
+		CustomerClusterName:        clusterName,
+		CustomerClusterRegion:      clusterRegion,
+		CustomerClusterDescription: clusterDescription,
 	}
 
 	if cmd.Flags().Lookup(privateLinkFlag) != nil {
