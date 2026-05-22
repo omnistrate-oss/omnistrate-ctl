@@ -87,3 +87,11 @@ func Test_account_basic(t *testing.T) {
 	err = cmd.RootCmd.ExecuteContext(ctx)
 	require.NoError(err)
 }
+
+func Test_account_customer_install_kit_help(t *testing.T) {
+	testutils.SmokeTest(t)
+
+	cmd.RootCmd.SetArgs([]string{"account", "customer", "install-kit", "--help"})
+	err := cmd.RootCmd.ExecuteContext(context.TODO())
+	require.NoError(t, err)
+}

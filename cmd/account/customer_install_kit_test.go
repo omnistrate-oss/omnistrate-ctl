@@ -2,6 +2,7 @@ package account
 
 import (
 	"context"
+	"io"
 	"os"
 	"path/filepath"
 	"testing"
@@ -60,7 +61,7 @@ func TestRunCustomerInstallKitCreatesOutputDirectory(t *testing.T) {
 	originalDescribeResourceInstance := describeResourceInstanceFn
 	originalDownload := downloadByocOnPremInstallKitFn
 	originalMkdirAll := mkdirAllInstallKitFn
-	originalWrite := writeInstallKitFileFn
+	originalOpen := openInstallKitFileFn
 	originalGetToken := getTokenWithLoginFn
 	originalDryRun := os.Getenv("OMNISTRATE_DRY_RUN")
 	t.Cleanup(func() {
@@ -68,7 +69,7 @@ func TestRunCustomerInstallKitCreatesOutputDirectory(t *testing.T) {
 		describeResourceInstanceFn = originalDescribeResourceInstance
 		downloadByocOnPremInstallKitFn = originalDownload
 		mkdirAllInstallKitFn = originalMkdirAll
-		writeInstallKitFileFn = originalWrite
+		openInstallKitFileFn = originalOpen
 		getTokenWithLoginFn = originalGetToken
 		_ = os.Setenv("OMNISTRATE_DRY_RUN", originalDryRun)
 		_ = customerInstallKitCmd.Flags().Set("output-path", "")
@@ -99,8 +100,9 @@ func TestRunCustomerInstallKitCreatesOutputDirectory(t *testing.T) {
 			},
 		}, nil
 	}
-	downloadByocOnPremInstallKitFn = func(context.Context, string, string) ([]byte, string, error) {
-		return []byte("kit"), "byoc-onprem-install-kit-ac-123.tar", nil
+	downloadByocOnPremInstallKitFn = func(_ context.Context, _ string, _ string, writer io.Writer) error {
+		_, err := writer.Write([]byte("kit"))
+		return err
 	}
 
 	outputPath := filepath.Join(t.TempDir(), "nested", "kit.tar")

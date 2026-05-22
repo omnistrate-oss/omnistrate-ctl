@@ -1,6 +1,7 @@
 package dataaccess
 
 import (
+	"bytes"
 	"context"
 	"net/http"
 	"net/http/httptest"
@@ -21,13 +22,20 @@ func TestDownloadByocOnPremInstallKit(t *testing.T) {
 	t.Cleanup(server.Close)
 	t.Setenv("OMNISTRATE_HOST", server.Listener.Addr().String())
 
-	data, fileName, err := DownloadByocOnPremInstallKit(context.Background(), "token", "ac-123")
+	var data bytes.Buffer
+	err := DownloadByocOnPremInstallKit(context.Background(), "token", "ac-123", &data)
 	require.NoError(t, err)
-	require.Equal(t, []byte("tar-bytes"), data)
-	require.Equal(t, "byoc-onprem-install-kit-ac-123.tar", fileName)
+	require.Equal(t, "tar-bytes", data.String())
+	require.Equal(t, "byoc-onprem-install-kit-ac-123.tar", ByocOnPremInstallKitFileName("ac-123"))
 }
 
 func TestDownloadByocOnPremInstallKitRequiresAccountConfigID(t *testing.T) {
-	_, _, err := DownloadByocOnPremInstallKit(context.Background(), "token", "")
+	var data bytes.Buffer
+	err := DownloadByocOnPremInstallKit(context.Background(), "token", "", &data)
 	require.ErrorContains(t, err, "account config ID is required")
+}
+
+func TestDownloadByocOnPremInstallKitRequiresWriter(t *testing.T) {
+	err := DownloadByocOnPremInstallKit(context.Background(), "token", "ac-123", nil)
+	require.ErrorContains(t, err, "install kit writer is required")
 }

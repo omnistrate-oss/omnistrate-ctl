@@ -38,7 +38,7 @@ func addBaseCloudAccountProviderFlags(cmd *cobra.Command) {
 	cmd.Flags().String(azureTenantIDFlag, "", "Azure tenant ID")
 	cmd.Flags().String(nebiusTenantIDFlag, "", "Nebius tenant ID")
 	cmd.Flags().String(nebiusBindingsFileFlag, "", "Path to a YAML file describing Nebius bindings")
-	cmd.Flags().Bool(skipWaitFlag, false, "Skip waiting for cloud account onboarding to become READY")
+	cmd.Flags().Bool(skipWaitFlag, false, "Skip waiting for account onboarding to become READY")
 
 	cmd.MarkFlagsRequiredTogether(gcpProjectIDFlag, gcpProjectNumberFlag)
 	cmd.MarkFlagsRequiredTogether(azureSubscriptionIDFlag, azureTenantIDFlag)

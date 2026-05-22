@@ -51,7 +51,7 @@ omnistrate-ctl account customer create --service=[service] --environment=[enviro
       --plan string                             Service plan name or ID
       --private-link                            Enable AWS PrivateLink connectivity for services deployed in this account
       --service string                          Service name or ID
-      --skip-wait                               Skip waiting for cloud account onboarding to become READY
+      --skip-wait                               Skip waiting for account onboarding to become READY
       --subscription-id string                  Subscription ID to use for the onboarding instance
 ```
 

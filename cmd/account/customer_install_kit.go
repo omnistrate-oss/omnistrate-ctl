@@ -2,6 +2,7 @@ package account
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -22,7 +23,7 @@ omnistrate-ctl account customer install-kit instance-abcd1234 --output-path /tmp
 var (
 	downloadByocOnPremInstallKitFn = dataaccess.DownloadByocOnPremInstallKit
 	mkdirAllInstallKitFn           = os.MkdirAll
-	writeInstallKitFileFn          = os.WriteFile
+	openInstallKitFileFn           = os.OpenFile
 	getTokenWithLoginFn            = common.GetTokenWithLogin
 )
 
@@ -74,15 +75,8 @@ func runCustomerInstallKit(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	spinner.UpdateMessage("Downloading BYOC On-Premise install kit...")
-	data, fileName, err := downloadByocOnPremInstallKitFn(cmd.Context(), token, accountConfigID)
-	if err != nil {
-		utils.HandleSpinnerError(spinner, sm, err)
-		return err
-	}
-
 	if strings.TrimSpace(outputPath) == "" {
-		outputPath = fileName
+		outputPath = dataaccess.ByocOnPremInstallKitFileName(accountConfigID)
 	}
 	outputPath = filepath.Clean(outputPath)
 
@@ -94,8 +88,22 @@ func runCustomerInstallKit(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	if err = writeInstallKitFileFn(outputPath, data, 0600); err != nil {
-		err = fmt.Errorf("failed to write install kit to %s: %w", outputPath, err)
+	file, err := openInstallKitFileFn(outputPath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0600)
+	if err != nil {
+		err = fmt.Errorf("failed to create install kit file %s: %w", outputPath, err)
+		utils.HandleSpinnerError(spinner, sm, err)
+		return err
+	}
+	defer func() {
+		_ = file.Close()
+	}()
+
+	spinner.UpdateMessage("Downloading BYOC On-Premise install kit...")
+	if err = downloadByocOnPremInstallKitFn(cmd.Context(), token, accountConfigID, file); err != nil {
+		utils.HandleSpinnerError(spinner, sm, err)
+		return err
+	}
+	if err = closeInstallKitWriter(file); err != nil {
 		utils.HandleSpinnerError(spinner, sm, err)
 		return err
 	}
@@ -108,5 +116,12 @@ func runCustomerInstallKit(cmd *cobra.Command, args []string) error {
 	fmt.Println("  2. Run the installer from the extracted directory:  ./install.sh")
 	fmt.Println("  3. Wait for the customer onboarding instance to become READY.")
 
+	return nil
+}
+
+func closeInstallKitWriter(closer io.Closer) error {
+	if err := closer.Close(); err != nil {
+		return fmt.Errorf("failed to close install kit file: %w", err)
+	}
 	return nil
 }

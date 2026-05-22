@@ -43,12 +43,19 @@ func TestValidateCloudAccountParams_Nebius(t *testing.T) {
 		{
 			name: "mixed providers are rejected",
 			params: CloudAccountParams{
-				Name:           "mixed-account",
-				AwsAccountID:   "123456789012",
-				NebiusTenantID: "tenant-1",
-				NebiusBindings: []openapiclient.NebiusAccountBindingInput{validBinding},
+				Name:                "mixed-account",
+				AwsAccountID:        "123456789012",
+				CustomerClusterName: "customer-k8s",
 			},
 			wantErr: "only one of --aws-account-id, --gcp-project-id, --azure-subscription-id, --nebius-tenant-id, or --cluster-name can be used at a time",
+		},
+		{
+			name: "cluster region requires cluster name",
+			params: CloudAccountParams{
+				Name:                  "onprem-account",
+				CustomerClusterRegion: "us-east-1",
+			},
+			wantErr: "--cluster-name must be provided when using --cluster-region or --cluster-description",
 		},
 	}
 

@@ -238,6 +238,10 @@ func buildCreateAccountOutput(
 func validateCloudAccountParams(params CloudAccountParams) error {
 	providerCount := 0
 
+	if params.CustomerClusterName == "" && (params.CustomerClusterRegion != "" || params.CustomerClusterDescription != "") {
+		return fmt.Errorf("--cluster-name must be provided when using --cluster-region or --cluster-description")
+	}
+
 	if params.AwsAccountID != "" {
 		providerCount++
 	}
@@ -250,7 +254,7 @@ func validateCloudAccountParams(params CloudAccountParams) error {
 	if params.NebiusTenantID != "" || len(params.NebiusBindings) > 0 {
 		providerCount++
 	}
-	if params.CustomerClusterName != "" || params.CustomerClusterRegion != "" || params.CustomerClusterDescription != "" {
+	if params.CustomerClusterName != "" {
 		providerCount++
 	}
 
@@ -270,10 +274,6 @@ func validateCloudAccountParams(params CloudAccountParams) error {
 	if (params.NebiusTenantID != "" && len(params.NebiusBindings) == 0) || (params.NebiusTenantID == "" && len(params.NebiusBindings) > 0) {
 		return fmt.Errorf("both --nebius-tenant-id and --nebius-bindings-file must be provided together")
 	}
-	if params.CustomerClusterName == "" && (params.CustomerClusterRegion != "" || params.CustomerClusterDescription != "") {
-		return fmt.Errorf("--cluster-name must be provided when using --cluster-region or --cluster-description")
-	}
-
 	return nil
 }
 
