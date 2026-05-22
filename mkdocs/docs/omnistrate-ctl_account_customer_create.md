@@ -1,10 +1,10 @@
 ## omnistrate-ctl account customer create
 
-Create a customer account onboarding instance
+Create a customer BYOA account onboarding instance
 
 ### Synopsis
 
-This command onboards a customer-owned cloud account or BYOC On-Premise Kubernetes cluster into the injected account-config resource for a specific service plan.
+This command onboards a customer cloud account into the injected BYOA account-config resource for a specific service plan.
 
 ```
 omnistrate-ctl account customer create --service=[service] --environment=[environment] --plan=[plan] [provider flags] [flags]
@@ -13,7 +13,7 @@ omnistrate-ctl account customer create --service=[service] --environment=[enviro
 ### Examples
 
 ```
-# Onboard a Nebius customer-hosted account into a service plan
+# Onboard a Nebius BYOA account into a service plan
 	omnistrate-ctl account customer create \
 	  --service=postgres \
 	  --environment=prod \
@@ -64,5 +64,5 @@ omnistrate-ctl account customer create --service=[service] --environment=[enviro
 
 ### SEE ALSO
 
-* [omnistrate-ctl account customer](omnistrate-ctl_account_customer.md)	 - Manage customer account onboarding
+* [omnistrate-ctl account customer](omnistrate-ctl_account_customer.md)	 - Manage customer BYOA account onboarding
 

@@ -36,5 +36,5 @@ omnistrate-ctl account customer install-kit instance-abcd1234 --output-path /tmp
 
 ### SEE ALSO
 
-* [omnistrate-ctl account customer](omnistrate-ctl_account_customer.md)	 - Manage customer account onboarding
+* [omnistrate-ctl account customer](omnistrate-ctl_account_customer.md)	 - Manage customer BYOA account onboarding
 

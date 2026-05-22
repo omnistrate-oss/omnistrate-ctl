@@ -8,7 +8,7 @@ import (
 	"github.com/spf13/cobra"
 )
 
-const customerDeleteExample = `# Delete a customer account onboarding instance
+const customerDeleteExample = `# Delete a customer BYOA account onboarding instance
 omnistrate-ctl account customer delete instance-abcd1234
 
 # Delete and print the deleted instance summary
@@ -16,8 +16,8 @@ omnistrate-ctl account customer delete instance-abcd1234 -o json`
 
 var customerDeleteCmd = &cobra.Command{
 	Use:          "delete [customer-account-instance-id] [flags]",
-	Short:        "Delete a customer account onboarding instance",
-	Long:         "This command deletes the customer-owned cloud account or BYOC On-Premise onboarding instance for a service plan.",
+	Short:        "Delete a customer BYOA account onboarding instance",
+	Long:         "This command deletes the customer BYOA account onboarding instance for a service plan.",
 	Example:      customerDeleteExample,
 	RunE:         runCustomerDelete,
 	SilenceUsage: true,
@@ -47,7 +47,7 @@ func runCustomerDelete(cmd *cobra.Command, args []string) error {
 	var spinner *utils.Spinner
 	if output != "json" {
 		sm = utils.NewSpinnerManager()
-		spinner = sm.AddSpinner("Resolving customer account onboarding instance...")
+		spinner = sm.AddSpinner("Resolving customer BYOA account onboarding instance...")
 		sm.Start()
 	}
 
@@ -66,9 +66,9 @@ func runCustomerDelete(cmd *cobra.Command, args []string) error {
 	accountConfigID := extractCustomerAccountConfigID(instance)
 
 	if output != "json" {
-		utils.HandleSpinnerSuccess(spinner, sm, "Resolved customer account onboarding instance")
+		utils.HandleSpinnerSuccess(spinner, sm, "Resolved customer BYOA account onboarding instance")
 		sm = utils.NewSpinnerManager()
-		spinner = sm.AddSpinner("Deleting customer account onboarding instance...")
+		spinner = sm.AddSpinner("Deleting customer BYOA account onboarding instance...")
 		sm.Start()
 	}
 
@@ -77,7 +77,7 @@ func runCustomerDelete(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	utils.HandleSpinnerSuccess(spinner, sm, "Successfully deleted customer account onboarding instance")
+	utils.HandleSpinnerSuccess(spinner, sm, "Successfully deleted customer BYOA account onboarding instance")
 
 	result := customerAccountDeleteResult{
 		InstanceID:      ref.InstanceID,

@@ -4,8 +4,8 @@ import "github.com/spf13/cobra"
 
 var customerCmd = &cobra.Command{
 	Use:          "customer [operation] [flags]",
-	Short:        "Manage customer account onboarding",
-	Long:         "This command helps you onboard customer-owned cloud accounts and BYOC On-Premise Kubernetes clusters into customer-hosted service plans.",
+	Short:        "Manage customer BYOA account onboarding",
+	Long:         "This command helps you onboard customer cloud accounts into BYOA service plans.",
 	Run:          runCustomer,
 	SilenceUsage: true,
 }

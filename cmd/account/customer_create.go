@@ -17,7 +17,7 @@ import (
 )
 
 const (
-	customerCreateExample = `# Onboard a Nebius customer-hosted account into a service plan
+	customerCreateExample = `# Onboard a Nebius BYOA account into a service plan
 	omnistrate-ctl account customer create \
 	  --service=postgres \
 	  --environment=prod \
@@ -101,8 +101,8 @@ var (
 
 var customerCreateCmd = &cobra.Command{
 	Use:          "create --service=[service] --environment=[environment] --plan=[plan] [provider flags]",
-	Short:        "Create a customer account onboarding instance",
-	Long:         "This command onboards a customer-owned cloud account or BYOC On-Premise Kubernetes cluster into the injected account-config resource for a specific service plan.",
+	Short:        "Create a customer BYOA account onboarding instance",
+	Long:         "This command onboards a customer cloud account into the injected BYOA account-config resource for a specific service plan.",
 	Example:      customerCreateExample,
 	RunE:         runCustomerCreate,
 	SilenceUsage: true,
@@ -153,7 +153,7 @@ func runCustomerCreate(cmd *cobra.Command, args []string) error {
 	var spinner *utils.Spinner
 	if output != "json" {
 		sm = utils.NewSpinnerManager()
-		spinner = sm.AddSpinner("Resolving customer account target...")
+		spinner = sm.AddSpinner("Resolving BYOA account target...")
 		sm.Start()
 	}
 
@@ -194,7 +194,7 @@ func runCustomerCreate(cmd *cobra.Command, args []string) error {
 
 	if output != "json" {
 		sm = utils.NewSpinnerManager()
-		spinner = sm.AddSpinner("Creating customer account onboarding instance...")
+		spinner = sm.AddSpinner("Creating customer BYOA account onboarding instance...")
 		sm.Start()
 	}
 
@@ -229,7 +229,7 @@ func runCustomerCreate(cmd *cobra.Command, args []string) error {
 	}
 
 	instanceID := strings.TrimSpace(*createResult.Id)
-	utils.HandleSpinnerSuccess(spinner, sm, "Created customer account onboarding instance")
+	utils.HandleSpinnerSuccess(spinner, sm, "Created customer BYOA account onboarding instance")
 
 	if requestedCloudProvider(params) == "byoc-onprem" {
 		skipWait = true
@@ -240,7 +240,7 @@ func runCustomerCreate(cmd *cobra.Command, args []string) error {
 		if output != "json" {
 			fmt.Printf("\n")
 			sm = utils.NewSpinnerManager()
-			waitSpinner = sm.AddSpinner("Waiting for customer account onboarding to become READY...")
+			waitSpinner = sm.AddSpinner("Waiting for BYOA account onboarding to become READY...")
 			sm.Start()
 		}
 
@@ -250,7 +250,7 @@ func runCustomerCreate(cmd *cobra.Command, args []string) error {
 			return err
 		}
 
-		utils.HandleSpinnerSuccess(waitSpinner, sm, "Customer account onboarding is now READY")
+		utils.HandleSpinnerSuccess(waitSpinner, sm, "BYOA account onboarding is now READY")
 	}
 
 	instanceDetail, err := dataaccess.DescribeResourceInstance(cmd.Context(), token, target.ServiceID, target.EnvironmentID, instanceID)

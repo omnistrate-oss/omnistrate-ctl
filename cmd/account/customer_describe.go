@@ -8,7 +8,7 @@ import (
 	"github.com/spf13/cobra"
 )
 
-const customerDescribeExample = `# Describe a customer account onboarding instance
+const customerDescribeExample = `# Describe a customer BYOA account onboarding instance
 omnistrate-ctl account customer describe instance-abcd1234
 
 # Get full raw details including the backing account config
@@ -16,8 +16,8 @@ omnistrate-ctl account customer describe instance-abcd1234 -o json`
 
 var customerDescribeCmd = &cobra.Command{
 	Use:          "describe [customer-account-instance-id] [flags]",
-	Short:        "Describe a customer account onboarding instance",
-	Long:         "This command describes a customer-owned cloud account or BYOC On-Premise onboarding instance and its backing account config.",
+	Short:        "Describe a customer BYOA account onboarding instance",
+	Long:         "This command describes a customer BYOA account onboarding instance and its backing account config.",
 	Example:      customerDescribeExample,
 	RunE:         runCustomerDescribe,
 	SilenceUsage: true,
@@ -48,7 +48,7 @@ func runCustomerDescribe(cmd *cobra.Command, args []string) error {
 	var spinner *utils.Spinner
 	if output != "json" {
 		sm = utils.NewSpinnerManager()
-		spinner = sm.AddSpinner("Fetching customer account onboarding instance...")
+		spinner = sm.AddSpinner("Fetching customer BYOA account onboarding instance...")
 		sm.Start()
 	}
 
@@ -64,7 +64,7 @@ func runCustomerDescribe(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	utils.HandleSpinnerSuccess(spinner, sm, "Successfully retrieved customer account onboarding details")
+	utils.HandleSpinnerSuccess(spinner, sm, "Successfully retrieved customer BYOA account onboarding details")
 
 	if output == "json" {
 		if err = utils.PrintTextTableJsonOutput(output, describeResult); err != nil {

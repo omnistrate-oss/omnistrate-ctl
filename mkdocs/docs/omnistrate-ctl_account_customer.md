@@ -1,10 +1,10 @@
 ## omnistrate-ctl account customer
 
-Manage customer account onboarding
+Manage customer BYOA account onboarding
 
 ### Synopsis
 
-This command helps you onboard customer-owned cloud accounts and BYOC On-Premise Kubernetes clusters into customer-hosted service plans.
+This command helps you onboard customer cloud accounts into BYOA service plans.
 
 ```
 omnistrate-ctl account customer [operation] [flags]
@@ -26,10 +26,10 @@ omnistrate-ctl account customer [operation] [flags]
 ### SEE ALSO
 
 * [omnistrate-ctl account](omnistrate-ctl_account.md)	 - Manage your Cloud Provider Accounts
-* [omnistrate-ctl account customer create](omnistrate-ctl_account_customer_create.md)	 - Create a customer account onboarding instance
-* [omnistrate-ctl account customer delete](omnistrate-ctl_account_customer_delete.md)	 - Delete a customer account onboarding instance
-* [omnistrate-ctl account customer describe](omnistrate-ctl_account_customer_describe.md)	 - Describe a customer account onboarding instance
+* [omnistrate-ctl account customer create](omnistrate-ctl_account_customer_create.md)	 - Create a customer BYOA account onboarding instance
+* [omnistrate-ctl account customer delete](omnistrate-ctl_account_customer_delete.md)	 - Delete a customer BYOA account onboarding instance
+* [omnistrate-ctl account customer describe](omnistrate-ctl_account_customer_describe.md)	 - Describe a customer BYOA account onboarding instance
 * [omnistrate-ctl account customer install-kit](omnistrate-ctl_account_customer_install-kit.md)	 - Download the BYOC On-Premise install kit
-* [omnistrate-ctl account customer list](omnistrate-ctl_account_customer_list.md)	 - List customer account onboarding instances
-* [omnistrate-ctl account customer update](omnistrate-ctl_account_customer_update.md)	 - Update a customer account onboarding instance
+* [omnistrate-ctl account customer list](omnistrate-ctl_account_customer_list.md)	 - List customer BYOA account onboarding instances
+* [omnistrate-ctl account customer update](omnistrate-ctl_account_customer_update.md)	 - Update a customer BYOA account onboarding instance
 
