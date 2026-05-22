@@ -5,12 +5,14 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/omnistrate-oss/omnistrate-ctl/cmd/common"
 	"github.com/omnistrate-oss/omnistrate-ctl/internal/config"
 	"github.com/omnistrate-oss/omnistrate-ctl/internal/dataaccess"
 	"github.com/omnistrate-oss/omnistrate-ctl/internal/model"
 	"github.com/omnistrate-oss/omnistrate-ctl/internal/utils"
+	openapiclient "github.com/omnistrate-oss/omnistrate-sdk-go/v1"
 	"github.com/spf13/cobra"
 	"gopkg.in/yaml.v3"
 )
@@ -34,6 +36,9 @@ Examples:
   # Generate template for Nebius cloud provider
   omnistrate-ctl deployment-cell generate-config-template --cloud nebius --output template-nebius.yaml
 
+  # Generate template for BYOC On-Prem cloud provider
+  omnistrate-ctl deployment-cell generate-config-template --cloud byoc-onprem --output template-byoc-onprem.yaml
+
   # Generate template for Azure cloud provider
   omnistrate-ctl deployment-cell generate-config-template --cloud azure --output template-azure.yaml
 
@@ -44,7 +49,7 @@ Examples:
 }
 
 func init() {
-	generateTemplateCmd.Flags().StringP("cloud", "c", "", "Cloud provider to generate template for (aws, azure, gcp, nebius).")
+	generateTemplateCmd.Flags().StringP("cloud", "c", "", "Cloud provider to generate template for (aws, azure, gcp, nebius, byoc-onprem).")
 	generateTemplateCmd.Flags().StringP("output", "o", "", "Output file path for the template (if not specified, outputs to stdout)")
 	_ = generateTemplateCmd.MarkFlagRequired("cloud")
 }
@@ -119,11 +124,26 @@ func generateDeploymentCellTemplate(ctx context.Context, token string, cloudProv
 
 	if res.DefaultDeploymentCellConfigurations == nil ||
 		res.DefaultDeploymentCellConfigurations.DeploymentCellConfigurationPerCloudProvider == nil {
+		return deploymentCellTemplateForCloudProvider(nil, cloudProviderName)
+	}
+
+	return deploymentCellTemplateForCloudProvider(
+		res.DefaultDeploymentCellConfigurations.DeploymentCellConfigurationPerCloudProvider,
+		cloudProviderName,
+	)
+}
+
+func deploymentCellTemplateForCloudProvider(
+	configs *map[string]openapiclient.DeploymentCellConfiguration,
+	cloudProviderName string,
+) (model.DeploymentCellTemplate, error) {
+	cloudProviderName = normalizeDeploymentCellTemplateCloudProviderName(cloudProviderName)
+	if configs == nil {
 		return model.DeploymentCellTemplate{}, fmt.Errorf("no default deployment cell configurations found in service provider organization")
 	}
 
-	for cloudProvider, cellConfig := range *res.DefaultDeploymentCellConfigurations.DeploymentCellConfigurationPerCloudProvider {
-		if cloudProvider != cloudProviderName {
+	for cloudProvider, cellConfig := range *configs {
+		if normalizeDeploymentCellTemplateCloudProviderName(cloudProvider) != cloudProviderName {
 			continue // Skip if the cloud provider does not match
 		}
 		convertedConfig, err := convertToDeploymentCellConfiguration(cellConfig)
@@ -134,6 +154,10 @@ func generateDeploymentCellTemplate(ctx context.Context, token string, cloudProv
 	}
 
 	return model.DeploymentCellTemplate{}, fmt.Errorf("no configuration found for cloud provider '%s'", cloudProviderName)
+}
+
+func normalizeDeploymentCellTemplateCloudProviderName(cloudProviderName string) string {
+	return strings.ToLower(strings.TrimSpace(cloudProviderName))
 }
 
 func convertToDeploymentCellConfiguration(cellConfig interface{}) (model.DeploymentCellTemplate, error) {
