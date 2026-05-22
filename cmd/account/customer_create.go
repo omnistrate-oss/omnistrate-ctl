@@ -680,16 +680,16 @@ func buildCustomerAccountRequestParamsWithDerivedValues(
 			return nil, err
 		}
 	case "byoc-onprem":
-		if err := setParam(customerAccountClusterNameName, params.CustomerClusterName); err != nil {
+		if err := setParam(customerAccountClusterNameName, params.ClusterName); err != nil {
 			return nil, err
 		}
-		if params.CustomerClusterRegion != "" {
-			if err := setParam(customerAccountClusterRegionName, params.CustomerClusterRegion); err != nil {
+		if params.ClusterRegion != "" {
+			if err := setParam(customerAccountClusterRegionName, params.ClusterRegion); err != nil {
 				return nil, err
 			}
 		}
-		if params.CustomerClusterDescription != "" {
-			if err := setParam(customerAccountClusterDescriptionName, params.CustomerClusterDescription); err != nil {
+		if params.ClusterDescription != "" {
+			if err := setParam(customerAccountClusterDescriptionName, params.ClusterDescription); err != nil {
 				return nil, err
 			}
 		}
@@ -743,7 +743,7 @@ func requestedCloudProvider(params CloudAccountParams) string {
 		return "azure"
 	case params.NebiusTenantID != "":
 		return "nebius"
-	case params.CustomerClusterName != "":
+	case params.ClusterName != "":
 		return "byoc-onprem"
 	default:
 		return ""

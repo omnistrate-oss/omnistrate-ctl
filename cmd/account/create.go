@@ -132,13 +132,13 @@ type CloudAccountParams struct {
 	AzureTenantID       string
 	NebiusTenantID      string
 	NebiusBindings      []openapiclient.NebiusAccountBindingInput
-	// CustomerClusterName is the customer-provided Kubernetes cluster name for BYOC On-Premise onboarding.
+	// ClusterName is the customer-provided Kubernetes cluster name for BYOC On-Premise onboarding.
 	// It is not the Omnistrate host cluster ID.
-	CustomerClusterName        string
-	CustomerClusterRegion      string
-	CustomerClusterDescription string
-	PrivateLink                bool
-	AllowCreateNew             bool
+	ClusterName        string
+	ClusterRegion      string
+	ClusterDescription string
+	PrivateLink        bool
+	AllowCreateNew     bool
 }
 
 // CreateCloudAccount creates a cloud provider account and returns the account config ID and account details
@@ -238,7 +238,7 @@ func buildCreateAccountOutput(
 func validateCloudAccountParams(params CloudAccountParams) error {
 	providerCount := 0
 
-	if params.CustomerClusterName == "" && (params.CustomerClusterRegion != "" || params.CustomerClusterDescription != "") {
+	if params.ClusterName == "" && (params.ClusterRegion != "" || params.ClusterDescription != "") {
 		return fmt.Errorf("--cluster-name must be provided when using --cluster-region or --cluster-description")
 	}
 
@@ -254,7 +254,7 @@ func validateCloudAccountParams(params CloudAccountParams) error {
 	if params.NebiusTenantID != "" || len(params.NebiusBindings) > 0 {
 		providerCount++
 	}
-	if params.CustomerClusterName != "" {
+	if params.ClusterName != "" {
 		providerCount++
 	}
 

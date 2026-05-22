@@ -64,9 +64,9 @@ func TestCloudAccountParamsFromFlags_BYOCOnPrem(t *testing.T) {
 	params, err := cloudAccountParamsFromFlags(cmd, "customer-onprem")
 	require.NoError(t, err)
 	require.Equal(t, "customer-onprem", params.Name)
-	require.Equal(t, "customer-k8s", params.CustomerClusterName)
-	require.Empty(t, params.CustomerClusterRegion)
-	require.Equal(t, "customer cluster", params.CustomerClusterDescription)
+	require.Equal(t, "customer-k8s", params.ClusterName)
+	require.Empty(t, params.ClusterRegion)
+	require.Equal(t, "customer cluster", params.ClusterDescription)
 }
 
 func TestFindCustomerAccountResource(t *testing.T) {
@@ -188,9 +188,9 @@ func TestExtractCustomerAccountConfigID(t *testing.T) {
 
 func TestBuildCustomerAccountRequestParamsWithDerivedValues_BYOCOnPrem(t *testing.T) {
 	params := CloudAccountParams{
-		Name:                       "customer-onprem",
-		CustomerClusterName:        "customer-k8s",
-		CustomerClusterDescription: "customer cluster",
+		Name:               "customer-onprem",
+		ClusterName:        "customer-k8s",
+		ClusterDescription: "customer cluster",
 	}
 
 	inputParameters := []openapiclient.DescribeInputParameterResult{
@@ -208,7 +208,7 @@ func TestBuildCustomerAccountRequestParamsWithDerivedValues_BYOCOnPrem(t *testin
 }
 
 func TestRequestedCloudProvider_BYOCOnPrem(t *testing.T) {
-	assert.Equal(t, "byoc-onprem", requestedCloudProvider(CloudAccountParams{CustomerClusterName: "customer-k8s"}))
+	assert.Equal(t, "byoc-onprem", requestedCloudProvider(CloudAccountParams{ClusterName: "customer-k8s"}))
 }
 
 func TestBuildCustomerAccountRequestParamsWithDerivedValues_PrivateLinkAndAllowCreateNew(t *testing.T) {
