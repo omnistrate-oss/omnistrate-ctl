@@ -1,10 +1,10 @@
 ## omnistrate-ctl account customer list
 
-List customer BYOA account onboarding instances
+List customer account onboarding instances
 
 ### Synopsis
 
-This command lists customer BYOA account onboarding instances created through account customer create.
+This command lists customer-owned cloud account and BYOC On-Premise onboarding instances created through account customer create.
 
 ```
 omnistrate-ctl account customer list [flags]
@@ -13,7 +13,7 @@ omnistrate-ctl account customer list [flags]
 ### Examples
 
 ```
-# List all customer BYOA account onboarding instances
+# List all customer account onboarding instances
 omnistrate-ctl account customer list
 
 # Filter by service and plan
@@ -47,5 +47,5 @@ omnistrate-ctl account customer list --service Nebius --plan "Nebius BYOA Comput
 
 ### SEE ALSO
 
-* [omnistrate-ctl account customer](omnistrate-ctl_account_customer.md)	 - Manage customer BYOA account onboarding
+* [omnistrate-ctl account customer](omnistrate-ctl_account_customer.md)	 - Manage customer account onboarding
 

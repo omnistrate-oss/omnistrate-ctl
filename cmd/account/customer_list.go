@@ -13,7 +13,7 @@ import (
 	"github.com/spf13/cobra"
 )
 
-const customerListExample = `# List all customer BYOA account onboarding instances
+const customerListExample = `# List all customer account onboarding instances
 omnistrate-ctl account customer list
 
 # Filter by service and plan
@@ -43,8 +43,8 @@ var (
 
 var customerListCmd = &cobra.Command{
 	Use:          "list [flags]",
-	Short:        "List customer BYOA account onboarding instances",
-	Long:         "This command lists customer BYOA account onboarding instances created through account customer create.",
+	Short:        "List customer account onboarding instances",
+	Long:         "This command lists customer-owned cloud account and BYOC On-Premise onboarding instances created through account customer create.",
 	Example:      customerListExample,
 	RunE:         runCustomerList,
 	SilenceUsage: true,
@@ -84,7 +84,7 @@ func runCustomerList(cmd *cobra.Command, args []string) error {
 	var spinner *utils.Spinner
 	if output != "json" {
 		sm = utils.NewSpinnerManager()
-		spinner = sm.AddSpinner("Listing customer BYOA account onboarding instances...")
+		spinner = sm.AddSpinner("Listing customer account onboarding instances...")
 		sm.Start()
 	}
 
@@ -104,9 +104,9 @@ func runCustomerList(cmd *cobra.Command, args []string) error {
 	}
 
 	if len(items) == 0 {
-		utils.HandleSpinnerSuccess(spinner, sm, "No customer BYOA account onboarding instances found")
+		utils.HandleSpinnerSuccess(spinner, sm, "No customer account onboarding instances found")
 	} else {
-		utils.HandleSpinnerSuccess(spinner, sm, fmt.Sprintf("Found %d customer BYOA account onboarding instance(s)", len(items)))
+		utils.HandleSpinnerSuccess(spinner, sm, fmt.Sprintf("Found %d customer account onboarding instance(s)", len(items)))
 	}
 
 	if err = utils.PrintTextTableJsonArrayOutput(output, items); err != nil {

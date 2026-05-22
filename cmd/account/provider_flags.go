@@ -12,7 +12,12 @@ const (
 	azureTenantIDFlag       = "azure-tenant-id"
 	nebiusTenantIDFlag      = "nebius-tenant-id"
 	nebiusBindingsFileFlag  = "nebius-bindings-file"
+	clusterNameFlag         = "cluster-name"
+	clusterRegionFlag       = "cluster-region"
+	clusterDescriptionFlag  = "cluster-description"
 	skipWaitFlag            = "skip-wait"
+	privateLinkFlag         = "private-link"
+	allowCreateNewFlag      = "allow-create-new-cloud-native-network"
 )
 
 func addCloudAccountProviderFlags(cmd *cobra.Command) {
@@ -23,13 +28,17 @@ func addCloudAccountProviderFlags(cmd *cobra.Command) {
 	cmd.Flags().String(azureTenantIDFlag, "", "Azure tenant ID")
 	cmd.Flags().String(nebiusTenantIDFlag, "", "Nebius tenant ID")
 	cmd.Flags().String(nebiusBindingsFileFlag, "", "Path to a YAML file describing Nebius bindings")
-	cmd.Flags().Bool(skipWaitFlag, false, "Skip waiting for the account to become READY")
+	cmd.Flags().String(clusterNameFlag, "", "Name of the customer-provided Kubernetes cluster for BYOC On-Premise")
+	cmd.Flags().String(clusterRegionFlag, "", "Optional region or location label for the BYOC On-Premise cluster")
+	cmd.Flags().String(clusterDescriptionFlag, "", "Optional description for the BYOC On-Premise cluster")
+	cmd.Flags().Bool(skipWaitFlag, false, "Skip waiting for cloud account onboarding to become READY")
 
 	cmd.MarkFlagsOneRequired(
 		awsAccountIDFlag,
 		gcpProjectIDFlag,
 		azureSubscriptionIDFlag,
 		nebiusTenantIDFlag,
+		clusterNameFlag,
 	)
 	cmd.MarkFlagsRequiredTogether(gcpProjectIDFlag, gcpProjectNumberFlag)
 	cmd.MarkFlagsRequiredTogether(azureSubscriptionIDFlag, azureTenantIDFlag)
@@ -45,6 +54,9 @@ func cloudAccountParamsFromFlags(cmd *cobra.Command, name string) (CloudAccountP
 	azureTenantID, _ := cmd.Flags().GetString(azureTenantIDFlag)
 	nebiusTenantID, _ := cmd.Flags().GetString(nebiusTenantIDFlag)
 	nebiusBindingsFile, _ := cmd.Flags().GetString(nebiusBindingsFileFlag)
+	clusterName, _ := cmd.Flags().GetString(clusterNameFlag)
+	clusterRegion, _ := cmd.Flags().GetString(clusterRegionFlag)
+	clusterDescription, _ := cmd.Flags().GetString(clusterDescriptionFlag)
 
 	params := CloudAccountParams{
 		Name:                name,
@@ -54,6 +66,18 @@ func cloudAccountParamsFromFlags(cmd *cobra.Command, name string) (CloudAccountP
 		AzureSubscriptionID: azureSubscriptionID,
 		AzureTenantID:       azureTenantID,
 		NebiusTenantID:      nebiusTenantID,
+		ClusterName:         clusterName,
+		ClusterRegion:       clusterRegion,
+		ClusterDescription:  clusterDescription,
+	}
+
+	if cmd.Flags().Lookup(privateLinkFlag) != nil {
+		privateLink, _ := cmd.Flags().GetBool(privateLinkFlag)
+		params.PrivateLink = privateLink
+	}
+	if cmd.Flags().Lookup(allowCreateNewFlag) != nil {
+		allowCreateNew, _ := cmd.Flags().GetBool(allowCreateNewFlag)
+		params.AllowCreateNew = allowCreateNew
 	}
 
 	if nebiusBindingsFile != "" {

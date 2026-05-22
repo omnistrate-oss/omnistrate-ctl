@@ -1,10 +1,10 @@
 ## omnistrate-ctl account customer describe
 
-Describe a customer BYOA account onboarding instance
+Describe a customer account onboarding instance
 
 ### Synopsis
 
-This command describes a customer BYOA account onboarding instance and its backing account config.
+This command describes a customer-owned cloud account or BYOC On-Premise onboarding instance and its backing account config.
 
 ```
 omnistrate-ctl account customer describe [customer-account-instance-id] [flags]
@@ -13,7 +13,7 @@ omnistrate-ctl account customer describe [customer-account-instance-id] [flags]
 ### Examples
 
 ```
-# Describe a customer BYOA account onboarding instance
+# Describe a customer account onboarding instance
 omnistrate-ctl account customer describe instance-abcd1234
 
 # Get full raw details including the backing account config
@@ -35,5 +35,5 @@ omnistrate-ctl account customer describe instance-abcd1234 -o json
 
 ### SEE ALSO
 
-* [omnistrate-ctl account customer](omnistrate-ctl_account_customer.md)	 - Manage customer BYOA account onboarding
+* [omnistrate-ctl account customer](omnistrate-ctl_account_customer.md)	 - Manage customer account onboarding
 

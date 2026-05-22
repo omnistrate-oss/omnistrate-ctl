@@ -4,8 +4,8 @@ import "github.com/spf13/cobra"
 
 var customerCmd = &cobra.Command{
 	Use:          "customer [operation] [flags]",
-	Short:        "Manage customer BYOA account onboarding",
-	Long:         "This command helps you onboard customer cloud accounts into BYOA service plans.",
+	Short:        "Manage customer account onboarding",
+	Long:         "This command helps you onboard customer-owned cloud accounts and BYOC On-Premise Kubernetes clusters into customer-hosted service plans.",
 	Run:          runCustomer,
 	SilenceUsage: true,
 }
@@ -16,6 +16,7 @@ func init() {
 	customerCmd.AddCommand(customerDeleteCmd)
 	customerCmd.AddCommand(customerListCmd)
 	customerCmd.AddCommand(customerDescribeCmd)
+	customerCmd.AddCommand(customerInstallKitCmd)
 }
 
 func runCustomer(cmd *cobra.Command, args []string) {

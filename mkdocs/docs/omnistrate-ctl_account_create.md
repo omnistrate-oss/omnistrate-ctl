@@ -32,12 +32,15 @@ omnistrate-ctl account create [account-name] --nebius-tenant-id=[tenant-id] --ne
       --aws-account-id string          AWS account ID
       --azure-subscription-id string   Azure subscription ID
       --azure-tenant-id string         Azure tenant ID
+      --cluster-description string     Optional description for the BYOC On-Premise cluster
+      --cluster-name string            Name of the customer-provided Kubernetes cluster for BYOC On-Premise
+      --cluster-region string          Optional region or location label for the BYOC On-Premise cluster
       --gcp-project-id string          GCP project ID
       --gcp-project-number string      GCP project number
   -h, --help                           help for create
       --nebius-bindings-file string    Path to a YAML file describing Nebius bindings
       --nebius-tenant-id string        Nebius tenant ID
-      --skip-wait                      Skip waiting for the account to become READY
+      --skip-wait                      Skip waiting for cloud account onboarding to become READY
 ```
 
 ### Options inherited from parent commands

@@ -1,10 +1,10 @@
 ## omnistrate-ctl account customer delete
 
-Delete a customer BYOA account onboarding instance
+Delete a customer account onboarding instance
 
 ### Synopsis
 
-This command deletes the customer BYOA account onboarding instance for a service plan.
+This command deletes the customer-owned cloud account or BYOC On-Premise onboarding instance for a service plan.
 
 ```
 omnistrate-ctl account customer delete [customer-account-instance-id] [flags]
@@ -13,7 +13,7 @@ omnistrate-ctl account customer delete [customer-account-instance-id] [flags]
 ### Examples
 
 ```
-# Delete a customer BYOA account onboarding instance
+# Delete a customer account onboarding instance
 omnistrate-ctl account customer delete instance-abcd1234
 
 # Delete and print the deleted instance summary
@@ -35,5 +35,5 @@ omnistrate-ctl account customer delete instance-abcd1234 -o json
 
 ### SEE ALSO
 
-* [omnistrate-ctl account customer](omnistrate-ctl_account_customer.md)	 - Manage customer BYOA account onboarding
+* [omnistrate-ctl account customer](omnistrate-ctl_account_customer.md)	 - Manage customer account onboarding
 

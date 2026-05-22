@@ -1,10 +1,10 @@
 ## omnistrate-ctl account customer update
 
-Update a customer BYOA account onboarding instance
+Update a customer account onboarding instance
 
 ### Synopsis
 
-This command updates mutable fields on the backing account config associated with a customer BYOA onboarding instance.
+This command updates mutable fields on the backing account config associated with a customer account onboarding instance.
 
 ```
 omnistrate-ctl account customer update [customer-account-instance-id] [flags]
@@ -13,7 +13,7 @@ omnistrate-ctl account customer update [customer-account-instance-id] [flags]
 ### Examples
 
 ```
-# Update the backing account name and description for a customer BYOA onboarding instance
+# Update the backing account name and description for a customer onboarding instance
 omnistrate-ctl account customer update instance-abcd1234 --name=my-customer-account --description="customer hosted account"
 
 # Replace Nebius bindings on the backing account
@@ -39,5 +39,5 @@ omnistrate-ctl account customer update instance-abcd1234 --nebius-bindings-file=
 
 ### SEE ALSO
 
-* [omnistrate-ctl account customer](omnistrate-ctl_account_customer.md)	 - Manage customer BYOA account onboarding
+* [omnistrate-ctl account customer](omnistrate-ctl_account_customer.md)	 - Manage customer account onboarding
 

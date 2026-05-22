@@ -11,7 +11,7 @@ import (
 	"github.com/spf13/cobra"
 )
 
-const customerUpdateExample = `# Update the backing account name and description for a customer BYOA onboarding instance
+const customerUpdateExample = `# Update the backing account name and description for a customer onboarding instance
 omnistrate-ctl account customer update instance-abcd1234 --name=my-customer-account --description="customer hosted account"
 
 # Replace Nebius bindings on the backing account
@@ -19,8 +19,8 @@ omnistrate-ctl account customer update instance-abcd1234 --nebius-bindings-file=
 
 var customerUpdateCmd = &cobra.Command{
 	Use:          "update [customer-account-instance-id] [flags]",
-	Short:        "Update a customer BYOA account onboarding instance",
-	Long:         "This command updates mutable fields on the backing account config associated with a customer BYOA onboarding instance.",
+	Short:        "Update a customer account onboarding instance",
+	Long:         "This command updates mutable fields on the backing account config associated with a customer account onboarding instance.",
 	Example:      customerUpdateExample,
 	RunE:         runCustomerUpdate,
 	SilenceUsage: true,
@@ -67,7 +67,7 @@ func runCustomerUpdate(cmd *cobra.Command, args []string) error {
 	var spinner *utils.Spinner
 	if output != "json" {
 		sm = utils.NewSpinnerManager()
-		spinner = sm.AddSpinner("Resolving customer BYOA account onboarding instance...")
+		spinner = sm.AddSpinner("Resolving customer account onboarding instance...")
 		sm.Start()
 	}
 
@@ -97,7 +97,7 @@ func runCustomerUpdate(cmd *cobra.Command, args []string) error {
 	}
 
 	if output != "json" {
-		utils.HandleSpinnerSuccess(spinner, sm, "Resolved customer BYOA account onboarding instance")
+		utils.HandleSpinnerSuccess(spinner, sm, "Resolved customer account onboarding instance")
 		sm = utils.NewSpinnerManager()
 		spinner = sm.AddSpinner("Updating backing account config...")
 		sm.Start()

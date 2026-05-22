@@ -132,6 +132,11 @@ type CloudAccountParams struct {
 	AzureTenantID       string
 	NebiusTenantID      string
 	NebiusBindings      []openapiclient.NebiusAccountBindingInput
+	ClusterName         string
+	ClusterRegion       string
+	ClusterDescription  string
+	PrivateLink         bool
+	AllowCreateNew      bool
 }
 
 // CreateCloudAccount creates a cloud provider account and returns the account config ID and account details
@@ -243,12 +248,15 @@ func validateCloudAccountParams(params CloudAccountParams) error {
 	if params.NebiusTenantID != "" || len(params.NebiusBindings) > 0 {
 		providerCount++
 	}
+	if params.ClusterName != "" || params.ClusterRegion != "" || params.ClusterDescription != "" {
+		providerCount++
+	}
 
 	if providerCount == 0 {
 		return fmt.Errorf("one cloud provider account configuration must be provided")
 	}
 	if providerCount > 1 {
-		return fmt.Errorf("only one of --aws-account-id, --gcp-project-id, --azure-subscription-id, or --nebius-tenant-id can be used at a time")
+		return fmt.Errorf("only one of --aws-account-id, --gcp-project-id, --azure-subscription-id, --nebius-tenant-id, or --cluster-name can be used at a time")
 	}
 
 	if (params.GcpProjectID != "" && params.GcpProjectNumber == "") || (params.GcpProjectID == "" && params.GcpProjectNumber != "") {
@@ -259,6 +267,9 @@ func validateCloudAccountParams(params CloudAccountParams) error {
 	}
 	if (params.NebiusTenantID != "" && len(params.NebiusBindings) == 0) || (params.NebiusTenantID == "" && len(params.NebiusBindings) > 0) {
 		return fmt.Errorf("both --nebius-tenant-id and --nebius-bindings-file must be provided together")
+	}
+	if params.ClusterName == "" && (params.ClusterRegion != "" || params.ClusterDescription != "") {
+		return fmt.Errorf("--cluster-name must be provided when using --cluster-region or --cluster-description")
 	}
 
 	return nil

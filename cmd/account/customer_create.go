@@ -17,32 +17,45 @@ import (
 )
 
 const (
-	customerCreateExample = `# Onboard a Nebius BYOA account into a service plan
+	customerCreateExample = `# Onboard a Nebius customer-hosted account into a service plan
 	omnistrate-ctl account customer create \
 	  --service=postgres \
 	  --environment=prod \
 	  --plan=customer-hosted \
 	  --customer-email=customer@example.com \
 	  --nebius-tenant-id=tenant-xxxx \
-	  --nebius-bindings-file=./nebius-bindings.yaml`
+	  --nebius-bindings-file=./nebius-bindings.yaml
 
-	customerAccountResourceName          = "Cloud Provider Account"
-	customerAccountResourceKey           = "omnistrateCloudAccountConfig"
-	customerAccountResultAccountIDKey    = "cloud_provider_account_config_id"
-	customerAccountIacToolName           = "Account Configuration Method"
-	customerAccountAWSAccountIDName      = "AWS Account ID"
-	customerAccountAWSBootstrapRoleName  = "AWS Bootstrap Role ARN"
-	customerAccountGCPProjectIDName      = "GCP Project ID"
-	customerAccountGCPProjectNumberName  = "GCP Project Number"
-	customerAccountGCPServiceAccountName = "GCP Service Account Email"
-	customerAccountAzureSubIDName        = "Azure Subscription ID"
-	customerAccountAzureTenantIDName     = "Azure Tenant ID"
-	customerAccountNebiusTenantIDName    = "Nebius Tenant ID"
-	customerAccountNebiusBindingsName    = "Nebius Bindings"
-	customerAccountReadyTimeout          = 10 * time.Minute
-	customerAccountReadyPollInterval     = 10 * time.Second
-	customerEmailFlag                    = "customer-email"
-	customerAccountDefaultVersion        = "preferred"
+# Onboard a BYOC On-Premise Kubernetes cluster
+	omnistrate-ctl account customer create \
+	  --service=postgres \
+	  --environment=dev \
+	  --plan=customer-hosted \
+	  --cluster-name=customer-k8s \
+	  --cluster-description="Customer Kubernetes cluster"`
+
+	customerAccountResourceName           = "Cloud Provider Account"
+	customerAccountResourceKey            = "omnistrateCloudAccountConfig"
+	customerAccountResultAccountIDKey     = "cloud_provider_account_config_id"
+	customerAccountIacToolName            = "Account Configuration Method"
+	customerAccountAWSAccountIDName       = "AWS Account ID"
+	customerAccountAWSBootstrapRoleName   = "AWS Bootstrap Role ARN"
+	customerAccountGCPProjectIDName       = "GCP Project ID"
+	customerAccountGCPProjectNumberName   = "GCP Project Number"
+	customerAccountGCPServiceAccountName  = "GCP Service Account Email"
+	customerAccountAzureSubIDName         = "Azure Subscription ID"
+	customerAccountAzureTenantIDName      = "Azure Tenant ID"
+	customerAccountNebiusTenantIDName     = "Nebius Tenant ID"
+	customerAccountNebiusBindingsName     = "Nebius Bindings"
+	customerAccountPrivateLinkName        = "Private Link"
+	customerAccountAllowCreateNewName     = "Allow New Cloud Native Network Creation"
+	customerAccountClusterNameName        = "Cluster Name"
+	customerAccountClusterRegionName      = "Cluster Region"
+	customerAccountClusterDescriptionName = "Cluster Description"
+	customerAccountReadyTimeout           = 10 * time.Minute
+	customerAccountReadyPollInterval      = 10 * time.Second
+	customerEmailFlag                     = "customer-email"
+	customerAccountDefaultVersion         = "preferred"
 )
 
 type customerCreateOutput struct {
@@ -88,8 +101,8 @@ var (
 
 var customerCreateCmd = &cobra.Command{
 	Use:          "create --service=[service] --environment=[environment] --plan=[plan] [provider flags]",
-	Short:        "Create a customer BYOA account onboarding instance",
-	Long:         "This command onboards a customer cloud account into the injected BYOA account-config resource for a specific service plan.",
+	Short:        "Create a customer account onboarding instance",
+	Long:         "This command onboards a customer-owned cloud account or BYOC On-Premise Kubernetes cluster into the injected account-config resource for a specific service plan.",
 	Example:      customerCreateExample,
 	RunE:         runCustomerCreate,
 	SilenceUsage: true,
@@ -99,6 +112,8 @@ func init() {
 	customerCreateCmd.Args = cobra.NoArgs
 
 	addCloudAccountProviderFlags(customerCreateCmd)
+	customerCreateCmd.Flags().Bool(privateLinkFlag, false, "Enable AWS PrivateLink connectivity for services deployed in this account")
+	customerCreateCmd.Flags().Bool(allowCreateNewFlag, false, "Allow the platform to create new cloud-native networks in this account on demand")
 
 	customerCreateCmd.Flags().String("service", "", "Service name or ID")
 	customerCreateCmd.Flags().String("environment", "", "Environment name or ID")
@@ -138,7 +153,7 @@ func runCustomerCreate(cmd *cobra.Command, args []string) error {
 	var spinner *utils.Spinner
 	if output != "json" {
 		sm = utils.NewSpinnerManager()
-		spinner = sm.AddSpinner("Resolving BYOA account target...")
+		spinner = sm.AddSpinner("Resolving customer account target...")
 		sm.Start()
 	}
 
@@ -179,7 +194,7 @@ func runCustomerCreate(cmd *cobra.Command, args []string) error {
 
 	if output != "json" {
 		sm = utils.NewSpinnerManager()
-		spinner = sm.AddSpinner("Creating customer BYOA account onboarding instance...")
+		spinner = sm.AddSpinner("Creating customer account onboarding instance...")
 		sm.Start()
 	}
 
@@ -214,14 +229,18 @@ func runCustomerCreate(cmd *cobra.Command, args []string) error {
 	}
 
 	instanceID := strings.TrimSpace(*createResult.Id)
-	utils.HandleSpinnerSuccess(spinner, sm, "Created customer BYOA account onboarding instance")
+	utils.HandleSpinnerSuccess(spinner, sm, "Created customer account onboarding instance")
+
+	if requestedCloudProvider(params) == "byoc-onprem" {
+		skipWait = true
+	}
 
 	if !skipWait {
 		var waitSpinner *utils.Spinner
 		if output != "json" {
 			fmt.Printf("\n")
 			sm = utils.NewSpinnerManager()
-			waitSpinner = sm.AddSpinner("Waiting for BYOA account onboarding to become READY...")
+			waitSpinner = sm.AddSpinner("Waiting for customer account onboarding to become READY...")
 			sm.Start()
 		}
 
@@ -231,7 +250,7 @@ func runCustomerCreate(cmd *cobra.Command, args []string) error {
 			return err
 		}
 
-		utils.HandleSpinnerSuccess(waitSpinner, sm, "BYOA account onboarding is now READY")
+		utils.HandleSpinnerSuccess(waitSpinner, sm, "Customer account onboarding is now READY")
 	}
 
 	instanceDetail, err := dataaccess.DescribeResourceInstance(cmd.Context(), token, target.ServiceID, target.EnvironmentID, instanceID)
@@ -493,6 +512,11 @@ func customerAccountInputParameters() []openapiclient.DescribeInputParameterResu
 		{Name: customerAccountAzureTenantIDName, Key: "azure_tenant_id"},
 		{Name: customerAccountNebiusTenantIDName, Key: "nebius_tenant_id"},
 		{Name: customerAccountNebiusBindingsName, Key: "nebius_bindings"},
+		{Name: customerAccountPrivateLinkName, Key: "private_link"},
+		{Name: customerAccountAllowCreateNewName, Key: "allow_new_cloud_native_network_creation"},
+		{Name: customerAccountClusterNameName, Key: "cluster_name"},
+		{Name: customerAccountClusterRegionName, Key: "cluster_region"},
+		{Name: customerAccountClusterDescriptionName, Key: "cluster_description"},
 	}
 }
 
@@ -655,8 +679,42 @@ func buildCustomerAccountRequestParamsWithDerivedValues(
 		if err := setParam(customerAccountNebiusBindingsName, toCustomerNebiusBindingParams(params.NebiusBindings)); err != nil {
 			return nil, err
 		}
+	case "byoc-onprem":
+		if err := setParam(customerAccountClusterNameName, params.ClusterName); err != nil {
+			return nil, err
+		}
+		if params.ClusterRegion != "" {
+			if err := setParam(customerAccountClusterRegionName, params.ClusterRegion); err != nil {
+				return nil, err
+			}
+		}
+		if params.ClusterDescription != "" {
+			if err := setParam(customerAccountClusterDescriptionName, params.ClusterDescription); err != nil {
+				return nil, err
+			}
+		}
 	default:
 		return nil, fmt.Errorf("unsupported cloud provider request")
+	}
+
+	setOptionalParam := func(displayName string, value any) error {
+		key, exists := keysByName[displayName]
+		if !exists || strings.TrimSpace(key) == "" {
+			return fmt.Errorf("account-config resource does not declare input parameter %q; the selected service plan does not support this option", displayName)
+		}
+		requestParams[key] = value
+		return nil
+	}
+
+	if params.PrivateLink {
+		if err := setOptionalParam(customerAccountPrivateLinkName, true); err != nil {
+			return nil, err
+		}
+	}
+	if params.AllowCreateNew {
+		if err := setOptionalParam(customerAccountAllowCreateNewName, true); err != nil {
+			return nil, err
+		}
 	}
 
 	return requestParams, nil
@@ -685,6 +743,8 @@ func requestedCloudProvider(params CloudAccountParams) string {
 		return "azure"
 	case params.NebiusTenantID != "":
 		return "nebius"
+	case params.ClusterName != "":
+		return "byoc-onprem"
 	default:
 		return ""
 	}

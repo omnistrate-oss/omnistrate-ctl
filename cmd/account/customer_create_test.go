@@ -23,6 +23,8 @@ func TestCustomerCreateCommandDoesNotExposePlacementFlags(t *testing.T) {
 	require.NotNil(t, customerCreateCmd.Flags().Lookup("environment"))
 	require.NotNil(t, customerCreateCmd.Flags().Lookup("plan"))
 	require.NotNil(t, customerCreateCmd.Flags().Lookup(customerEmailFlag))
+	require.NotNil(t, customerCreateCmd.Flags().Lookup(clusterNameFlag))
+	require.NotNil(t, customerCreateCmd.Flags().Lookup(clusterDescriptionFlag))
 }
 
 func TestCloudAccountParamsFromFlags_SharesProviderParsing(t *testing.T) {
@@ -51,6 +53,20 @@ bindings:
 	require.Len(t, params.NebiusBindings, 1)
 	require.Equal(t, "project-1", params.NebiusBindings[0].ProjectID)
 	require.Equal(t, "PEM DATA", params.NebiusBindings[0].PrivateKeyPEM)
+}
+
+func TestCloudAccountParamsFromFlags_BYOCOnPrem(t *testing.T) {
+	cmd := &cobra.Command{}
+	addCloudAccountProviderFlags(cmd)
+	require.NoError(t, cmd.Flags().Set(clusterNameFlag, "customer-k8s"))
+	require.NoError(t, cmd.Flags().Set(clusterDescriptionFlag, "customer cluster"))
+
+	params, err := cloudAccountParamsFromFlags(cmd, "customer-onprem")
+	require.NoError(t, err)
+	require.Equal(t, "customer-onprem", params.Name)
+	require.Equal(t, "customer-k8s", params.ClusterName)
+	require.Empty(t, params.ClusterRegion)
+	require.Equal(t, "customer cluster", params.ClusterDescription)
 }
 
 func TestFindCustomerAccountResource(t *testing.T) {
@@ -150,6 +166,11 @@ func TestCustomerAccountInputParameters(t *testing.T) {
 	assert.Equal(t, "azure_tenant_id", keysByName[customerAccountAzureTenantIDName])
 	assert.Equal(t, "nebius_tenant_id", keysByName[customerAccountNebiusTenantIDName])
 	assert.Equal(t, "nebius_bindings", keysByName[customerAccountNebiusBindingsName])
+	assert.Equal(t, "private_link", keysByName[customerAccountPrivateLinkName])
+	assert.Equal(t, "allow_new_cloud_native_network_creation", keysByName[customerAccountAllowCreateNewName])
+	assert.Equal(t, "cluster_name", keysByName[customerAccountClusterNameName])
+	assert.Equal(t, "cluster_region", keysByName[customerAccountClusterRegionName])
+	assert.Equal(t, "cluster_description", keysByName[customerAccountClusterDescriptionName])
 }
 
 func TestExtractCustomerAccountConfigID(t *testing.T) {
@@ -163,6 +184,71 @@ func TestExtractCustomerAccountConfigID(t *testing.T) {
 
 	assert.Equal(t, "ac-123", extractCustomerAccountConfigID(instance))
 	assert.Equal(t, "", extractCustomerAccountConfigID(nil))
+}
+
+func TestBuildCustomerAccountRequestParamsWithDerivedValues_BYOCOnPrem(t *testing.T) {
+	params := CloudAccountParams{
+		Name:               "customer-onprem",
+		ClusterName:        "customer-k8s",
+		ClusterDescription: "customer cluster",
+	}
+
+	inputParameters := []openapiclient.DescribeInputParameterResult{
+		{Name: customerAccountClusterNameName, Key: "cluster_name"},
+		{Name: customerAccountClusterRegionName, Key: "cluster_region"},
+		{Name: customerAccountClusterDescriptionName, Key: "cluster_description"},
+	}
+
+	requestParams, err := buildCustomerAccountRequestParamsWithDerivedValues(params, inputParameters, "")
+	require.NoError(t, err)
+	assert.Equal(t, "customer-k8s", requestParams["cluster_name"])
+	assert.Equal(t, "customer cluster", requestParams["cluster_description"])
+	_, hasClusterRegion := requestParams["cluster_region"]
+	assert.False(t, hasClusterRegion)
+}
+
+func TestRequestedCloudProvider_BYOCOnPrem(t *testing.T) {
+	assert.Equal(t, "byoc-onprem", requestedCloudProvider(CloudAccountParams{ClusterName: "customer-k8s"}))
+}
+
+func TestBuildCustomerAccountRequestParamsWithDerivedValues_PrivateLinkAndAllowCreateNew(t *testing.T) {
+	params := CloudAccountParams{
+		Name:           "customer-aws",
+		AwsAccountID:   "123456789012",
+		PrivateLink:    true,
+		AllowCreateNew: true,
+	}
+
+	inputParameters := []openapiclient.DescribeInputParameterResult{
+		{Name: customerAccountIacToolName, Key: "account_configuration_method"},
+		{Name: customerAccountAWSAccountIDName, Key: "aws_account_id"},
+		{Name: customerAccountAWSBootstrapRoleName, Key: "aws_bootstrap_role_arn"},
+		{Name: customerAccountPrivateLinkName, Key: "private_link"},
+		{Name: customerAccountAllowCreateNewName, Key: "allow_new_cloud_native_network_creation"},
+	}
+
+	requestParams, err := buildCustomerAccountRequestParamsWithDerivedValues(params, inputParameters, "")
+	require.NoError(t, err)
+	assert.Equal(t, true, requestParams["private_link"])
+	assert.Equal(t, true, requestParams["allow_new_cloud_native_network_creation"])
+}
+
+func TestBuildCustomerAccountRequestParamsWithDerivedValues_PrivateLinkMissingErrors(t *testing.T) {
+	params := CloudAccountParams{
+		Name:         "customer-aws",
+		AwsAccountID: "123456789012",
+		PrivateLink:  true,
+	}
+
+	inputParameters := []openapiclient.DescribeInputParameterResult{
+		{Name: customerAccountIacToolName, Key: "account_configuration_method"},
+		{Name: customerAccountAWSAccountIDName, Key: "aws_account_id"},
+		{Name: customerAccountAWSBootstrapRoleName, Key: "aws_bootstrap_role_arn"},
+	}
+
+	_, err := buildCustomerAccountRequestParamsWithDerivedValues(params, inputParameters, "")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), customerAccountPrivateLinkName)
 }
 
 func TestResolveCustomerAccountSubscription_NonProductionUsesProvidedSubscription(t *testing.T) {

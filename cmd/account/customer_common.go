@@ -161,7 +161,7 @@ func resolveCustomerAccountInstanceByID(ctx context.Context, token string, insta
 
 		ref, ok := customerAccountInstanceRefFromSearchRecord(record)
 		if !ok {
-			return nil, fmt.Errorf("%s is not a customer BYOA account onboarding instance", instanceID)
+			return nil, fmt.Errorf("%s is not a customer account onboarding instance", instanceID)
 		}
 		return ref, nil
 	}
