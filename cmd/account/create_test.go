@@ -65,6 +65,12 @@ func TestValidateCloudAccountParams_Nebius(t *testing.T) {
 	}
 }
 
+func TestCreateCommandDoesNotExposeBYOCOnPremClusterFlags(t *testing.T) {
+	require.Nil(t, createCmd.Flags().Lookup(clusterNameFlag))
+	require.Nil(t, createCmd.Flags().Lookup(clusterRegionFlag))
+	require.Nil(t, createCmd.Flags().Lookup(clusterDescriptionFlag))
+}
+
 func TestParseNebiusBindingsFile(t *testing.T) {
 	tempDir := t.TempDir()
 	privateKeyPath := filepath.Join(tempDir, "private.pem")

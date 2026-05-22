@@ -42,7 +42,7 @@ bindings:
 `), 0600))
 
 	cmd := &cobra.Command{}
-	addCloudAccountProviderFlags(cmd)
+	addCustomerAccountProviderFlags(cmd)
 	require.NoError(t, cmd.Flags().Set(nebiusTenantIDFlag, "tenant-1"))
 	require.NoError(t, cmd.Flags().Set(nebiusBindingsFileFlag, bindingsPath))
 
@@ -57,7 +57,7 @@ bindings:
 
 func TestCloudAccountParamsFromFlags_BYOCOnPrem(t *testing.T) {
 	cmd := &cobra.Command{}
-	addCloudAccountProviderFlags(cmd)
+	addCustomerAccountProviderFlags(cmd)
 	require.NoError(t, cmd.Flags().Set(clusterNameFlag, "customer-k8s"))
 	require.NoError(t, cmd.Flags().Set(clusterDescriptionFlag, "customer cluster"))
 

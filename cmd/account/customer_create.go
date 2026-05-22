@@ -111,7 +111,7 @@ var customerCreateCmd = &cobra.Command{
 func init() {
 	customerCreateCmd.Args = cobra.NoArgs
 
-	addCloudAccountProviderFlags(customerCreateCmd)
+	addCustomerAccountProviderFlags(customerCreateCmd)
 	customerCreateCmd.Flags().Bool(privateLinkFlag, false, "Enable AWS PrivateLink connectivity for services deployed in this account")
 	customerCreateCmd.Flags().Bool(allowCreateNewFlag, false, "Allow the platform to create new cloud-native networks in this account on demand")
 

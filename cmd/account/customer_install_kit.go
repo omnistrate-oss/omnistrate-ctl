@@ -21,6 +21,7 @@ omnistrate-ctl account customer install-kit instance-abcd1234 --output-path /tmp
 
 var (
 	downloadByocOnPremInstallKitFn = dataaccess.DownloadByocOnPremInstallKit
+	mkdirAllInstallKitFn           = os.MkdirAll
 	writeInstallKitFileFn          = os.WriteFile
 	getTokenWithLoginFn            = common.GetTokenWithLogin
 )
@@ -84,6 +85,14 @@ func runCustomerInstallKit(cmd *cobra.Command, args []string) error {
 		outputPath = fileName
 	}
 	outputPath = filepath.Clean(outputPath)
+
+	if dir := filepath.Dir(outputPath); dir != "." {
+		if err = mkdirAllInstallKitFn(dir, 0755); err != nil {
+			err = fmt.Errorf("failed to create install kit output directory %s: %w", dir, err)
+			utils.HandleSpinnerError(spinner, sm, err)
+			return err
+		}
+	}
 
 	if err = writeInstallKitFileFn(outputPath, data, 0600); err != nil {
 		err = fmt.Errorf("failed to write install kit to %s: %w", outputPath, err)

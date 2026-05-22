@@ -110,7 +110,7 @@ func isFieldMatch(field reflect.Value, value string) bool {
 	switch field.Kind() {
 	case reflect.String:
 		fieldValue = field.String()
-	case reflect.Ptr:
+	case reflect.Pointer:
 		if field.IsNil() {
 			return false
 		}
