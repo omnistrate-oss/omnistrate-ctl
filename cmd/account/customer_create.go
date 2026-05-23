@@ -24,25 +24,39 @@ const (
 	  --plan=customer-hosted \
 	  --customer-email=customer@example.com \
 	  --nebius-tenant-id=tenant-xxxx \
-	  --nebius-bindings-file=./nebius-bindings.yaml`
+	  --nebius-bindings-file=./nebius-bindings.yaml
 
-	customerAccountResourceName          = "Cloud Provider Account"
-	customerAccountResourceKey           = "omnistrateCloudAccountConfig"
-	customerAccountResultAccountIDKey    = "cloud_provider_account_config_id"
-	customerAccountIacToolName           = "Account Configuration Method"
-	customerAccountAWSAccountIDName      = "AWS Account ID"
-	customerAccountAWSBootstrapRoleName  = "AWS Bootstrap Role ARN"
-	customerAccountGCPProjectIDName      = "GCP Project ID"
-	customerAccountGCPProjectNumberName  = "GCP Project Number"
-	customerAccountGCPServiceAccountName = "GCP Service Account Email"
-	customerAccountAzureSubIDName        = "Azure Subscription ID"
-	customerAccountAzureTenantIDName     = "Azure Tenant ID"
-	customerAccountNebiusTenantIDName    = "Nebius Tenant ID"
-	customerAccountNebiusBindingsName    = "Nebius Bindings"
-	customerAccountReadyTimeout          = 10 * time.Minute
-	customerAccountReadyPollInterval     = 10 * time.Second
-	customerEmailFlag                    = "customer-email"
-	customerAccountDefaultVersion        = "preferred"
+# Onboard a BYOC On-Premise Kubernetes cluster into a service plan
+	omnistrate-ctl account customer create \
+	  --service=postgres \
+	  --environment=dev \
+	  --plan=customer-hosted \
+	  --cluster-name=customer-k8s \
+	  --cluster-region=us-west-2 \
+	  --cluster-description="Customer Kubernetes cluster" \
+	  --skip-wait`
+
+	customerAccountResourceName                 = "Cloud Provider Account"
+	customerAccountResourceKey                  = "omnistrateCloudAccountConfig"
+	customerAccountResultAccountIDKey           = "cloud_provider_account_config_id"
+	customerAccountIacToolName                  = "Account Configuration Method"
+	customerAccountAWSAccountIDName             = "AWS Account ID"
+	customerAccountAWSBootstrapRoleName         = "AWS Bootstrap Role ARN"
+	customerAccountGCPProjectIDName             = "GCP Project ID"
+	customerAccountGCPProjectNumberName         = "GCP Project Number"
+	customerAccountGCPServiceAccountName        = "GCP Service Account Email"
+	customerAccountAzureSubIDName               = "Azure Subscription ID"
+	customerAccountAzureTenantIDName            = "Azure Tenant ID"
+	customerAccountNebiusTenantIDName           = "Nebius Tenant ID"
+	customerAccountNebiusBindingsName           = "Nebius Bindings"
+	customerAccountCloudProviderName            = "Cloud Provider"
+	customerAccountBYOCOnPremClusterName        = "Cluster Name"
+	customerAccountBYOCOnPremClusterRegion      = "Cluster Region"
+	customerAccountBYOCOnPremClusterDescription = "Cluster Description"
+	customerAccountReadyTimeout                 = 10 * time.Minute
+	customerAccountReadyPollInterval            = 10 * time.Second
+	customerEmailFlag                           = "customer-email"
+	customerAccountDefaultVersion               = "preferred"
 )
 
 type customerCreateOutput struct {
@@ -99,6 +113,7 @@ func init() {
 	customerCreateCmd.Args = cobra.NoArgs
 
 	addCloudAccountProviderFlags(customerCreateCmd)
+	addBYOCOnPremCustomerProviderFlags(customerCreateCmd)
 
 	customerCreateCmd.Flags().String("service", "", "Service name or ID")
 	customerCreateCmd.Flags().String("environment", "", "Environment name or ID")
@@ -493,6 +508,10 @@ func customerAccountInputParameters() []openapiclient.DescribeInputParameterResu
 		{Name: customerAccountAzureTenantIDName, Key: "azure_tenant_id"},
 		{Name: customerAccountNebiusTenantIDName, Key: "nebius_tenant_id"},
 		{Name: customerAccountNebiusBindingsName, Key: "nebius_bindings"},
+		{Name: customerAccountCloudProviderName, Key: "cloud_provider"},
+		{Name: customerAccountBYOCOnPremClusterName, Key: "cluster_name"},
+		{Name: customerAccountBYOCOnPremClusterRegion, Key: "cluster_region"},
+		{Name: customerAccountBYOCOnPremClusterDescription, Key: "cluster_description"},
 	}
 }
 
@@ -655,6 +674,23 @@ func buildCustomerAccountRequestParamsWithDerivedValues(
 		if err := setParam(customerAccountNebiusBindingsName, toCustomerNebiusBindingParams(params.NebiusBindings)); err != nil {
 			return nil, err
 		}
+	case "byoc-onprem":
+		if err := setParam(customerAccountCloudProviderName, "byoc-onprem"); err != nil {
+			return nil, err
+		}
+		if err := setParam(customerAccountBYOCOnPremClusterName, params.BYOCOnPremClusterName); err != nil {
+			return nil, err
+		}
+		if params.BYOCOnPremClusterRegion != "" {
+			if err := setParam(customerAccountBYOCOnPremClusterRegion, params.BYOCOnPremClusterRegion); err != nil {
+				return nil, err
+			}
+		}
+		if params.BYOCOnPremClusterDescription != "" {
+			if err := setParam(customerAccountBYOCOnPremClusterDescription, params.BYOCOnPremClusterDescription); err != nil {
+				return nil, err
+			}
+		}
 	default:
 		return nil, fmt.Errorf("unsupported cloud provider request")
 	}
@@ -685,6 +721,8 @@ func requestedCloudProvider(params CloudAccountParams) string {
 		return "azure"
 	case params.NebiusTenantID != "":
 		return "nebius"
+	case params.BYOCOnPremClusterName != "":
+		return "byoc-onprem"
 	default:
 		return ""
 	}

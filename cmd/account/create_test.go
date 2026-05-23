@@ -48,7 +48,22 @@ func TestValidateCloudAccountParams_Nebius(t *testing.T) {
 				NebiusTenantID: "tenant-1",
 				NebiusBindings: []openapiclient.NebiusAccountBindingInput{validBinding},
 			},
-			wantErr: "only one of --aws-account-id, --gcp-project-id, --azure-subscription-id, or --nebius-tenant-id can be used at a time",
+			wantErr: "only one of --aws-account-id, --gcp-project-id, --azure-subscription-id, --nebius-tenant-id, or --cluster-name can be used at a time",
+		},
+		{
+			name: "valid BYOC On-Prem params",
+			params: CloudAccountParams{
+				Name:                  "customer-k8s",
+				BYOCOnPremClusterName: "customer-k8s",
+			},
+		},
+		{
+			name: "BYOC On-Prem region requires cluster name",
+			params: CloudAccountParams{
+				Name:                    "customer-k8s",
+				BYOCOnPremClusterRegion: "us-west-2",
+			},
+			wantErr: "--cluster-name must be provided when using BYOC On-Premise cluster flags",
 		},
 	}
 

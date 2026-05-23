@@ -5,14 +5,17 @@ import (
 )
 
 const (
-	awsAccountIDFlag        = "aws-account-id"
-	gcpProjectIDFlag        = "gcp-project-id"
-	gcpProjectNumberFlag    = "gcp-project-number"
-	azureSubscriptionIDFlag = "azure-subscription-id"
-	azureTenantIDFlag       = "azure-tenant-id"
-	nebiusTenantIDFlag      = "nebius-tenant-id"
-	nebiusBindingsFileFlag  = "nebius-bindings-file"
-	skipWaitFlag            = "skip-wait"
+	awsAccountIDFlag                 = "aws-account-id"
+	gcpProjectIDFlag                 = "gcp-project-id"
+	gcpProjectNumberFlag             = "gcp-project-number"
+	azureSubscriptionIDFlag          = "azure-subscription-id"
+	azureTenantIDFlag                = "azure-tenant-id"
+	nebiusTenantIDFlag               = "nebius-tenant-id"
+	nebiusBindingsFileFlag           = "nebius-bindings-file"
+	byocOnPremClusterNameFlag        = "cluster-name"
+	byocOnPremClusterRegionFlag      = "cluster-region"
+	byocOnPremClusterDescriptionFlag = "cluster-description"
+	skipWaitFlag                     = "skip-wait"
 )
 
 func addCloudAccountProviderFlags(cmd *cobra.Command) {
@@ -25,16 +28,33 @@ func addCloudAccountProviderFlags(cmd *cobra.Command) {
 	cmd.Flags().String(nebiusBindingsFileFlag, "", "Path to a YAML file describing Nebius bindings")
 	cmd.Flags().Bool(skipWaitFlag, false, "Skip waiting for the account to become READY")
 
+	cmd.MarkFlagsRequiredTogether(gcpProjectIDFlag, gcpProjectNumberFlag)
+	cmd.MarkFlagsRequiredTogether(azureSubscriptionIDFlag, azureTenantIDFlag)
+	cmd.MarkFlagsRequiredTogether(nebiusTenantIDFlag, nebiusBindingsFileFlag)
+	_ = cmd.MarkFlagFilename(nebiusBindingsFileFlag)
+}
+
+func markCloudAccountProviderRequired(cmd *cobra.Command) {
 	cmd.MarkFlagsOneRequired(
 		awsAccountIDFlag,
 		gcpProjectIDFlag,
 		azureSubscriptionIDFlag,
 		nebiusTenantIDFlag,
 	)
-	cmd.MarkFlagsRequiredTogether(gcpProjectIDFlag, gcpProjectNumberFlag)
-	cmd.MarkFlagsRequiredTogether(azureSubscriptionIDFlag, azureTenantIDFlag)
-	cmd.MarkFlagsRequiredTogether(nebiusTenantIDFlag, nebiusBindingsFileFlag)
-	_ = cmd.MarkFlagFilename(nebiusBindingsFileFlag)
+}
+
+func addBYOCOnPremCustomerProviderFlags(cmd *cobra.Command) {
+	cmd.Flags().String(byocOnPremClusterNameFlag, "", "Customer Kubernetes cluster name for BYOC On-Premise")
+	cmd.Flags().String(byocOnPremClusterRegionFlag, "", "Customer Kubernetes cluster region or location label for BYOC On-Premise")
+	cmd.Flags().String(byocOnPremClusterDescriptionFlag, "", "Customer Kubernetes cluster description for BYOC On-Premise")
+
+	cmd.MarkFlagsOneRequired(
+		awsAccountIDFlag,
+		gcpProjectIDFlag,
+		azureSubscriptionIDFlag,
+		nebiusTenantIDFlag,
+		byocOnPremClusterNameFlag,
+	)
 }
 
 func cloudAccountParamsFromFlags(cmd *cobra.Command, name string) (CloudAccountParams, error) {
@@ -45,15 +65,21 @@ func cloudAccountParamsFromFlags(cmd *cobra.Command, name string) (CloudAccountP
 	azureTenantID, _ := cmd.Flags().GetString(azureTenantIDFlag)
 	nebiusTenantID, _ := cmd.Flags().GetString(nebiusTenantIDFlag)
 	nebiusBindingsFile, _ := cmd.Flags().GetString(nebiusBindingsFileFlag)
+	byocOnPremClusterName, _ := cmd.Flags().GetString(byocOnPremClusterNameFlag)
+	byocOnPremClusterRegion, _ := cmd.Flags().GetString(byocOnPremClusterRegionFlag)
+	byocOnPremClusterDescription, _ := cmd.Flags().GetString(byocOnPremClusterDescriptionFlag)
 
 	params := CloudAccountParams{
-		Name:                name,
-		AwsAccountID:        awsAccountID,
-		GcpProjectID:        gcpProjectID,
-		GcpProjectNumber:    gcpProjectNumber,
-		AzureSubscriptionID: azureSubscriptionID,
-		AzureTenantID:       azureTenantID,
-		NebiusTenantID:      nebiusTenantID,
+		Name:                         name,
+		AwsAccountID:                 awsAccountID,
+		GcpProjectID:                 gcpProjectID,
+		GcpProjectNumber:             gcpProjectNumber,
+		AzureSubscriptionID:          azureSubscriptionID,
+		AzureTenantID:                azureTenantID,
+		NebiusTenantID:               nebiusTenantID,
+		BYOCOnPremClusterName:        byocOnPremClusterName,
+		BYOCOnPremClusterRegion:      byocOnPremClusterRegion,
+		BYOCOnPremClusterDescription: byocOnPremClusterDescription,
 	}
 
 	if nebiusBindingsFile != "" {

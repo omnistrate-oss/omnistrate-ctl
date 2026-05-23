@@ -23,6 +23,7 @@ func TestCustomerCreateCommandDoesNotExposePlacementFlags(t *testing.T) {
 	require.NotNil(t, customerCreateCmd.Flags().Lookup("environment"))
 	require.NotNil(t, customerCreateCmd.Flags().Lookup("plan"))
 	require.NotNil(t, customerCreateCmd.Flags().Lookup(customerEmailFlag))
+	require.NotNil(t, customerCreateCmd.Flags().Lookup(byocOnPremClusterNameFlag))
 }
 
 func TestCloudAccountParamsFromFlags_SharesProviderParsing(t *testing.T) {
@@ -114,6 +115,30 @@ func TestBuildCustomerAccountRequestParamsWithDerivedValues_Nebius(t *testing.T)
 	assert.False(t, hasRegion)
 }
 
+func TestBuildCustomerAccountRequestParamsWithDerivedValues_BYOCOnPrem(t *testing.T) {
+	params := CloudAccountParams{
+		Name:                         "customer-k8s",
+		BYOCOnPremClusterName:        "customer-k8s",
+		BYOCOnPremClusterRegion:      "us-west-2",
+		BYOCOnPremClusterDescription: "Customer Kubernetes cluster",
+	}
+
+	inputParameters := []openapiclient.DescribeInputParameterResult{
+		{Name: customerAccountCloudProviderName, Key: "cloud_provider"},
+		{Name: customerAccountBYOCOnPremClusterName, Key: "cluster_name"},
+		{Name: customerAccountBYOCOnPremClusterRegion, Key: "cluster_region"},
+		{Name: customerAccountBYOCOnPremClusterDescription, Key: "cluster_description"},
+	}
+
+	requestParams, err := buildCustomerAccountRequestParamsWithDerivedValues(params, inputParameters, "")
+	require.NoError(t, err)
+	assert.Equal(t, "byoc-onprem", requestParams["cloud_provider"])
+	assert.Equal(t, "customer-k8s", requestParams["cluster_name"])
+	assert.Equal(t, "us-west-2", requestParams["cluster_region"])
+	assert.Equal(t, "Customer Kubernetes cluster", requestParams["cluster_description"])
+	assert.Equal(t, "byoc-onprem", requestedCloudProvider(params))
+}
+
 func TestBuildCustomerAccountRequestParamsWithDerivedValues_AWS(t *testing.T) {
 	params := CloudAccountParams{
 		Name:         "customer-aws",
@@ -150,6 +175,10 @@ func TestCustomerAccountInputParameters(t *testing.T) {
 	assert.Equal(t, "azure_tenant_id", keysByName[customerAccountAzureTenantIDName])
 	assert.Equal(t, "nebius_tenant_id", keysByName[customerAccountNebiusTenantIDName])
 	assert.Equal(t, "nebius_bindings", keysByName[customerAccountNebiusBindingsName])
+	assert.Equal(t, "cloud_provider", keysByName[customerAccountCloudProviderName])
+	assert.Equal(t, "cluster_name", keysByName[customerAccountBYOCOnPremClusterName])
+	assert.Equal(t, "cluster_region", keysByName[customerAccountBYOCOnPremClusterRegion])
+	assert.Equal(t, "cluster_description", keysByName[customerAccountBYOCOnPremClusterDescription])
 }
 
 func TestExtractCustomerAccountConfigID(t *testing.T) {
@@ -221,7 +250,7 @@ func TestResolveCustomerAccountSubscription_ProductionDefaultsToCallingUserSubsc
 	describeCurrentUserFn = func(ctx context.Context, token string) (*openapiclient.DescribeUserResult, error) {
 		assert.Equal(t, "token", token)
 		return &openapiclient.DescribeUserResult{
-			Email: strPtr("caller@example.com"),
+			Email: ptr("caller@example.com"),
 		}, nil
 	}
 	resolveCustomerSubscriptionByEmail = func(ctx context.Context, token, serviceID, environmentID, planID, customerEmail string) (*openapiclientfleet.FleetDescribeSubscriptionResult, error) {

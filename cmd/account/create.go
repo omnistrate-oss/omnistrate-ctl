@@ -41,6 +41,7 @@ func init() {
 	createCmd.Args = cobra.ExactArgs(1) // Require exactly one argument
 
 	addCloudAccountProviderFlags(createCmd)
+	markCloudAccountProviderRequired(createCmd)
 }
 
 func runCreate(cmd *cobra.Command, args []string) error {
@@ -124,14 +125,17 @@ func runCreate(cmd *cobra.Command, args []string) error {
 
 // CloudAccountParams holds the parameters for creating a cloud account
 type CloudAccountParams struct {
-	Name                string
-	AwsAccountID        string
-	GcpProjectID        string
-	GcpProjectNumber    string
-	AzureSubscriptionID string
-	AzureTenantID       string
-	NebiusTenantID      string
-	NebiusBindings      []openapiclient.NebiusAccountBindingInput
+	Name                         string
+	AwsAccountID                 string
+	GcpProjectID                 string
+	GcpProjectNumber             string
+	AzureSubscriptionID          string
+	AzureTenantID                string
+	NebiusTenantID               string
+	NebiusBindings               []openapiclient.NebiusAccountBindingInput
+	BYOCOnPremClusterName        string
+	BYOCOnPremClusterRegion      string
+	BYOCOnPremClusterDescription string
 }
 
 // CreateCloudAccount creates a cloud provider account and returns the account config ID and account details
@@ -243,12 +247,15 @@ func validateCloudAccountParams(params CloudAccountParams) error {
 	if params.NebiusTenantID != "" || len(params.NebiusBindings) > 0 {
 		providerCount++
 	}
+	if params.BYOCOnPremClusterName != "" || params.BYOCOnPremClusterRegion != "" || params.BYOCOnPremClusterDescription != "" {
+		providerCount++
+	}
 
 	if providerCount == 0 {
 		return fmt.Errorf("one cloud provider account configuration must be provided")
 	}
 	if providerCount > 1 {
-		return fmt.Errorf("only one of --aws-account-id, --gcp-project-id, --azure-subscription-id, or --nebius-tenant-id can be used at a time")
+		return fmt.Errorf("only one of --aws-account-id, --gcp-project-id, --azure-subscription-id, --nebius-tenant-id, or --cluster-name can be used at a time")
 	}
 
 	if (params.GcpProjectID != "" && params.GcpProjectNumber == "") || (params.GcpProjectID == "" && params.GcpProjectNumber != "") {
@@ -259,6 +266,9 @@ func validateCloudAccountParams(params CloudAccountParams) error {
 	}
 	if (params.NebiusTenantID != "" && len(params.NebiusBindings) == 0) || (params.NebiusTenantID == "" && len(params.NebiusBindings) > 0) {
 		return fmt.Errorf("both --nebius-tenant-id and --nebius-bindings-file must be provided together")
+	}
+	if params.BYOCOnPremClusterName == "" && (params.BYOCOnPremClusterRegion != "" || params.BYOCOnPremClusterDescription != "") {
+		return fmt.Errorf("--cluster-name must be provided when using BYOC On-Premise cluster flags")
 	}
 
 	return nil
