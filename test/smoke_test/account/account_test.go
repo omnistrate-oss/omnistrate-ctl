@@ -95,3 +95,25 @@ func Test_account_customer_install_kit_help(t *testing.T) {
 	err := cmd.RootCmd.ExecuteContext(context.TODO())
 	require.NoError(t, err)
 }
+
+func Test_account_customer_create_byoc_onprem_flags_help(t *testing.T) {
+	testutils.SmokeTest(t)
+
+	cmd.RootCmd.SetArgs([]string{"account", "customer", "create", "--help"})
+	err := cmd.RootCmd.ExecuteContext(context.TODO())
+	require.NoError(t, err)
+}
+
+func Test_account_customer_create_byoc_onprem_requires_cluster_name(t *testing.T) {
+	testutils.SmokeTest(t)
+
+	cmd.RootCmd.SetArgs([]string{
+		"account", "customer", "create",
+		"--service", "postgres",
+		"--environment", "dev",
+		"--plan", "customer-hosted",
+		"--cluster-region", "on-prem",
+	})
+	err := cmd.RootCmd.ExecuteContext(context.TODO())
+	require.Error(t, err)
+}

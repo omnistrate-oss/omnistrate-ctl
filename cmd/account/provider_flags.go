@@ -49,7 +49,7 @@ func addBaseCloudAccountProviderFlags(cmd *cobra.Command) {
 func addCustomerAccountProviderFlags(cmd *cobra.Command) {
 	addBaseCloudAccountProviderFlags(cmd)
 	cmd.Flags().String(clusterNameFlag, "", "Name of the customer-provided Kubernetes cluster for BYOC On-Premise")
-	cmd.Flags().String(clusterRegionFlag, "", "Optional region or location label for the BYOC On-Premise cluster")
+	cmd.Flags().String(clusterRegionFlag, "", "Optional account onboarding region or location label for the BYOC On-Premise cluster (defaults to on-prem)")
 	cmd.Flags().String(clusterDescriptionFlag, "", "Optional description for the BYOC On-Premise cluster")
 
 	cmd.MarkFlagsOneRequired(
@@ -78,6 +78,9 @@ func cloudAccountParamsFromFlags(cmd *cobra.Command, name string) (CloudAccountP
 	}
 	if cmd.Flags().Lookup(clusterDescriptionFlag) != nil {
 		clusterDescription, _ = cmd.Flags().GetString(clusterDescriptionFlag)
+	}
+	if clusterName != "" && clusterRegion == "" {
+		clusterRegion = customerAccountDefaultOnPremRegion
 	}
 
 	params := CloudAccountParams{
@@ -110,7 +113,8 @@ func cloudAccountParamsFromFlags(cmd *cobra.Command, name string) (CloudAccountP
 		params.NebiusBindings = bindings
 	}
 
-	if err := validateCloudAccountParams(params); err != nil {
+	supportsCluster := cmd.Flags().Lookup(clusterNameFlag) != nil
+	if err := validateCloudAccountParamsForFlags(params, supportsCluster); err != nil {
 		return CloudAccountParams{}, err
 	}
 

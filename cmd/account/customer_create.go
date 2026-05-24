@@ -52,6 +52,7 @@ const (
 	customerAccountClusterNameName        = "Cluster Name"
 	customerAccountClusterRegionName      = "Cluster Region"
 	customerAccountClusterDescriptionName = "Cluster Description"
+	customerAccountDefaultOnPremRegion    = "on-prem"
 	customerAccountReadyTimeout           = 10 * time.Minute
 	customerAccountReadyPollInterval      = 10 * time.Second
 	customerEmailFlag                     = "customer-email"
@@ -102,7 +103,7 @@ var (
 var customerCreateCmd = &cobra.Command{
 	Use:          "create --service=[service] --environment=[environment] --plan=[plan] [provider flags]",
 	Short:        "Create a customer BYOA account onboarding instance",
-	Long:         "This command onboards a customer cloud account into the injected BYOA account-config resource for a specific service plan.",
+	Long:         "This command onboards a customer cloud account into the injected BYOA account-config resource for a specific service plan. For BYOC On-Premise, it downloads the generated install kit without waiting for the onboarding instance to become READY; --cluster-region is account onboarding metadata and defaults to on-prem.",
 	Example:      customerCreateExample,
 	RunE:         runCustomerCreate,
 	SilenceUsage: true,
@@ -231,7 +232,8 @@ func runCustomerCreate(cmd *cobra.Command, args []string) error {
 	instanceID := strings.TrimSpace(*createResult.Id)
 	utils.HandleSpinnerSuccess(spinner, sm, "Created customer BYOA account onboarding instance")
 
-	if requestedCloudProvider(params) == "byoc-onprem" {
+	isByocOnPrem := requestedCloudProvider(params) == "byoc-onprem"
+	if isByocOnPrem {
 		skipWait = true
 	}
 
@@ -266,6 +268,30 @@ func runCustomerCreate(cmd *cobra.Command, args []string) error {
 		backingAccount, err = dataaccess.DescribeAccount(cmd.Context(), token, accountConfigID)
 		if err != nil && output != "json" {
 			utils.PrintWarning(fmt.Sprintf("failed to describe backing account config %s: %v", accountConfigID, err))
+		}
+	}
+
+	if isByocOnPrem {
+		if accountConfigID == "" {
+			var kitSpinner *utils.Spinner
+			if output != "json" {
+				fmt.Printf("\n")
+				sm = utils.NewSpinnerManager()
+				kitSpinner = sm.AddSpinner("Waiting for BYOC On-Premise install kit to become available...")
+				sm.Start()
+			}
+			instanceDetail, accountConfigID, err = waitForCustomerAccountConfigID(cmd.Context(), token, target.ServiceID, target.EnvironmentID, instanceID)
+			if err != nil {
+				utils.HandleSpinnerError(kitSpinner, sm, err)
+				utils.PrintError(err)
+				return err
+			}
+			utils.HandleSpinnerSuccess(kitSpinner, sm, "BYOC On-Premise install kit is available")
+		}
+
+		if err = downloadByocOnPremKitForCreate(cmd.Context(), token, accountConfigID, output); err != nil {
+			utils.PrintError(err)
+			return err
 		}
 	}
 
@@ -683,10 +709,12 @@ func buildCustomerAccountRequestParamsWithDerivedValues(
 		if err := setParam(customerAccountClusterNameName, params.ClusterName); err != nil {
 			return nil, err
 		}
-		if params.ClusterRegion != "" {
-			if err := setParam(customerAccountClusterRegionName, params.ClusterRegion); err != nil {
-				return nil, err
-			}
+		clusterRegion := strings.TrimSpace(params.ClusterRegion)
+		if clusterRegion == "" {
+			clusterRegion = customerAccountDefaultOnPremRegion
+		}
+		if err := setParam(customerAccountClusterRegionName, clusterRegion); err != nil {
+			return nil, err
 		}
 		if params.ClusterDescription != "" {
 			if err := setParam(customerAccountClusterDescriptionName, params.ClusterDescription); err != nil {
@@ -789,6 +817,82 @@ func waitForCustomerAccountInstanceReady(
 			}
 		}
 	}
+}
+
+func waitForCustomerAccountConfigID(
+	ctx context.Context,
+	token string,
+	serviceID string,
+	environmentID string,
+	instanceID string,
+) (*openapiclientfleet.ResourceInstance, string, error) {
+	timeout := time.After(customerAccountReadyTimeout)
+	ticker := time.NewTicker(customerAccountReadyPollInterval)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return nil, "", ctx.Err()
+		case <-timeout:
+			return nil, "", fmt.Errorf("customer onboarding instance %s did not expose a backing account config ID after %s", instanceID, customerAccountReadyTimeout)
+		case <-ticker.C:
+			instance, err := dataaccess.DescribeResourceInstance(ctx, token, serviceID, environmentID, instanceID)
+			if err != nil {
+				return nil, "", err
+			}
+
+			status := strings.ToUpper(utils.FromPtr(instance.ConsumptionResourceInstanceResult.Status))
+			if status == "FAILED" {
+				return nil, "", fmt.Errorf("resource instance %s entered FAILED state", instanceID)
+			}
+
+			accountConfigID := extractCustomerAccountConfigID(instance)
+			if accountConfigID != "" {
+				return instance, accountConfigID, nil
+			}
+		}
+	}
+}
+
+func downloadByocOnPremKitForCreate(ctx context.Context, token string, accountConfigID string, output string) error {
+	outputPath := dataaccess.ByocOnPremInstallKitFileName(accountConfigID)
+
+	var sm utils.SpinnerManager
+	var spinner *utils.Spinner
+	if output != "json" {
+		fmt.Println()
+		sm = utils.NewSpinnerManager()
+		spinner = sm.AddSpinner("Downloading BYOC On-Premise install kit...")
+		sm.Start()
+	}
+
+	file, err := openInstallKitFileFn(outputPath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0600)
+	if err != nil {
+		err = fmt.Errorf("failed to create install kit file %s: %w", outputPath, err)
+		utils.HandleSpinnerError(spinner, sm, err)
+		return err
+	}
+
+	if err = downloadByocOnPremInstallKitFn(ctx, token, accountConfigID, file); err != nil {
+		_ = file.Close()
+		utils.HandleSpinnerError(spinner, sm, err)
+		return err
+	}
+	if err = closeInstallKitWriter(file); err != nil {
+		utils.HandleSpinnerError(spinner, sm, err)
+		return err
+	}
+
+	utils.HandleSpinnerSuccess(spinner, sm, fmt.Sprintf("Successfully downloaded BYOC On-Premise install kit to %s", outputPath))
+	if output != "json" {
+		fmt.Println()
+		fmt.Println("Next steps:")
+		fmt.Printf("  1. Extract the kit:  tar xf %s\n", outputPath)
+		fmt.Println("  2. Run the installer from the extracted directory:  ./install.sh")
+		fmt.Println("  3. Wait for the customer onboarding instance to become READY.")
+	}
+	return nil
 }
 
 func extractCustomerAccountConfigID(instance *openapiclientfleet.ResourceInstance) string {

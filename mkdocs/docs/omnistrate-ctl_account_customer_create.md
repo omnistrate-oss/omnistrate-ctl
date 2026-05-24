@@ -4,7 +4,7 @@ Create a customer BYOA account onboarding instance
 
 ### Synopsis
 
-This command onboards a customer cloud account into the injected BYOA account-config resource for a specific service plan.
+This command onboards a customer cloud account into the injected BYOA account-config resource for a specific service plan. For BYOC On-Premise, it downloads the generated install kit without waiting for the onboarding instance to become READY; --cluster-region is account onboarding metadata and defaults to on-prem.
 
 ```
 omnistrate-ctl account customer create --service=[service] --environment=[environment] --plan=[plan] [provider flags] [flags]
@@ -40,7 +40,7 @@ omnistrate-ctl account customer create --service=[service] --environment=[enviro
       --azure-tenant-id string                  Azure tenant ID
       --cluster-description string              Optional description for the BYOC On-Premise cluster
       --cluster-name string                     Name of the customer-provided Kubernetes cluster for BYOC On-Premise
-      --cluster-region string                   Optional region or location label for the BYOC On-Premise cluster
+      --cluster-region string                   Optional account onboarding region or location label for the BYOC On-Premise cluster (defaults to on-prem)
       --customer-email string                   Customer email to onboard on behalf of in production environments
       --environment string                      Environment name or ID
       --gcp-project-id string                   GCP project ID

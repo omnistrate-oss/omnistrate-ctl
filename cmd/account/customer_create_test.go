@@ -2,10 +2,12 @@ package account
 
 import (
 	"context"
+	"io"
 	"os"
 	"path/filepath"
 	"testing"
 
+	"github.com/omnistrate-oss/omnistrate-ctl/internal/dataaccess"
 	openapiclientfleet "github.com/omnistrate-oss/omnistrate-sdk-go/fleet"
 	openapiclient "github.com/omnistrate-oss/omnistrate-sdk-go/v1"
 	"github.com/spf13/cobra"
@@ -65,7 +67,7 @@ func TestCloudAccountParamsFromFlags_BYOCOnPrem(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "customer-onprem", params.Name)
 	require.Equal(t, "customer-k8s", params.ClusterName)
-	require.Empty(t, params.ClusterRegion)
+	require.Equal(t, customerAccountDefaultOnPremRegion, params.ClusterRegion)
 	require.Equal(t, "customer cluster", params.ClusterDescription)
 }
 
@@ -202,13 +204,32 @@ func TestBuildCustomerAccountRequestParamsWithDerivedValues_BYOCOnPrem(t *testin
 	requestParams, err := buildCustomerAccountRequestParamsWithDerivedValues(params, inputParameters, "")
 	require.NoError(t, err)
 	assert.Equal(t, "customer-k8s", requestParams["cluster_name"])
+	assert.Equal(t, customerAccountDefaultOnPremRegion, requestParams["cluster_region"])
 	assert.Equal(t, "customer cluster", requestParams["cluster_description"])
-	_, hasClusterRegion := requestParams["cluster_region"]
-	assert.False(t, hasClusterRegion)
 }
 
 func TestRequestedCloudProvider_BYOCOnPrem(t *testing.T) {
 	assert.Equal(t, "byoc-onprem", requestedCloudProvider(CloudAccountParams{ClusterName: "customer-k8s"}))
+}
+
+func TestDownloadByocOnPremKitForCreate(t *testing.T) {
+	originalDownload := downloadByocOnPremInstallKitFn
+	t.Cleanup(func() {
+		downloadByocOnPremInstallKitFn = originalDownload
+	})
+
+	t.Chdir(t.TempDir())
+
+	downloadByocOnPremInstallKitFn = func(_ context.Context, _ string, accountConfigID string, writer io.Writer) error {
+		require.Equal(t, "ac-123", accountConfigID)
+		_, err := writer.Write([]byte("kit"))
+		return err
+	}
+
+	require.NoError(t, downloadByocOnPremKitForCreate(context.Background(), "token", "ac-123", "json"))
+	data, err := os.ReadFile(dataaccess.ByocOnPremInstallKitFileName("ac-123"))
+	require.NoError(t, err)
+	require.Equal(t, []byte("kit"), data)
 }
 
 func TestBuildCustomerAccountRequestParamsWithDerivedValues_PrivateLinkAndAllowCreateNew(t *testing.T) {
