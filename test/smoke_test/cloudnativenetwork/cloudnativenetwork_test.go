@@ -237,3 +237,214 @@ func Test_account_customer_create_cloud_native_networks(t *testing.T) {
 
 	require.NoError(createErr, "account customer create with --cloud-native-networks should succeed")
 }
+
+// Test_gcp_cloud_native_network_discovery exercises the same discovery /
+// import / remove surface as Test_cloud_native_network_discovery, but through
+// a GCP customer BYOA account onboarding instance.
+//
+// Required environment variables:
+//   - TEST_GCP_CNN_SERVICE: service name or ID for a GCP-capable BYOA plan
+//   - TEST_GCP_CNN_ENVIRONMENT: environment name or ID
+//   - TEST_GCP_CNN_PLAN: plan name or ID
+//   - TEST_GCP_PROJECT_ID: GCP project ID
+//   - TEST_GCP_PROJECT_NUMBER: GCP project number
+//   - Optionally TEST_GCP_CNN_REGION: region to sync (defaults to us-central1)
+//
+// When any required variable is missing, the test is skipped.
+func Test_gcp_cloud_native_network_discovery(t *testing.T) {
+	testutils.SmokeTest(t)
+
+	ctx := context.Background()
+	require := require.New(t)
+	defer testutils.Cleanup()
+
+	service := config.GetEnv("TEST_GCP_CNN_SERVICE", "")
+	environment := config.GetEnv("TEST_GCP_CNN_ENVIRONMENT", "")
+	plan := config.GetEnv("TEST_GCP_CNN_PLAN", "")
+	projectID := config.GetEnv("TEST_GCP_PROJECT_ID", "")
+	projectNumber := config.GetEnv("TEST_GCP_PROJECT_NUMBER", "")
+	region := config.GetEnv("TEST_GCP_CNN_REGION", "us-central1")
+
+	if service == "" || environment == "" || plan == "" || projectID == "" || projectNumber == "" {
+		t.Skip("TEST_GCP_CNN_SERVICE, TEST_GCP_CNN_ENVIRONMENT, TEST_GCP_CNN_PLAN, TEST_GCP_PROJECT_ID, and TEST_GCP_PROJECT_NUMBER must all be set; skipping")
+	}
+
+	testEmail, testPassword, err := testutils.GetTestAccount()
+	require.NoError(err)
+	cmd.RootCmd.SetArgs([]string{"login", fmt.Sprintf("--email=%s", testEmail), fmt.Sprintf("--password=%s", testPassword)})
+	require.NoError(cmd.RootCmd.ExecuteContext(ctx))
+
+	token, err := config.GetToken()
+	require.NoError(err)
+
+	existingInstanceIDs := customerAccountInstanceIDsForTest(t, ctx, token, service, plan, "gcp")
+
+	cmd.RootCmd.SetArgs([]string{
+		"account", "customer", "create",
+		"--service", service,
+		"--environment", environment,
+		"--plan", plan,
+		"--gcp-project-id", projectID,
+		"--gcp-project-number", projectNumber,
+		"--output", "json",
+	})
+	require.NoError(cmd.RootCmd.ExecuteContext(ctx))
+
+	ref, accountConfigID := resolveNewCustomerAccountForTest(t, ctx, token, service, plan, "gcp", existingInstanceIDs)
+	require.NotNil(ref)
+	require.NotEmpty(accountConfigID)
+
+	importedNetworkID := ""
+	t.Cleanup(func() {
+		if importedNetworkID != "" {
+			_, _ = dataaccess.UnimportAccountConfigCloudNativeNetwork(ctx, token, accountConfigID, importedNetworkID)
+		}
+		_ = dataaccess.DeleteResourceInstance(ctx, token, ref.ServiceID, ref.EnvironmentID, ref.ResourceID, ref.InstanceID)
+	})
+
+	_, err = dataaccess.SyncAccountConfigCloudNativeNetworks(ctx, token, accountConfigID, []string{region})
+	require.NoError(err)
+
+	listResult, err := dataaccess.ListAccountConfigCloudNativeNetworks(ctx, token, accountConfigID)
+	require.NoError(err)
+	require.NotNil(listResult)
+	require.NotEmpty(listResult.CloudNativeNetworks)
+
+	for _, network := range listResult.CloudNativeNetworks {
+		require.NotNil(network.Imported, "fleet response missing 'imported' for %s", network.CloudNativeNetworkId)
+		require.NotNil(network.InUse, "fleet response missing 'inUse' for %s", network.CloudNativeNetworkId)
+	}
+
+	targetNetworkID := firstImportableNetwork(listResult.CloudNativeNetworks)
+	if targetNetworkID == "" {
+		t.Logf("no importable networks discovered for GCP account-config %s; skipping import/remove phase", accountConfigID)
+		return
+	}
+
+	_, err = dataaccess.ImportAccountConfigCloudNativeNetwork(ctx, token, accountConfigID, targetNetworkID)
+	require.NoError(err)
+	importedNetworkID = targetNetworkID
+
+	postImport, err := dataaccess.ListAccountConfigCloudNativeNetworks(ctx, token, accountConfigID)
+	require.NoError(err)
+	require.True(networkImported(postImport.CloudNativeNetworks, targetNetworkID), "network %s should be imported after import call", targetNetworkID)
+
+	cmd.RootCmd.SetArgs([]string{"account", "customer", "cloud-native-network", "remove", accountConfigID, "--network-id", targetNetworkID, "--output", "json"})
+	require.NoError(cmd.RootCmd.ExecuteContext(ctx))
+	importedNetworkID = ""
+
+	postRemove, err := dataaccess.ListAccountConfigCloudNativeNetworks(ctx, token, accountConfigID)
+	require.NoError(err)
+	require.False(networkImported(postRemove.CloudNativeNetworks, targetNetworkID), "network %s should not be imported after remove", targetNetworkID)
+}
+
+func firstImportableNetwork(vpcs []openapiclientfleet.FleetAccountConfigCloudNativeNetworkResult) string {
+	if available := firstAvailableNetwork(vpcs); available != "" {
+		return available
+	}
+
+	for _, vpc := range vpcs {
+		imported := vpc.Imported != nil && *vpc.Imported
+		inUse := vpc.InUse != nil && *vpc.InUse
+		if strings.EqualFold(vpc.Status, "READY") && !imported && !inUse {
+			return vpc.CloudNativeNetworkId
+		}
+	}
+
+	return ""
+}
+
+func customerAccountInstanceIDsForTest(t *testing.T, ctx context.Context, token, service, plan, cloudProvider string) map[string]struct{} {
+	t.Helper()
+
+	ids := make(map[string]struct{})
+	for _, ref := range customerAccountRefsForTest(t, ctx, token, service, plan, cloudProvider) {
+		ids[ref.InstanceID] = struct{}{}
+	}
+	return ids
+}
+
+func resolveNewCustomerAccountForTest(
+	t *testing.T,
+	ctx context.Context,
+	token, service, plan, cloudProvider string,
+	existingInstanceIDs map[string]struct{},
+) (*customerAccountRefForTest, string) {
+	t.Helper()
+
+	var selected *customerAccountRefForTest
+	for _, ref := range customerAccountRefsForTest(t, ctx, token, service, plan, cloudProvider) {
+		if _, existed := existingInstanceIDs[ref.InstanceID]; existed {
+			continue
+		}
+		selected = ref
+		break
+	}
+
+	require.NotNil(t, selected, "failed to resolve newly-created customer account onboarding instance for %s / %s / %s", service, plan, cloudProvider)
+
+	instance, err := dataaccess.DescribeResourceInstance(ctx, token, selected.ServiceID, selected.EnvironmentID, selected.InstanceID)
+	require.NoError(t, err)
+
+	resultParamsMap, ok := instance.ConsumptionResourceInstanceResult.ResultParams.(map[string]any)
+	require.True(t, ok, "customer account onboarding result_params is not a map")
+
+	accountConfigID, ok := resultParamsMap["cloud_provider_account_config_id"].(string)
+	require.True(t, ok, "customer account onboarding did not expose cloud_provider_account_config_id")
+
+	return selected, strings.TrimSpace(accountConfigID)
+}
+
+func customerAccountRefsForTest(t *testing.T, ctx context.Context, token, service, plan, cloudProvider string) []*customerAccountRefForTest {
+	t.Helper()
+
+	searchResult, err := dataaccess.SearchInventory(ctx, token, customerAccountSearchQueryForTest)
+	require.NoError(t, err)
+
+	refs := make([]*customerAccountRefForTest, 0)
+	for _, record := range searchResult.ResourceInstanceResults {
+		if record.ResourceId == nil || !strings.HasPrefix(strings.TrimSpace(*record.ResourceId), "r-injectedaccountconfig") {
+			continue
+		}
+		if !matchesIDOrName(record.ServiceId, record.ServiceName, service) {
+			continue
+		}
+		if !matchesOptionalIDOrName(record.ProductTierId, record.ProductTierName, plan) {
+			continue
+		}
+		if !strings.EqualFold(strings.TrimSpace(record.CloudProvider), cloudProvider) {
+			continue
+		}
+		ref := &customerAccountRefForTest{
+			InstanceID:    strings.TrimSpace(record.Id),
+			ServiceID:     strings.TrimSpace(record.ServiceId),
+			EnvironmentID: strings.TrimSpace(record.ServiceEnvironmentId),
+			ResourceID:    strings.TrimSpace(*record.ResourceId),
+		}
+		refs = append(refs, ref)
+	}
+
+	return refs
+}
+
+func matchesOptionalIDOrName(id string, name *string, value string) bool {
+	value = strings.TrimSpace(value)
+	if strings.EqualFold(strings.TrimSpace(id), value) {
+		return true
+	}
+	return name != nil && strings.EqualFold(strings.TrimSpace(*name), value)
+}
+
+func matchesIDOrName(id string, name string, value string) bool {
+	value = strings.TrimSpace(value)
+	return strings.EqualFold(strings.TrimSpace(id), value) || strings.EqualFold(strings.TrimSpace(name), value)
+}
+
+type customerAccountRefForTest struct {
+	InstanceID    string
+	ServiceID     string
+	EnvironmentID string
+	ResourceID    string
+}
+
+const customerAccountSearchQueryForTest = "resourceinstance:i"
