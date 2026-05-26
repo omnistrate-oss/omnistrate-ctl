@@ -14,8 +14,10 @@ import (
 	"github.com/omnistrate-oss/omnistrate-ctl/cmd/auth/login"
 	"github.com/omnistrate-oss/omnistrate-ctl/cmd/auth/logout"
 	"github.com/omnistrate-oss/omnistrate-ctl/cmd/auth/refresh"
+	"github.com/omnistrate-oss/omnistrate-ctl/cmd/auth/revoke"
 	"github.com/omnistrate-oss/omnistrate-ctl/cmd/build"
 	"github.com/omnistrate-oss/omnistrate-ctl/cmd/cost"
+	"github.com/omnistrate-oss/omnistrate-ctl/cmd/customer"
 	"github.com/omnistrate-oss/omnistrate-ctl/cmd/customnetwork"
 	"github.com/omnistrate-oss/omnistrate-ctl/cmd/deploy"
 	"github.com/omnistrate-oss/omnistrate-ctl/cmd/deploymentcell"
@@ -119,6 +121,7 @@ func init() {
 	RootCmd.AddCommand(login.LoginCmd)
 	RootCmd.AddCommand(logout.LogoutCmd)
 	RootCmd.AddCommand(refresh.RefreshCmd)
+	RootCmd.AddCommand(revoke.RevokeTokenCmd)
 
 	RootCmd.AddCommand(build.BuildCmd)
 	RootCmd.AddCommand(build.BuildFromRepoCmd)
@@ -143,6 +146,7 @@ func init() {
 	RootCmd.AddCommand(secret.Cmd)
 	RootCmd.AddCommand(workflow.Cmd)
 	RootCmd.AddCommand(cost.Cmd)
+	RootCmd.AddCommand(customer.Cmd)
 	RootCmd.AddCommand(operations.Cmd)
 	RootCmd.AddCommand(audit.Cmd)
 	RootCmd.AddCommand(mcp.Cmd)

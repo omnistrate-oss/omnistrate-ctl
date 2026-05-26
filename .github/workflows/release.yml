@@ -199,11 +199,22 @@ jobs:
     secrets: inherit
     permissions:
       contents: read
+      packages: read
 
-  release-binaries:
+  approve-release:
+    name: Approve release
     environment: Prod
     runs-on: ubuntu-latest
-    needs: [build, sanity-check, smoke-tests]
+    needs: [sanity-check, smoke-tests]
+    permissions:
+      contents: read
+    steps:
+      - name: Release approved
+        run: echo "Release approved — proceeding with publishing."
+
+  release-binaries:
+    runs-on: ubuntu-latest
+    needs: [build, approve-release]
     permissions:
       contents: write
 
@@ -259,7 +270,6 @@ jobs:
     needs:
       - build
       - release-binaries
-      - test-install-script
     permissions:
       contents: read
 
@@ -333,10 +343,9 @@ jobs:
 
   release-package-multi-arch:
     timeout-minutes: 60
-    environment: Prod
     name: Build image ${{ matrix.platform }}
     runs-on: ${{ matrix.runner }}
-    needs: [sanity-check, smoke-tests]
+    needs: [approve-release]
     permissions:
       contents: read
       packages: write
@@ -421,7 +430,6 @@ jobs:
   release-package-multi-arch-merge:
     name: Merge multi-arch manifest and sign
     timeout-minutes: 30
-    environment: Prod
     runs-on: ubuntu-latest
     needs: [release-package-multi-arch]
     permissions:
@@ -494,11 +502,63 @@ jobs:
           IMAGE: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
         run: cosign sign --yes "${IMAGE}@${DIGEST}"
 
+  docker-e2e-test:
+    name: Docker e2e test ${{ matrix.platform }}
+    timeout-minutes: 10
+    runs-on: ${{ matrix.runner }}
+    needs: [release-package-multi-arch-merge]
+    permissions:
+      contents: read
+      packages: read
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-latest
+            platform: linux/amd64
+          - runner: ubuntu-24.04-arm
+            platform: linux/arm64
+
+    steps:
+      - name: Log into registry ${{ env.REGISTRY }}
+        uses: docker/login-action@4907a6ddec9925e35a0a9e82d7399ccc52663121 # v4.1.0
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Pull and verify image
+        run: |
+          # semver docker tags strip the leading 'v' from the git tag
+          VERSION=$(echo "${{ github.ref_name }}" | sed 's/^v//')
+          IMAGE=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${VERSION}
+          echo "Pulling ${IMAGE} on ${{ matrix.platform }}..."
+          docker pull --platform ${{ matrix.platform }} "${IMAGE}"
+
+          echo "Running --version..."
+          ctl_version=$(docker run --rm --platform ${{ matrix.platform }} "${IMAGE}" --version)
+          echo "Omnistrate CTL version: ${ctl_version}"
+
+          # Verify version contains the expected tag
+          if echo "${ctl_version}" | grep -q "${VERSION}"; then
+            echo "✅ Version matches expected: ${VERSION}"
+          else
+            echo "❌ Version mismatch! Expected '${VERSION}' in '${ctl_version}'"
+            exit 1
+          fi
+
+      - name: Verify image responds to version query
+        run: |
+          VERSION=$(echo "${{ github.ref_name }}" | sed 's/^v//')
+          IMAGE=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${VERSION}
+          ctl_version=$(docker run --rm --platform ${{ matrix.platform }} "${IMAGE}" --version)
+          echo "Docker image version query: ${ctl_version}"
+
   update-docs:
     name: Update CTL documents
     needs:
       - release-package-multi-arch-merge
-      - update-brew-formula
       - release-binaries
     permissions:
       contents: write

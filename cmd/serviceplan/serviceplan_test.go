@@ -1,13 +1,60 @@
 package serviceplan
 
 import (
+	"sort"
+	"testing"
+
 	"github.com/omnistrate-oss/omnistrate-ctl/internal/utils"
 	openapiclientfleet "github.com/omnistrate-oss/omnistrate-sdk-go/fleet"
-
-	"testing"
+	"github.com/spf13/cobra"
 
 	"github.com/stretchr/testify/require"
 )
+
+func TestNewNestedCommandMirrorsLegacySubcommands(t *testing.T) {
+	legacy := NewLegacyCommand()
+	nested := NewNestedCommand()
+
+	require.Equal(t, "service-plan [operation] [flags]", legacy.Use)
+	require.Equal(t, "plan [operation] [flags]", nested.Use)
+	require.Equal(t, commandNames(legacy), commandNames(nested))
+	require.NotNil(t, legacy.PersistentPreRun)
+	require.Nil(t, nested.PersistentPreRun)
+}
+
+func TestServicePlanListCommandModes(t *testing.T) {
+	legacyList := newListCmd(servicePlanCommandConfig{commandPath: legacyServicePlanCommandPath})
+	nestedList := newListCmd(servicePlanCommandConfig{commandPath: nestedServicePlanCommandPath, listBrowserDefault: true})
+
+	require.False(t, shouldRunPlanBrowser(legacyList, "table", false))
+	require.True(t, shouldRunPlanBrowser(legacyList, "table", true))
+	require.False(t, shouldRunPlanBrowser(nestedList, "json", false))
+	require.True(t, shouldRunPlanBrowser(nestedList, "table", false))
+
+	interactiveFlag := nestedList.Flags().Lookup("interactive")
+	require.NotNil(t, interactiveFlag)
+	require.Equal(t, "false", interactiveFlag.DefValue)
+
+	filterFlag := nestedList.Flags().Lookup("filter")
+	require.NotNil(t, filterFlag)
+	require.Equal(t, "f", filterFlag.Shorthand)
+}
+
+func TestLegacyServicePlanNoticeOnlyForNonJSON(t *testing.T) {
+	require.False(t, shouldPrintLegacyServicePlanNotice("json"))
+	require.True(t, shouldPrintLegacyServicePlanNotice("table"))
+	require.True(t, shouldPrintLegacyServicePlanNotice("text"))
+}
+
+func commandNames(cmd interface{ Commands() []*cobra.Command }) []string {
+	commands := cmd.Commands()
+	names := make([]string, 0, len(commands))
+	for _, command := range commands {
+		names = append(names, command.Name())
+	}
+	sort.Strings(names)
+	return names
+}
 
 func TestFilterLatestNVersions(t *testing.T) {
 	require := require.New(t)

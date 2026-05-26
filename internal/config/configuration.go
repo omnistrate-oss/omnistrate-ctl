@@ -34,7 +34,19 @@ const (
 	retryWaitMin         = "OMNISTRATE_RETRY_WAIT_MIN_IN_SECONDS"
 	retryWaitMax         = "OMNISTRATE_RETRY_WAIT_MAX_IN_SECONDS"
 	retryMax             = "OMNISTRATE_RETRY_MAX"
+
+	// OmnistrateAPIKeyEnv is the environment variable for API key authentication.
+	OmnistrateAPIKeyEnv = "OMNISTRATE_API_KEY" //nolint:gosec // G101: env var name, not a credential
+
+	// TokenRefreshMargin is how far before expiry a JWT should be refreshed.
+	TokenRefreshMargin = 5 * time.Minute
 )
+
+// GetAPIKey returns the value of the OMNISTRATE_API_KEY environment variable,
+// or an empty string if unset.
+func GetAPIKey() string {
+	return os.Getenv(OmnistrateAPIKeyEnv)
+}
 
 func GetComposeSpecUrl() string {
 	return fmt.Sprintf("https://%s/spec-guides/compose-spec/index.md", GetOmnistrateDocsDomain())
@@ -208,7 +220,25 @@ func CleanupArgsAndFlags(cmd *cobra.Command, args *[]string) {
 	// Clean up flags
 	cmd.Flags().VisitAll(
 		func(f *pflag.Flag) {
-			_ = cmd.Flags().Set(f.Name, f.DefValue)
+			// For slice/array flags, use Replace() to avoid the StringArray
+			// Set() bug where DefValue brackets get treated as literal characters.
+			if sv, ok := f.Value.(pflag.SliceValue); ok {
+				if f.DefValue == "[]" {
+					_ = sv.Replace([]string{})
+				} else {
+					_ = sv.Replace(sv.GetSlice()[:0])
+					// Re-parse default value by stripping brackets and splitting CSV
+					defVal := strings.TrimPrefix(f.DefValue, "[")
+					defVal = strings.TrimSuffix(defVal, "]")
+					if defVal != "" {
+						for _, v := range strings.Split(defVal, ",") {
+							_ = sv.Append(v)
+						}
+					}
+				}
+			} else {
+				_ = cmd.Flags().Set(f.Name, f.DefValue)
+			}
 		})
 
 	// Clean up arguments by resetting the slice to nil or an empty slice

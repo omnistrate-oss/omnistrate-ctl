@@ -19,6 +19,7 @@ func init() {
 	customerCmd.AddCommand(customerDeleteCmd)
 	customerCmd.AddCommand(customerListCmd)
 	customerCmd.AddCommand(customerDescribeCmd)
+	customerCmd.AddCommand(customerInstallKitCmd)
 	customerCmd.AddCommand(cloudnativenetwork.Cmd)
 }
 

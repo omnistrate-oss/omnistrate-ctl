@@ -51,6 +51,14 @@ func TestValidateCloudAccountParams_Nebius(t *testing.T) {
 			},
 			wantErr: "only one of --aws-account-id, --gcp-project-id, --azure-subscription-id, or --nebius-tenant-id can be used at a time",
 		},
+		{
+			name: "cluster flags are not supported by generic account create",
+			params: CloudAccountParams{
+				Name:          "onprem-account",
+				ClusterRegion: "us-east-1",
+			},
+			wantErr: "BYOC On-Premise cluster parameters are not supported for this command",
+		},
 	}
 
 	for _, tt := range tests {
@@ -64,6 +72,12 @@ func TestValidateCloudAccountParams_Nebius(t *testing.T) {
 			assert.Equal(t, tt.wantErr, err.Error())
 		})
 	}
+}
+
+func TestCreateCommandDoesNotExposeBYOCOnPremClusterFlags(t *testing.T) {
+	require.Nil(t, createCmd.Flags().Lookup(clusterNameFlag))
+	require.Nil(t, createCmd.Flags().Lookup(clusterRegionFlag))
+	require.Nil(t, createCmd.Flags().Lookup(clusterDescriptionFlag))
 }
 
 func TestParseNebiusBindingsFile(t *testing.T) {
@@ -244,6 +258,36 @@ func TestPrivateLinkFlagRegistered(t *testing.T) {
 	assert.NotNil(t, customerCreateCmd.Flags().Lookup(privateLinkFlag))
 	assert.NotNil(t, customerCreateCmd.Flags().Lookup(allowCreateNewFlag))
 	assert.NotNil(t, customerCreateCmd.Flags().Lookup(cloudNativeNetworksFlag))
+}
+
+func TestParseCloudNativeNetworkTargets(t *testing.T) {
+	targets, err := parseCloudNativeNetworkTargets([]string{
+		"us-east-1:vpc-abc123",
+		" eu-west-1 : vpc-def456 ",
+	})
+	require.NoError(t, err)
+	require.Len(t, targets, 2)
+	assert.Equal(t, "us-east-1", targets[0].Region)
+	assert.Equal(t, "vpc-abc123", targets[0].NetworkID)
+	assert.Equal(t, "eu-west-1", targets[1].Region)
+	assert.Equal(t, "vpc-def456", targets[1].NetworkID)
+
+	_, err = parseCloudNativeNetworkTargets([]string{"us-east-1"})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "expected format region:network-id")
+}
+
+func TestCloudNativeNetworksFlagParsing(t *testing.T) {
+	cmd := &cobra.Command{}
+	addCloudAccountProviderFlags(cmd)
+	cmd.Flags().StringSlice(cloudNativeNetworksFlag, nil, "")
+
+	require.NoError(t, cmd.Flags().Set(awsAccountIDFlag, "123456789012"))
+	require.NoError(t, cmd.Flags().Set(cloudNativeNetworksFlag, "us-east-1:vpc-abc123,eu-west-1:vpc-def456"))
+
+	params, err := cloudAccountParamsFromFlags(cmd, "test-account")
+	require.NoError(t, err)
+	assert.Equal(t, []string{"us-east-1:vpc-abc123", "eu-west-1:vpc-def456"}, params.CloudNativeNetworks)
 }
 
 func ptr[T any](v T) *T {

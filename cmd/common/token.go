@@ -2,16 +2,15 @@ package common
 
 import (
 	"context"
-	"time"
+	"os"
 
 	"github.com/omnistrate-oss/omnistrate-ctl/cmd/auth/login"
 	"github.com/omnistrate-oss/omnistrate-ctl/internal/config"
 	"github.com/omnistrate-oss/omnistrate-ctl/internal/dataaccess"
 	"github.com/pkg/errors"
 	"github.com/rs/zerolog/log"
+	"golang.org/x/term"
 )
-
-const tokenRefreshMargin = 5 * time.Minute
 
 func GetTokenWithLogin() (token string, err error) {
 	token, err = config.GetToken()
@@ -32,6 +31,7 @@ func GetTokenWithLogin() (token string, err error) {
 			log.Debug().Err(refreshErr).Msg("Token refresh failed, will re-authenticate")
 			_ = config.RemoveAuthConfig()
 			token = ""
+			// Fall through to env-var exchange or interactive login below
 		} else {
 			// Token still valid locally, verify with server
 			_, err = dataaccess.DescribeUser(ctx, token)
@@ -49,6 +49,20 @@ func GetTokenWithLogin() (token string, err error) {
 		}
 	}
 
+	// If OMNISTRATE_API_KEY is set, exchange it for a JWT transparently
+	// without requiring an explicit `login` call.
+	if envKey := config.GetAPIKey(); envKey != "" {
+		return exchangeAPIKeyEnv(ctx, envKey)
+	}
+
+	// In non-interactive environments (no TTY), return a clear error
+	// instead of attempting an interactive login prompt that would fail
+	// with "huh: could not open a new TTY".
+	if !fileIsTerminal(os.Stdin) {
+		err = errors.New("not logged in and no TTY available for interactive login; please run 'omnistrate-ctl login' first, set OMNISTRATE_API_KEY, or use --api-key-stdin")
+		return
+	}
+
 	// Run login command (if no token or token was invalid)
 	err = login.RunLogin(login.LoginCmd, []string{})
 	if err != nil {
@@ -63,8 +77,28 @@ func GetTokenWithLogin() (token string, err error) {
 	return
 }
 
+// exchangeAPIKeyEnv performs a signin-exchange using the OMNISTRATE_API_KEY
+// env var and persists the resulting JWT so subsequent calls in the same
+// process reuse it.
+func exchangeAPIKeyEnv(ctx context.Context, apiKey string) (string, error) {
+	result, err := dataaccess.LoginWithAPIKey(ctx, apiKey)
+	if err != nil {
+		return "", errors.Wrap(err, config.OmnistrateAPIKeyEnv+" signin-exchange failed")
+	}
+
+	authConfig := config.AuthConfig{
+		Token:        result.JWTToken,
+		RefreshToken: result.RefreshToken,
+	}
+	if err := config.CreateOrUpdateAuthConfig(authConfig); err != nil {
+		return "", err
+	}
+
+	return result.JWTToken, nil
+}
+
 func shouldRefreshToken(token string) bool {
-	return config.IsTokenExpired(token, tokenRefreshMargin)
+	return config.IsTokenExpired(token, config.TokenRefreshMargin)
 }
 
 // tryRefreshToken attempts to exchange the stored refresh token for a new JWT.
@@ -98,4 +132,20 @@ func tryRefreshToken(ctx context.Context) (string, error) {
 	}
 
 	return result.JWTToken, nil
+}
+
+// fileIsTerminal reports whether the given file is connected to a terminal.
+// It guards against fd values that exceed math.MaxInt (which can happen on
+// some platforms) by returning false in that case.
+func fileIsTerminal(file *os.File) bool {
+	if file == nil {
+		return false
+	}
+
+	fd := file.Fd()
+	if fd > uintptr(^uint(0)>>1) {
+		return false
+	}
+
+	return term.IsTerminal(int(fd))
 }

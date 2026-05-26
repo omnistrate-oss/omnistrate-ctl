@@ -21,22 +21,30 @@ omnistrate-ctl service-plan list -f="service_name:postgres,environment:prod" -f=
 	defaultMaxNameLength = 30 // Maximum length of the name column in the table
 )
 
-var listCmd = &cobra.Command{
-	Use:   "list [flags]",
-	Short: "List Service Plans for your service",
-	Long: `This command helps you list Service Plans for your service.
+func newListCmd(cfg servicePlanCommandConfig) *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "list [flags]",
+		Short: "List Service Plans for your service",
+		Long: `This command helps you list Service Plans for your service.
 You can filter for specific service plans by using the filter flag.`,
-	Example:      listExample,
-	RunE:         runList,
-	SilenceUsage: true,
-}
+		Example:      servicePlanExample(cfg.commandPath, listExample),
+		RunE:         runList,
+		SilenceUsage: true,
+	}
 
-func init() {
+	if cfg.listBrowserDefault {
+		cmd.Annotations = map[string]string{"serviceplan-list-browser-default": "true"}
+	}
 
-	listCmd.Flags().StringArrayP("filter", "f", []string{}, "Filter to apply to the list of service plans. E.g.: key1:value1,key2:value2, which filters service plans where key1 equals value1 and key2 equals value2. Allow use of multiple filters to form the logical OR operation. Supported keys: "+strings.Join(utils.GetSupportedFilterKeys(model.ServicePlanVersion{}), ",")+". Check the examples for more details.")
-	listCmd.Flags().Bool("truncate", false, "Truncate long names in the output")
-	listCmd.Flags().BoolP("interactive", "i", false, "Launch interactive list with fuzzy search and selection")
-	listCmd.Args = cobra.NoArgs
+	cmd.Flags().StringArrayP("filter", "f", []string{}, "Filter to apply to the list of service plans. E.g.: key1:value1,key2:value2, which filters service plans where key1 equals value1 and key2 equals value2. Allow use of multiple filters to form the logical OR operation. Supported keys: "+strings.Join(utils.GetSupportedFilterKeys(model.ServicePlanVersion{}), ",")+". Check the examples for more details.")
+	cmd.Flags().Bool("truncate", false, "Truncate long names in the output")
+	interactiveDescription := "Launch interactive list with fuzzy search and selection"
+	if cfg.listBrowserDefault {
+		interactiveDescription = "Launch interactive plan browser"
+	}
+	cmd.Flags().BoolP("interactive", "i", false, interactiveDescription)
+	cmd.Args = cobra.NoArgs
+	return cmd
 }
 
 func runList(cmd *cobra.Command, args []string) error {
@@ -65,7 +73,7 @@ func runList(cmd *cobra.Command, args []string) error {
 	// Initialize spinner if output is not JSON and not interactive
 	var sm utils.SpinnerManager
 	var spinner *utils.Spinner
-	if output != "json" && !interactive {
+	if output != "json" && !shouldRunPlanBrowser(cmd, output, interactive) {
 		sm = utils.NewSpinnerManager()
 		spinner = sm.AddSpinner("Listing service plans...")
 		sm.Start()
@@ -78,25 +86,10 @@ func runList(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	var formattedServicePlans []model.ServicePlan
-
-	// Process and filter service plans
-	for _, service := range listRes.Services {
-		for _, env := range service.ServiceEnvironments {
-			for _, servicePlan := range env.ServicePlans {
-				formattedServicePlan := formatServicePlan(service.Id, service.Name, env.Name, servicePlan, truncateNames)
-
-				match, err := utils.MatchesFilters(formattedServicePlan, filterMaps)
-				if err != nil {
-					utils.HandleSpinnerError(spinner, sm, err)
-					return err
-				}
-
-				if match {
-					formattedServicePlans = append(formattedServicePlans, formattedServicePlan)
-				}
-			}
-		}
+	formattedServicePlans, err := formatServicePlansFromServices(listRes.Services, filterMaps, truncateNames)
+	if err != nil {
+		utils.HandleSpinnerError(spinner, sm, err)
+		return err
 	}
 
 	// Handle case when no service plans match
@@ -104,6 +97,11 @@ func runList(cmd *cobra.Command, args []string) error {
 		utils.HandleSpinnerSuccess(spinner, sm, "No service plans found.")
 	} else {
 		utils.HandleSpinnerSuccess(spinner, sm, "Service plans retrieved successfully.")
+	}
+
+	if shouldRunPlanBrowser(cmd, output, interactive) {
+		catalog := buildServicePlanBrowserCatalog(listRes.Services, filterMaps)
+		return runServicePlanBrowser(cmd.Context(), token, catalog)
 	}
 
 	// Interactive mode
@@ -154,6 +152,33 @@ func runInteractiveServicePlanList(plans []model.ServicePlan) error {
 }
 
 // Helper functions
+
+func shouldRunPlanBrowser(cmd *cobra.Command, output string, interactive bool) bool {
+	return output != "json" && (interactive || cmd.Annotations["serviceplan-list-browser-default"] == "true")
+}
+
+func formatServicePlansFromServices(services []openapiclient.DescribeServiceResult, filterMaps []map[string]string, truncateNames bool) ([]model.ServicePlan, error) {
+	var formattedServicePlans []model.ServicePlan
+
+	for _, service := range services {
+		for _, env := range service.ServiceEnvironments {
+			for _, servicePlan := range env.ServicePlans {
+				formattedServicePlan := formatServicePlan(service.Id, service.Name, env.Name, servicePlan, truncateNames)
+
+				match, err := utils.MatchesFilters(formattedServicePlan, filterMaps)
+				if err != nil {
+					return nil, err
+				}
+
+				if match {
+					formattedServicePlans = append(formattedServicePlans, formattedServicePlan)
+				}
+			}
+		}
+	}
+
+	return formattedServicePlans, nil
+}
 
 func formatServicePlan(serviceID, serviceName, envName string, servicePlan openapiclient.ServicePlan, truncateNames bool) model.ServicePlan {
 	planName := servicePlan.Name

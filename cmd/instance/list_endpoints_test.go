@@ -2,6 +2,7 @@ package instance
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	"github.com/omnistrate-oss/omnistrate-ctl/internal/utils"
@@ -36,6 +37,7 @@ func TestConvertToTableRows(t *testing.T) {
 	resourceEndpoints := map[string]ResourceEndpoints{
 		"test-resource": {
 			ClusterEndpoint: "https://cluster.example.com",
+			ClusterPorts:    []int64{443},
 			AdditionalEndpoints: map[string]openapiclientfleet.ClusterEndpoint{
 				"App": {
 					Endpoint:       utils.ToPtr("https://app.example.com"),
@@ -58,7 +60,7 @@ func TestConvertToTableRows(t *testing.T) {
 	assert.Equal(t, "test-resource", clusterRow.ResourceName)
 	assert.Equal(t, "cluster", clusterRow.EndpointType)
 	assert.Equal(t, "cluster_endpoint", clusterRow.EndpointName)
-	assert.Equal(t, "https://cluster.example.com", clusterRow.URL)
+	assert.Equal(t, "https://cluster.example.com:443", clusterRow.URL)
 
 	// Check App endpoint row (complex structure)
 	var appRow *EndpointTableRow
@@ -78,12 +80,63 @@ func TestConvertToTableRows(t *testing.T) {
 	assert.Equal(t, "443,80", appRow.Ports)
 }
 
+func TestRenderResourceEndpointsGroupsByResource(t *testing.T) {
+	resourceEndpoints := map[string]ResourceEndpoints{
+		"wordpress": {
+			ClusterEndpoint: "wordpress.cluster.example.com",
+			ClusterPorts:    []int64{443, 80},
+			AdditionalEndpoints: map[string]openapiclientfleet.ClusterEndpoint{
+				"app": {
+					Endpoint:       utils.ToPtr("app.example.com"),
+					HealthStatus:   utils.ToPtr("HEALTHY"),
+					NetworkingType: utils.ToPtr("PUBLIC"),
+					OpenPorts:      []int64{443, 80},
+				},
+			},
+		},
+		"db": {
+			ClusterEndpoint: "db.internal.example.com",
+			ClusterPorts:    []int64{5432},
+		},
+	}
+
+	view := renderResourceEndpoints(resourceEndpoints)
+
+	assert.Contains(t, view, "Deployment endpoints")
+	assert.Contains(t, view, "db ->")
+	assert.Contains(t, view, "db endpoint")
+	assert.Contains(t, view, "db.internal.example.com:5432")
+	assert.Contains(t, view, "wordpress ->")
+	assert.Contains(t, view, "wordpress endpoint")
+	assert.Contains(t, view, "http://wordpress.cluster.example.com:80")
+	assert.Contains(t, view, "https://wordpress.cluster.example.com:443")
+	assert.Contains(t, view, "http://app.example.com:80")
+	assert.Contains(t, view, "https://app.example.com:443")
+	assert.NotContains(t, view, "healthy | public")
+	assert.Less(t, strings.Index(view, "db ->"), strings.Index(view, "wordpress ->"))
+}
+
+func TestRenderResourceEndpointsHandlesEmptyResult(t *testing.T) {
+	view := renderResourceEndpoints(nil)
+
+	assert.Contains(t, view, "Deployment endpoints")
+	assert.Contains(t, view, "No endpoints are published")
+}
+
+func TestFormatEndpointURLAddsSchemeForWebPorts(t *testing.T) {
+	assert.Equal(t, "http://example.com:80", formatEndpointURL("example.com", 80))
+	assert.Equal(t, "https://example.com:443", formatEndpointURL("example.com", 443))
+	assert.Equal(t, "example.com:5432", formatEndpointURL("example.com", 5432))
+	assert.Equal(t, "example.com", formatEndpointURL("http://example.com", 0))
+}
+
 func TestExtractEndpointsHidesObservabilityResource(t *testing.T) {
 	topology := map[string]openapiclientfleet.ResourceNetworkTopologyResult{
 		"resource-main": {
 			ResourceKey:        "app",
 			ResourceName:       "Application",
 			ClusterEndpoint:    "https://app.example.com",
+			ClusterPorts:       []int64{443},
 			AllowedIPRanges:    []string{},
 			HasCompute:         true,
 			Main:               true,
@@ -113,4 +166,5 @@ func TestExtractEndpointsHidesObservabilityResource(t *testing.T) {
 	assert.Len(t, endpoints, 1)
 	assert.Contains(t, endpoints, "Application")
 	assert.NotContains(t, endpoints, "Omnistrate Observability")
+	assert.Equal(t, []int64{443}, endpoints["Application"].ClusterPorts)
 }

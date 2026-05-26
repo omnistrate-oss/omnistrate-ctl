@@ -26,6 +26,14 @@ const (
 	  --nebius-tenant-id=tenant-xxxx \
 	  --nebius-bindings-file=./nebius-bindings.yaml
 
+# Onboard a BYOC On-Premise Kubernetes cluster and automatically download the install kit
+	omnistrate-ctl account customer create \
+	  --service=postgres \
+	  --environment=dev \
+	  --plan=customer-hosted \
+	  --cluster-name=customer-k8s \
+	  --cluster-description="Customer Kubernetes cluster"
+
 # Onboard an AWS BYOA account and import specific VPCs
 	omnistrate-ctl account customer create \
 	  --service=postgres \
@@ -34,25 +42,29 @@ const (
 	  --aws-account-id=123456789012 \
 	  --cloud-native-networks=us-east-1:vpc-abc123,eu-west-1:vpc-def456`
 
-	customerAccountResourceName          = "Cloud Provider Account"
-	customerAccountResourceKey           = "omnistrateCloudAccountConfig"
-	customerAccountResultAccountIDKey    = "cloud_provider_account_config_id"
-	customerAccountIacToolName           = "Account Configuration Method"
-	customerAccountAWSAccountIDName      = "AWS Account ID"
-	customerAccountAWSBootstrapRoleName  = "AWS Bootstrap Role ARN"
-	customerAccountGCPProjectIDName      = "GCP Project ID"
-	customerAccountGCPProjectNumberName  = "GCP Project Number"
-	customerAccountGCPServiceAccountName = "GCP Service Account Email"
-	customerAccountAzureSubIDName        = "Azure Subscription ID"
-	customerAccountAzureTenantIDName     = "Azure Tenant ID"
-	customerAccountNebiusTenantIDName    = "Nebius Tenant ID"
-	customerAccountNebiusBindingsName    = "Nebius Bindings"
-	customerAccountPrivateLinkName       = "Private Link"
-	customerAccountAllowCreateNewName    = "Allow New Cloud Native Network Creation"
-	customerAccountReadyTimeout          = 10 * time.Minute
-	customerAccountReadyPollInterval     = 10 * time.Second
-	customerEmailFlag                    = "customer-email"
-	customerAccountDefaultVersion        = "preferred"
+	customerAccountResourceName           = "Cloud Provider Account"
+	customerAccountResourceKey            = "omnistrateCloudAccountConfig"
+	customerAccountResultAccountIDKey     = "cloud_provider_account_config_id"
+	customerAccountIacToolName            = "Account Configuration Method"
+	customerAccountAWSAccountIDName       = "AWS Account ID"
+	customerAccountAWSBootstrapRoleName   = "AWS Bootstrap Role ARN"
+	customerAccountGCPProjectIDName       = "GCP Project ID"
+	customerAccountGCPProjectNumberName   = "GCP Project Number"
+	customerAccountGCPServiceAccountName  = "GCP Service Account Email"
+	customerAccountAzureSubIDName         = "Azure Subscription ID"
+	customerAccountAzureTenantIDName      = "Azure Tenant ID"
+	customerAccountNebiusTenantIDName     = "Nebius Tenant ID"
+	customerAccountNebiusBindingsName     = "Nebius Bindings"
+	customerAccountPrivateLinkName        = "Private Link"
+	customerAccountAllowCreateNewName     = "Allow New Cloud Native Network Creation"
+	customerAccountClusterNameName        = "Cluster Name"
+	customerAccountClusterRegionName      = "Cluster Region"
+	customerAccountClusterDescriptionName = "Cluster Description"
+	customerAccountDefaultOnPremRegion    = "on-prem"
+	customerAccountReadyTimeout           = 10 * time.Minute
+	customerAccountReadyPollInterval      = 10 * time.Second
+	customerEmailFlag                     = "customer-email"
+	customerAccountDefaultVersion         = "preferred"
 )
 
 type customerCreateOutput struct {
@@ -99,7 +111,7 @@ var (
 var customerCreateCmd = &cobra.Command{
 	Use:          "create --service=[service] --environment=[environment] --plan=[plan] [provider flags]",
 	Short:        "Create a customer BYOA account onboarding instance",
-	Long:         "This command onboards a customer cloud account into the injected BYOA account-config resource for a specific service plan.",
+	Long:         "This command onboards a customer cloud account into the injected BYOA account-config resource for a specific service plan. For BYOC On-Premise, it automatically downloads the generated install kit and does not wait for the onboarding instance to become READY.",
 	Example:      customerCreateExample,
 	RunE:         runCustomerCreate,
 	SilenceUsage: true,
@@ -108,11 +120,9 @@ var customerCreateCmd = &cobra.Command{
 func init() {
 	customerCreateCmd.Args = cobra.NoArgs
 
-	addCloudAccountProviderFlags(customerCreateCmd)
-	// BYOA-customer-only flags: these map to injected input parameters on the
-	// account-config resource and have no effect on the provider create path.
+	addCustomerAccountProviderFlags(customerCreateCmd)
 	customerCreateCmd.Flags().Bool(privateLinkFlag, false, "Enable AWS PrivateLink connectivity for services deployed in this account")
-	customerCreateCmd.Flags().Bool(allowCreateNewFlag, false, "Allow the platform to create new cloud-native networks (VPCs) in this account on demand")
+	customerCreateCmd.Flags().Bool(allowCreateNewFlag, false, "Allow the platform to create new cloud-native networks in this account on demand")
 	customerCreateCmd.Flags().StringSlice(cloudNativeNetworksFlag, nil, "Cloud-native networks to sync and import after account creation (format: region:network-id, e.g. us-east-1:vpc-abc123)")
 
 	customerCreateCmd.Flags().String("service", "", "Service name or ID")
@@ -143,13 +153,12 @@ func runCustomerCreate(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	// Early validation: parse cloud-native-network targets and check flag compatibility.
-	var cnnTargets []dataaccess.CloudNativeNetworkTarget
+	var cloudNativeNetworkTargets []dataaccess.CloudNativeNetworkTarget
 	if len(params.CloudNativeNetworks) > 0 {
 		if skipWait {
 			return fmt.Errorf("--cloud-native-networks requires waiting for account READY (cannot use --skip-wait)")
 		}
-		cnnTargets, err = parseCloudNativeNetworkTargets(params.CloudNativeNetworks)
+		cloudNativeNetworkTargets, err = parseCloudNativeNetworkTargets(params.CloudNativeNetworks)
 		if err != nil {
 			return err
 		}
@@ -243,6 +252,11 @@ func runCustomerCreate(cmd *cobra.Command, args []string) error {
 	instanceID := strings.TrimSpace(*createResult.Id)
 	utils.HandleSpinnerSuccess(spinner, sm, "Created customer BYOA account onboarding instance")
 
+	isByocOnPrem := requestedCloudProvider(params) == "byoc-onprem"
+	if isByocOnPrem {
+		skipWait = true
+	}
+
 	if !skipWait {
 		var waitSpinner *utils.Spinner
 		if output != "json" {
@@ -277,6 +291,30 @@ func runCustomerCreate(cmd *cobra.Command, args []string) error {
 		}
 	}
 
+	if isByocOnPrem {
+		if accountConfigID == "" {
+			var kitSpinner *utils.Spinner
+			if output != "json" {
+				fmt.Printf("\n")
+				sm = utils.NewSpinnerManager()
+				kitSpinner = sm.AddSpinner("Waiting for BYOC On-Premise install kit to become available...")
+				sm.Start()
+			}
+			instanceDetail, accountConfigID, err = waitForCustomerAccountConfigID(cmd.Context(), token, target.ServiceID, target.EnvironmentID, instanceID)
+			if err != nil {
+				utils.HandleSpinnerError(kitSpinner, sm, err)
+				utils.PrintError(err)
+				return err
+			}
+			utils.HandleSpinnerSuccess(kitSpinner, sm, "BYOC On-Premise install kit is available")
+		}
+
+		if err = downloadByocOnPremKitForCreate(cmd.Context(), token, accountConfigID, output); err != nil {
+			utils.PrintError(err)
+			return err
+		}
+	}
+
 	createOutput := buildCustomerCreateOutput(target, params, instanceID, accountConfigID, instanceDetail)
 	if err = utils.PrintTextTableJsonOutput(output, createOutput); err != nil {
 		utils.PrintError(err)
@@ -287,10 +325,11 @@ func runCustomerCreate(cmd *cobra.Command, args []string) error {
 		dataaccess.PrintNextStepVerifyAccountMsg(backingAccount)
 	}
 
-	// If cloud-native networks were requested, sync and import them now.
-	if len(cnnTargets) > 0 && accountConfigID != "" {
-		err = syncAndImportCloudNativeNetworks(cmd.Context(), token, accountConfigID, cnnTargets, output)
-		if err != nil {
+	if len(cloudNativeNetworkTargets) > 0 {
+		if accountConfigID == "" {
+			return fmt.Errorf("customer account onboarding did not expose a backing account config ID; cannot sync cloud-native networks")
+		}
+		if err = syncAndImportCloudNativeNetworks(cmd.Context(), token, accountConfigID, cloudNativeNetworkTargets, output); err != nil {
 			utils.PrintError(err)
 			return err
 		}
@@ -531,6 +570,9 @@ func customerAccountInputParameters() []openapiclient.DescribeInputParameterResu
 		{Name: customerAccountNebiusBindingsName, Key: "nebius_bindings"},
 		{Name: customerAccountPrivateLinkName, Key: "private_link"},
 		{Name: customerAccountAllowCreateNewName, Key: "allow_new_cloud_native_network_creation"},
+		{Name: customerAccountClusterNameName, Key: "cluster_name"},
+		{Name: customerAccountClusterRegionName, Key: "cluster_region"},
+		{Name: customerAccountClusterDescriptionName, Key: "cluster_description"},
 	}
 }
 
@@ -693,18 +735,30 @@ func buildCustomerAccountRequestParamsWithDerivedValues(
 		if err := setParam(customerAccountNebiusBindingsName, toCustomerNebiusBindingParams(params.NebiusBindings)); err != nil {
 			return nil, err
 		}
+	case "byoc-onprem":
+		if err := setParam(customerAccountClusterNameName, params.ClusterName); err != nil {
+			return nil, err
+		}
+		clusterRegion := strings.TrimSpace(params.ClusterRegion)
+		if clusterRegion == "" {
+			clusterRegion = customerAccountDefaultOnPremRegion
+		}
+		if err := setParam(customerAccountClusterRegionName, clusterRegion); err != nil {
+			return nil, err
+		}
+		if params.ClusterDescription != "" {
+			if err := setParam(customerAccountClusterDescriptionName, params.ClusterDescription); err != nil {
+				return nil, err
+			}
+		}
 	default:
 		return nil, fmt.Errorf("unsupported cloud provider request")
 	}
 
-	// Optional cross-provider input parameters. Only set them when the user
-	// explicitly opted in via the corresponding flag; if the BYOA account-config
-	// resource does not declare the input parameter, surface an explicit error
-	// so the user knows the plan does not support the option.
 	setOptionalParam := func(displayName string, value any) error {
 		key, exists := keysByName[displayName]
 		if !exists || strings.TrimSpace(key) == "" {
-			return fmt.Errorf("BYOA account-config resource does not declare input parameter %q; the selected service plan does not support this option", displayName)
+			return fmt.Errorf("account-config resource does not declare input parameter %q; the selected service plan does not support this option", displayName)
 		}
 		requestParams[key] = value
 		return nil
@@ -747,6 +801,8 @@ func requestedCloudProvider(params CloudAccountParams) string {
 		return "azure"
 	case params.NebiusTenantID != "":
 		return "nebius"
+	case params.ClusterName != "":
+		return "byoc-onprem"
 	default:
 		return ""
 	}
@@ -791,6 +847,82 @@ func waitForCustomerAccountInstanceReady(
 			}
 		}
 	}
+}
+
+func waitForCustomerAccountConfigID(
+	ctx context.Context,
+	token string,
+	serviceID string,
+	environmentID string,
+	instanceID string,
+) (*openapiclientfleet.ResourceInstance, string, error) {
+	timeout := time.After(customerAccountReadyTimeout)
+	ticker := time.NewTicker(customerAccountReadyPollInterval)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return nil, "", ctx.Err()
+		case <-timeout:
+			return nil, "", fmt.Errorf("customer onboarding instance %s did not expose a backing account config ID after %s", instanceID, customerAccountReadyTimeout)
+		case <-ticker.C:
+			instance, err := dataaccess.DescribeResourceInstance(ctx, token, serviceID, environmentID, instanceID)
+			if err != nil {
+				return nil, "", err
+			}
+
+			status := strings.ToUpper(utils.FromPtr(instance.ConsumptionResourceInstanceResult.Status))
+			if status == "FAILED" {
+				return nil, "", fmt.Errorf("resource instance %s entered FAILED state", instanceID)
+			}
+
+			accountConfigID := extractCustomerAccountConfigID(instance)
+			if accountConfigID != "" {
+				return instance, accountConfigID, nil
+			}
+		}
+	}
+}
+
+func downloadByocOnPremKitForCreate(ctx context.Context, token string, accountConfigID string, output string) error {
+	outputPath := dataaccess.ByocOnPremInstallKitFileName(accountConfigID)
+
+	var sm utils.SpinnerManager
+	var spinner *utils.Spinner
+	if output != "json" {
+		fmt.Println()
+		sm = utils.NewSpinnerManager()
+		spinner = sm.AddSpinner("Downloading BYOC On-Premise install kit...")
+		sm.Start()
+	}
+
+	file, err := openInstallKitFileFn(outputPath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0600)
+	if err != nil {
+		err = fmt.Errorf("failed to create install kit file %s: %w", outputPath, err)
+		utils.HandleSpinnerError(spinner, sm, err)
+		return err
+	}
+
+	if err = downloadByocOnPremInstallKitFn(ctx, token, accountConfigID, file); err != nil {
+		_ = file.Close()
+		utils.HandleSpinnerError(spinner, sm, err)
+		return err
+	}
+	if err = closeInstallKitWriter(file); err != nil {
+		utils.HandleSpinnerError(spinner, sm, err)
+		return err
+	}
+
+	utils.HandleSpinnerSuccess(spinner, sm, fmt.Sprintf("Successfully downloaded BYOC On-Premise install kit to %s", outputPath))
+	if output != "json" {
+		fmt.Println()
+		fmt.Println("Next steps:")
+		fmt.Printf("  1. Extract the kit:  tar xf %s\n", outputPath)
+		fmt.Println("  2. Run the installer from the extracted directory:  ./install.sh")
+		fmt.Println("  3. Wait for the customer onboarding instance to become READY.")
+	}
+	return nil
 }
 
 func extractCustomerAccountConfigID(instance *openapiclientfleet.ResourceInstance) string {
