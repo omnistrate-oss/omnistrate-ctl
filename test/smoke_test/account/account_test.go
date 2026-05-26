@@ -109,6 +109,7 @@ func Test_account_customer_create_byoc_onprem_requires_cluster_name(t *testing.T
 
 	cmd.RootCmd.SetArgs([]string{
 		"account", "customer", "create",
+		"--help=false",
 		"--service", "postgres",
 		"--environment", "dev",
 		"--plan", "customer-hosted",
