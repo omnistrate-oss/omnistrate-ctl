@@ -26,7 +26,7 @@ const (
 	  --nebius-tenant-id=tenant-xxxx \
 	  --nebius-bindings-file=./nebius-bindings.yaml
 
-# Onboard a BYOC On-Premise Kubernetes cluster and download the install kit
+# Onboard a BYOC On-Premise Kubernetes cluster and automatically download the install kit
 	omnistrate-ctl account customer create \
 	  --service=postgres \
 	  --environment=dev \
@@ -103,7 +103,7 @@ var (
 var customerCreateCmd = &cobra.Command{
 	Use:          "create --service=[service] --environment=[environment] --plan=[plan] [provider flags]",
 	Short:        "Create a customer BYOA account onboarding instance",
-	Long:         "This command onboards a customer cloud account into the injected BYOA account-config resource for a specific service plan. For BYOC On-Premise, it downloads the generated install kit and does not wait for the onboarding instance to become READY.",
+	Long:         "This command onboards a customer cloud account into the injected BYOA account-config resource for a specific service plan. For BYOC On-Premise, it automatically downloads the generated install kit and does not wait for the onboarding instance to become READY.",
 	Example:      customerCreateExample,
 	RunE:         runCustomerCreate,
 	SilenceUsage: true,

@@ -4,7 +4,7 @@ Re-download the BYOC On-Premise install kit
 
 ### Synopsis
 
-This command re-downloads the BYOC On-Premise install kit for an existing customer onboarding instance. New BYOC On-Premise customer onboarding instances download the generated install kit during account customer create.
+This command re-downloads the BYOC On-Premise install kit for an existing customer onboarding instance. New BYOC On-Premise customer onboarding instances automatically download the generated install kit during account customer create.
 
 ```
 omnistrate-ctl account customer install-kit [customer-account-instance-id] [flags]

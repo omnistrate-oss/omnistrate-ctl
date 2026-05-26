@@ -30,7 +30,7 @@ var (
 var customerInstallKitCmd = &cobra.Command{
 	Use:          "install-kit [customer-account-instance-id]",
 	Short:        "Re-download the BYOC On-Premise install kit",
-	Long:         "This command re-downloads the BYOC On-Premise install kit for an existing customer onboarding instance. New BYOC On-Premise customer onboarding instances download the generated install kit during account customer create.",
+	Long:         "This command re-downloads the BYOC On-Premise install kit for an existing customer onboarding instance. New BYOC On-Premise customer onboarding instances automatically download the generated install kit during account customer create.",
 	Example:      customerInstallKitExample,
 	RunE:         runCustomerInstallKit,
 	SilenceUsage: true,
