@@ -3,8 +3,10 @@ package instance
 import (
 	"context"
 	"fmt"
+	"sort"
 	"strings"
 
+	"github.com/charmbracelet/lipgloss"
 	"github.com/omnistrate-oss/omnistrate-ctl/cmd/common"
 	"github.com/omnistrate-oss/omnistrate-ctl/internal/config"
 	"github.com/omnistrate-oss/omnistrate-ctl/internal/dataaccess"
@@ -21,6 +23,7 @@ omnistrate-ctl instance list-endpoints instance-abcd1234`
 // ResourceEndpoints represents the endpoints for a resource
 type ResourceEndpoints struct {
 	ClusterEndpoint     string                                        `json:"cluster_endpoint"`
+	ClusterPorts        []int64                                       `json:"cluster_ports,omitempty"`
 	AdditionalEndpoints map[string]openapiclientfleet.ClusterEndpoint `json:"additional_endpoints"`
 }
 
@@ -34,6 +37,20 @@ type EndpointTableRow struct {
 	NetworkType  string `json:"network_type,omitempty"`
 	Ports        string `json:"ports,omitempty"`
 }
+
+var (
+	endpointsFrameStyle = lipgloss.NewStyle().
+				Border(lipgloss.RoundedBorder()).
+				BorderForeground(lipgloss.Color("#334155")).
+				Foreground(lipgloss.Color("#D1D5DB")).
+				Padding(1, 2).
+				Width(120)
+	endpointsTitleStyle    = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#F8FAFC"))
+	endpointsResourceStyle = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#50C878"))
+	endpointsLabelStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("#94A3B8"))
+	endpointsValueStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("#E5E7EB"))
+	endpointsMutedStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("#94A3B8"))
+)
 
 var listEndpointsCmd = &cobra.Command{
 	Use:          "list-endpoints [instance-id]",
@@ -84,15 +101,12 @@ func runListEndpoints(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	// Get detailed instance information
-	detailedInstance, err := dataaccess.DescribeResourceInstance(cmd.Context(), token, serviceID, environmentID, instanceID)
+	// Extract endpoint information
+	resourceEndpoints, err := FetchEndpointsForInstance(cmd.Context(), token, serviceID, environmentID, instanceID)
 	if err != nil {
 		utils.HandleSpinnerError(spinner, sm, err)
 		return err
 	}
-
-	// Extract endpoint information
-	resourceEndpoints := extractEndpoints(detailedInstance)
 
 	if len(resourceEndpoints) == 0 {
 		utils.HandleSpinnerSuccess(spinner, sm, "No endpoint information found for this instance.")
@@ -152,6 +166,127 @@ func getInstanceWithResourceName(ctx context.Context, token, instanceID string) 
 	return
 }
 
+// FetchEndpointsForInstance fetches endpoint information for a known instance.
+func FetchEndpointsForInstance(ctx context.Context, token, serviceID, environmentID, instanceID string) (map[string]ResourceEndpoints, error) {
+	detailedInstance, err := dataaccess.DescribeResourceInstance(ctx, token, serviceID, environmentID, instanceID)
+	if err != nil {
+		return nil, err
+	}
+	return extractEndpoints(detailedInstance), nil
+}
+
+// PrintEndpointsForInstance prints endpoint information grouped by resource.
+func PrintEndpointsForInstance(ctx context.Context, token, serviceID, environmentID, instanceID string) error {
+	resourceEndpoints, err := FetchEndpointsForInstance(ctx, token, serviceID, environmentID, instanceID)
+	if err != nil {
+		return err
+	}
+	PrintResourceEndpoints(resourceEndpoints)
+	return nil
+}
+
+// PrintResourceEndpoints renders endpoint information grouped by resource.
+func PrintResourceEndpoints(resourceEndpoints map[string]ResourceEndpoints) {
+	fmt.Println(renderResourceEndpoints(resourceEndpoints))
+}
+
+func renderResourceEndpoints(resourceEndpoints map[string]ResourceEndpoints) string {
+	var body strings.Builder
+	body.WriteString(endpointsTitleStyle.Render("Deployment endpoints"))
+
+	if len(resourceEndpoints) == 0 {
+		body.WriteString("\n\n")
+		body.WriteString(endpointsMutedStyle.Render("No endpoints are published for this instance."))
+		return endpointsFrameStyle.Render(body.String())
+	}
+
+	resourceNames := make([]string, 0, len(resourceEndpoints))
+	for resourceName := range resourceEndpoints {
+		resourceNames = append(resourceNames, resourceName)
+	}
+	sort.Strings(resourceNames)
+
+	for _, resourceName := range resourceNames {
+		endpoints := resourceEndpoints[resourceName]
+		body.WriteString("\n\n")
+		body.WriteString(endpointsResourceStyle.Render(resourceName + " ->"))
+
+		if endpoints.ClusterEndpoint != "" {
+			for _, formattedURL := range formatEndpointURLs(endpoints.ClusterEndpoint, endpoints.ClusterPorts) {
+				body.WriteString("\n")
+				body.WriteString(renderEndpointLine(resourceName+" endpoint", formattedURL))
+			}
+		}
+
+		endpointNames := make([]string, 0, len(endpoints.AdditionalEndpoints))
+		for endpointName := range endpoints.AdditionalEndpoints {
+			endpointNames = append(endpointNames, endpointName)
+		}
+		sort.Strings(endpointNames)
+
+		for _, endpointName := range endpointNames {
+			endpoint := endpoints.AdditionalEndpoints[endpointName]
+			url := utils.FromPtr(endpoint.Endpoint)
+			if url == "" {
+				continue
+			}
+			for _, formattedURL := range formatEndpointURLs(url, endpoint.OpenPorts) {
+				body.WriteString("\n")
+				body.WriteString(renderEndpointLine(endpointName, formattedURL))
+			}
+		}
+	}
+
+	return endpointsFrameStyle.Render(strings.TrimRight(body.String(), "\n"))
+}
+
+func renderEndpointLine(name, url string) string {
+	return fmt.Sprintf("  %s  %s", endpointsLabelStyle.Width(22).Render(name), endpointsValueStyle.Render(url))
+}
+
+func formatEndpointURLs(endpoint string, ports []int64) []string {
+	endpoint = strings.TrimSpace(endpoint)
+	if endpoint == "" {
+		return nil
+	}
+	if len(ports) == 0 {
+		return []string{formatEndpointURL(endpoint, 0)}
+	}
+
+	sortedPorts := append([]int64(nil), ports...)
+	sort.Slice(sortedPorts, func(i, j int) bool {
+		return sortedPorts[i] < sortedPorts[j]
+	})
+
+	urls := make([]string, 0, len(sortedPorts))
+	for _, port := range sortedPorts {
+		urls = append(urls, formatEndpointURL(endpoint, port))
+	}
+	return urls
+}
+
+func formatEndpointURL(endpoint string, port int64) string {
+	endpoint = strings.TrimSpace(endpoint)
+	if endpoint == "" {
+		return ""
+	}
+
+	scheme := ""
+	switch port {
+	case 80:
+		scheme = "http://"
+	case 443:
+		scheme = "https://"
+	}
+
+	endpoint = strings.TrimPrefix(endpoint, "http://")
+	endpoint = strings.TrimPrefix(endpoint, "https://")
+	if port > 0 {
+		endpoint = fmt.Sprintf("%s:%d", endpoint, port)
+	}
+	return scheme + endpoint
+}
+
 // extractEndpoints extracts endpoint information from the instance
 func extractEndpoints(instance *openapiclientfleet.ResourceInstance) (resourceEndpoints map[string]ResourceEndpoints) {
 	resourceEndpoints = make(map[string]ResourceEndpoints)
@@ -182,6 +317,7 @@ func extractEndpoints(instance *openapiclientfleet.ResourceInstance) (resourceEn
 		}
 		resourceEndpoints[resource.ResourceName] = ResourceEndpoints{
 			ClusterEndpoint:     resource.ClusterEndpoint,
+			ClusterPorts:        append([]int64(nil), resource.ClusterPorts...),
 			AdditionalEndpoints: additionalEndpoints,
 		}
 	}
@@ -204,12 +340,14 @@ func convertToTableRows(resourceEndpoints map[string]ResourceEndpoints) []Endpoi
 	for resourceName, endpoints := range resourceEndpoints {
 		// Add cluster endpoint if present
 		if endpoints.ClusterEndpoint != "" {
-			rows = append(rows, EndpointTableRow{
-				ResourceName: resourceName,
-				EndpointType: "cluster",
-				EndpointName: "cluster_endpoint",
-				URL:          endpoints.ClusterEndpoint,
-			})
+			for _, url := range formatEndpointURLs(endpoints.ClusterEndpoint, endpoints.ClusterPorts) {
+				rows = append(rows, EndpointTableRow{
+					ResourceName: resourceName,
+					EndpointType: "cluster",
+					EndpointName: "cluster_endpoint",
+					URL:          url,
+				})
+			}
 		}
 
 		// Add additional endpoints if present

@@ -20,32 +20,33 @@ omnistrate-ctl service-plan update [service-name] [plan-name] --version=[version
 omnistrate-ctl service-plan update --service-id=[service-id] --plan-id=[plan-id] --version=[version] --name=[new-name]`
 )
 
-var updateCmd = &cobra.Command{
-	Use:   "update [service-name] [plan-name] --version=[version] --name=[new-name] [flags]",
-	Short: "Update Service Plan properties",
-	Long: `This command helps you update various properties of a Service Plan.
+func newUpdateCmd(commandPath string) *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "update [service-name] [plan-name] --version=[version] --name=[new-name] [flags]",
+		Short: "Update Service Plan properties",
+		Long: `This command helps you update various properties of a Service Plan.
 Currently supports updating the name of a specific version of a Service Plan.
 The version name is used as the release description for the version.`,
-	Example:      updateExample,
-	RunE:         runUpdate,
-	SilenceUsage: true,
-}
-
-func init() {
-	updateCmd.Flags().String("version", "", "Specify the version number to update the name for.")
-	updateCmd.Flags().String("name", "", "Specify the new name for the version.")
-	updateCmd.Flags().StringP("environment", "", "", "Environment name. Use this flag with service name and plan name to update the version name in a specific environment")
-	updateCmd.Flags().StringP("service-id", "", "", "Service ID. Required if service name is not provided")
-	updateCmd.Flags().StringP("plan-id", "", "", "Plan ID. Required if plan name is not provided")
-
-	err := updateCmd.MarkFlagRequired("version")
-	if err != nil {
-		return
+		Example:      servicePlanExample(commandPath, updateExample),
+		RunE:         runUpdate,
+		SilenceUsage: true,
 	}
-	err = updateCmd.MarkFlagRequired("name")
+
+	cmd.Flags().String("version", "", "Specify the version number to update the name for.")
+	cmd.Flags().String("name", "", "Specify the new name for the version.")
+	cmd.Flags().StringP("environment", "", "", "Environment name. Use this flag with service name and plan name to update the version name in a specific environment")
+	cmd.Flags().StringP("service-id", "", "", "Service ID. Required if service name is not provided")
+	cmd.Flags().StringP("plan-id", "", "", "Plan ID. Required if plan name is not provided")
+
+	err := cmd.MarkFlagRequired("version")
 	if err != nil {
-		return
+		return cmd
 	}
+	err = cmd.MarkFlagRequired("name")
+	if err != nil {
+		return cmd
+	}
+	return cmd
 }
 
 func runUpdate(cmd *cobra.Command, args []string) error {

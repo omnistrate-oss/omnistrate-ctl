@@ -49,7 +49,15 @@ func TestValidateCloudAccountParams_Nebius(t *testing.T) {
 				NebiusTenantID: "tenant-1",
 				NebiusBindings: []openapiclient.NebiusAccountBindingInput{validBinding},
 			},
-			wantErr: "only one of --aws-account-id, --gcp-project-id, --azure-subscription-id, --nebius-tenant-id, or --cluster-name can be used at a time",
+			wantErr: "only one of --aws-account-id, --gcp-project-id, --azure-subscription-id, or --nebius-tenant-id can be used at a time",
+		},
+		{
+			name: "cluster flags are not supported by generic account create",
+			params: CloudAccountParams{
+				Name:          "onprem-account",
+				ClusterRegion: "us-east-1",
+			},
+			wantErr: "BYOC On-Premise cluster parameters are not supported for this command",
 		},
 	}
 
@@ -64,6 +72,12 @@ func TestValidateCloudAccountParams_Nebius(t *testing.T) {
 			assert.Equal(t, tt.wantErr, err.Error())
 		})
 	}
+}
+
+func TestCreateCommandDoesNotExposeBYOCOnPremClusterFlags(t *testing.T) {
+	require.Nil(t, createCmd.Flags().Lookup(clusterNameFlag))
+	require.Nil(t, createCmd.Flags().Lookup(clusterRegionFlag))
+	require.Nil(t, createCmd.Flags().Lookup(clusterDescriptionFlag))
 }
 
 func TestParseNebiusBindingsFile(t *testing.T) {

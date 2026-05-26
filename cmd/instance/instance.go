@@ -5,7 +5,7 @@ import (
 )
 
 var Cmd = &cobra.Command{
-	Use:          "instance [operation] [flags]",
+	Use:          "instance [command] [flags]",
 	Short:        "Manage Instance Deployments for your service",
 	Long:         `This command helps you manage the deployment of your service instances.`,
 	Run:          run,
@@ -41,6 +41,7 @@ func init() {
 	Cmd.AddCommand(evaluateCmd)
 	Cmd.AddCommand(getInstallerCmd)
 	Cmd.AddCommand(deploymentParametersCmd)
+	Cmd.AddCommand(customWorkflowCmd)
 }
 
 func run(cmd *cobra.Command, args []string) {

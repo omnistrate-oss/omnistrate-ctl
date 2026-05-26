@@ -1,9 +1,13 @@
 package login
 
 import (
+	"os"
+
+	"github.com/omnistrate-oss/omnistrate-ctl/internal/config"
 	"github.com/omnistrate-oss/omnistrate-ctl/internal/utils"
 	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
+	"github.com/spf13/pflag"
 )
 
 type loginMethod string
@@ -26,8 +30,9 @@ omnistrate-ctl login --email email --password password
 # Login with email and password from stdin. Save the password in an environment variable and use echo to read it
   echo $OMNISTRATE_PASSWORD | omnistrate-ctl login --email email --password-stdin
 
-# Login with an org-bounded API key (insecure; prefer --api-key-stdin)
-  omnistrate-ctl login --api-key om_…
+# Login with OMNISTRATE_API_KEY environment variable (recommended for CI/CD)
+  export OMNISTRATE_API_KEY=om_…
+  omnistrate-ctl login
 
 # Login with an API key from stdin
   cat ~/omnistrate_apikey.txt | omnistrate-ctl login --api-key-stdin
@@ -91,7 +96,7 @@ func init() {
 }
 
 func RunLogin(cmd *cobra.Command, args []string) error {
-	defer resetLogin()
+	defer resetLogin(cmd)
 
 	// Login with email and password if any of the flags are set
 	if len(email) > 0 || len(password) > 0 || passwordStdin {
@@ -100,9 +105,14 @@ func RunLogin(cmd *cobra.Command, args []string) error {
 
 	// Login with API key if any of the api-key flags are set
 	if len(apiKey) > 0 || apiKeyStdin {
-		return apiKeyLogin(cmd, false)
+		source := apiKeyFromFlag
+		if apiKeyStdin {
+			source = apiKeyFromStdin
+		}
+		return apiKeyLogin(cmd, source)
 	}
 
+	// SSO login flags take precedence over env var auto-detection
 	if gh {
 		return ssoLogin(cmd.Context(), identityProviderGitHub)
 	}
@@ -113,6 +123,15 @@ func RunLogin(cmd *cobra.Command, args []string) error {
 
 	if entra {
 		return ssoLogin(cmd.Context(), identityProviderMicrosoftEntra)
+	}
+
+	// Auto-detect OMNISTRATE_API_KEY from environment when no explicit
+	// flags are provided. This enables zero-flag CI/CD login:
+	//   export OMNISTRATE_API_KEY=om_…
+	//   omnistrate-ctl login
+	if envKey := os.Getenv(config.OmnistrateAPIKeyEnv); envKey != "" {
+		apiKey = envKey
+		return apiKeyLogin(cmd, apiKeyFromEnv)
 	}
 
 	// Login interactively
@@ -149,7 +168,7 @@ func RunLogin(cmd *cobra.Command, args []string) error {
 			utils.PrintError(err)
 			return err
 		}
-		return apiKeyLogin(cmd, true)
+		return apiKeyLogin(cmd, apiKeyFromInteractive)
 	case string(loginWithGoogle):
 		return ssoLogin(cmd.Context(), identityProviderGoogle)
 	case string(loginWithGitHub):
@@ -164,7 +183,7 @@ func RunLogin(cmd *cobra.Command, args []string) error {
 	}
 }
 
-func resetLogin() {
+func resetLogin(cmd *cobra.Command) {
 	email = ""
 	password = ""
 	passwordStdin = false
@@ -173,4 +192,11 @@ func resetLogin() {
 	gh = false
 	google = false
 	entra = false
+
+	// Reset Cobra's internal "Changed" state so mutually-exclusive
+	// flag groups don't carry over between successive calls in the
+	// same process (e.g. test suites reusing RootCmd).
+	cmd.Flags().Visit(func(f *pflag.Flag) {
+		f.Changed = false
+	})
 }

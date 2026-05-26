@@ -30,8 +30,9 @@ omnistrate-ctl login --email email --password password
 # Login with email and password from stdin. Save the password in an environment variable and use echo to read it
   echo $OMNISTRATE_PASSWORD | omnistrate-ctl login --email email --password-stdin
 
-# Login with an org-bounded API key (insecure; prefer --api-key-stdin)
-  omnistrate-ctl login --api-key om_…
+# Login with OMNISTRATE_API_KEY environment variable (recommended for CI/CD)
+  export OMNISTRATE_API_KEY=om_…
+  omnistrate-ctl login
 
 # Login with an API key from stdin
   cat ~/omnistrate_apikey.txt | omnistrate-ctl login --api-key-stdin

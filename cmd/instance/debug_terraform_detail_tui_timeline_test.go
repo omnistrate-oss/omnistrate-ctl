@@ -238,10 +238,10 @@ func TestFlattenTimeline_IncludesAttemptRows(t *testing.T) {
 		t.Fatalf("expected 1 date header row, got %d", dateHeaders)
 	}
 	if groupHeaders != 2 {
-		t.Fatalf("expected 2 generation header rows, got %d", groupHeaders)
+		t.Fatalf("expected 2 workflow header rows, got %d", groupHeaders)
 	}
 	if attemptHeaders != 3 {
-		t.Fatalf("expected 3 attempt header rows, got %d", attemptHeaders)
+		t.Fatalf("expected 3 run header rows, got %d", attemptHeaders)
 	}
 	if entryRows != 7 {
 		t.Fatalf("expected 7 entry rows, got %d", entryRows)

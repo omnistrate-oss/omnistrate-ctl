@@ -16,6 +16,9 @@ PROJECT_NAME=omnistrate-ctl
 DOCKER_PLATFORM=linux/arm64 
 TESTCOVERAGE_THRESHOLD=0
 REPO_ROOT=$(shell git rev-parse --show-toplevel)
+UNIT_TEST_PACKAGES=$(shell go list ./... | grep -v '/test/')
+SMOKE_TEST_PACKAGES=$(shell go list ./test/smoke_test/...)
+INTEGRATION_TEST_PACKAGES=$(shell go list ./test/integration_test/...)
 
 # Build info
 BUILD_INFO_PKG=github.com/omnistrate-oss/omnistrate-ctl/internal/config
@@ -46,7 +49,7 @@ download:
 .PHONY: unit-test
 unit-test:
 	@echo "Running unit tests for service"
-	go test ./... -skip ./test/... $(ARGS) -cover -coverprofile coverage.out -covermode count
+	go test $(UNIT_TEST_PACKAGES) $(ARGS) -cover -coverprofile coverage.out -covermode count
 	go tool cover -func=coverage.out | grep total | awk '{print $$3}' | sed 's/[%]//g' | awk 'current=$$1; {if (current < ${TESTCOVERAGE_THRESHOLD}) {print "\033[31mTest coverage is " current " which is below threshold\033[0m"; exit 1} else {print "\033[32mTest coverage is above threshold\033[0m"}}'
 
 .PHONY: smoke-test
@@ -58,7 +61,7 @@ smoke-test:
 	export OMNISTRATE_LOG_LEVEL=debug && \
 	export OMNISTRATE_LOG_FORMAT=pretty && \
 	go clean -testcache && \
-	go test ./... -skip ./test/smoke_test/... $(ARGS) 
+	go test $(SMOKE_TEST_PACKAGES) $(ARGS)
 
 .PHONY: integration-test
 integration-test:
@@ -69,7 +72,7 @@ integration-test:
 	export OMNISTRATE_LOG_LEVEL=debug && \
 	export OMNISTRATE_LOG_FORMAT=pretty && \
 	go clean -testcache && \
-	go test ./... -skip ./test/integration_test/... $(ARGS) 
+	go test $(INTEGRATION_TEST_PACKAGES) $(ARGS)
 
 .PHONY: build
 build:
@@ -112,7 +115,7 @@ ctl: ctl-linux-amd64 ctl-linux-arm64 ctl-darwin-amd64 ctl-darwin-arm64 ctl-windo
 
 .PHONY: test-coverage-report
 test-coverage-report:
-	go test ./... -skip ./test/... -cover -coverprofile coverage.out -covermode count
+	go test $(UNIT_TEST_PACKAGES) -cover -coverprofile coverage.out -covermode count
 	go tool cover -html=coverage.out
 
 lint-install:

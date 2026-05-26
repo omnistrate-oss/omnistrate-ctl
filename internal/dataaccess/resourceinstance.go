@@ -108,8 +108,17 @@ func DescribeResourceInstanceSnapshot(ctx context.Context, token string, service
 
 // ListResourceInstanceOptions contains all optional parameters for ListResourceInstance
 type ListResourceInstanceOptions struct {
-	Filter        *string
-	ProductTierId *string
+	Filter                  *string
+	ProductTierId           *string
+	ProductTierVersion      *string
+	SubscriptionId          *string
+	ExcludeDetail           *bool
+	ExcludeNetworkTopology  *bool
+	ExcludeHAStatus         *bool
+	ExcludeIntegrations     *bool
+	ExcludeMaintenanceTasks *bool
+	NextPageToken           string
+	PageSize                *int64
 }
 
 func ListResourceInstance(ctx context.Context, token string, serviceID, environmentID string, options *ListResourceInstanceOptions) (res *openapiclientfleet.ListFleetResourceInstancesResultInternal, err error) {
@@ -130,6 +139,33 @@ func ListResourceInstance(ctx context.Context, token string, serviceID, environm
 		if options.ProductTierId != nil {
 			req = req.ProductTierId(*options.ProductTierId)
 		}
+		if options.ProductTierVersion != nil {
+			req = req.ProductTierVersion(*options.ProductTierVersion)
+		}
+		if options.SubscriptionId != nil {
+			req = req.SubscriptionId(*options.SubscriptionId)
+		}
+		if options.ExcludeDetail != nil {
+			req = req.ExcludeDetail(*options.ExcludeDetail)
+		}
+		if options.ExcludeNetworkTopology != nil {
+			req = req.ExcludeNetworkTopology(*options.ExcludeNetworkTopology)
+		}
+		if options.ExcludeHAStatus != nil {
+			req = req.ExcludeHAStatus(*options.ExcludeHAStatus)
+		}
+		if options.ExcludeIntegrations != nil {
+			req = req.ExcludeIntegrations(*options.ExcludeIntegrations)
+		}
+		if options.ExcludeMaintenanceTasks != nil {
+			req = req.ExcludeMaintenanceTasks(*options.ExcludeMaintenanceTasks)
+		}
+		if options.NextPageToken != "" {
+			req = req.NextPageToken(options.NextPageToken)
+		}
+		if options.PageSize != nil {
+			req = req.PageSize(*options.PageSize)
+		}
 	}
 
 	var r *http.Response
@@ -144,6 +180,29 @@ func ListResourceInstance(ctx context.Context, token string, serviceID, environm
 		return nil, handleFleetError(err)
 	}
 	return
+}
+
+func ListAllResourceInstances(ctx context.Context, token string, serviceID, environmentID string, options *ListResourceInstanceOptions) (instances []openapiclientfleet.ResourceInstance, err error) {
+	var nextPageToken string
+
+	for {
+		pageOptions := ListResourceInstanceOptions{}
+		if options != nil {
+			pageOptions = *options
+		}
+		pageOptions.NextPageToken = nextPageToken
+
+		res, err := ListResourceInstance(ctx, token, serviceID, environmentID, &pageOptions)
+		if err != nil {
+			return nil, err
+		}
+		instances = append(instances, res.GetResourceInstances()...)
+
+		nextPageToken = res.GetNextPageToken()
+		if nextPageToken == "" {
+			return instances, nil
+		}
+	}
 }
 
 func ListResourceInstanceSnapshots(ctx context.Context, token string, serviceID, environmentID, instanceID string) (res *openapiclientfleet.FleetListInstanceSnapshotResult, err error) {
@@ -192,6 +251,127 @@ func TriggerResourceInstanceAutoBackup(ctx context.Context, token string, servic
 	res, r, err = req.Execute()
 	if err != nil {
 		return nil, handleFleetError(err)
+	}
+	return
+}
+
+func ExecuteResourceInstanceCustomWorkflow(ctx context.Context, token, serviceID, environmentID, instanceID, resourceID, workflowID string, requestParams map[string]any) (res *openapiclientfleet.ResourceInstanceCustomWorkflowResult, err error) {
+	ctxWithToken := context.WithValue(ctx, openapiclientfleet.ContextAccessToken, token)
+	apiClient := getFleetClient()
+
+	reqBody := openapiclientfleet.FleetResourceInstanceCustomWorkflowRequest2{
+		ResourceId: resourceID,
+	}
+	if requestParams != nil {
+		reqBody.SetRequestParams(requestParams)
+	}
+
+	req := apiClient.InventoryApiAPI.InventoryApiResourceInstanceCustomWorkflow(
+		ctxWithToken,
+		serviceID,
+		environmentID,
+		instanceID,
+		workflowID,
+	).FleetResourceInstanceCustomWorkflowRequest2(reqBody)
+
+	var r *http.Response
+	defer func() {
+		if r != nil {
+			_ = r.Body.Close()
+		}
+	}()
+
+	res, r, err = req.Execute()
+	if err != nil {
+		return nil, handleFleetError(err)
+	}
+	return
+}
+
+func AddCapacityToResourceInstance(ctx context.Context, token string, serviceID, environmentID, resourceID, instanceID string, capacity int64) (err error) {
+	ctxWithToken := context.WithValue(ctx, openapiclientfleet.ContextAccessToken, token)
+	apiClient := getFleetClient()
+
+	req := apiClient.InventoryApiAPI.InventoryApiAddCapacityToResourceInstance(
+		ctxWithToken,
+		serviceID,
+		environmentID,
+		instanceID,
+	).FleetAddCapacityToResourceInstanceRequest2(openapiclientfleet.FleetAddCapacityToResourceInstanceRequest2{
+		ResourceId:        resourceID,
+		CapacityToBeAdded: capacity,
+	})
+
+	var r *http.Response
+	defer func() {
+		if r != nil {
+			_ = r.Body.Close()
+		}
+	}()
+
+	r, err = req.Execute()
+	if err != nil {
+		return handleFleetError(err)
+	}
+	return
+}
+
+func RemoveCapacityFromResourceInstance(ctx context.Context, token string, serviceID, environmentID, resourceID, instanceID string, capacity int64) (err error) {
+	ctxWithToken := context.WithValue(ctx, openapiclientfleet.ContextAccessToken, token)
+	apiClient := getFleetClient()
+
+	req := apiClient.InventoryApiAPI.InventoryApiRemoveCapacityFromResourceInstance(
+		ctxWithToken,
+		serviceID,
+		environmentID,
+		instanceID,
+	).FleetRemoveCapacityFromResourceInstanceRequest2(openapiclientfleet.FleetRemoveCapacityFromResourceInstanceRequest2{
+		ResourceId:          resourceID,
+		CapacityToBeRemoved: capacity,
+	})
+
+	var r *http.Response
+	defer func() {
+		if r != nil {
+			_ = r.Body.Close()
+		}
+	}()
+
+	r, err = req.Execute()
+	if err != nil {
+		return handleFleetError(err)
+	}
+	return
+}
+
+func FailoverResourceInstance(ctx context.Context, token string, serviceID, environmentID, instanceID, failedReplicaID, failedReplicaAction string) (err error) {
+	ctxWithToken := context.WithValue(ctx, openapiclientfleet.ContextAccessToken, token)
+	apiClient := getFleetClient()
+
+	reqBody := openapiclientfleet.FleetFailoverResourceInstanceRequest2{
+		FailedReplicaID: failedReplicaID,
+	}
+	if failedReplicaAction != "" {
+		reqBody.FailedReplicaAction = &failedReplicaAction
+	}
+
+	req := apiClient.InventoryApiAPI.InventoryApiFailoverResourceInstance(
+		ctxWithToken,
+		serviceID,
+		environmentID,
+		instanceID,
+	).FleetFailoverResourceInstanceRequest2(reqBody)
+
+	var r *http.Response
+	defer func() {
+		if r != nil {
+			_ = r.Body.Close()
+		}
+	}()
+
+	r, err = req.Execute()
+	if err != nil {
+		return handleFleetError(err)
 	}
 	return
 }

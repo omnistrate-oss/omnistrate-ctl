@@ -3,10 +3,12 @@ package auth
 import (
 	"context"
 	"fmt"
+	"os"
 	"strings"
 	"testing"
 
 	"github.com/omnistrate-oss/omnistrate-ctl/cmd"
+	"github.com/omnistrate-oss/omnistrate-ctl/internal/config"
 	"github.com/omnistrate-oss/omnistrate-ctl/internal/dataaccess"
 	"github.com/omnistrate-oss/omnistrate-ctl/test/testutils"
 
@@ -15,31 +17,28 @@ import (
 
 // Test_login_with_api_key exercises the full org-bounded api-key
 // lifecycle through both the dataaccess layer (create/list/describe/
-// revoke/delete) and the CLI (`login --api-key`):
+// revoke/delete) and the CLI using all supported login mechanisms:
 //
 //  1. Bootstrap an admin session via password login (uses TEST_EMAIL/
 //     TEST_PASSWORD) so we have a JWT that can mint api-keys.
-//  2. For each non-root role (admin, editor, reader) create an api-key
-//     with a unique, test-scoped name. The cleanup defer revokes and
-//     deletes every key created in this run, even if any later step
-//     fails — leaving keys behind would leak credentials and pollute
-//     the org listing.
-//  3. For each created key:
-//       a. Log out so the CLI is forced to re-authenticate.
-//       b. Run `omnistrate-ctl login --api-key=…` against the live
-//          signin endpoint.
-//       c. Exercise the resulting session with a benign read
-//          (ListServices) — proves the JWT is actually accepted by an
-//          unrelated v1 endpoint, not just by the signin endpoint
-//          that minted it.
-//       d. Refresh the token via the dataaccess RefreshToken helper
-//          using the refresh token returned alongside the JWT — proves
-//          that api-key signin sessions are renewable like any other
-//          session and the new JWT also works.
-//       e. Log out before iterating to the next key so each key is
-//          tested in isolation.
-//  4. Re-establish the admin session and confirm the test-scoped
-//     names are present in the list response.
+//  2. For each non-root role (admin, editor, reader, service_editor,
+//     service_operator) create an api-key with a unique, test-scoped
+//     name. The cleanup defer revokes and deletes every key created in
+//     this run.
+//  3. For each created key, exercise all three login mechanisms:
+//     a. `omnistrate-ctl login --api-key=<key>` — plaintext flag.
+//     b. `OMNISTRATE_API_KEY=<key> omnistrate-ctl login` — env var
+//     auto-detection (zero-flag CI/CD path).
+//     c. `echo <key> | omnistrate-ctl login --api-key-stdin` — stdin
+//     pipe (secure, no process-visible plaintext).
+//     After each mechanism, exchange the key via the dataaccess helper
+//     and confirm the resulting JWT is accepted by ListServices.
+//  4. After the three mechanisms, validate the token lifecycle:
+//     a. Refresh the token and confirm the new JWT works.
+//     b. Revoke the refreshed token and confirm it can no longer be
+//     used for refresh.
+//  5. Re-establish the admin session and confirm the test-scoped names
+//     are present in the list response.
 //
 // The test runs only when both ENABLE_SMOKE_TEST=true and the api-key
 // feature is enabled in the target environment (dev). On any
@@ -144,44 +143,93 @@ func Test_login_with_api_key(t *testing.T) {
 		})
 	}
 
-	// Step 3: log in with each key via the CLI, exercise the resulting
-	// session, refresh the token, then log out before the next key.
+	// Step 3: for each key, exercise all supported login mechanisms.
+	// Each mechanism is validated with a ListServices call to confirm
+	// the resulting session is genuinely usable.
 	for _, k := range created {
-		// (a) Log out so the CLI is forced to authenticate via the api-key.
+		// --- Mechanism 1: --api-key flag ---
 		cmd.RootCmd.SetArgs([]string{"logout"})
 		require.NoError(cmd.RootCmd.ExecuteContext(ctx))
 
-		// (b) Login with the key plaintext.
 		cmd.RootCmd.SetArgs([]string{"login", "--api-key=" + k.Plaintext})
 		require.NoErrorf(cmd.RootCmd.ExecuteContext(ctx),
 			"login --api-key for role %s (key %s)", k.Role, k.Name)
 
-		// We also exchange the key via the dataaccess helper so we can
-		// inspect the JWT/refresh-token pair directly — the CLI persists
-		// these to disk but does not surface them to test code.
+		// Validate the session works via dataaccess exchange.
 		session, err := dataaccess.LoginWithAPIKey(ctx, k.Plaintext)
 		require.NoErrorf(err, "signin-exchange for role %s (key %s)", k.Role, k.Name)
 		require.NotEmpty(session.JWTToken, "signin-exchange must return a JWT for role %s", k.Role)
 
-		// (c) Smoke a benign read against an unrelated v1 endpoint to
-		// prove the JWT is genuinely accepted by the platform (not just
-		// minted). ListServices is universally available to every role.
 		_, err = dataaccess.ListServices(ctx, session.JWTToken)
-		require.NoErrorf(err, "ListServices with api-key JWT for role %s (key %s)", k.Role, k.Name)
+		require.NoErrorf(err, "ListServices with --api-key JWT for role %s (key %s)", k.Role, k.Name)
 
-		// (d) Validate the session is renewable. Refresh tokens are
-		// returned alongside the JWT for every signin path, including
-		// signin-exchange; missing refresh token is a regression.
-		require.NotEmptyf(session.RefreshToken,
+		// --- Mechanism 2: OMNISTRATE_API_KEY env var ---
+		cmd.RootCmd.SetArgs([]string{"logout"})
+		require.NoError(cmd.RootCmd.ExecuteContext(ctx))
+
+		err = func() error {
+			previousAPIKey, hadPreviousAPIKey := os.LookupEnv(config.OmnistrateAPIKeyEnv)
+			require.NoError(os.Setenv(config.OmnistrateAPIKeyEnv, k.Plaintext))
+			defer func() {
+				if hadPreviousAPIKey {
+					require.NoError(os.Setenv(config.OmnistrateAPIKeyEnv, previousAPIKey))
+					return
+				}
+				require.NoError(os.Unsetenv(config.OmnistrateAPIKeyEnv))
+			}()
+
+			cmd.RootCmd.SetArgs([]string{"login"})
+			return cmd.RootCmd.ExecuteContext(ctx)
+		}()
+		require.NoErrorf(err,
+			"login via OMNISTRATE_API_KEY env var for role %s (key %s)", k.Role, k.Name)
+
+		envSession, err := dataaccess.LoginWithAPIKey(ctx, k.Plaintext)
+		require.NoErrorf(err, "signin-exchange (env var path) for role %s", k.Role)
+		_, err = dataaccess.ListServices(ctx, envSession.JWTToken)
+		require.NoErrorf(err, "ListServices with env-var JWT for role %s (key %s)", k.Role, k.Name)
+
+		// --- Mechanism 3: --api-key-stdin ---
+		cmd.RootCmd.SetArgs([]string{"logout"})
+		require.NoError(cmd.RootCmd.ExecuteContext(ctx))
+
+		origStdin := os.Stdin
+		r, w, err := os.Pipe()
+		require.NoError(err)
+		os.Stdin = r
+		_, err = w.WriteString(k.Plaintext + "\n")
+		require.NoError(err)
+		w.Close()
+
+		cmd.RootCmd.SetArgs([]string{"login", "--api-key-stdin"})
+		stdinErr := cmd.RootCmd.ExecuteContext(ctx)
+		os.Stdin = origStdin
+		r.Close()
+		require.NoErrorf(stdinErr,
+			"login --api-key-stdin for role %s (key %s)", k.Role, k.Name)
+
+		stdinSession, err := dataaccess.LoginWithAPIKey(ctx, k.Plaintext)
+		require.NoErrorf(err, "signin-exchange (stdin path) for role %s", k.Role)
+		_, err = dataaccess.ListServices(ctx, stdinSession.JWTToken)
+		require.NoErrorf(err, "ListServices with stdin JWT for role %s (key %s)", k.Role, k.Name)
+
+		// --- Token lifecycle (refresh + revoke) ---
+		// Use the last session for lifecycle validation.
+		require.NotEmptyf(stdinSession.RefreshToken,
 			"signin-exchange must return a refresh token for role %s (key %s)", k.Role, k.Name)
-		refreshed, err := dataaccess.RefreshToken(ctx, session.RefreshToken)
+		refreshed, err := dataaccess.RefreshToken(ctx, stdinSession.RefreshToken)
 		require.NoErrorf(err, "RefreshToken for role %s (key %s)", k.Role, k.Name)
 		require.NotEmpty(refreshed.JWTToken, "refreshed JWT must be non-empty")
-		// Confirm the refreshed JWT is itself usable.
+		require.NotEmpty(refreshed.RefreshToken, "refreshed refresh token must be non-empty")
 		_, err = dataaccess.ListServices(ctx, refreshed.JWTToken)
 		require.NoErrorf(err, "ListServices with refreshed api-key JWT for role %s (key %s)", k.Role, k.Name)
 
-		// (e) Log out so the next iteration starts from a clean slate.
+		err = dataaccess.RevokeToken(ctx, refreshed.RefreshToken)
+		require.NoErrorf(err, "RevokeToken for role %s (key %s)", k.Role, k.Name)
+		_, err = dataaccess.RefreshToken(ctx, refreshed.RefreshToken)
+		require.Errorf(err, "RefreshToken after revocation must fail for role %s (key %s)", k.Role, k.Name)
+
+		// Log out before iterating to the next key.
 		cmd.RootCmd.SetArgs([]string{"logout"})
 		require.NoError(cmd.RootCmd.ExecuteContext(ctx))
 	}

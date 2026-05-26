@@ -332,6 +332,25 @@ type ServiceHierarchyResult struct {
 	ArtifactUploadingTasks []ArtifactUploadingTask
 }
 
+func shouldCheckDistributionExtension(result *ServiceHierarchyResult) bool {
+	return result != nil && result.IsNewProductTier && result.ServiceID != "" && result.EnvironmentID != ""
+}
+
+func shouldExtendDistributionToNewDeploymentModel(isNewProductTier bool, servicePlanCount int) bool {
+	return isNewProductTier && servicePlanCount > 1
+}
+
+func serviceHasAdditionalPlans(ctx context.Context, token, serviceID, environmentID string) (bool, error) {
+	if serviceID == "" || environmentID == "" {
+		return false, nil
+	}
+	servicePlans, err := dataaccess.ListServicePlans(ctx, token, serviceID, environmentID)
+	if err != nil {
+		return false, err
+	}
+	return shouldExtendDistributionToNewDeploymentModel(true, len(servicePlans.GetServicePlans())), nil
+}
+
 // ArtifactUploadingTask represents a single artifact upload task returned by the prepare API.
 // It contains all the server-side resolved parameters needed to call the upload artifact API.
 type ArtifactUploadingTask struct {
@@ -493,4 +512,24 @@ func ExpandOmctlEnvVars(data []byte) ([]byte, error) {
 			"Set them before running the build command", strings.Join(keys, ", "))
 	}
 	return result, nil
+}
+
+// BuildDockerBuildArgs constructs the arguments for a `docker buildx build` command,
+// including optional --cache-from and --cache-to flags from the compose spec.
+// --load is always included for single-platform builds so the image is available
+// locally for subsequent `docker push`. It is only omitted for multi-platform
+// builds where --load is incompatible with the buildx driver.
+func BuildDockerBuildArgs(platforms, dockerfilePath, imageURL string, cacheFrom, cacheTo []string) []string {
+	args := []string{"buildx", "build", "--pull", "--platform", platforms, ".", "-f", dockerfilePath, "-t", imageURL}
+	for _, cf := range cacheFrom {
+		args = append(args, "--cache-from", cf)
+	}
+	for _, ct := range cacheTo {
+		args = append(args, "--cache-to", ct)
+	}
+	isMultiPlatform := strings.Contains(platforms, ",")
+	if !isMultiPlatform {
+		args = append(args, "--load")
+	}
+	return args
 }
