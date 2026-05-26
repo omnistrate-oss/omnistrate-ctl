@@ -1,10 +1,10 @@
 ## omnistrate-ctl account customer install-kit
 
-Download the BYOC On-Premise install kit
+Re-download the BYOC On-Premise install kit
 
 ### Synopsis
 
-This command downloads the BYOC On-Premise install kit for a customer onboarding instance.
+This command re-downloads the BYOC On-Premise install kit for an existing customer onboarding instance. New BYOC On-Premise customer onboarding instances download the generated install kit during account customer create.
 
 ```
 omnistrate-ctl account customer install-kit [customer-account-instance-id] [flags]
@@ -13,10 +13,10 @@ omnistrate-ctl account customer install-kit [customer-account-instance-id] [flag
 ### Examples
 
 ```
-# Download the BYOC On-Premise install kit for a customer onboarding instance
+# Re-download the BYOC On-Premise install kit for a customer onboarding instance
 omnistrate-ctl account customer install-kit instance-abcd1234
 
-# Download the install kit to a specific path
+# Re-download the install kit to a specific path
 omnistrate-ctl account customer install-kit instance-abcd1234 --output-path /tmp/byoc-onprem-install-kit.tar
 ```
 

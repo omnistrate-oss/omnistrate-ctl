@@ -26,7 +26,7 @@ const (
 	  --nebius-tenant-id=tenant-xxxx \
 	  --nebius-bindings-file=./nebius-bindings.yaml
 
-# Onboard a BYOC On-Premise Kubernetes cluster
+# Onboard a BYOC On-Premise Kubernetes cluster and download the install kit
 	omnistrate-ctl account customer create \
 	  --service=postgres \
 	  --environment=dev \
