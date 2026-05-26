@@ -23,6 +23,7 @@ func TestCustomerCommandRegistersAllSubcommands(t *testing.T) {
 	assert.True(t, commandNames["delete"])
 	assert.True(t, commandNames["list"])
 	assert.True(t, commandNames["describe"])
+	assert.True(t, commandNames["install-kit"])
 }
 
 func TestCustomerAccountListItemFromSearchRecord(t *testing.T) {

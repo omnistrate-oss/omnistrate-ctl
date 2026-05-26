@@ -132,6 +132,13 @@ type CloudAccountParams struct {
 	AzureTenantID       string
 	NebiusTenantID      string
 	NebiusBindings      []openapiclient.NebiusAccountBindingInput
+	// ClusterName is the customer-provided Kubernetes cluster name for BYOC On-Premise onboarding.
+	// It is not the Omnistrate host cluster ID.
+	ClusterName        string
+	ClusterRegion      string
+	ClusterDescription string
+	PrivateLink        bool
+	AllowCreateNew     bool
 }
 
 // CreateCloudAccount creates a cloud provider account and returns the account config ID and account details
@@ -229,7 +236,19 @@ func buildCreateAccountOutput(
 }
 
 func validateCloudAccountParams(params CloudAccountParams) error {
+	return validateCloudAccountParamsForFlags(params, false)
+}
+
+func validateCloudAccountParamsForFlags(params CloudAccountParams, supportsCluster bool) error {
 	providerCount := 0
+
+	if !supportsCluster && (params.ClusterName != "" || params.ClusterRegion != "" || params.ClusterDescription != "") {
+		return fmt.Errorf("BYOC On-Premise cluster parameters are not supported for this command")
+	}
+
+	if params.ClusterName == "" && (params.ClusterRegion != "" || params.ClusterDescription != "") {
+		return fmt.Errorf("--cluster-name must be provided when using --cluster-region or --cluster-description")
+	}
 
 	if params.AwsAccountID != "" {
 		providerCount++
@@ -243,11 +262,17 @@ func validateCloudAccountParams(params CloudAccountParams) error {
 	if params.NebiusTenantID != "" || len(params.NebiusBindings) > 0 {
 		providerCount++
 	}
+	if params.ClusterName != "" {
+		providerCount++
+	}
 
 	if providerCount == 0 {
 		return fmt.Errorf("one cloud provider account configuration must be provided")
 	}
 	if providerCount > 1 {
+		if supportsCluster {
+			return fmt.Errorf("only one of --aws-account-id, --gcp-project-id, --azure-subscription-id, --nebius-tenant-id, or --cluster-name can be used at a time")
+		}
 		return fmt.Errorf("only one of --aws-account-id, --gcp-project-id, --azure-subscription-id, or --nebius-tenant-id can be used at a time")
 	}
 
@@ -260,7 +285,6 @@ func validateCloudAccountParams(params CloudAccountParams) error {
 	if (params.NebiusTenantID != "" && len(params.NebiusBindings) == 0) || (params.NebiusTenantID == "" && len(params.NebiusBindings) > 0) {
 		return fmt.Errorf("both --nebius-tenant-id and --nebius-bindings-file must be provided together")
 	}
-
 	return nil
 }
 

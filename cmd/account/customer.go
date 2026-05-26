@@ -16,6 +16,7 @@ func init() {
 	customerCmd.AddCommand(customerDeleteCmd)
 	customerCmd.AddCommand(customerListCmd)
 	customerCmd.AddCommand(customerDescribeCmd)
+	customerCmd.AddCommand(customerInstallKitCmd)
 }
 
 func runCustomer(cmd *cobra.Command, args []string) {
