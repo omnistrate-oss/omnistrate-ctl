@@ -275,6 +275,7 @@ func GetOrganizationDeploymentCellTemplate(ctx context.Context, token string, en
 			Name:        amenity.Name,
 			Description: amenity.Description,
 			Type:        amenity.Type,
+			DependsOn:   amenity.DependsOn,
 			Properties:  amenity.Properties,
 		}
 		if utils.FromPtr(amenity.IsManaged) {

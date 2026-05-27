@@ -40,6 +40,7 @@ func convertTemplateToOpenAPIFormat(deploymentConfig model.DeploymentCellTemplat
 			Name:        utils.ToPtr(amenity.Name),
 			Description: amenity.Description,
 			Type:        amenity.Type,
+			DependsOn:   amenity.DependsOn,
 			Properties:  amenity.Properties,
 			IsManaged:   utils.ToPtr(true),
 		}
@@ -50,6 +51,7 @@ func convertTemplateToOpenAPIFormat(deploymentConfig model.DeploymentCellTemplat
 			Name:        utils.ToPtr(amenity.Name),
 			Description: amenity.Description,
 			Type:        amenity.Type,
+			DependsOn:   amenity.DependsOn,
 			Properties:  amenity.Properties,
 			IsManaged:   utils.ToPtr(false),
 		}

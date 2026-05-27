@@ -277,6 +277,7 @@ func createDeploymentCellTemplate(deploymentCell *fleet.HostCluster) *model.Depl
 			Name:        amenity.GetName(),
 			Type:        amenity.Type,
 			Description: amenity.Description,
+			DependsOn:   amenity.DependsOn,
 		}
 
 		// Add properties if available
