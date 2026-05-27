@@ -334,6 +334,7 @@ func updateDeploymentCellFromFile(ctx context.Context, token string, deploymentC
 			Name:        utils.ToPtr(a.Name),
 			Description: a.Description,
 			Type:        a.Type,
+			DependsOn:   a.DependsOn,
 			Properties:  a.Properties,
 			IsManaged:   utils.ToPtr(true),
 		})
@@ -344,6 +345,7 @@ func updateDeploymentCellFromFile(ctx context.Context, token string, deploymentC
 			Name:        utils.ToPtr(a.Name),
 			Description: a.Description,
 			Type:        a.Type,
+			DependsOn:   a.DependsOn,
 			Properties:  a.Properties,
 			IsManaged:   utils.ToPtr(false),
 		})

@@ -180,6 +180,7 @@ func convertToDeploymentCellConfiguration(cellConfig interface{}) (model.Deploym
 			Name:        amenity.Name,
 			Description: amenity.Description,
 			Type:        amenity.Type,
+			DependsOn:   amenity.DependsOn,
 			Properties:  amenity.Properties,
 		}
 		if utils.FromPtr(amenity.IsManaged) {

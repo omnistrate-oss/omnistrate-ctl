@@ -58,6 +58,7 @@ type Amenity struct {
 	Name        string                 `json:"name" yaml:"name"`
 	Description *string                `json:"description,omitempty" yaml:"description,omitempty"`
 	Type        *string                `json:"type,omitempty" yaml:"type,omitempty"`
+	DependsOn   []string               `json:"dependsOn,omitempty" yaml:"dependsOn,omitempty"`
 	Properties  map[string]interface{} `json:"properties,omitempty" yaml:"properties,omitempty"`
 }
 
@@ -66,6 +67,7 @@ type InternalAmenity struct {
 	Description *string                `json:"description,omitempty" yaml:"description,omitempty"`
 	Type        *string                `json:"type,omitempty" yaml:"type,omitempty"`
 	IsManaged   *bool                  `json:"isManaged,omitempty" yaml:"isManaged,omitempty"`
+	DependsOn   []string               `json:"DependsOn,omitempty" yaml:"DependsOn,omitempty"`
 	Properties  map[string]interface{} `json:"properties,omitempty" yaml:"properties,omitempty"`
 }
 
@@ -76,5 +78,6 @@ type AmenityConfig struct {
 	Description *string                `json:"description,omitempty" yaml:"description,omitempty"`
 	IsManaged   *bool                  `json:"isManaged,omitempty" yaml:"isManaged,omitempty"`
 	Type        *string                `json:"type,omitempty" yaml:"type,omitempty"`
+	DependsOn   []string               `json:"dependsOn,omitempty" yaml:"dependsOn,omitempty"`
 	Properties  map[string]interface{} `json:"properties,omitempty" yaml:"properties,omitempty"`
 }
