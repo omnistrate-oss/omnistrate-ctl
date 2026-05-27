@@ -4,7 +4,33 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"gopkg.in/yaml.v3"
 )
+
+func TestAmenityYAMLUnmarshalDependsOn(t *testing.T) {
+	input := []byte(`customAmenities:
+  - name: dependent
+    type: Helm
+    dependsOn:
+      - namespace
+      - crds
+`)
+
+	var template DeploymentCellTemplate
+	if err := yaml.Unmarshal(input, &template); err != nil {
+		t.Fatalf("failed to unmarshal template: %v", err)
+	}
+
+	if len(template.CustomAmenities) != 1 {
+		t.Fatalf("expected 1 custom amenity, got %d", len(template.CustomAmenities))
+	}
+
+	got := template.CustomAmenities[0].DependsOn
+	if len(got) != 2 || got[0] != "namespace" || got[1] != "crds" {
+		t.Fatalf("unexpected dependsOn: %#v", got)
+	}
+}
 
 func TestProcessManifestAmenities_FileReference(t *testing.T) {
 	// Create a temporary directory for test files
@@ -29,8 +55,9 @@ spec:
 	manifestType := AmenityTypeKubernetesManifest
 	amenities := []Amenity{
 		{
-			Name: "test-secrets",
-			Type: &manifestType,
+			Name:      "test-secrets",
+			Type:      &manifestType,
+			DependsOn: []string{"namespace"},
 			Properties: map[string]interface{}{
 				"manifests": []interface{}{
 					map[string]interface{}{"file": "test-manifest.yaml"},
@@ -48,6 +75,9 @@ spec:
 	// Verify the result
 	if len(result) != 1 {
 		t.Fatalf("expected 1 amenity, got %d", len(result))
+	}
+	if len(result[0].DependsOn) != 1 || result[0].DependsOn[0] != "namespace" {
+		t.Fatalf("unexpected dependsOn: %#v", result[0].DependsOn)
 	}
 
 	props := result[0].Properties
