@@ -1,16 +1,54 @@
 package dataaccess
 
 import (
+	"fmt"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 )
 
-func TestPerformDocumentationSearchWithBleve(t *testing.T) {
-	// Clean up any existing index before test
-	defer func() {
+func stubDocumentationContent(t *testing.T) {
+	t.Helper()
+
+	t.Setenv("OMNISTRATE_SEARCH_INDEX_DIR", t.TempDir())
+
+	originalFetch := fetchDocumentationContent
+	fetchDocumentationContent = func(url string) (string, error) {
+		switch {
+		case strings.HasSuffix(url, "/llms.txt"):
+			return `## Build Guides
+- [API Reference](https://docs.omnistrate.com/api/index.md): API documentation
+- [Service Plans](https://docs.omnistrate.com/service-plans/index.md): Service plan documentation`, nil
+		case url == "https://docs.omnistrate.com/api/index.md":
+			return `# API Reference
+
+## Authentication
+
+Use the API with an authentication token.
+
+## Requests
+
+API requests are sent over HTTPS.`, nil
+		case url == "https://docs.omnistrate.com/service-plans/index.md":
+			return `# Service Plans
+
+## Configuration
+
+Configure service plans with compute and storage settings.`, nil
+		default:
+			return "", fmt.Errorf("unexpected documentation URL: %s", url)
+		}
+	}
+
+	t.Cleanup(func() {
 		_ = cleanupSearchIndex()
-	}()
+		fetchDocumentationContent = originalFetch
+	})
+}
+
+func TestPerformDocumentationSearchWithBleve(t *testing.T) {
+	stubDocumentationContent(t)
 
 	// Test basic search functionality
 	results, err := PerformDocumentationSearch("API", 3)
@@ -41,6 +79,8 @@ func TestPerformDocumentationSearchWithBleve(t *testing.T) {
 }
 
 func TestCleanupSearchIndex(t *testing.T) {
+	stubDocumentationContent(t)
+
 	// Initialize index first
 	_, err := PerformDocumentationSearch("test", 1)
 	if err != nil {
@@ -62,10 +102,7 @@ func TestCleanupSearchIndex(t *testing.T) {
 }
 
 func TestRefreshSearchIndex(t *testing.T) {
-	// Clean up any existing index before test
-	defer func() {
-		_ = cleanupSearchIndex()
-	}()
+	stubDocumentationContent(t)
 
 	// Test refresh functionality
 	err := refreshSearchIndex()
