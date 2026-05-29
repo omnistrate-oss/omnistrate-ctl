@@ -31,7 +31,6 @@ omnistrate-ctl instance [command] [flags]
 * [omnistrate-ctl instance continue-deployment](omnistrate-ctl_instance_continue-deployment.md)	 - Continue instance deployment
 * [omnistrate-ctl instance copy-snapshot](omnistrate-ctl_instance_copy-snapshot.md)	 - Copy an instance snapshot to another region
 * [omnistrate-ctl instance create](omnistrate-ctl_instance_create.md)	 - Create an instance deployment
-* [omnistrate-ctl instance custom-workflow](omnistrate-ctl_instance_custom-workflow.md)	 - List, describe, and trigger instance custom workflows
 * [omnistrate-ctl instance dashboard](omnistrate-ctl_instance_dashboard.md)	 - Get Grafana dashboard access details for an instance
 * [omnistrate-ctl instance debug](omnistrate-ctl_instance_debug.md)	 - Visualize the instance plan DAG
 * [omnistrate-ctl instance delete](omnistrate-ctl_instance_delete.md)	 - Delete an instance deployment
@@ -47,6 +46,7 @@ omnistrate-ctl instance [command] [flags]
 * [omnistrate-ctl instance list-endpoints](omnistrate-ctl_instance_list-endpoints.md)	 - List endpoints for a specific instance
 * [omnistrate-ctl instance list-snapshots](omnistrate-ctl_instance_list-snapshots.md)	 - List all snapshots for an instance
 * [omnistrate-ctl instance modify](omnistrate-ctl_instance_modify.md)	 - Modify an instance deployment for your service
+* [omnistrate-ctl instance operation](omnistrate-ctl_instance_operation.md)	 - List, describe, and trigger instance custom operations
 * [omnistrate-ctl instance patch-deployment](omnistrate-ctl_instance_patch-deployment.md)	 - Patch deployment for an instance deployment
 * [omnistrate-ctl instance restart](omnistrate-ctl_instance_restart.md)	 - Restart an instance deployment for your service
 * [omnistrate-ctl instance restore](omnistrate-ctl_instance_restore.md)	 - Create a new instance by restoring from a snapshot

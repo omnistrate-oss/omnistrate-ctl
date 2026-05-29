@@ -41,7 +41,7 @@ func init() {
 	Cmd.AddCommand(evaluateCmd)
 	Cmd.AddCommand(getInstallerCmd)
 	Cmd.AddCommand(deploymentParametersCmd)
-	Cmd.AddCommand(customWorkflowCmd)
+	Cmd.AddCommand(operationCmd)
 }
 
 func run(cmd *cobra.Command, args []string) {
