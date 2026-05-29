@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/omnistrate-oss/omnistrate-ctl/cmd/common"
@@ -134,11 +135,12 @@ type CloudAccountParams struct {
 	NebiusBindings      []openapiclient.NebiusAccountBindingInput
 	// ClusterName is the customer-provided Kubernetes cluster name for BYOC On-Premise onboarding.
 	// It is not the Omnistrate host cluster ID.
-	ClusterName        string
-	ClusterRegion      string
-	ClusterDescription string
-	PrivateLink        bool
-	AllowCreateNew     bool
+	ClusterName         string
+	ClusterRegion       string
+	ClusterDescription  string
+	PrivateLink         bool
+	AllowCreateNew      bool
+	CloudNativeNetworks []string
 }
 
 // CreateCloudAccount creates a cloud provider account and returns the account config ID and account details
@@ -308,4 +310,59 @@ func WaitForAccountReady(ctx context.Context, token, accountID string) error {
 			}
 		}
 	}
+}
+
+// parseCloudNativeNetworkTargets parses region:network-id pairs from flag values.
+func parseCloudNativeNetworkTargets(pairs []string) ([]dataaccess.CloudNativeNetworkTarget, error) {
+	targets := make([]dataaccess.CloudNativeNetworkTarget, 0, len(pairs))
+	for _, pair := range pairs {
+		parts := strings.SplitN(pair, ":", 2)
+		if len(parts) != 2 || strings.TrimSpace(parts[0]) == "" || strings.TrimSpace(parts[1]) == "" {
+			return nil, fmt.Errorf("invalid --cloud-native-networks value %q: expected format region:network-id (e.g. us-east-1:vpc-abc123)", pair)
+		}
+		targets = append(targets, dataaccess.CloudNativeNetworkTarget{
+			Region:    strings.TrimSpace(parts[0]),
+			NetworkID: strings.TrimSpace(parts[1]),
+		})
+	}
+	return targets, nil
+}
+
+func syncAndImportCloudNativeNetworks(ctx context.Context, token, accountID string, targets []dataaccess.CloudNativeNetworkTarget, output string) error {
+	var sm utils.SpinnerManager
+	var spinner *utils.Spinner
+	if output != "json" {
+		fmt.Printf("\n")
+		sm = utils.NewSpinnerManager()
+		spinner = sm.AddSpinner(fmt.Sprintf("Syncing %d cloud-native network(s)...", len(targets)))
+		sm.Start()
+	}
+
+	_, err := dataaccess.SyncAccountConfigCloudNativeNetworksByTarget(ctx, token, accountID, targets)
+	if err != nil {
+		utils.HandleSpinnerError(spinner, sm, err)
+		return fmt.Errorf("failed to sync cloud-native networks: %w", err)
+	}
+	utils.HandleSpinnerSuccess(spinner, sm, fmt.Sprintf("Synced %d cloud-native network(s)", len(targets)))
+
+	networkIDs := make([]string, len(targets))
+	for i, target := range targets {
+		networkIDs[i] = target.NetworkID
+	}
+
+	if output != "json" {
+		fmt.Printf("\n")
+		sm = utils.NewSpinnerManager()
+		spinner = sm.AddSpinner(fmt.Sprintf("Importing %d cloud-native network(s)...", len(networkIDs)))
+		sm.Start()
+	}
+
+	_, err = dataaccess.BulkImportAccountConfigCloudNativeNetworks(ctx, token, accountID, networkIDs)
+	if err != nil {
+		utils.HandleSpinnerError(spinner, sm, err)
+		return fmt.Errorf("failed to import cloud-native networks: %w", err)
+	}
+	utils.HandleSpinnerSuccess(spinner, sm, fmt.Sprintf("Imported %d cloud-native network(s)", len(networkIDs)))
+
+	return nil
 }

@@ -18,6 +18,7 @@ const (
 	skipWaitFlag            = "skip-wait"
 	privateLinkFlag         = "private-link"
 	allowCreateNewFlag      = "allow-create-new-cloud-native-network"
+	cloudNativeNetworksFlag = "cloud-native-networks"
 )
 
 func addCloudAccountProviderFlags(cmd *cobra.Command) {
@@ -103,6 +104,10 @@ func cloudAccountParamsFromFlags(cmd *cobra.Command, name string) (CloudAccountP
 	if cmd.Flags().Lookup(allowCreateNewFlag) != nil {
 		allowCreateNew, _ := cmd.Flags().GetBool(allowCreateNewFlag)
 		params.AllowCreateNew = allowCreateNew
+	}
+	if cmd.Flags().Lookup(cloudNativeNetworksFlag) != nil {
+		cloudNativeNetworks, _ := cmd.Flags().GetStringSlice(cloudNativeNetworksFlag)
+		params.CloudNativeNetworks = cloudNativeNetworks
 	}
 
 	if nebiusBindingsFile != "" {

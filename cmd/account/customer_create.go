@@ -32,7 +32,15 @@ const (
 	  --environment=dev \
 	  --plan=customer-hosted \
 	  --cluster-name=customer-k8s \
-	  --cluster-description="Customer Kubernetes cluster"`
+	  --cluster-description="Customer Kubernetes cluster"
+
+# Onboard an AWS BYOA account and import specific VPCs
+	omnistrate-ctl account customer create \
+	  --service=postgres \
+	  --environment=prod \
+	  --plan=customer-hosted \
+	  --aws-account-id=123456789012 \
+	  --cloud-native-networks=us-east-1:vpc-abc123,eu-west-1:vpc-def456`
 
 	customerAccountResourceName           = "Cloud Provider Account"
 	customerAccountResourceKey            = "omnistrateCloudAccountConfig"
@@ -115,6 +123,7 @@ func init() {
 	addCustomerAccountProviderFlags(customerCreateCmd)
 	customerCreateCmd.Flags().Bool(privateLinkFlag, false, "Enable AWS PrivateLink connectivity for services deployed in this account")
 	customerCreateCmd.Flags().Bool(allowCreateNewFlag, false, "Allow the platform to create new cloud-native networks in this account on demand")
+	customerCreateCmd.Flags().StringSlice(cloudNativeNetworksFlag, nil, "Cloud-native networks to sync and import after account creation (format: region:network-id, e.g. us-east-1:vpc-abc123)")
 
 	customerCreateCmd.Flags().String("service", "", "Service name or ID")
 	customerCreateCmd.Flags().String("environment", "", "Environment name or ID")
@@ -142,6 +151,17 @@ func runCustomerCreate(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		utils.PrintError(err)
 		return err
+	}
+
+	var cloudNativeNetworkTargets []dataaccess.CloudNativeNetworkTarget
+	if len(params.CloudNativeNetworks) > 0 {
+		if skipWait {
+			return fmt.Errorf("--cloud-native-networks requires waiting for account READY (cannot use --skip-wait)")
+		}
+		cloudNativeNetworkTargets, err = parseCloudNativeNetworkTargets(params.CloudNativeNetworks)
+		if err != nil {
+			return err
+		}
 	}
 
 	token, err := common.GetTokenWithLogin()
@@ -303,6 +323,16 @@ func runCustomerCreate(cmd *cobra.Command, args []string) error {
 
 	if output != "json" && backingAccount != nil && backingAccount.Status != "READY" {
 		dataaccess.PrintNextStepVerifyAccountMsg(backingAccount)
+	}
+
+	if len(cloudNativeNetworkTargets) > 0 {
+		if accountConfigID == "" {
+			return fmt.Errorf("customer account onboarding did not expose a backing account config ID; cannot sync cloud-native networks")
+		}
+		if err = syncAndImportCloudNativeNetworks(cmd.Context(), token, accountConfigID, cloudNativeNetworkTargets, output); err != nil {
+			utils.PrintError(err)
+			return err
+		}
 	}
 
 	return nil

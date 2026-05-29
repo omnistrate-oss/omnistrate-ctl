@@ -29,6 +29,14 @@ omnistrate-ctl account customer create --service=[service] --environment=[enviro
 	  --plan=customer-hosted \
 	  --cluster-name=customer-k8s \
 	  --cluster-description="Customer Kubernetes cluster"
+
+# Onboard an AWS BYOA account and import specific VPCs
+	omnistrate-ctl account customer create \
+	  --service=postgres \
+	  --environment=prod \
+	  --plan=customer-hosted \
+	  --aws-account-id=123456789012 \
+	  --cloud-native-networks=us-east-1:vpc-abc123,eu-west-1:vpc-def456
 ```
 
 ### Options
@@ -38,6 +46,7 @@ omnistrate-ctl account customer create --service=[service] --environment=[enviro
       --aws-account-id string                   AWS account ID
       --azure-subscription-id string            Azure subscription ID
       --azure-tenant-id string                  Azure tenant ID
+      --cloud-native-networks strings           Cloud-native networks to sync and import after account creation (format: region:network-id, e.g. us-east-1:vpc-abc123)
       --cluster-description string              Optional description for the BYOC On-Premise cluster
       --cluster-name string                     Name of the customer-provided Kubernetes cluster for BYOC On-Premise
       --cluster-region string                   Optional account onboarding region or location label for the BYOC On-Premise cluster (defaults to on-prem)

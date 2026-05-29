@@ -82,6 +82,8 @@ var (
 	// Use regex to find H headings
 	h2Regex *stdregexp.Regexp
 	h3Regex *stdregexp.Regexp
+
+	fetchDocumentationContent = fetchContentFromURL
 )
 
 func init() {
@@ -225,7 +227,7 @@ func createIndexMapping() (mapping.IndexMapping, error) {
 // populateIndex fetches documentation and adds it to the search index
 func populateIndex() error {
 	// Fetch documentation from llms.txt
-	contentReader, err := fetchContentFromURL(config.GetLlmsTxtURL())
+	contentReader, err := fetchDocumentationContent(config.GetLlmsTxtURL())
 	if err != nil {
 		return fmt.Errorf("failed to fetch documentation: %w", err)
 	}
@@ -305,7 +307,7 @@ func parseDocumentationContentForIndexing(body string) ([]Document, error) {
 				}
 
 				// Fetch content from the URL
-				content, err := fetchContentFromURL(docUrl)
+				content, err := fetchDocumentationContent(docUrl)
 				if err != nil {
 					log.Warn().Err(err).Str("url", docUrl).Msg("Failed to fetch content for indexing")
 				} else {
@@ -638,7 +640,7 @@ func SearchComposeSpecSections(tag string) ([]ComposeSpecResult, error) {
 	composeSpecURL := config.GetComposeSpecUrl()
 
 	// Fetch content from the compose spec documentation
-	content, err := fetchContentFromURL(composeSpecURL)
+	content, err := fetchDocumentationContent(composeSpecURL)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch compose spec documentation: %w", err)
 	}
@@ -695,7 +697,7 @@ func ListComposeSpecSections() ([]ComposeSpecAvailableTag, error) {
 	composeSpecURL := config.GetComposeSpecUrl()
 
 	// Fetch content from the compose spec documentation
-	content, err := fetchContentFromURL(composeSpecURL)
+	content, err := fetchDocumentationContent(composeSpecURL)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch compose spec documentation: %w", err)
 	}
@@ -722,7 +724,7 @@ func ListComposeSpecSections() ([]ComposeSpecAvailableTag, error) {
 // GetComposeSpecHeaders returns all H3 headers from the compose spec documentation
 func GetComposeSpecHeaders(composeSpecURL string) ([]string, error) {
 	// Fetch content from the compose spec documentation
-	content, err := fetchContentFromURL(composeSpecURL)
+	content, err := fetchDocumentationContent(composeSpecURL)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch compose spec documentation: %w", err)
 	}
@@ -761,7 +763,7 @@ func SearchPlanSpecSections(tag string) ([]PlanSpecResult, error) {
 
 	planSpecURL := config.GetPlanSpecUrl()
 
-	content, err := fetchContentFromURL(planSpecURL)
+	content, err := fetchDocumentationContent(planSpecURL)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch plan spec documentation: %w", err)
 	}
@@ -793,7 +795,7 @@ func SearchPlanSpecSections(tag string) ([]PlanSpecResult, error) {
 func ListPlanSpecSections() ([]PlanSpecAvailableTag, error) {
 	planSpecURL := config.GetPlanSpecUrl()
 
-	content, err := fetchContentFromURL(planSpecURL)
+	content, err := fetchDocumentationContent(planSpecURL)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch plan spec documentation: %w", err)
 	}

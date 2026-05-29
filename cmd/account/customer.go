@@ -1,6 +1,9 @@
 package account
 
-import "github.com/spf13/cobra"
+import (
+	"github.com/omnistrate-oss/omnistrate-ctl/cmd/account/cloudnativenetwork"
+	"github.com/spf13/cobra"
+)
 
 var customerCmd = &cobra.Command{
 	Use:          "customer [operation] [flags]",
@@ -17,6 +20,7 @@ func init() {
 	customerCmd.AddCommand(customerListCmd)
 	customerCmd.AddCommand(customerDescribeCmd)
 	customerCmd.AddCommand(customerInstallKitCmd)
+	customerCmd.AddCommand(cloudnativenetwork.Cmd)
 }
 
 func runCustomer(cmd *cobra.Command, args []string) {

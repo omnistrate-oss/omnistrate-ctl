@@ -272,6 +272,28 @@ func TestBuildCustomerAccountRequestParamsWithDerivedValues_PrivateLinkMissingEr
 	assert.Contains(t, err.Error(), customerAccountPrivateLinkName)
 }
 
+func TestBuildCustomerAccountRequestParamsWithDerivedValues_FlagsOmittedDoesNotSetParams(t *testing.T) {
+	params := CloudAccountParams{
+		Name:         "customer-aws",
+		AwsAccountID: "123456789012",
+	}
+
+	inputParameters := []openapiclient.DescribeInputParameterResult{
+		{Name: customerAccountIacToolName, Key: "account_configuration_method"},
+		{Name: customerAccountAWSAccountIDName, Key: "aws_account_id"},
+		{Name: customerAccountAWSBootstrapRoleName, Key: "aws_bootstrap_role_arn"},
+		{Name: customerAccountPrivateLinkName, Key: "private_link"},
+		{Name: customerAccountAllowCreateNewName, Key: "allow_new_cloud_native_network_creation"},
+	}
+
+	requestParams, err := buildCustomerAccountRequestParamsWithDerivedValues(params, inputParameters, "")
+	require.NoError(t, err)
+	_, hasPrivateLink := requestParams["private_link"]
+	_, hasAllowCreate := requestParams["allow_new_cloud_native_network_creation"]
+	assert.False(t, hasPrivateLink)
+	assert.False(t, hasAllowCreate)
+}
+
 func TestResolveCustomerAccountSubscription_NonProductionUsesProvidedSubscription(t *testing.T) {
 	target := &customerAccountTarget{
 		ServiceID:       "svc-1",

@@ -48,6 +48,9 @@ type DeploymentCell struct {
 
 	InSyncWithTemplate bool `json:"in_sync_with_template,omitempty"`
 
+	// Network topology
+	PrivateLinkEnabled *bool `json:"private_link_enabled,omitempty"`
+
 	// Additional metadata
 	Role      *string `json:"role,omitempty"`
 	ModelType *string `json:"model_type,omitempty"`
@@ -109,6 +112,7 @@ type DeploymentCellTableView struct {
 	Type                       string  `json:"type"`
 	CloudProvider              string  `json:"cloud_provider"`
 	Region                     string  `json:"region"`
+	PrivateLink                string  `json:"private_link"`
 	CurrentNumberOfDeployments int64   `json:"current_number_of_deployments"`
 	HealthStatus               string  `json:"health_status"`
 }
@@ -119,6 +123,12 @@ func (dc DeploymentCell) ToTableView() DeploymentCellTableView {
 	if !strings.HasPrefix(dc.Key, "dataplane-") {
 		dc.ID = dc.Key
 	}
+	privateLink := "-"
+	if dc.PrivateLinkEnabled != nil && *dc.PrivateLinkEnabled {
+		privateLink = "Yes"
+	} else if dc.PrivateLinkEnabled != nil {
+		privateLink = "No"
+	}
 	return DeploymentCellTableView{
 		ID:                         dc.ID,
 		CustomerEmail:              dc.CustomerEmail,
@@ -127,6 +137,7 @@ func (dc DeploymentCell) ToTableView() DeploymentCellTableView {
 		Type:                       dc.Type,
 		CloudProvider:              dc.CloudProvider,
 		Region:                     dc.Region,
+		PrivateLink:                privateLink,
 		CurrentNumberOfDeployments: dc.CurrentNumberOfDeployments,
 		HealthStatus:               dc.HealthStatus.String(),
 	}
