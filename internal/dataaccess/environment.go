@@ -2,6 +2,7 @@ package dataaccess
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"strings"
 
@@ -84,14 +85,16 @@ func ListServiceEnvironments(ctx context.Context, token, serviceID string) (*ope
 	return resp, nil
 }
 
-func PromoteServiceEnvironment(ctx context.Context, token, serviceID, serviceEnvironmentID string) error {
+func PromoteServiceEnvironment(ctx context.Context, token, serviceID, serviceEnvironmentID, productTierID, sourceVersion string) error {
+	if sourceVersion != "" && productTierID == "" {
+		return fmt.Errorf("source version can only be provided when product tier ID is provided")
+	}
+
 	ctxWithToken := context.WithValue(ctx, openapiclientv1.ContextAccessToken, token)
 	apiClient := getV1Client()
 
 	r, err := apiClient.ServiceEnvironmentApiAPI.ServiceEnvironmentApiPromoteServiceEnvironment(ctxWithToken, serviceID, serviceEnvironmentID).
-		PromoteServiceEnvironmentRequest2(
-			openapiclientv1.PromoteServiceEnvironmentRequest2{},
-		).Execute()
+		PromoteServiceEnvironmentRequest2(newPromoteServiceEnvironmentRequest(productTierID, sourceVersion)).Execute()
 
 	defer func() {
 		if r != nil {
@@ -102,6 +105,19 @@ func PromoteServiceEnvironment(ctx context.Context, token, serviceID, serviceEnv
 		return handleV1Error(err)
 	}
 	return nil
+}
+
+func newPromoteServiceEnvironmentRequest(productTierID, sourceVersion string) openapiclientv1.PromoteServiceEnvironmentRequest2 {
+	request := openapiclientv1.PromoteServiceEnvironmentRequest2{}
+	if productTierID != "" {
+		request.ProductTierId = &productTierID
+	}
+	if productTierID != "" && sourceVersion != "" {
+		request.AdditionalProperties = map[string]interface{}{
+			"sourceVersion": sourceVersion,
+		}
+	}
+	return request
 }
 
 func PromoteServiceEnvironmentStatus(ctx context.Context, token, serviceID, serviceEnvironmentID string) (resp []openapiclientv1.EnvironmentPromotionStatus, err error) {

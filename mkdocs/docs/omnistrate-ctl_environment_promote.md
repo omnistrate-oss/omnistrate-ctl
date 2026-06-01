@@ -18,14 +18,19 @@ omnistrate-ctl environment promote [service-name] [environment-name]
 
 # Promote environment by ID instead of name
 omnistrate-ctl environment promote --service-id=[service-id] --environment-id=[environment-id]
+
+# Promote environment from a specific source version
+omnistrate-ctl environment promote --service-id=[service-id] --environment-id=[environment-id] --product-tier-id=[product-tier-id] --source-version=[source-version]
 ```
 
 ### Options
 
 ```
-      --environment-id string   Environment ID. Required if environment name is not provided
-  -h, --help                    help for promote
-      --service-id string       Service ID. Required if service name is not provided
+      --environment-id string    Environment ID. Required if environment name is not provided
+  -h, --help                     help for promote
+  -p, --product-tier-id string   Product tier ID to promote. Required when source version is provided
+      --service-id string        Service ID. Required if service name is not provided
+      --source-version string    Source version to promote from. Requires --product-tier-id
 ```
 
 ### Options inherited from parent commands
