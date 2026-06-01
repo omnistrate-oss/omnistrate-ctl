@@ -23,8 +23,8 @@ omnistrate-ctl environment promote [service-name] [environment-name]
 # Promote environment by ID instead of name
 omnistrate-ctl environment promote --service-id=[service-id] --environment-id=[environment-id]
 
-# Promote environment from a specific source version
-omnistrate-ctl environment promote --service-id=[service-id] --environment-id=[environment-id] --product-tier-id=[product-tier-id] --source-version=[source-version]`
+# Promote environment from a specific product tier version
+omnistrate-ctl environment promote --service-id=[service-id] --environment-id=[environment-id] --product-tier-id=[product-tier-id] --product-tier-version=[product-tier-version]`
 )
 
 var promoteCmd = &cobra.Command{
@@ -39,8 +39,8 @@ var promoteCmd = &cobra.Command{
 func init() {
 	promoteCmd.Flags().StringP("service-id", "", "", "Service ID. Required if service name is not provided")
 	promoteCmd.Flags().StringP("environment-id", "", "", "Environment ID. Required if environment name is not provided")
-	promoteCmd.Flags().StringP("product-tier-id", "p", "", "Product tier ID to promote. Required when source version is provided")
-	promoteCmd.Flags().String("source-version", "", "Source version to promote from. Requires --product-tier-id")
+	promoteCmd.Flags().StringP("product-tier-id", "p", "", "Product tier ID to promote. Required when product tier version is provided")
+	promoteCmd.Flags().String("product-tier-version", "", "Product tier version to promote from. Requires --product-tier-id")
 }
 
 func runPromote(cmd *cobra.Command, args []string) error {
@@ -51,10 +51,10 @@ func runPromote(cmd *cobra.Command, args []string) error {
 	serviceID, _ := cmd.Flags().GetString("service-id")
 	environmentID, _ := cmd.Flags().GetString("environment-id")
 	productTierID, _ := cmd.Flags().GetString("product-tier-id")
-	sourceVersion, _ := cmd.Flags().GetString("source-version")
+	productTierVersion, _ := cmd.Flags().GetString("product-tier-version")
 
 	// Validate input arguments
-	if err := validatePromoteArguments(args, serviceID, environmentID, productTierID, sourceVersion); err != nil {
+	if err := validatePromoteArguments(args, serviceID, environmentID, productTierID, productTierVersion); err != nil {
 		utils.PrintError(err)
 		return err
 	}
@@ -89,7 +89,7 @@ func runPromote(cmd *cobra.Command, args []string) error {
 	}
 
 	// Promote the environment
-	if err = dataaccess.PromoteServiceEnvironment(cmd.Context(), token, serviceID, environmentID, productTierID, sourceVersion); err != nil {
+	if err = dataaccess.PromoteServiceEnvironment(cmd.Context(), token, serviceID, environmentID, productTierID, productTierVersion); err != nil {
 		utils.HandleSpinnerError(spinner, sm, err)
 		return err
 	}
@@ -120,15 +120,15 @@ func runPromote(cmd *cobra.Command, args []string) error {
 
 // Helper functions
 
-func validatePromoteArguments(args []string, serviceID, environmentID, productTierID, sourceVersion string) error {
+func validatePromoteArguments(args []string, serviceID, environmentID, productTierID, productTierVersion string) error {
 	if len(args) == 0 && (serviceID == "" || environmentID == "") {
 		return fmt.Errorf("please provide the service name and environment name or the service ID and environment ID")
 	}
 	if len(args) > 0 && len(args) != 2 {
 		return fmt.Errorf("invalid arguments: %s. Need 2 arguments: [service-name] [environment-name]", strings.Join(args, " "))
 	}
-	if sourceVersion != "" && productTierID == "" {
-		return fmt.Errorf("source version can only be provided when product tier ID is provided")
+	if productTierVersion != "" && productTierID == "" {
+		return fmt.Errorf("product tier version can only be provided when product tier ID is provided")
 	}
 	return nil
 }

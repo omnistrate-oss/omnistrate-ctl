@@ -35,7 +35,7 @@ func TestPromoteCommandFlags(t *testing.T) {
 		{name: "service-id", flagType: "string", defValue: "", shorthand: ""},
 		{name: "environment-id", flagType: "string", defValue: "", shorthand: ""},
 		{name: "product-tier-id", flagType: "string", defValue: "", shorthand: "p"},
-		{name: "source-version", flagType: "string", defValue: "", shorthand: ""},
+		{name: "product-tier-version", flagType: "string", defValue: "", shorthand: ""},
 	}
 
 	for _, test := range tests {
@@ -49,13 +49,13 @@ func TestPromoteCommandFlags(t *testing.T) {
 
 func TestValidatePromoteArguments(t *testing.T) {
 	tests := []struct {
-		name          string
-		args          []string
-		serviceID     string
-		environmentID string
-		productTierID string
-		sourceVersion string
-		wantErr       string
+		name               string
+		args               []string
+		serviceID          string
+		environmentID      string
+		productTierID      string
+		productTierVersion string
+		wantErr            string
 	}{
 		{
 			name:    "valid names",
@@ -69,12 +69,12 @@ func TestValidatePromoteArguments(t *testing.T) {
 			wantErr:       "",
 		},
 		{
-			name:          "valid source version with product tier id",
-			serviceID:     "svc-123",
-			environmentID: "env-123",
-			productTierID: "pt-123",
-			sourceVersion: "1.2.3",
-			wantErr:       "",
+			name:               "valid product tier version with product tier id",
+			serviceID:          "svc-123",
+			environmentID:      "env-123",
+			productTierID:      "pt-123",
+			productTierVersion: "1.2.3",
+			wantErr:            "",
 		},
 		{
 			name:    "missing required identifiers",
@@ -86,17 +86,17 @@ func TestValidatePromoteArguments(t *testing.T) {
 			wantErr: "invalid arguments: service-name. Need 2 arguments: [service-name] [environment-name]",
 		},
 		{
-			name:          "source version without product tier id",
-			serviceID:     "svc-123",
-			environmentID: "env-123",
-			sourceVersion: "1.2.3",
-			wantErr:       "source version can only be provided when product tier ID is provided",
+			name:               "product tier version without product tier id",
+			serviceID:          "svc-123",
+			environmentID:      "env-123",
+			productTierVersion: "1.2.3",
+			wantErr:            "product tier version can only be provided when product tier ID is provided",
 		},
 	}
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			err := validatePromoteArguments(test.args, test.serviceID, test.environmentID, test.productTierID, test.sourceVersion)
+			err := validatePromoteArguments(test.args, test.serviceID, test.environmentID, test.productTierID, test.productTierVersion)
 			if test.wantErr == "" {
 				require.NoError(t, err)
 				return

@@ -28,21 +28,21 @@ func TestCleanupId(t *testing.T) {
 
 func TestNewPromoteServiceEnvironmentRequest(t *testing.T) {
 	tests := []struct {
-		name          string
-		productTierID string
-		sourceVersion string
-		wantProduct   bool
-		wantSource    bool
+		name               string
+		productTierID      string
+		productTierVersion string
+		wantProduct        bool
+		wantVersion        bool
 	}{
-		{name: "without source version"},
+		{name: "without product tier version"},
 		{name: "with product tier id", productTierID: "pt-123", wantProduct: true},
-		{name: "with source version and product tier id", productTierID: "pt-123", sourceVersion: "1.2.3", wantProduct: true, wantSource: true},
-		{name: "without product tier id drops source version", sourceVersion: "1.2.3"},
+		{name: "with product tier version and product tier id", productTierID: "pt-123", productTierVersion: "1.2.3", wantProduct: true, wantVersion: true},
+		{name: "without product tier id drops product tier version", productTierVersion: "1.2.3"},
 	}
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			request := newPromoteServiceEnvironmentRequest(test.productTierID, test.sourceVersion)
+			request := newPromoteServiceEnvironmentRequest(test.productTierID, test.productTierVersion)
 			requestMap, err := request.ToMap()
 			require.NoError(t, err)
 
@@ -55,16 +55,16 @@ func TestNewPromoteServiceEnvironmentRequest(t *testing.T) {
 				require.Nil(t, request.ProductTierId)
 			}
 
-			sourceVersion, ok := requestMap["sourceVersion"]
-			require.Equal(t, test.wantSource, ok)
-			if test.wantSource {
-				require.Equal(t, test.sourceVersion, sourceVersion)
+			productTierVersion, ok := requestMap["productTierVersion"]
+			require.Equal(t, test.wantVersion, ok)
+			if test.wantVersion {
+				require.Equal(t, test.productTierVersion, productTierVersion)
 			}
 		})
 	}
 }
 
-func TestPromoteServiceEnvironmentRejectsSourceVersionWithoutProductTierID(t *testing.T) {
+func TestPromoteServiceEnvironmentRejectsProductTierVersionWithoutProductTierID(t *testing.T) {
 	err := PromoteServiceEnvironment(t.Context(), "token", "svc-123", "env-123", "", "1.2.3")
-	require.EqualError(t, err, "source version can only be provided when product tier ID is provided")
+	require.EqualError(t, err, "product tier version can only be provided when product tier ID is provided")
 }
