@@ -39,7 +39,7 @@ func TestInstanceBasic(t *testing.T) {
 
 	// PASS: create instance 1 with param
 	log.Debug().Msg("Creating instance 1 with parameters from command line...")
-	cmd.RootCmd.SetArgs([]string{"instance", "create",
+	err = executeInstanceCreateWithInventoryRetry(t, ctx, []string{"instance", "create",
 		fmt.Sprintf("--service=%s", serviceName),
 		"--environment=dev",
 		fmt.Sprintf("--plan=%s", serviceName),
@@ -49,14 +49,13 @@ func TestInstanceBasic(t *testing.T) {
 		"--region=ca-central-1",
 		"--tags", "environment=dev,owner=platform",
 		"--param", `{"databaseName":"default","password":"a_secure_password","rootPassword":"a_secure_root_password","username":"user"}`})
-	err = cmd.RootCmd.ExecuteContext(ctx)
 	require.NoError(t, err)
 	instanceID1 := instance.InstanceID
 	require.NotEmpty(t, instanceID1)
 
 	// PASS: create instance 2 with param file
 	log.Debug().Msg("Creating instance 2 with parameters from file...")
-	cmd.RootCmd.SetArgs([]string{"instance", "create",
+	err = executeInstanceCreateWithInventoryRetry(t, ctx, []string{"instance", "create",
 		fmt.Sprintf("--service=%s", serviceName),
 		"--environment=dev",
 		fmt.Sprintf("--plan=%s", serviceName),
@@ -66,7 +65,6 @@ func TestInstanceBasic(t *testing.T) {
 		"--region=ca-central-1",
 		"--tags", "source=file",
 		"--param-file", "paramfiles/instance_create_param.json"})
-	err = cmd.RootCmd.ExecuteContext(ctx)
 	require.NoError(t, err)
 	instanceID2 := instance.InstanceID
 	require.NotEmpty(t, instanceID2)
