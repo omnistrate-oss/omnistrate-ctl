@@ -55,10 +55,13 @@ func TestNewPromoteServiceEnvironmentRequest(t *testing.T) {
 				require.Nil(t, request.ProductTierId)
 			}
 
-			productTierVersion, ok := requestMap["productTierVersion"]
+			_, ok = requestMap["productTierVersion"]
 			require.Equal(t, test.wantVersion, ok)
 			if test.wantVersion {
-				require.Equal(t, test.productTierVersion, productTierVersion)
+				require.NotNil(t, request.ProductTierVersion)
+				require.Equal(t, test.productTierVersion, *request.ProductTierVersion)
+			} else {
+				require.Nil(t, request.ProductTierVersion)
 			}
 		})
 	}

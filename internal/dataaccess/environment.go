@@ -113,9 +113,7 @@ func newPromoteServiceEnvironmentRequest(productTierID, productTierVersion strin
 		request.ProductTierId = &productTierID
 	}
 	if productTierID != "" && productTierVersion != "" {
-		request.AdditionalProperties = map[string]interface{}{
-			"productTierVersion": productTierVersion,
-		}
+		request.ProductTierVersion = &productTierVersion
 	}
 	return request
 }
