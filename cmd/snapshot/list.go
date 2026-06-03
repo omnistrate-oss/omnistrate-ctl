@@ -8,7 +8,6 @@ import (
 	"github.com/omnistrate-oss/omnistrate-ctl/internal/config"
 	"github.com/omnistrate-oss/omnistrate-ctl/internal/dataaccess"
 	"github.com/omnistrate-oss/omnistrate-ctl/internal/utils"
-	openapiclientfleet "github.com/omnistrate-oss/omnistrate-sdk-go/fleet"
 	"github.com/spf13/cobra"
 )
 
@@ -42,18 +41,17 @@ func init() {
 const snapshotDisplayTimeLayout = "2006-01-02 15:04:05 MST"
 
 type SnapshotDetail struct {
-	SnapshotID       string                 `json:"snapshotId"`
-	Status           string                 `json:"status"`
-	Region           string                 `json:"region"`
-	SnapshotType     string                 `json:"snapshotType"`
-	Progress         string                 `json:"progress"`
-	CreatedAt        string                 `json:"createdAt"`
-	CompletedAt      string                 `json:"completedAt"`
-	SourceInstanceID string                 `json:"sourceInstanceId"`
-	ProductTierID    string                 `json:"productTierId"`
-	ProductTierVer   string                 `json:"productTierVersion"`
-	Encrypted        bool                   `json:"encrypted"`
-	SnapshotMetadata map[string]interface{} `json:"snapshotMetadata,omitempty"`
+	SnapshotID       string `json:"snapshotId"`
+	Status           string `json:"status"`
+	Region           string `json:"region"`
+	SnapshotType     string `json:"snapshotType"`
+	Progress         string `json:"progress"`
+	CreatedAt        string `json:"createdAt"`
+	CompletedAt      string `json:"completedAt"`
+	SourceInstanceID string `json:"sourceInstanceId"`
+	ProductTierID    string `json:"productTierId"`
+	ProductTierVer   string `json:"productTierVersion"`
+	Encrypted        bool   `json:"encrypted"`
 }
 
 func runList(cmd *cobra.Command, args []string) error {
@@ -110,27 +108,22 @@ func runList(cmd *cobra.Command, args []string) error {
 
 	summaries := make([]SnapshotDetail, 0, len(result.Snapshots))
 	for _, snap := range result.Snapshots {
-		summaries = append(summaries, newSnapshotDetail(snap))
+		summaries = append(summaries, SnapshotDetail{
+			SnapshotID:       utils.FromPtr(snap.SnapshotId),
+			Status:           utils.FromPtr(snap.Status),
+			Region:           utils.FromPtr(snap.Region),
+			SnapshotType:     utils.FromPtr(snap.SnapshotType),
+			Progress:         fmt.Sprintf("%d%%", utils.FromPtr(snap.Progress)),
+			CreatedAt:        formatSnapshotDisplayTime(utils.FromPtr(snap.CreatedTime)),
+			CompletedAt:      formatSnapshotDisplayTime(utils.FromPtr(snap.CompleteTime)),
+			SourceInstanceID: utils.FromPtr(snap.SourceInstanceId),
+			ProductTierID:    utils.FromPtr(snap.ProductTierId),
+			ProductTierVer:   utils.FromPtr(snap.ProductTierVersion),
+			Encrypted:        utils.FromPtr(snap.Encrypted),
+		})
 	}
 
 	return utils.PrintTextTableJsonArrayOutput(output, summaries)
-}
-
-func newSnapshotDetail(snap openapiclientfleet.FleetDescribeInstanceSnapshotResult) SnapshotDetail {
-	return SnapshotDetail{
-		SnapshotID:       utils.FromPtr(snap.SnapshotId),
-		Status:           utils.FromPtr(snap.Status),
-		Region:           utils.FromPtr(snap.Region),
-		SnapshotType:     utils.FromPtr(snap.SnapshotType),
-		Progress:         fmt.Sprintf("%d%%", utils.FromPtr(snap.Progress)),
-		CreatedAt:        formatSnapshotDisplayTime(utils.FromPtr(snap.CreatedTime)),
-		CompletedAt:      formatSnapshotDisplayTime(utils.FromPtr(snap.CompleteTime)),
-		SourceInstanceID: utils.FromPtr(snap.SourceInstanceId),
-		ProductTierID:    utils.FromPtr(snap.ProductTierId),
-		ProductTierVer:   utils.FromPtr(snap.ProductTierVersion),
-		Encrypted:        utils.FromPtr(snap.Encrypted),
-		SnapshotMetadata: utils.SnapshotMetadataFromSDK(snap, snap.AdditionalProperties),
-	}
 }
 
 func formatSnapshotDisplayTime(raw string) string {

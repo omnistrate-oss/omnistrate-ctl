@@ -12,6 +12,7 @@ import (
 	"github.com/omnistrate-oss/omnistrate-ctl/internal/model"
 	"github.com/omnistrate-oss/omnistrate-ctl/internal/utils"
 	openapiclientfleet "github.com/omnistrate-oss/omnistrate-sdk-go/fleet"
+	openapiclientv1 "github.com/omnistrate-oss/omnistrate-sdk-go/v1"
 	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
 )
@@ -202,7 +203,7 @@ func runCreate(cmd *cobra.Command, args []string) error {
 	}
 
 	// Check if resource exists
-	serviceID, _, productTierID, _, err := getResource(cmd.Context(), token, service, environment, plan, resource)
+	serviceID, environmentID, productTierID, _, err := getResource(cmd.Context(), token, service, environment, plan, resource)
 	if err != nil {
 		utils.HandleSpinnerError(spinner, sm, err)
 		return err
@@ -310,21 +311,20 @@ func runCreate(cmd *cobra.Command, args []string) error {
 
 	utils.HandleSpinnerSuccess(spinner, sm, "Successfully created instance")
 
-	// Search for the instance
-	searchRes, err := dataaccess.SearchInventory(cmd.Context(), token, fmt.Sprintf("resourceinstance:%s", *instance.Id))
+	createdInstance, err := dataaccess.DescribeResourceInstance(cmd.Context(), token, serviceID, environmentID, *instance.Id)
 	if err != nil {
 		utils.PrintError(err)
 		return err
 	}
 
-	if len(searchRes.ResourceInstanceResults) == 0 {
+	if createdInstance == nil {
 		err = errors.New("failed to find the created instance")
 		utils.PrintError(err)
 		return err
 	}
 
 	// Format instance
-	formattedInstance := formatInstance(&searchRes.ResourceInstanceResults[0], false)
+	formattedInstance := formatDescribedInstance(createdInstance, *instance.Id, resource)
 	InstanceID = formattedInstance.InstanceID
 	SubscriptionID = formattedInstance.SubscriptionID
 
@@ -352,35 +352,164 @@ func runCreate(cmd *cobra.Command, args []string) error {
 // Helper functions
 
 func getResource(ctx context.Context, token, serviceNameArg, environmentArg, planNameArg, resourceNameArg string) (serviceID, environmentID, productTierID, resourceID string, err error) {
-	searchRes, err := dataaccess.SearchInventory(ctx, token, fmt.Sprintf("resource:%s", resourceNameArg))
+	services, err := dataaccess.ListServices(ctx, token)
 	if err != nil {
 		return
 	}
 
-	found := false
-	for _, res := range searchRes.ResourceResults {
-		if res.Id == "" {
-			continue
-		}
-		if strings.EqualFold(res.Name, resourceNameArg) &&
-			strings.EqualFold(res.ServiceName, serviceNameArg) &&
-			strings.EqualFold(res.ProductTierName, planNameArg) &&
-			strings.EqualFold(res.ServiceEnvironmentName, environmentArg) {
-			found = true
-			serviceID = res.ServiceId
-			environmentID = res.ServiceEnvironmentId
-			productTierID = res.ProductTierId
-			resourceID = res.Id
-			break
-		}
+	candidates, state, err := resolveServicePlanCandidates(services, serviceNameArg, environmentArg, planNameArg)
+	if err != nil {
+		return
 	}
-
-	if !found {
-		err = fmt.Errorf("target resource not found. Please check input values and try again")
+	if len(candidates) == 0 {
+		err = state.notFoundError()
 		return
 	}
 
-	return
+	matches := make([]resourceTarget, 0, 1)
+	seenMatches := make(map[resourceTarget]struct{})
+	for _, candidate := range candidates {
+		offerings, describeErr := dataaccess.ExternalDescribeServiceOffering(ctx, token, candidate.serviceID, candidate.environmentID, candidate.productTierID)
+		if describeErr != nil {
+			err = describeErr
+			return
+		}
+
+		matchedResourceID, resolveErr := resolveResourceFromServiceOffering(offerings, resourceNameArg)
+		if resolveErr != nil {
+			continue
+		}
+		match := resourceTarget{
+			serviceID:     candidate.serviceID,
+			environmentID: candidate.environmentID,
+			productTierID: candidate.productTierID,
+			resourceID:    matchedResourceID,
+		}
+		if _, ok := seenMatches[match]; ok {
+			continue
+		}
+		seenMatches[match] = struct{}{}
+		matches = append(matches, match)
+	}
+
+	switch len(matches) {
+	case 0:
+		err = fmt.Errorf("target resource not found. Please check input values and try again")
+		return
+	case 1:
+		match := matches[0]
+		return match.serviceID, match.environmentID, match.productTierID, match.resourceID, nil
+	default:
+		err = fmt.Errorf("multiple matching resources found. Please provide service, environment, plan, and resource IDs instead of names")
+		return
+	}
+}
+
+type resourceResolutionState struct {
+	serviceFound     bool
+	environmentFound bool
+	planFound        bool
+}
+
+func (s resourceResolutionState) notFoundError() error {
+	switch {
+	case !s.serviceFound:
+		return fmt.Errorf("service not found. Please check input values and try again")
+	case !s.environmentFound:
+		return fmt.Errorf("environment not found. Please check input values and try again")
+	case !s.planFound:
+		return fmt.Errorf("service plan not found. Please check input values and try again")
+	default:
+		return fmt.Errorf("target resource not found. Please check input values and try again")
+	}
+}
+
+type servicePlanCandidate struct {
+	serviceID     string
+	environmentID string
+	productTierID string
+}
+
+type resourceTarget struct {
+	serviceID     string
+	environmentID string
+	productTierID string
+	resourceID    string
+}
+
+func resolveServicePlanCandidates(
+	services *openapiclientv1.ListServiceResult,
+	serviceNameArg string,
+	environmentArg string,
+	planNameArg string,
+) ([]servicePlanCandidate, resourceResolutionState, error) {
+	if services == nil {
+		return nil, resourceResolutionState{}, fmt.Errorf("target resource not found. Please check input values and try again")
+	}
+
+	state := resourceResolutionState{}
+	candidates := make([]servicePlanCandidate, 0, 1)
+	for _, service := range services.GetServices() {
+		if !matchesIDOrName(service.GetId(), service.GetName(), serviceNameArg) {
+			continue
+		}
+		state.serviceFound = true
+
+		for _, environment := range service.GetServiceEnvironments() {
+			if !matchesIDOrName(environment.GetId(), environment.GetName(), environmentArg) {
+				continue
+			}
+			state.environmentFound = true
+
+			for _, plan := range environment.GetServicePlans() {
+				if !matchesIDOrName(plan.GetProductTierID(), plan.GetName(), planNameArg) {
+					continue
+				}
+				state.planFound = true
+				candidates = append(candidates, servicePlanCandidate{
+					serviceID:     service.GetId(),
+					environmentID: environment.GetId(),
+					productTierID: plan.GetProductTierID(),
+				})
+			}
+		}
+	}
+
+	return candidates, state, nil
+}
+
+func resolveResourceFromServiceOffering(offerings *openapiclientv1.DescribeServiceOfferingResult, resourceNameArg string) (string, error) {
+	if offerings == nil {
+		return "", fmt.Errorf("target resource not found. Please check input values and try again")
+	}
+
+	matches := make([]string, 0, 1)
+	seen := make(map[string]struct{})
+	for _, offering := range offerings.GetOfferings() {
+		for _, resource := range offering.GetResourceParameters() {
+			if matchesIDOrName(resource.GetResourceId(), resource.GetName(), resourceNameArg) {
+				resourceID := resource.GetResourceId()
+				if _, ok := seen[resourceID]; ok {
+					continue
+				}
+				seen[resourceID] = struct{}{}
+				matches = append(matches, resourceID)
+			}
+		}
+	}
+
+	switch len(matches) {
+	case 0:
+		return "", fmt.Errorf("target resource not found. Please check input values and try again")
+	case 1:
+		return matches[0], nil
+	default:
+		return "", fmt.Errorf("multiple resources with the same name found. Please provide the resource ID instead of the name")
+	}
+}
+
+func matchesIDOrName(id, name, arg string) bool {
+	return strings.EqualFold(id, arg) || strings.EqualFold(name, arg)
 }
 
 func formatInstance(instance *openapiclientfleet.ResourceInstanceSearchRecord, truncateNames bool) model.Instance {
@@ -420,6 +549,44 @@ func formatInstance(instance *openapiclientfleet.ResourceInstanceSearchRecord, t
 	}
 
 	return formattedInstance
+}
+
+func formatDescribedInstance(instance *openapiclientfleet.ResourceInstance, instanceID, resourceName string) model.Instance {
+	details := instance.GetConsumptionResourceInstanceResult()
+
+	region := ""
+	if details.Region != nil {
+		region = *details.Region
+	}
+
+	status := ""
+	if details.Status != nil {
+		status = *details.Status
+	}
+
+	subscriptionID := instance.GetSubscriptionId()
+	if details.SubscriptionId != nil {
+		subscriptionID = *details.SubscriptionId
+	}
+
+	version := instance.GetTierVersion()
+	if details.TierVersion != nil {
+		version = *details.TierVersion
+	}
+
+	return model.Instance{
+		InstanceID:     instanceID,
+		Service:        instance.GetServiceName(),
+		Environment:    instance.GetServiceEnvName(),
+		Plan:           instance.GetProductTierName(),
+		Version:        version,
+		Resource:       resourceName,
+		CloudProvider:  instance.GetCloudProvider(),
+		Region:         region,
+		Status:         status,
+		SubscriptionID: subscriptionID,
+		Tags:           formatTags(details.CustomTags),
+	}
 }
 
 func parseWorkflowBreakpoints(valuesCSV string) ([]openapiclientfleet.WorkflowBreakpoint, error) {
