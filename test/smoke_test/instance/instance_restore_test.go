@@ -60,7 +60,7 @@ func TestInstanceUndeleteWithInstanceID(t *testing.T) {
 
 	// Create instance
 	log.Debug().Msg("Creating instance...")
-	cmd.RootCmd.SetArgs([]string{"instance", "create",
+	createInstanceWithRetry(t, ctx, []string{"instance", "create",
 		fmt.Sprintf("--service=%s", serviceName),
 		"--environment=dev",
 		fmt.Sprintf("--plan=%s", serviceName),
@@ -70,8 +70,6 @@ func TestInstanceUndeleteWithInstanceID(t *testing.T) {
 		"--region=ca-central-1",
 		"--param", `{"databaseName":"default","password":"a_secure_password","rootPassword":"a_secure_root_password","username":"user"}`,
 	})
-	err = cmd.RootCmd.ExecuteContext(ctx)
-	require.NoError(t, err)
 	originalInstanceID := instance.InstanceID
 	originalSubscriptionID := instance.SubscriptionID
 	require.NotEmpty(t, originalInstanceID, "expected instance ID to be set after create")
@@ -158,7 +156,7 @@ func TestSnapshotRestoreToSource(t *testing.T) {
 
 	// Create instance
 	log.Debug().Msg("Creating instance...")
-	cmd.RootCmd.SetArgs([]string{"instance", "create",
+	createInstanceWithRetry(t, ctx, []string{"instance", "create",
 		fmt.Sprintf("--service=%s", serviceName),
 		"--environment=dev",
 		fmt.Sprintf("--plan=%s", serviceName),
@@ -168,8 +166,6 @@ func TestSnapshotRestoreToSource(t *testing.T) {
 		"--region=ca-central-1",
 		"--param", `{"databaseName":"default","password":"a_secure_password","rootPassword":"a_secure_root_password","username":"user"}`,
 	})
-	err = cmd.RootCmd.ExecuteContext(ctx)
-	require.NoError(t, err)
 	originalInstanceID := instance.InstanceID
 	require.NotEmpty(t, originalInstanceID)
 
@@ -311,11 +307,26 @@ func waitForSnapshotCompletion(t *testing.T, ctx context.Context, token, service
 	t.Fatalf("snapshot %s did not complete within %s", snapshotID, timeout)
 }
 
+// createInstanceWithRetry handles inventory propagation after build. The
+// instance create command resolves service/plan/resource through inventory,
+// which may briefly return no resource immediately after a new service build.
+func createInstanceWithRetry(t *testing.T, ctx context.Context, args []string) {
+	t.Helper()
+	executeWithNotFoundRetry(t, "instance create", 3*time.Minute, func() error {
+		cmd.RootCmd.SetArgs(args)
+		return cmd.RootCmd.ExecuteContext(ctx)
+	})
+}
+
 // restoreWithRetry retries a restore operation to handle eventual consistency
 // where a snapshot may not be immediately queryable after instance deletion.
 func restoreWithRetry(t *testing.T, restoreFn func() error) {
 	t.Helper()
-	timeout := 3 * time.Minute
+	executeWithNotFoundRetry(t, "snapshot restore", 3*time.Minute, restoreFn)
+}
+
+func executeWithNotFoundRetry(t *testing.T, operation string, timeout time.Duration, operationFn func() error) {
+	t.Helper()
 	b := &backoff.ExponentialBackOff{
 		InitialInterval:     10 * time.Second,
 		RandomizationFactor: backoff.DefaultRandomizationFactor,
@@ -330,18 +341,18 @@ func restoreWithRetry(t *testing.T, restoreFn func() error) {
 
 	var lastErr error
 	for range ticker.C {
-		lastErr = restoreFn()
+		lastErr = operationFn()
 		if lastErr == nil {
 			ticker.Stop()
 			return
 		}
-		// Only retry on "snapshot not found" errors (eventual consistency)
-		if !strings.Contains(lastErr.Error(), "not found") {
+		// Only retry on "not found" errors caused by eventual consistency.
+		if !strings.Contains(strings.ToLower(lastErr.Error()), "not found") {
 			ticker.Stop()
 			break
 		}
-		log.Debug().Msgf("Restore returned transient 'not found', retrying: %v", lastErr)
+		log.Debug().Msgf("%s returned transient 'not found', retrying: %v", operation, lastErr)
 	}
 
-	require.NoError(t, lastErr, "restore failed after retries")
+	require.NoError(t, lastErr, "%s failed after retries", operation)
 }
