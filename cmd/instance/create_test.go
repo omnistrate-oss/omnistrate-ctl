@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	openapiclientfleet "github.com/omnistrate-oss/omnistrate-sdk-go/fleet"
+	openapiclientv1 "github.com/omnistrate-oss/omnistrate-sdk-go/v1"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -100,4 +101,149 @@ func TestApplyCustomerAccountIDParam_AddsCustomerAccountID(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "value", updated["existing"])
 	assert.Equal(t, "instance-abcd1234", updated[customerAccountConfigIDParamKey])
+}
+
+func TestResolveServicePlanCandidates_ScopesToRequestedService(t *testing.T) {
+	services := servicesFixture(
+		serviceFixture("s-unrelated", "mysql", "se-prod", "Prod", "pt-prod", "mysql hosted tier"),
+		serviceFixture("s-target", "mysql84786e9e-cb19-4681-b9f6-0317acecdadd", "se-dev", "dev", "pt-dev", "mysql84786e9e-cb19-4681-b9f6-0317acecdadd"),
+	)
+
+	candidates, state, err := resolveServicePlanCandidates(
+		services,
+		"mysql84786e9e-cb19-4681-b9f6-0317acecdadd",
+		"dev",
+		"mysql84786e9e-cb19-4681-b9f6-0317acecdadd",
+	)
+
+	require.NoError(t, err)
+	require.Len(t, candidates, 1)
+	assert.True(t, state.serviceFound)
+	assert.Equal(t, "s-target", candidates[0].serviceID)
+}
+
+func TestResolveServicePlanCandidates_ScopesPlanToRequestedEnvironment(t *testing.T) {
+	service := serviceFixture("s-target", "mysql84786e9e-cb19-4681-b9f6-0317acecdadd", "se-dev", "dev", "pt-dev", "mysql84786e9e-cb19-4681-b9f6-0317acecdadd")
+
+	candidates, state, err := resolveServicePlanCandidates(
+		servicesFixture(service),
+		"mysql84786e9e-cb19-4681-b9f6-0317acecdadd",
+		"dev",
+		"mysql84786e9e-cb19-4681-b9f6-0317acecdadd",
+	)
+
+	require.NoError(t, err)
+	require.Len(t, candidates, 1)
+	assert.True(t, state.environmentFound)
+	assert.Equal(t, "s-target", candidates[0].serviceID)
+	assert.Equal(t, "se-dev", candidates[0].environmentID)
+	assert.Equal(t, "pt-dev", candidates[0].productTierID)
+}
+
+func TestResolveServicePlanCandidates_MatchesIDs(t *testing.T) {
+	service := serviceFixture("s-target", "mysql", "se-dev", "dev", "pt-dev", "mysql")
+
+	candidates, state, err := resolveServicePlanCandidates(
+		servicesFixture(service),
+		"s-target",
+		"se-dev",
+		"pt-dev",
+	)
+
+	require.NoError(t, err)
+	require.Len(t, candidates, 1)
+	assert.True(t, state.planFound)
+	assert.Equal(t, "s-target", candidates[0].serviceID)
+	assert.Equal(t, "se-dev", candidates[0].environmentID)
+	assert.Equal(t, "pt-dev", candidates[0].productTierID)
+}
+
+func TestResolveServicePlanCandidates_AllowsLaterDisambiguation(t *testing.T) {
+	services := servicesFixture(
+		serviceFixture("s-prod", "mysql", "se-prod", "Prod", "pt-prod", "mysql hosted tier"),
+		serviceFixture("s-dev", "mysql", "se-dev", "dev", "pt-dev", "mysql hosted tier"),
+	)
+
+	candidates, _, err := resolveServicePlanCandidates(
+		services,
+		"mysql",
+		"dev",
+		"mysql hosted tier",
+	)
+
+	require.NoError(t, err)
+	require.Len(t, candidates, 1)
+	assert.Equal(t, "s-dev", candidates[0].serviceID)
+}
+
+func TestResolveResourceFromServiceOffering_MatchesIDsAndNames(t *testing.T) {
+	offering := serviceOfferingFixture("r-target-mysql", "MySQL")
+
+	resourceID, err := resolveResourceFromServiceOffering(offering, "mySQL")
+
+	require.NoError(t, err)
+	assert.Equal(t, "r-target-mysql", resourceID)
+
+	resourceID, err = resolveResourceFromServiceOffering(offering, "r-target-mysql")
+
+	require.NoError(t, err)
+	assert.Equal(t, "r-target-mysql", resourceID)
+}
+
+func TestResolveResourceFromServiceOffering_NotFound(t *testing.T) {
+	_, err := resolveResourceFromServiceOffering(serviceOfferingFixture("r-target-mysql", "MySQL"), "Postgres")
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "target resource not found")
+}
+
+func TestResolveResourceFromServiceOffering_DeduplicatesSameResourceAcrossOfferings(t *testing.T) {
+	offering := serviceOfferingFixture("r-target-mysql", "MySQL")
+	offering.Offerings = append(offering.Offerings, offering.Offerings[0])
+
+	resourceID, err := resolveResourceFromServiceOffering(offering, "MySQL")
+
+	require.NoError(t, err)
+	assert.Equal(t, "r-target-mysql", resourceID)
+}
+
+func servicesFixture(services ...openapiclientv1.DescribeServiceResult) *openapiclientv1.ListServiceResult {
+	return &openapiclientv1.ListServiceResult{
+		Ids:      []string{},
+		Services: services,
+	}
+}
+
+func serviceFixture(serviceID, serviceName, environmentID, environmentName, productTierID, productTierName string) openapiclientv1.DescribeServiceResult {
+	return openapiclientv1.DescribeServiceResult{
+		Id:   serviceID,
+		Name: serviceName,
+		ServiceEnvironments: []openapiclientv1.ServiceEnvironment{
+			{
+				Id:   environmentID,
+				Name: environmentName,
+				ServicePlans: []openapiclientv1.ServicePlan{
+					{
+						Name:          productTierName,
+						ProductTierID: productTierID,
+					},
+				},
+			},
+		},
+	}
+}
+
+func serviceOfferingFixture(resourceID, resourceName string) *openapiclientv1.DescribeServiceOfferingResult {
+	return &openapiclientv1.DescribeServiceOfferingResult{
+		Offerings: []openapiclientv1.ServiceOffering{
+			{
+				ResourceParameters: []openapiclientv1.ResourceEntity{
+					{
+						Name:       resourceName,
+						ResourceId: resourceID,
+					},
+				},
+			},
+		},
+	}
 }

@@ -92,7 +92,7 @@ func ExternalDescribeServiceOffering(ctx context.Context, token, serviceID, envi
 
 	res, r, err = req.Execute()
 	if err != nil {
-		return nil, handleFleetError(err)
+		return nil, handleV1Error(err)
 	}
 
 	// Filter offerings array after API call
