@@ -273,11 +273,12 @@ func TestEnsureUniqueTagKeys(t *testing.T) {
 
 func TestParseWorkflowBreakpoints(t *testing.T) {
 	tests := []struct {
-		name        string
-		input       string
-		expectedIDs []string
-		expectErr   bool
-		errContains string
+		name           string
+		input          string
+		expectedIDs    []string
+		expectedEvents [][]string
+		expectErr      bool
+		errContains    string
 	}{
 		{
 			name:        "no breakpoints",
@@ -285,24 +286,46 @@ func TestParseWorkflowBreakpoints(t *testing.T) {
 			expectedIDs: nil,
 		},
 		{
-			name:        "single breakpoint",
-			input:       "reader",
-			expectedIDs: []string{"reader"},
+			name:           "single breakpoint",
+			input:          "reader",
+			expectedIDs:    []string{"reader"},
+			expectedEvents: [][]string{nil},
 		},
 		{
-			name:        "comma separated breakpoints",
-			input:       "writer,reader",
-			expectedIDs: []string{"writer", "reader"},
+			name:           "comma separated breakpoints",
+			input:          "writer,reader",
+			expectedIDs:    []string{"writer", "reader"},
+			expectedEvents: [][]string{nil, nil},
 		},
 		{
-			name:        "duplicates are de-duplicated",
-			input:       "writer,reader, reader, leaf",
-			expectedIDs: []string{"writer", "reader", "leaf"},
+			name:           "duplicates are de-duplicated",
+			input:          "writer,reader, reader, leaf",
+			expectedIDs:    []string{"writer", "reader", "leaf"},
+			expectedEvents: [][]string{nil, nil, nil},
 		},
 		{
-			name:        "trims spaces",
-			input:       " writer , reader ",
-			expectedIDs: []string{"writer", "reader"},
+			name:           "trims spaces",
+			input:          " writer , reader ",
+			expectedIDs:    []string{"writer", "reader"},
+			expectedEvents: [][]string{nil, nil},
+		},
+		{
+			name:           "event specific breakpoint",
+			input:          "chart:StartHelmInstall|FailHelmInstall",
+			expectedIDs:    []string{"chart"},
+			expectedEvents: [][]string{{"StartHelmInstall", "FailHelmInstall"}},
+		},
+		{
+			name:           "event duplicates are de-duplicated",
+			input:          "tf:StartTerraformPlan|StartTerraformPlan|FailTerraformPlan|CompleteTerraformApply|FailTerraformApply",
+			expectedIDs:    []string{"tf"},
+			expectedEvents: [][]string{{"StartTerraformPlan", "FailTerraformPlan", "CompleteTerraformApply", "FailTerraformApply"}},
+		},
+		{
+			name:        "invalid event",
+			input:       "tf:NotARealEvent",
+			expectErr:   true,
+			errContains: "unsupported breakpoint event",
 		},
 	}
 
@@ -319,6 +342,8 @@ func TestParseWorkflowBreakpoints(t *testing.T) {
 			require.Len(t, breakpoints, len(tt.expectedIDs))
 			for i, id := range tt.expectedIDs {
 				require.Equal(t, id, breakpoints[i].Id)
+				events, _ := breakpoints[i].AdditionalProperties[workflowBreakpointEventsProperty].([]string)
+				require.Equal(t, tt.expectedEvents[i], events)
 			}
 		})
 	}

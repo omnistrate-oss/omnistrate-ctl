@@ -180,6 +180,9 @@ func summarizeBreakpointForResume(
 	pendingIDs := make([]string, 0)
 	for _, breakpoint := range activeBreakpoints {
 		id := formatRef(breakpoint.GetId())
+		if event := workflowBreakpointStatusEvent(breakpoint); event != "" {
+			id = fmt.Sprintf("%s @ %s", id, event)
+		}
 		status := breakpoint.GetStatus()
 		if strings.EqualFold(status, "hit") {
 			hitIDs = append(hitIDs, id)

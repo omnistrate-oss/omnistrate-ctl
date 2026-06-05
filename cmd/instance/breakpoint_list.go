@@ -15,6 +15,7 @@ import (
 type BreakpointListItem struct {
 	Key        string `json:"key" table:"Key"`
 	ID         string `json:"id" table:"ID"`
+	Event      string `json:"event,omitempty" table:"Event"`
 	Status     string `json:"status" table:"Status"`
 	Conditions string `json:"conditions,omitempty" table:"Conditions"`
 }
@@ -60,6 +61,7 @@ func runBreakpointList(cmd *cobra.Command, args []string) error {
 		item := BreakpointListItem{
 			Key:    resourceKey,
 			ID:     resourceID,
+			Event:  workflowBreakpointStatusEvent(breakpoint),
 			Status: breakpoint.GetStatus(),
 		}
 		if conditions, ok := breakpoint.GetConditionsOk(); ok && len(conditions) > 0 {

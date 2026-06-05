@@ -33,6 +33,9 @@ omnistrate-ctl instance create --service=mysql --environment=dev --plan=mysql --
 # Create an instance deployment with workflow breakpoints
 omnistrate-ctl instance create --service=mysql --environment=dev --plan=mysql --version=latest --resource=mySQL --cloud-provider=aws --region=ca-central-1 --param-file /path/to/params.json --breakpoints writer,reader
 
+# Create an instance deployment with event-specific workflow breakpoints
+omnistrate-ctl instance create --service=mysql --environment=dev --plan=mysql --version=latest --resource=mySQL --cloud-provider=aws --region=ca-central-1 --param-file /path/to/params.json --breakpoints chart:StartHelmInstall|FailHelmInstall
+
 # Create a BYOA instance deployment using a customer account onboarding instance
 omnistrate-ctl instance create --service=Nebius --environment=dev --plan='Nebius BYOA Compute Variants' --resource=NebiusRedis --cloud-provider=nebius --region=eu-north1 --customer-account-id instance-cg1tthkj0`
 
@@ -44,7 +47,7 @@ var InstanceID string
 var SubscriptionID string
 
 var createCmd = &cobra.Command{
-	Use:          "create --service=[service] --environment=[environment] --plan=[plan] --version=[version] --resource=[resource] --cloud-provider=[aws|gcp|azure|nebius] --region=[region] [--param=param] [--param-file=file-path] [--instance-id=id] [--customer-account-id=account-instance-id] [--tags key=value,key2=value2] [--breakpoints id-or-key,id-or-key]",
+	Use:          "create --service=[service] --environment=[environment] --plan=[plan] --version=[version] --resource=[resource] --cloud-provider=[aws|gcp|azure|nebius] --region=[region] [--param=param] [--param-file=file-path] [--instance-id=id] [--customer-account-id=account-instance-id] [--tags key=value,key2=value2] [--breakpoints id-or-key[:event[|event...]],id-or-key]",
 	Short:        "Create an instance deployment",
 	Long:         `This command helps you create an instance deployment for your service.`,
 	Example:      createExample,
@@ -64,7 +67,7 @@ func init() {
 	createCmd.Flags().String("param-file", "", "Json file containing parameters for the instance deployment")
 	createCmd.Flags().String("customer-account-id", "", "Customer BYOA account onboarding instance ID to inject as the cloud account. Use 'omnistrate-ctl account customer list' or 'omnistrate-ctl account customer describe <instance-id>' to find it.")
 	createCmd.Flags().String("tags", "", "Custom tags to add to the instance deployment (format: key=value,key2=value2)")
-	createCmd.Flags().String("breakpoints", "", "Workflow breakpoint resource IDs or resource keys (comma-separated)")
+	createCmd.Flags().String("breakpoints", "", "Workflow breakpoint resource IDs or resource keys. Use id-or-key:event|event for event-specific breakpoints.")
 	createCmd.Flags().StringP("subscription-id", "", "", "Subscription ID to use for the instance deployment. If not provided, instance deployment will be created in your own subscription.")
 	createCmd.Flags().String("instance-id", "", "ID of a previously deleted instance to restore")
 	createCmd.Flags().Bool("wait", false, "Wait for deployment to complete and show progress")
@@ -597,19 +600,40 @@ func parseWorkflowBreakpoints(valuesCSV string) ([]openapiclientfleet.WorkflowBr
 	var breakpoints []openapiclientfleet.WorkflowBreakpoint
 	seen := make(map[string]struct{})
 
-	// Split the input by comma and trim spaces to get individual IDs or keys
+	// Split the input by comma and trim spaces to get individual IDs or keys.
 	values := strings.Split(valuesCSV, ",")
 
 	for _, v := range values {
-		idOrKey := strings.TrimSpace(v)
+		value := strings.TrimSpace(v)
+		if value == "" {
+			continue
+		}
+
+		idOrKey, eventsRaw, hasEvents := strings.Cut(value, ":")
+		idOrKey = strings.TrimSpace(idOrKey)
 		if idOrKey == "" {
+			return nil, fmt.Errorf("breakpoint resource ID/key cannot be empty")
+		}
+
+		var events []string
+		if hasEvents {
+			eventsParts := strings.Split(eventsRaw, "|")
+			var err error
+			events, err = normalizeWorkflowBreakpointEvents(eventsParts)
+			if err != nil {
+				return nil, err
+			}
+		}
+
+		seenKey := idOrKey + ":" + strings.Join(events, "|")
+		if _, exists := seen[seenKey]; exists {
 			continue
 		}
-		if _, exists := seen[idOrKey]; exists {
-			continue
-		}
-		seen[idOrKey] = struct{}{}
-		breakpoints = append(breakpoints, openapiclientfleet.WorkflowBreakpoint{Id: idOrKey})
+		seen[seenKey] = struct{}{}
+
+		breakpoint := openapiclientfleet.WorkflowBreakpoint{Id: idOrKey}
+		setWorkflowBreakpointEvents(&breakpoint, events)
+		breakpoints = append(breakpoints, breakpoint)
 	}
 
 	if len(breakpoints) == 0 {

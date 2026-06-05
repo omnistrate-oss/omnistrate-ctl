@@ -56,7 +56,13 @@ func TestAttachBreakpointStatuses(t *testing.T) {
 	instanceData := &openapiclientfleet.ResourceInstance{
 		ActiveBreakpoints: []openapiclientfleet.WorkflowBreakpointWithStatus{
 			{Id: "writer", Status: "HIT"},
-			{Id: "res-reader", Status: "pending"},
+			{
+				Id:     "res-reader",
+				Status: "pending",
+				AdditionalProperties: map[string]interface{}{
+					workflowBreakpointEventProperty: "StartTerraformApply",
+				},
+			},
 		},
 	}
 
@@ -70,6 +76,9 @@ func TestAttachBreakpointStatuses(t *testing.T) {
 	}
 	if got := plan.BreakpointByID["res-reader"]; got != "pending" {
 		t.Fatalf("expected reader breakpoint status to be pending, got %q", got)
+	}
+	if got := plan.BreakpointEventsByID["res-reader"]["StartTerraformApply"]; got != "pending" {
+		t.Fatalf("expected reader event breakpoint status to be pending, got %q", got)
 	}
 }
 

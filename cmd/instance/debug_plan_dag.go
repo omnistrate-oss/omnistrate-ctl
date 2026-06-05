@@ -11,20 +11,23 @@ import (
 )
 
 type PlanDAG struct {
-	Nodes            map[string]PlanDAGNode      `json:"nodes"`
-	Edges            []PlanDAGEdge               `json:"edges"`
-	Levels           [][]string                  `json:"levels"`
-	Errors           []string                    `json:"errors,omitempty"`
-	HasCycle         bool                        `json:"hasCycle"`
-	WorkflowID       string                      `json:"workflowId,omitempty"`
-	ProgressByID     map[string]ResourceProgress `json:"progressById,omitempty"`
-	ProgressByKey    map[string]ResourceProgress `json:"progressByKey,omitempty"`
-	ProgressByName   map[string]ResourceProgress `json:"progressByName,omitempty"`
-	BreakpointByID   map[string]string           `json:"breakpointById,omitempty"`
-	BreakpointByKey  map[string]string           `json:"breakpointByKey,omitempty"`
-	BreakpointByName map[string]string           `json:"breakpointByName,omitempty"`
-	ProgressLoading  bool                        `json:"-"`
-	SpinnerTick      int                         `json:"-"`
+	Nodes                  map[string]PlanDAGNode       `json:"nodes"`
+	Edges                  []PlanDAGEdge                `json:"edges"`
+	Levels                 [][]string                   `json:"levels"`
+	Errors                 []string                     `json:"errors,omitempty"`
+	HasCycle               bool                         `json:"hasCycle"`
+	WorkflowID             string                       `json:"workflowId,omitempty"`
+	ProgressByID           map[string]ResourceProgress  `json:"progressById,omitempty"`
+	ProgressByKey          map[string]ResourceProgress  `json:"progressByKey,omitempty"`
+	ProgressByName         map[string]ResourceProgress  `json:"progressByName,omitempty"`
+	BreakpointByID         map[string]string            `json:"breakpointById,omitempty"`
+	BreakpointByKey        map[string]string            `json:"breakpointByKey,omitempty"`
+	BreakpointByName       map[string]string            `json:"breakpointByName,omitempty"`
+	BreakpointEventsByID   map[string]map[string]string `json:"breakpointEventsById,omitempty"`
+	BreakpointEventsByKey  map[string]map[string]string `json:"breakpointEventsByKey,omitempty"`
+	BreakpointEventsByName map[string]map[string]string `json:"breakpointEventsByName,omitempty"`
+	ProgressLoading        bool                         `json:"-"`
+	SpinnerTick            int                          `json:"-"`
 	// Per-resource workflow step summaries keyed by resource key
 	WorkflowStepsByKey map[string]*ResourceWorkflowSteps `json:"workflowStepsByKey,omitempty"`
 }
@@ -255,12 +258,18 @@ func attachBreakpointStatuses(plan *PlanDAG, instanceData *openapiclientfleet.Re
 	byID := make(map[string]string)
 	byKey := make(map[string]string)
 	byName := make(map[string]string)
+	eventsByID := make(map[string]map[string]string)
+	eventsByKey := make(map[string]map[string]string)
+	eventsByName := make(map[string]map[string]string)
 
 	activeBreakpoints := instanceData.GetActiveBreakpoints()
 	if len(activeBreakpoints) == 0 {
 		plan.BreakpointByID = byID
 		plan.BreakpointByKey = byKey
 		plan.BreakpointByName = byName
+		plan.BreakpointEventsByID = eventsByID
+		plan.BreakpointEventsByKey = eventsByKey
+		plan.BreakpointEventsByName = eventsByName
 		return
 	}
 
@@ -271,6 +280,7 @@ func attachBreakpointStatuses(plan *PlanDAG, instanceData *openapiclientfleet.Re
 		}
 
 		status := normalizeBreakpointStatus(breakpoint.GetStatus())
+		event := workflowBreakpointStatusEvent(breakpoint)
 		for _, node := range plan.Nodes {
 			if !strings.EqualFold(node.ID, idOrKey) &&
 				!strings.EqualFold(node.Key, idOrKey) &&
@@ -279,11 +289,14 @@ func attachBreakpointStatuses(plan *PlanDAG, instanceData *openapiclientfleet.Re
 			}
 
 			byID[node.ID] = status
+			setBreakpointEventStatus(eventsByID, node.ID, event, status)
 			if node.Key != "" {
 				byKey[node.Key] = status
+				setBreakpointEventStatus(eventsByKey, node.Key, event, status)
 			}
 			if node.Name != "" {
 				byName[node.Name] = status
+				setBreakpointEventStatus(eventsByName, node.Name, event, status)
 			}
 		}
 	}
@@ -291,6 +304,19 @@ func attachBreakpointStatuses(plan *PlanDAG, instanceData *openapiclientfleet.Re
 	plan.BreakpointByID = byID
 	plan.BreakpointByKey = byKey
 	plan.BreakpointByName = byName
+	plan.BreakpointEventsByID = eventsByID
+	plan.BreakpointEventsByKey = eventsByKey
+	plan.BreakpointEventsByName = eventsByName
+}
+
+func setBreakpointEventStatus(target map[string]map[string]string, resourceRef string, event string, status string) {
+	if event == "" {
+		return
+	}
+	if target[resourceRef] == nil {
+		target[resourceRef] = make(map[string]string)
+	}
+	target[resourceRef][event] = status
 }
 
 func breakpointStatusForNode(plan *PlanDAG, node PlanDAGNode) (string, bool) {
