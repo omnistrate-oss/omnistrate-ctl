@@ -10,11 +10,11 @@ import (
 
 const (
 	removeExample = `# Remove a cloud-native network (revert to AVAILABLE)
-omnistrate-ctl account customer cloud-native-network remove [account-id] --network-id=[network-id]`
+omnistrate-ctl account customer cloud-native-network remove [account-id] --region=[region] --network-id=[network-id]`
 )
 
 var removeCmd = &cobra.Command{
-	Use:          "remove [account-id] --network-id=[network-id]",
+	Use:          "remove [account-id] --region=[region] --network-id=[network-id]",
 	Short:        "Remove an imported cloud-native network (revert to AVAILABLE)",
 	Long:         `Reverts a previously imported cloud-native network from READY back to AVAILABLE status, removing it from the deployment target pool.`,
 	Example:      removeExample,
@@ -24,7 +24,9 @@ var removeCmd = &cobra.Command{
 }
 
 func init() {
+	removeCmd.Flags().String("region", "", "The cloud provider region of the cloud-native network to remove (required)")
 	removeCmd.Flags().String("network-id", "", "The cloud-native network ID to remove (required)")
+	_ = removeCmd.MarkFlagRequired("region")
 	_ = removeCmd.MarkFlagRequired("network-id")
 }
 
@@ -32,6 +34,7 @@ func runRemove(cmd *cobra.Command, args []string) error {
 	defer config.CleanupArgsAndFlags(cmd, &args)
 
 	accountID := args[0]
+	region, _ := cmd.Flags().GetString("region")
 	networkID, _ := cmd.Flags().GetString("network-id")
 	output, _ := cmd.Flags().GetString("output")
 
@@ -49,7 +52,7 @@ func runRemove(cmd *cobra.Command, args []string) error {
 		sm.Start()
 	}
 
-	result, err := dataaccess.UnimportAccountConfigCloudNativeNetwork(cmd.Context(), token, accountID, networkID)
+	result, err := dataaccess.UnimportAccountConfigCloudNativeNetwork(cmd.Context(), token, accountID, region, networkID)
 	if err != nil {
 		utils.HandleSpinnerError(spinner, sm, err)
 		return err

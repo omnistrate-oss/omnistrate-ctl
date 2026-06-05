@@ -7,14 +7,14 @@ Remove an imported cloud-native network (revert to AVAILABLE)
 Reverts a previously imported cloud-native network from READY back to AVAILABLE status, removing it from the deployment target pool.
 
 ```
-omnistrate-ctl account customer cloud-native-network remove [account-id] --network-id=[network-id] [flags]
+omnistrate-ctl account customer cloud-native-network remove [account-id] --region=[region] --network-id=[network-id] [flags]
 ```
 
 ### Examples
 
 ```
 # Remove a cloud-native network (revert to AVAILABLE)
-omnistrate-ctl account customer cloud-native-network remove [account-id] --network-id=[network-id]
+omnistrate-ctl account customer cloud-native-network remove [account-id] --region=[region] --network-id=[network-id]
 ```
 
 ### Options
@@ -22,6 +22,7 @@ omnistrate-ctl account customer cloud-native-network remove [account-id] --netwo
 ```
   -h, --help                help for remove
       --network-id string   The cloud-native network ID to remove (required)
+      --region string       The cloud provider region of the cloud-native network to remove (required)
 ```
 
 ### Options inherited from parent commands

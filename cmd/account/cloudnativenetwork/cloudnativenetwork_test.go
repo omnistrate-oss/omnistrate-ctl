@@ -20,6 +20,7 @@ func TestCloudNativeNetworkCommandStructure(t *testing.T) {
 	assert.True(t, subCmds["remove"], "expected remove subcommand")
 }
 
-func TestRemoveCommandRequiresNetworkIDFlag(t *testing.T) {
+func TestRemoveCommandRequiresRegionAndNetworkIDFlags(t *testing.T) {
+	require.NotNil(t, removeCmd.Flags().Lookup("region"))
 	require.NotNil(t, removeCmd.Flags().Lookup("network-id"))
 }

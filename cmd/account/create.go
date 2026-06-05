@@ -357,7 +357,7 @@ func syncAndImportCloudNativeNetworks(ctx context.Context, token, accountID stri
 		sm.Start()
 	}
 
-	_, err = dataaccess.BulkImportAccountConfigCloudNativeNetworks(ctx, token, accountID, networkIDs)
+	_, err = dataaccess.BulkImportAccountConfigCloudNativeNetworks(ctx, token, accountID, targets)
 	if err != nil {
 		utils.HandleSpinnerError(spinner, sm, err)
 		return fmt.Errorf("failed to import cloud-native networks: %w", err)

@@ -86,15 +86,17 @@ func Test_cloud_native_network_discovery(t *testing.T) {
 		t.Logf("no AVAILABLE networks discovered for account-config %s; skipping import/unimport phase", accountConfigID)
 		return
 	}
+	availableRegion := networkRegion(listResult.CloudNativeNetworks, available)
+	require.NotEmpty(availableRegion, "network %s should include region", available)
 
-	_, err = dataaccess.ImportAccountConfigCloudNativeNetwork(ctx, token, accountConfigID, available)
+	_, err = dataaccess.ImportAccountConfigCloudNativeNetwork(ctx, token, accountConfigID, availableRegion, available)
 	require.NoError(err)
 
 	postImport, err := dataaccess.ListAccountConfigCloudNativeNetworks(ctx, token, accountConfigID)
 	require.NoError(err)
 	require.True(networkImported(postImport.CloudNativeNetworks, available), "network %s should be imported after import call", available)
 
-	cmd.RootCmd.SetArgs([]string{"account", "customer", "cloud-native-network", "remove", accountConfigID, "--network-id", available, "--output", "json"})
+	cmd.RootCmd.SetArgs([]string{"account", "customer", "cloud-native-network", "remove", accountConfigID, "--region", availableRegion, "--network-id", available, "--output", "json"})
 	require.NoError(cmd.RootCmd.ExecuteContext(ctx))
 
 	postUnimport, err := dataaccess.ListAccountConfigCloudNativeNetworks(ctx, token, accountConfigID)
@@ -157,6 +159,15 @@ func networkImported(vpcs []openapiclientfleet.FleetAccountConfigCloudNativeNetw
 		}
 	}
 	return false
+}
+
+func networkRegion(vpcs []openapiclientfleet.FleetAccountConfigCloudNativeNetworkResult, id string) string {
+	for _, vpc := range vpcs {
+		if vpc.CloudNativeNetworkId == id {
+			return vpc.Region
+		}
+	}
+	return ""
 }
 
 // Test_account_customer_create_cloud_native_networks verifies that passing
@@ -225,7 +236,7 @@ func Test_account_customer_create_cloud_native_networks(t *testing.T) {
 		for _, account := range accounts.AccountConfigs {
 			if account.AwsAccountID != nil && *account.AwsAccountID == awsAccountID {
 				t.Cleanup(func() {
-					_, _ = dataaccess.UnimportAccountConfigCloudNativeNetwork(ctx, token, account.Id, networkID)
+					_, _ = dataaccess.UnimportAccountConfigCloudNativeNetwork(ctx, token, account.Id, region, networkID)
 					if delErr := dataaccess.DeleteAccount(ctx, token, account.Id); delErr != nil {
 						t.Logf("best-effort cleanup of account %s failed: %v", account.Id, delErr)
 					}
@@ -295,9 +306,10 @@ func Test_gcp_cloud_native_network_discovery(t *testing.T) {
 	require.NotEmpty(accountConfigID)
 
 	importedNetworkID := ""
+	importedNetworkRegion := ""
 	t.Cleanup(func() {
 		if importedNetworkID != "" {
-			_, _ = dataaccess.UnimportAccountConfigCloudNativeNetwork(ctx, token, accountConfigID, importedNetworkID)
+			_, _ = dataaccess.UnimportAccountConfigCloudNativeNetwork(ctx, token, accountConfigID, importedNetworkRegion, importedNetworkID)
 		}
 		_ = dataaccess.DeleteResourceInstance(ctx, token, ref.ServiceID, ref.EnvironmentID, ref.ResourceID, ref.InstanceID)
 	})
@@ -320,18 +332,22 @@ func Test_gcp_cloud_native_network_discovery(t *testing.T) {
 		t.Logf("no importable networks discovered for GCP account-config %s; skipping import/remove phase", accountConfigID)
 		return
 	}
+	targetNetworkRegion := networkRegion(listResult.CloudNativeNetworks, targetNetworkID)
+	require.NotEmpty(targetNetworkRegion, "network %s should include region", targetNetworkID)
 
-	_, err = dataaccess.ImportAccountConfigCloudNativeNetwork(ctx, token, accountConfigID, targetNetworkID)
+	_, err = dataaccess.ImportAccountConfigCloudNativeNetwork(ctx, token, accountConfigID, targetNetworkRegion, targetNetworkID)
 	require.NoError(err)
 	importedNetworkID = targetNetworkID
+	importedNetworkRegion = targetNetworkRegion
 
 	postImport, err := dataaccess.ListAccountConfigCloudNativeNetworks(ctx, token, accountConfigID)
 	require.NoError(err)
 	require.True(networkImported(postImport.CloudNativeNetworks, targetNetworkID), "network %s should be imported after import call", targetNetworkID)
 
-	cmd.RootCmd.SetArgs([]string{"account", "customer", "cloud-native-network", "remove", accountConfigID, "--network-id", targetNetworkID, "--output", "json"})
+	cmd.RootCmd.SetArgs([]string{"account", "customer", "cloud-native-network", "remove", accountConfigID, "--region", targetNetworkRegion, "--network-id", targetNetworkID, "--output", "json"})
 	require.NoError(cmd.RootCmd.ExecuteContext(ctx))
 	importedNetworkID = ""
+	importedNetworkRegion = ""
 
 	postRemove, err := dataaccess.ListAccountConfigCloudNativeNetworks(ctx, token, accountConfigID)
 	require.NoError(err)

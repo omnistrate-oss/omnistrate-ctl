@@ -125,24 +125,29 @@ func ListAccountConfigCloudNativeNetworks(ctx context.Context, token, accountCon
 }
 
 // ImportAccountConfigCloudNativeNetwork marks a cloud-native network as READY for deployments.
-func ImportAccountConfigCloudNativeNetwork(ctx context.Context, token, accountConfigID, networkID string) (*openapiclientfleet.FleetListAccountConfigCloudNativeNetworksResult, error) {
-	return doCNNRequest(ctx, token, http.MethodPost, cnnFleetURL(accountConfigID, networkID, "import"), nil)
+func ImportAccountConfigCloudNativeNetwork(ctx context.Context, token, accountConfigID, region, networkID string) (*openapiclientfleet.FleetListAccountConfigCloudNativeNetworksResult, error) {
+	return doCNNRequest(ctx, token, http.MethodPost, cnnFleetURL(accountConfigID, region, networkID, "import"), nil)
 }
 
 // UnimportAccountConfigCloudNativeNetwork reverts a cloud-native network back to AVAILABLE.
-func UnimportAccountConfigCloudNativeNetwork(ctx context.Context, token, accountConfigID, networkID string) (*openapiclientfleet.FleetListAccountConfigCloudNativeNetworksResult, error) {
-	return doCNNRequest(ctx, token, http.MethodPost, cnnFleetURL(accountConfigID, networkID, "unimport"), nil)
+func UnimportAccountConfigCloudNativeNetwork(ctx context.Context, token, accountConfigID, region, networkID string) (*openapiclientfleet.FleetListAccountConfigCloudNativeNetworksResult, error) {
+	return doCNNRequest(ctx, token, http.MethodPost, cnnFleetURL(accountConfigID, region, networkID, "unimport"), nil)
 }
 
 // BulkImportAccountConfigCloudNativeNetworks imports multiple cloud-native networks in a single request.
-func BulkImportAccountConfigCloudNativeNetworks(ctx context.Context, token, accountConfigID string, networkIDs []string) (*openapiclientfleet.FleetListAccountConfigCloudNativeNetworksResult, error) {
+func BulkImportAccountConfigCloudNativeNetworks(ctx context.Context, token, accountConfigID string, targets []CloudNativeNetworkTarget) (*openapiclientfleet.FleetListAccountConfigCloudNativeNetworksResult, error) {
 	type op struct {
 		CloudNativeNetworkID string `json:"cloudNativeNetworkId"`
+		Region               string `json:"region"`
 		Import               bool   `json:"import"`
 	}
-	ops := make([]op, len(networkIDs))
-	for i, id := range networkIDs {
-		ops[i] = op{CloudNativeNetworkID: id, Import: true}
+	ops := make([]op, len(targets))
+	for i, target := range targets {
+		ops[i] = op{
+			CloudNativeNetworkID: target.NetworkID,
+			Region:               target.Region,
+			Import:               true,
+		}
 	}
 	body := map[string]any{"cloudNativeNetworks": ops}
 	return doCNNRequest(ctx, token, http.MethodPost, cnnFleetURL(accountConfigID, "import"), body)
