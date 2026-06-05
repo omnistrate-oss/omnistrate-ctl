@@ -17,6 +17,12 @@ import (
 // CloudNativeNetworkResult is a convenience alias for the fleet response type.
 type CloudNativeNetworkResult = openapiclientfleet.FleetListAccountConfigCloudNativeNetworksResult
 
+// CloudNativeNetworkHostClusterImportResult describes the host cluster created or reused.
+type CloudNativeNetworkHostClusterImportResult struct {
+	HostClusterID string `json:"hostClusterId"`
+	Created       bool   `json:"created"`
+}
+
 // The cloud-native-network endpoints are exposed by consumption-service under the
 // fleet path so that ingress routes them correctly. The v1 SDK currently only
 // generates the AccountConfigApi paths (/accountconfig/...), which are not
@@ -65,6 +71,48 @@ func doCNNRequest(ctx context.Context, token, method, requestURL string, body an
 	}
 
 	var result openapiclientfleet.FleetListAccountConfigCloudNativeNetworksResult
+	if len(respBody) > 0 {
+		if err := json.Unmarshal(respBody, &result); err != nil {
+			return nil, fmt.Errorf("failed to decode response: %w (body: %s)", err, string(respBody))
+		}
+	}
+	return &result, nil
+}
+
+func doCNNHostClusterImportRequest(ctx context.Context, token, method, requestURL string, body any) (*CloudNativeNetworkHostClusterImportResult, error) {
+	var reqBody io.Reader
+	if body != nil {
+		b, err := json.Marshal(body)
+		if err != nil {
+			return nil, fmt.Errorf("failed to marshal request body: %w", err)
+		}
+		reqBody = bytes.NewReader(b)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, method, requestURL, reqBody)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
+	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("User-Agent", config.GetUserAgent())
+
+	client := getRetryableHttpClient()
+	resp, err := client.Do(req) //nolint:gosec // CLI intentionally targets the configured Omnistrate API host
+	if err != nil {
+		return nil, fmt.Errorf("cloud-native-network request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	respBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read response body: %w", err)
+	}
+	if resp.StatusCode >= 400 {
+		return nil, fmt.Errorf("cloud-native-network API returned %d: %s", resp.StatusCode, string(respBody))
+	}
+
+	var result CloudNativeNetworkHostClusterImportResult
 	if len(respBody) > 0 {
 		if err := json.Unmarshal(respBody, &result); err != nil {
 			return nil, fmt.Errorf("failed to decode response: %w (body: %s)", err, string(respBody))
@@ -134,8 +182,7 @@ func UnimportAccountConfigCloudNativeNetwork(ctx context.Context, token, account
 	return doCNNRequest(ctx, token, http.MethodPost, cnnFleetURL(accountConfigID, region, networkID, "unimport"), nil)
 }
 
-// BulkImportAccountConfigCloudNativeNetworks imports multiple cloud-native networks in a single request.
-func BulkImportAccountConfigCloudNativeNetworks(ctx context.Context, token, accountConfigID string, targets []CloudNativeNetworkTarget) (*openapiclientfleet.FleetListAccountConfigCloudNativeNetworksResult, error) {
+func bulkSetAccountConfigCloudNativeNetworksImported(ctx context.Context, token, accountConfigID string, targets []CloudNativeNetworkTarget, imported bool) (*openapiclientfleet.FleetListAccountConfigCloudNativeNetworksResult, error) {
 	type op struct {
 		CloudNativeNetworkID string `json:"cloudNativeNetworkId"`
 		Region               string `json:"region"`
@@ -146,9 +193,30 @@ func BulkImportAccountConfigCloudNativeNetworks(ctx context.Context, token, acco
 		ops[i] = op{
 			CloudNativeNetworkID: target.NetworkID,
 			Region:               target.Region,
-			Import:               true,
+			Import:               imported,
 		}
 	}
 	body := map[string]any{"cloudNativeNetworks": ops}
 	return doCNNRequest(ctx, token, http.MethodPost, cnnFleetURL(accountConfigID, "import"), body)
+}
+
+// BulkImportAccountConfigCloudNativeNetworks imports multiple cloud-native networks in a single request.
+func BulkImportAccountConfigCloudNativeNetworks(ctx context.Context, token, accountConfigID string, targets []CloudNativeNetworkTarget) (*openapiclientfleet.FleetListAccountConfigCloudNativeNetworksResult, error) {
+	return bulkSetAccountConfigCloudNativeNetworksImported(ctx, token, accountConfigID, targets, true)
+}
+
+// BulkUnimportAccountConfigCloudNativeNetworks removes multiple imported cloud-native networks in a single request.
+func BulkUnimportAccountConfigCloudNativeNetworks(ctx context.Context, token, accountConfigID string, targets []CloudNativeNetworkTarget) (*openapiclientfleet.FleetListAccountConfigCloudNativeNetworksResult, error) {
+	return bulkSetAccountConfigCloudNativeNetworksImported(ctx, token, accountConfigID, targets, false)
+}
+
+// ImportAccountConfigCloudNativeNetworkHostCluster imports a provider host cluster from an imported cloud-native network.
+func ImportAccountConfigCloudNativeNetworkHostCluster(ctx context.Context, token, accountConfigID, region, networkID, hostClusterName string) (*CloudNativeNetworkHostClusterImportResult, error) {
+	return doCNNHostClusterImportRequest(
+		ctx,
+		token,
+		http.MethodPost,
+		cnnFleetURL(accountConfigID, region, networkID, "host-clusters", hostClusterName, "import"),
+		nil,
+	)
 }

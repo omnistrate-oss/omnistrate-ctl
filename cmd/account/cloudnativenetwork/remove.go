@@ -34,6 +34,10 @@ func runRemove(cmd *cobra.Command, args []string) error {
 	region, _ := cmd.Flags().GetString("region")
 	networkID, _ := cmd.Flags().GetString("network-id")
 	output, _ := cmd.Flags().GetString("output")
+	targets := []dataaccess.CloudNativeNetworkTarget{{
+		Region:    region,
+		NetworkID: networkID,
+	}}
 
 	token, err := common.GetTokenWithLogin()
 	if err != nil {
@@ -49,7 +53,7 @@ func runRemove(cmd *cobra.Command, args []string) error {
 		sm.Start()
 	}
 
-	result, err := dataaccess.UnimportAccountConfigCloudNativeNetwork(cmd.Context(), token, accountID, region, networkID)
+	result, err := dataaccess.BulkUnimportAccountConfigCloudNativeNetworks(cmd.Context(), token, accountID, targets)
 	if err != nil {
 		utils.HandleSpinnerError(spinner, sm, err)
 		return err

@@ -26,6 +26,7 @@ omnistrate-ctl account customer cloud-native-network [operation] [flags]
 ### SEE ALSO
 
 * [omnistrate-ctl account customer](omnistrate-ctl_account_customer.md)	 - Manage customer BYOA account onboarding
+* [omnistrate-ctl account customer cloud-native-network host-cluster](omnistrate-ctl_account_customer_cloud-native-network_host-cluster.md)	 - Manage imported host clusters for cloud-native networks
 * [omnistrate-ctl account customer cloud-native-network import](omnistrate-ctl_account_customer_cloud-native-network_import.md)	 - Import cloud-native networks for deployments
 * [omnistrate-ctl account customer cloud-native-network list](omnistrate-ctl_account_customer_cloud-native-network_list.md)	 - List cloud-native networks for a BYOA account
 * [omnistrate-ctl account customer cloud-native-network remove](omnistrate-ctl_account_customer_cloud-native-network_remove.md)	 - Remove an imported cloud-native network (revert to AVAILABLE)

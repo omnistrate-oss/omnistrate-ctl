@@ -22,6 +22,7 @@ func NewCommand(commandPath string) *cobra.Command {
 	cmd.AddCommand(newSyncCmd(commandPath))
 	cmd.AddCommand(newImportCmd(commandPath))
 	cmd.AddCommand(newRemoveCmd(commandPath))
+	cmd.AddCommand(newHostClusterCmd(commandPath))
 	return cmd
 }
 

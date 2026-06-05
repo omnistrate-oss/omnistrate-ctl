@@ -60,14 +60,7 @@ func runImport(cmd *cobra.Command, args []string) error {
 		sm.Start()
 	}
 
-	var result *dataaccess.CloudNativeNetworkResult
-	if len(targets) == 1 {
-		result, err = dataaccess.ImportAccountConfigCloudNativeNetwork(
-			cmd.Context(), token, accountID, targets[0].Region, targets[0].NetworkID,
-		)
-	} else {
-		result, err = dataaccess.BulkImportAccountConfigCloudNativeNetworks(cmd.Context(), token, accountID, targets)
-	}
+	result, err := dataaccess.BulkImportAccountConfigCloudNativeNetworks(cmd.Context(), token, accountID, targets)
 	if err != nil {
 		utils.HandleSpinnerError(spinner, sm, err)
 		return err

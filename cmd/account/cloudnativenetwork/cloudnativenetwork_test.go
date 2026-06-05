@@ -22,6 +22,7 @@ func TestCloudNativeNetworkCommandStructure(t *testing.T) {
 	assert.True(t, subCmds["sync"], "expected sync subcommand")
 	assert.True(t, subCmds["import"], "expected import subcommand")
 	assert.True(t, subCmds["remove"], "expected remove subcommand")
+	assert.True(t, subCmds["host-cluster"], "expected host-cluster subcommand")
 }
 
 func TestRemoveCommandRequiresRegionAndNetworkIDFlags(t *testing.T) {
@@ -34,6 +35,30 @@ func TestImportCommandRequiresRegionAndNetworkIDFlags(t *testing.T) {
 	importCmd := findSubCommand(t, Cmd, "import")
 	require.NotNil(t, importCmd.Flags().Lookup("region"))
 	require.NotNil(t, importCmd.Flags().Lookup("network-id"))
+}
+
+func TestHostClusterImportCommandRequiresFlags(t *testing.T) {
+	hostClusterCmd := findSubCommand(t, Cmd, "host-cluster")
+	importCmd := findSubCommand(t, hostClusterCmd, "import")
+	require.NotNil(t, importCmd.Flags().Lookup("region"))
+	require.NotNil(t, importCmd.Flags().Lookup("network-id"))
+	require.NotNil(t, importCmd.Flags().Lookup("host-cluster-name"))
+}
+
+func TestValidateHostClusterImportFlags(t *testing.T) {
+	require.NoError(t, validateHostClusterImportFlags("us-east-1", "vpc-abc123", "customer-eks"))
+
+	err := validateHostClusterImportFlags("", "vpc-abc123", "customer-eks")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "region cannot be empty")
+
+	err = validateHostClusterImportFlags("us-east-1", "", "customer-eks")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "network-id cannot be empty")
+
+	err = validateHostClusterImportFlags("us-east-1", "vpc-abc123", "")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "host-cluster-name cannot be empty")
 }
 
 func TestImportTargetsFromFlags(t *testing.T) {
