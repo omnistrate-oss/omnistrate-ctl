@@ -1,6 +1,8 @@
 package cloudnativenetwork
 
 import (
+	"fmt"
+
 	"github.com/omnistrate-oss/omnistrate-ctl/cmd/common"
 	"github.com/omnistrate-oss/omnistrate-ctl/internal/config"
 	"github.com/omnistrate-oss/omnistrate-ctl/internal/dataaccess"
@@ -8,26 +10,21 @@ import (
 	"github.com/spf13/cobra"
 )
 
-const (
-	removeExample = `# Remove a cloud-native network (revert to AVAILABLE)
-omnistrate-ctl account customer cloud-native-network remove [account-id] --region=[region] --network-id=[network-id]`
-)
-
-var removeCmd = &cobra.Command{
-	Use:          "remove [account-id] --region=[region] --network-id=[network-id]",
-	Short:        "Remove an imported cloud-native network (revert to AVAILABLE)",
-	Long:         `Reverts a previously imported cloud-native network from READY back to AVAILABLE status, removing it from the deployment target pool.`,
-	Example:      removeExample,
-	Args:         cobra.ExactArgs(1),
-	RunE:         runRemove,
-	SilenceUsage: true,
-}
-
-func init() {
-	removeCmd.Flags().String("region", "", "The cloud provider region of the cloud-native network to remove (required)")
-	removeCmd.Flags().String("network-id", "", "The cloud-native network ID to remove (required)")
-	_ = removeCmd.MarkFlagRequired("region")
-	_ = removeCmd.MarkFlagRequired("network-id")
+func newRemoveCmd(commandPath string) *cobra.Command {
+	cmd := &cobra.Command{
+		Use:          "remove [account-id] --region=[region] --network-id=[network-id]",
+		Short:        "Remove an imported cloud-native network (revert to AVAILABLE)",
+		Long:         `Reverts a previously imported cloud-native network from READY back to AVAILABLE status, removing it from the deployment target pool.`,
+		Example:      fmt.Sprintf("# Remove a cloud-native network (revert to AVAILABLE)\nomnistrate-ctl %s remove [account-id] --region=[region] --network-id=[network-id]", commandPath),
+		Args:         cobra.ExactArgs(1),
+		RunE:         runRemove,
+		SilenceUsage: true,
+	}
+	cmd.Flags().String("region", "", "The cloud provider region of the cloud-native network to remove (required)")
+	cmd.Flags().String("network-id", "", "The cloud-native network ID to remove (required)")
+	_ = cmd.MarkFlagRequired("region")
+	_ = cmd.MarkFlagRequired("network-id")
+	return cmd
 }
 
 func runRemove(cmd *cobra.Command, args []string) error {

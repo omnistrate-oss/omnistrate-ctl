@@ -20,7 +20,7 @@ func init() {
 	customerCmd.AddCommand(customerListCmd)
 	customerCmd.AddCommand(customerDescribeCmd)
 	customerCmd.AddCommand(customerInstallKitCmd)
-	customerCmd.AddCommand(cloudnativenetwork.Cmd)
+	customerCmd.AddCommand(cloudnativenetwork.NewCommand("account customer cloud-native-network"))
 }
 
 func runCustomer(cmd *cobra.Command, args []string) {

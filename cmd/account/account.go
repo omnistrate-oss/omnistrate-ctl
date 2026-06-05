@@ -1,6 +1,7 @@
 package account
 
 import (
+	"github.com/omnistrate-oss/omnistrate-ctl/cmd/account/cloudnativenetwork"
 	"github.com/spf13/cobra"
 )
 
@@ -14,6 +15,7 @@ var Cmd = &cobra.Command{
 
 func init() {
 	Cmd.AddCommand(createCmd)
+	Cmd.AddCommand(cloudnativenetwork.NewCommand("account cloud-native-network"))
 	Cmd.AddCommand(customerCmd)
 	Cmd.AddCommand(updateCmd)
 	Cmd.AddCommand(listCmd)
