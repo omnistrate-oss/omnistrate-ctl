@@ -37,6 +37,13 @@ func TestImportCommandRequiresRegionAndNetworkIDFlags(t *testing.T) {
 	require.NotNil(t, importCmd.Flags().Lookup("network-id"))
 }
 
+func TestSyncCommandSupportsRegionAndNetworkIDFlags(t *testing.T) {
+	syncCmd := findSubCommand(t, Cmd, "sync")
+	require.NotNil(t, syncCmd.Flags().Lookup("region"))
+	require.NotNil(t, syncCmd.Flags().Lookup("network-id"))
+	require.NotNil(t, syncCmd.Flags().Lookup("network"))
+}
+
 func TestHostClusterImportCommandRequiresFlags(t *testing.T) {
 	hostClusterCmd := findSubCommand(t, Cmd, "host-cluster")
 	importCmd := findSubCommand(t, hostClusterCmd, "import")
@@ -86,6 +93,7 @@ func TestImportTargetsFromFlagsRejectsMissingNetworkID(t *testing.T) {
 func TestSyncTargetsFromFlags(t *testing.T) {
 	targets, err := syncTargetsFromFlags(
 		[]string{"us-east-1"},
+		nil,
 		[]string{"us-west-2:vpc-abc123"},
 	)
 	require.NoError(t, err)
@@ -96,8 +104,32 @@ func TestSyncTargetsFromFlags(t *testing.T) {
 	assert.Equal(t, "vpc-abc123", targets[1].NetworkID)
 }
 
+func TestSyncTargetsFromFlagsWithRegionAndNetworkID(t *testing.T) {
+	targets, err := syncTargetsFromFlags(
+		[]string{"us-east-1"},
+		[]string{"vpc-abc123", "vpc-def456"},
+		nil,
+	)
+	require.NoError(t, err)
+	require.Len(t, targets, 2)
+	assert.Equal(t, "us-east-1", targets[0].Region)
+	assert.Equal(t, "vpc-abc123", targets[0].NetworkID)
+	assert.Equal(t, "us-east-1", targets[1].Region)
+	assert.Equal(t, "vpc-def456", targets[1].NetworkID)
+}
+
+func TestSyncTargetsFromFlagsRejectsNetworkIDWithoutSingleRegion(t *testing.T) {
+	_, err := syncTargetsFromFlags(nil, []string{"vpc-abc123"}, nil)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "network-id requires exactly one region")
+
+	_, err = syncTargetsFromFlags([]string{"us-east-1", "us-west-2"}, []string{"vpc-abc123"}, nil)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "network-id requires exactly one region")
+}
+
 func TestSyncTargetsFromFlagsRejectsMalformedNetwork(t *testing.T) {
-	_, err := syncTargetsFromFlags(nil, []string{"vpc-abc123"})
+	_, err := syncTargetsFromFlags(nil, nil, []string{"vpc-abc123"})
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "expected region:network-id")
 }

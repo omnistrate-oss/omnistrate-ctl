@@ -20,15 +20,16 @@ omnistrate-ctl account cloud-native-network sync [account-id]
 omnistrate-ctl account cloud-native-network sync [account-id] --region=us-east-1 --region=us-west-2
 
 # Sync specific networks
-omnistrate-ctl account cloud-native-network sync [account-id] --network=us-east-1:vpc-abc123
+omnistrate-ctl account cloud-native-network sync [account-id] --region=us-east-1 --network-id=vpc-abc123
 ```
 
 ### Options
 
 ```
-  -h, --help              help for sync
-      --network strings   Specific network to sync in region:network-id format (repeatable)
-      --region strings    Cloud region to discover (repeatable)
+  -h, --help                 help for sync
+      --network strings      Specific network to sync in region:network-id format (repeatable)
+      --network-id strings   Cloud-native network ID to sync in the specified region (repeatable)
+      --region strings       Cloud region to discover (repeatable)
 ```
 
 ### Options inherited from parent commands

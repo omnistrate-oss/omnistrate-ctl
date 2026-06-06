@@ -23,12 +23,13 @@ omnistrate-ctl %s sync [account-id]
 omnistrate-ctl %s sync [account-id] --region=us-east-1 --region=us-west-2
 
 # Sync specific networks
-omnistrate-ctl %s sync [account-id] --network=us-east-1:vpc-abc123`, commandPath, commandPath, commandPath),
+omnistrate-ctl %s sync [account-id] --region=us-east-1 --network-id=vpc-abc123`, commandPath, commandPath, commandPath),
 		Args:         cobra.ExactArgs(1),
 		RunE:         runSync,
 		SilenceUsage: true,
 	}
 	cmd.Flags().StringSlice("region", nil, "Cloud region to discover (repeatable)")
+	cmd.Flags().StringSlice("network-id", nil, "Cloud-native network ID to sync in the specified region (repeatable)")
 	cmd.Flags().StringSlice("network", nil, "Specific network to sync in region:network-id format (repeatable)")
 	return cmd
 }
@@ -39,9 +40,10 @@ func runSync(cmd *cobra.Command, args []string) error {
 	accountID := args[0]
 	output, _ := cmd.Flags().GetString("output")
 	regions, _ := cmd.Flags().GetStringSlice("region")
+	networkIDs, _ := cmd.Flags().GetStringSlice("network-id")
 	networks, _ := cmd.Flags().GetStringSlice("network")
 
-	targets, err := syncTargetsFromFlags(regions, networks)
+	targets, err := syncTargetsFromFlags(regions, networkIDs, networks)
 	if err != nil {
 		utils.PrintError(err)
 		return err
@@ -71,14 +73,36 @@ func runSync(cmd *cobra.Command, args []string) error {
 	return printCloudNativeNetworkOutput(output, result)
 }
 
-func syncTargetsFromFlags(regions, networks []string) ([]dataaccess.CloudNativeNetworkTarget, error) {
-	targets := make([]dataaccess.CloudNativeNetworkTarget, 0, len(regions)+len(networks))
+func syncTargetsFromFlags(regions, networkIDs, networks []string) ([]dataaccess.CloudNativeNetworkTarget, error) {
+	targets := make([]dataaccess.CloudNativeNetworkTarget, 0, len(regions)+len(networkIDs)+len(networks))
+
+	cleanRegions := make([]string, 0, len(regions))
 	for _, region := range regions {
 		region = strings.TrimSpace(region)
 		if region == "" {
 			return nil, fmt.Errorf("region cannot be empty")
 		}
-		targets = append(targets, dataaccess.CloudNativeNetworkTarget{Region: region})
+		cleanRegions = append(cleanRegions, region)
+	}
+
+	if len(networkIDs) > 0 {
+		if len(cleanRegions) != 1 {
+			return nil, fmt.Errorf("network-id requires exactly one region")
+		}
+		for _, networkID := range networkIDs {
+			networkID = strings.TrimSpace(networkID)
+			if networkID == "" {
+				return nil, fmt.Errorf("network-id cannot be empty")
+			}
+			targets = append(targets, dataaccess.CloudNativeNetworkTarget{
+				Region:    cleanRegions[0],
+				NetworkID: networkID,
+			})
+		}
+	} else {
+		for _, region := range cleanRegions {
+			targets = append(targets, dataaccess.CloudNativeNetworkTarget{Region: region})
+		}
 	}
 
 	for _, network := range networks {
