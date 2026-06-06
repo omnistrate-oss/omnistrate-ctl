@@ -34,6 +34,14 @@ func runRemove(cmd *cobra.Command, args []string) error {
 	region, _ := cmd.Flags().GetString("region")
 	networkID, _ := cmd.Flags().GetString("network-id")
 	output, _ := cmd.Flags().GetString("output")
+
+	if region == "" {
+		return fmt.Errorf("region cannot be empty")
+	}
+	if networkID == "" {
+		return fmt.Errorf("network-id cannot be empty")
+	}
+
 	targets := []dataaccess.CloudNativeNetworkTarget{{
 		Region:    region,
 		NetworkID: networkID,
