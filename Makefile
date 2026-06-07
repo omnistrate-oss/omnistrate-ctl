@@ -58,7 +58,7 @@ smoke-test:
 	@echo you need to set the following environment variables: TEST_EMAIL, TEST_PASSWORD before running the smoke tests
 	export ENABLE_SMOKE_TEST=true && \
 	export OMNISTRATE_ROOT_DOMAIN=omnistrate.dev && \
-	export OMNISTRATE_LOG_LEVEL=debug && \
+	export OMNISTRATE_LOG_LEVEL=info && \
 	export OMNISTRATE_LOG_FORMAT=pretty && \
 	go clean -testcache && \
 	go test $(SMOKE_TEST_PACKAGES) $(ARGS)
