@@ -153,7 +153,9 @@ func remoteDataplaneAgentProxyRequest(
 	setRemoteAgentHeaders(httpReq, token, body != nil)
 
 	client := &http.Client{Transport: transport}
-	resp, err := client.Do(httpReq)
+	// Kubernetes builds the proxy URL from the selected pod and REST client;
+	// user input is limited to the API path suffix handled by dataplane-agent.
+	resp, err := client.Do(httpReq) //nolint:gosec
 	if err != nil {
 		return fmt.Errorf("failed to call dataplane-agent through Kubernetes proxy: %w", err)
 	}
@@ -226,7 +228,8 @@ func remoteDataplaneAgentPortForwardRequest(
 	}
 	setRemoteAgentHeaders(httpReq, token, body != nil)
 
-	resp, err := http.DefaultClient.Do(httpReq)
+	// The fallback URL targets the local port-forward listener created above.
+	resp, err := http.DefaultClient.Do(httpReq) //nolint:gosec
 	if err != nil {
 		return fmt.Errorf("failed to call dataplane-agent: %w", err)
 	}

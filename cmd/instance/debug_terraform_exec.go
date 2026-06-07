@@ -54,8 +54,7 @@ func terraformFilesBasePath(terraformName, instanceID, operation string) string 
 
 // execInPod runs a command in a pod and returns stdout
 func execInPod(ctx context.Context, conn *k8sConnection, namespace, podName string, command []string) (string, error) {
-	stdout, _, err := execInPodWithStreams(ctx, conn, namespace, podName, "", command, false, nil, nil, nil)
-	return stdout, err
+	return execInPodWithStreams(ctx, conn, namespace, podName, "", command, false, nil, nil, nil)
 }
 
 func execInPodWithStreams(
@@ -69,9 +68,9 @@ func execInPodWithStreams(
 	stdin io.Reader,
 	stdoutWriter io.Writer,
 	stderrWriter io.Writer,
-) (string, string, error) {
+) (string, error) {
 	if conn == nil {
-		return "", "", fmt.Errorf("kubernetes connection is not available")
+		return "", fmt.Errorf("kubernetes connection is not available")
 	}
 	if container == "" {
 		container = "terraform-executor"
@@ -92,7 +91,7 @@ func execInPodWithStreams(
 
 	exec, err := remotecommand.NewSPDYExecutor(conn.restConfig, "POST", req.URL())
 	if err != nil {
-		return "", "", fmt.Errorf("failed to create executor: %w", err)
+		return "", fmt.Errorf("failed to create executor: %w", err)
 	}
 
 	var stdout, stderr bytes.Buffer
@@ -117,10 +116,10 @@ func execInPodWithStreams(
 
 	err = exec.StreamWithContext(ctx, streamOptions)
 	if err != nil {
-		return stdout.String(), stderr.String(), fmt.Errorf("exec error: %w, stderr: %s", err, stderr.String())
+		return stdout.String(), fmt.Errorf("exec error: %w, stderr: %s", err, stderr.String())
 	}
 
-	return stdout.String(), stderr.String(), nil
+	return stdout.String(), nil
 }
 
 // fetchTerraformFileTree lists files from the terraform executor pod and builds a tree
@@ -294,7 +293,7 @@ func writeFileContentToPod(ctx context.Context, conn *k8sConnection, namespace, 
 		"-c",
 		fmt.Sprintf("mkdir -p -- %s && cat > %s", shellQuote(path.Dir(cleanPath)), shellQuote(cleanPath)),
 	}
-	_, _, err := execInPodWithStreams(ctx, conn, namespace, podName, "", command, false, bytes.NewReader(content), nil, nil)
+	_, err := execInPodWithStreams(ctx, conn, namespace, podName, "", command, false, bytes.NewReader(content), nil, nil)
 	return err
 }
 
@@ -373,35 +372,60 @@ func currentTerminalSizeQueue(stdoutWriter io.Writer) remotecommand.TerminalSize
 	if size := terminalSizeFromWriter(stdoutWriter); size != nil {
 		return &singleTerminalSizeQueue{size: size}
 	}
-	if term.IsTerminal(int(os.Stdout.Fd())) {
-		if width, height, err := term.GetSize(int(os.Stdout.Fd())); err == nil && width > 0 && height > 0 {
-			return &singleTerminalSizeQueue{size: &remotecommand.TerminalSize{Width: uint16(width), Height: uint16(height)}}
-		}
+	if size := terminalSizeFromFile(os.Stdout); size != nil {
+		return &singleTerminalSizeQueue{size: size}
 	}
 	return nil
 }
 
 func terminalSizeFromWriter(writer io.Writer) *remotecommand.TerminalSize {
 	file, ok := writer.(*os.File)
-	if !ok || !term.IsTerminal(int(file.Fd())) {
+	if !ok {
 		return nil
 	}
-	width, height, err := term.GetSize(int(file.Fd()))
-	if err != nil || width <= 0 || height <= 0 {
+	return terminalSizeFromFile(file)
+}
+
+func terminalSizeFromFile(file *os.File) *remotecommand.TerminalSize {
+	fd, ok := terminalFD(file)
+	if !ok || !term.IsTerminal(fd) {
 		return nil
 	}
-	return &remotecommand.TerminalSize{Width: uint16(width), Height: uint16(height)}
+	width, height, err := term.GetSize(fd)
+	if err != nil {
+		return nil
+	}
+	return terminalSize(width, height)
+}
+
+func terminalSize(width, height int) *remotecommand.TerminalSize {
+	const maxTerminalDimension = 1<<16 - 1
+	if width <= 0 || height <= 0 || width > maxTerminalDimension || height > maxTerminalDimension {
+		return nil
+	}
+	return &remotecommand.TerminalSize{
+		Width:  uint16(width),  //nolint:gosec // bounds checked above
+		Height: uint16(height), //nolint:gosec // bounds checked above
+	}
+}
+
+func terminalFD(file *os.File) (int, bool) {
+	if file == nil {
+		return 0, false
+	}
+	return int(file.Fd()), true //nolint:gosec // terminal file descriptors fit in int on supported platforms
 }
 
 func makeTerminalRaw(reader io.Reader) func() {
 	file, ok := reader.(*os.File)
-	if !ok || !term.IsTerminal(int(file.Fd())) {
+	fd, isTerminal := terminalFD(file)
+	if !ok || !isTerminal || !term.IsTerminal(fd) {
 		file = os.Stdin
+		fd, isTerminal = terminalFD(file)
 	}
-	if file == nil || !term.IsTerminal(int(file.Fd())) {
+	if !isTerminal || !term.IsTerminal(fd) {
 		return func() {}
 	}
-	fd := int(file.Fd())
 	previousState, err := term.MakeRaw(fd)
 	if err != nil {
 		return func() {}
@@ -529,7 +553,6 @@ func interactiveTerraformShellEntrypoint(session *terraformDebugSession) string 
 }
 
 type kubernetesExecCommand struct {
-	ctx       context.Context
 	conn      *k8sConnection
 	namespace string
 	podName   string
@@ -558,8 +581,8 @@ func (c *kubernetesExecCommand) Run() error {
 	stdin, closeStdin := newCancelableInteractiveStdin(c.stdin)
 	defer closeStdin()
 
-	_, _, err := execInPodWithStreams(
-		c.ctx,
+	_, err := execInPodWithStreams(
+		context.Background(),
 		c.conn,
 		c.namespace,
 		c.podName,

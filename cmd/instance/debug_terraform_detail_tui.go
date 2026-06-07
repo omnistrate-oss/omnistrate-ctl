@@ -1113,7 +1113,6 @@ func (m terraformDetailModel) openShell(session *terraformDebugSession) tea.Cmd 
 		container = "terraform-executor"
 	}
 	cmd := &kubernetesExecCommand{
-		ctx:       context.Background(),
 		conn:      c,
 		namespace: session.Namespace,
 		podName:   session.PodName,
