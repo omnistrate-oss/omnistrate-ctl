@@ -9,7 +9,6 @@ import (
 
 	"github.com/cenkalti/backoff/v4"
 	"github.com/google/uuid"
-	"github.com/rs/zerolog/log"
 
 	"github.com/omnistrate-oss/omnistrate-ctl/cmd"
 	"github.com/omnistrate-oss/omnistrate-ctl/cmd/build"
@@ -51,7 +50,6 @@ func TestInstanceUndeleteWithInstanceID(t *testing.T) {
 
 	// Build a service
 	serviceName := "undelete-test-" + uuid.NewString()[:8]
-	log.Debug().Msgf("Building service %s...", serviceName)
 	cmd.RootCmd.SetArgs([]string{"build", "--file", "../composefiles/mysql.yaml", "--name", serviceName, "--environment=dev", "--environment-type=dev"})
 	err = cmd.RootCmd.ExecuteContext(ctx)
 	require.NoError(t, err)
@@ -59,7 +57,6 @@ func TestInstanceUndeleteWithInstanceID(t *testing.T) {
 	require.NotEmpty(t, build.EnvironmentID)
 
 	// Create instance
-	log.Debug().Msg("Creating instance...")
 	createInstanceWithRetry(t, ctx, []string{"instance", "create",
 		fmt.Sprintf("--service=%s", serviceName),
 		"--environment=dev",
@@ -76,22 +73,18 @@ func TestInstanceUndeleteWithInstanceID(t *testing.T) {
 	require.NotEmpty(t, originalSubscriptionID, "expected subscription ID to be set after create")
 
 	// Wait for instance to be RUNNING
-	log.Debug().Msg("Waiting for instance to reach RUNNING...")
 	err = testutils.WaitForInstanceToReachStatus(ctx, originalInstanceID, instance.InstanceStatusRunning)
 	require.NoError(t, err)
 
 	// Delete the instance
-	log.Debug().Msg("Deleting instance...")
 	cmd.RootCmd.SetArgs([]string{"instance", "delete", originalInstanceID, "--yes"})
 	err = cmd.RootCmd.ExecuteContext(ctx)
 	require.NoError(t, err)
 
 	// Wait for the instance to be fully deleted
-	log.Debug().Msg("Waiting for instance to be deleted...")
 	waitForInstanceDeletion(t, ctx, originalInstanceID)
 
 	// Restore (undelete) the instance using --instance-id
-	log.Debug().Msg("Restoring instance using --instance-id...")
 	cmd.RootCmd.SetArgs([]string{"instance", "create",
 		fmt.Sprintf("--service=%s", serviceName),
 		"--environment=dev",
@@ -109,12 +102,10 @@ func TestInstanceUndeleteWithInstanceID(t *testing.T) {
 	require.Equal(t, originalInstanceID, restoredInstanceID, "undeleted instance should have the same ID")
 
 	// Wait for the restored instance to reach RUNNING
-	log.Debug().Msg("Waiting for restored instance to reach RUNNING...")
 	err = testutils.WaitForInstanceToReachStatus(ctx, restoredInstanceID, instance.InstanceStatusRunning)
 	require.NoError(t, err)
 
 	// Cleanup: delete instance and service
-	log.Debug().Msg("Cleaning up...")
 	cmd.RootCmd.SetArgs([]string{"instance", "delete", restoredInstanceID, "--yes"})
 	_ = cmd.RootCmd.ExecuteContext(ctx)
 	waitForInstanceDeletion(t, ctx, restoredInstanceID)
@@ -145,7 +136,6 @@ func TestSnapshotRestoreToSource(t *testing.T) {
 
 	// Build a service
 	serviceName := "restore-src-" + uuid.NewString()[:8]
-	log.Debug().Msgf("Building service %s...", serviceName)
 	cmd.RootCmd.SetArgs([]string{"build", "--file", "../composefiles/mysql.yaml", "--name", serviceName, "--environment=dev", "--environment-type=dev"})
 	err = cmd.RootCmd.ExecuteContext(ctx)
 	require.NoError(t, err)
@@ -155,7 +145,6 @@ func TestSnapshotRestoreToSource(t *testing.T) {
 	require.NotEmpty(t, environmentID)
 
 	// Create instance
-	log.Debug().Msg("Creating instance...")
 	createInstanceWithRetry(t, ctx, []string{"instance", "create",
 		fmt.Sprintf("--service=%s", serviceName),
 		"--environment=dev",
@@ -170,31 +159,25 @@ func TestSnapshotRestoreToSource(t *testing.T) {
 	require.NotEmpty(t, originalInstanceID)
 
 	// Wait for RUNNING
-	log.Debug().Msg("Waiting for instance to reach RUNNING...")
 	err = testutils.WaitForInstanceToReachStatus(ctx, originalInstanceID, instance.InstanceStatusRunning)
 	require.NoError(t, err)
 
 	// Trigger backup
-	log.Debug().Msg("Triggering backup...")
 	backupResult, err := dataaccess.CreateInstanceSnapshot(ctx, token, serviceID, environmentID, originalInstanceID)
 	require.NoError(t, err)
 	snapshotID := backupResult.GetSnapshotId()
 	require.NotEmpty(t, snapshotID, "expected snapshot ID from backup trigger")
-	log.Debug().Msgf("Snapshot ID: %s", snapshotID)
 
 	// Wait for snapshot to complete
-	log.Debug().Msg("Waiting for snapshot to complete...")
 	waitForSnapshotCompletion(t, ctx, token, serviceID, environmentID, originalInstanceID, snapshotID)
 
 	// Delete the instance
-	log.Debug().Msg("Deleting instance...")
 	cmd.RootCmd.SetArgs([]string{"instance", "delete", originalInstanceID, "--yes"})
 	err = cmd.RootCmd.ExecuteContext(ctx)
 	require.NoError(t, err)
 	waitForInstanceDeletion(t, ctx, originalInstanceID)
 
 	// Restore from snapshot with --restore-to-source
-	log.Debug().Msgf("Restoring from snapshot %s with --restore-to-source...", snapshotID)
 	restoreWithRetry(t, func() error {
 		cmd.RootCmd.SetArgs([]string{"snapshot", "restore",
 			"--service-id", serviceID,
@@ -206,7 +189,6 @@ func TestSnapshotRestoreToSource(t *testing.T) {
 	})
 
 	// Wait for restored instance to reach RUNNING
-	log.Debug().Msg("Waiting for restored instance to reach RUNNING...")
 	err = testutils.WaitForInstanceToReachStatus(ctx, originalInstanceID, instance.InstanceStatusRunning)
 	require.NoError(t, err)
 
@@ -216,7 +198,6 @@ func TestSnapshotRestoreToSource(t *testing.T) {
 	require.NoError(t, err)
 
 	// Cleanup: delete instance and service
-	log.Debug().Msg("Cleaning up...")
 	cmd.RootCmd.SetArgs([]string{"instance", "delete", originalInstanceID, "--yes"})
 	_ = cmd.RootCmd.ExecuteContext(ctx)
 	waitForInstanceDeletion(t, ctx, originalInstanceID)
@@ -246,15 +227,13 @@ func waitForInstanceDeletion(t *testing.T, ctx context.Context, instanceID strin
 		cmd.RootCmd.SetArgs([]string{"instance", "describe", instanceID})
 		err := cmd.RootCmd.ExecuteContext(ctx)
 		if err != nil {
-			if strings.Contains(err.Error(), "not found") {
+			if isNotFoundError(err) {
 				ticker.Stop()
 				return
 			}
 			// Transient error (network, auth, etc.) — keep retrying
-			log.Debug().Msgf("Transient error while waiting for deletion of %s: %v", instanceID, err)
 			continue
 		}
-		log.Debug().Msgf("Instance %s still exists, waiting for deletion...", instanceID)
 	}
 
 	t.Fatalf("instance %s was not deleted within %s", instanceID, timeout)
@@ -281,19 +260,16 @@ func waitForSnapshotCompletion(t *testing.T, ctx context.Context, token, service
 		// Refresh token on each poll to avoid expiration during long waits
 		currentToken, tokenErr := config.GetToken()
 		if tokenErr != nil {
-			log.Debug().Msgf("Failed to refresh token, using original: %v", tokenErr)
 			currentToken = token
 		}
 
 		result, err := dataaccess.DescribeResourceInstanceSnapshot(ctx, currentToken, serviceID, environmentID, instanceID, snapshotID)
 		if err != nil {
 			// Transient error — keep retrying
-			log.Debug().Msgf("Transient error polling snapshot %s: %v", snapshotID, err)
 			continue
 		}
 
 		status := result.GetStatus()
-		log.Debug().Msgf("Snapshot %s status: %s", snapshotID, status)
 		if strings.EqualFold(status, "Complete") || strings.EqualFold(status, "Available") {
 			ticker.Stop()
 			return
@@ -351,7 +327,6 @@ func executeWithNotFoundRetry(t *testing.T, operation string, timeout time.Durat
 			ticker.Stop()
 			break
 		}
-		log.Debug().Msgf("%s returned transient 'not found', retrying: %v", operation, lastErr)
 	}
 
 	require.NoError(t, lastErr, "%s failed after retries", operation)
