@@ -396,7 +396,7 @@ func runBuildFromRepo(cmd *cobra.Command, args []string) error {
 
 		// Step 18: Promote the service to the production environment
 		spinner = sm.AddSpinner(fmt.Sprintf("Promoting the service to the %s environment", DefaultProdEnvName))
-		err = dataaccess.PromoteServiceEnvironment(cmd.Context(), token, serviceID, devEnvironmentID)
+		err = dataaccess.PromoteServiceEnvironment(cmd.Context(), token, serviceID, devEnvironmentID, "", "")
 		if err != nil {
 			utils.PrintError(err)
 			return err

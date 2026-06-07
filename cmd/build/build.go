@@ -835,7 +835,7 @@ func runBuild(cmd *cobra.Command, args []string) error {
 				}
 
 				// Promote the service to production
-				err = dataaccess.PromoteServiceEnvironment(cmd.Context(), token, ServiceID, EnvironmentID)
+				err = dataaccess.PromoteServiceEnvironment(cmd.Context(), token, ServiceID, EnvironmentID, "", "")
 				if err != nil {
 					utils.PrintError(err)
 					return err
