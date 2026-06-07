@@ -616,6 +616,29 @@ func TestExtractTerraformStateDataProgressOnly(t *testing.T) {
 	require.Empty(stateData.PlanPreviews)
 }
 
+func TestExtractTerraformStateDataIncludesWorkspaceState(t *testing.T) {
+	require := require.New(t)
+
+	index := &terraformConfigMapIndex{
+		instanceID:     "inst-1",
+		instanceSuffix: "inst-1",
+		stateByResource: map[string]*corev1.ConfigMap{
+			"tf-r-abc123": {
+				Data: map[string]string{
+					"state": `{"podName":"tf-executor-tf-test","terraformName":"tf-test","tfFilesPath":"/tmp/tf-r-abc123-inst-1-render/2.0-deadbeef"}`,
+				},
+			},
+		},
+		progress:              []*corev1.ConfigMap{},
+		planPreviewByResource: make(map[string][]planPreviewEntry),
+	}
+
+	stateData := extractTerraformStateData(index, "inst-1", "r-abc123")
+	require.NotNil(stateData)
+	require.Equal("tf-executor-tf-test", stateData.PodName)
+	require.Equal("/tmp/tf-r-abc123-inst-1-render/2.0-deadbeef", stateData.TerraformFilesPath)
+}
+
 func TestExtractTerraformStateDataWithDedicatedPlanPreviewCMs(t *testing.T) {
 	require := require.New(t)
 
