@@ -2,6 +2,7 @@ package instance
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sort"
 	"strings"
@@ -23,6 +24,8 @@ const (
 	tabWfErrors  = 5
 	numTabs      = 6
 )
+
+const terraformDebugSessionTimeout = 45 * time.Second
 
 var tabNames = []string{"Progress", "Terraform Files", "Terraform Output", "Live Logs", "Operation History", "Workflow Events"}
 
@@ -66,6 +69,7 @@ type terraformWorkspacePatchMsg struct {
 type terraformDataMsg struct {
 	progress             *TerraformProgressData
 	history              []TerraformHistoryEntry
+	executionState       TerraformExecutionState
 	k8sConn              *k8sConnections
 	fileTree             *TerraformFileTree
 	tfOutputJSON         string            // latest terraform output JSON from configmap
@@ -76,9 +80,10 @@ type terraformDataMsg struct {
 
 // progressRefreshMsg is sent when auto-refresh fetches updated progress data
 type progressRefreshMsg struct {
-	progress *TerraformProgressData
-	history  []TerraformHistoryEntry
-	err      error
+	progress       *TerraformProgressData
+	history        []TerraformHistoryEntry
+	executionState TerraformExecutionState
+	err            error
 }
 
 // progressTickMsg triggers a progress data refresh
@@ -101,10 +106,11 @@ type terraformDetailModel struct {
 	spinner             spinner.Model
 
 	// Progress tab data
-	tfProgress  *TerraformProgressData
-	history     []TerraformHistoryEntry
-	progressBar progress.Model
-	loadErr     error
+	tfProgress       *TerraformProgressData
+	tfExecutionState TerraformExecutionState
+	history          []TerraformHistoryEntry
+	progressBar      progress.Model
+	loadErr          error
 
 	// K8s connection for file operations
 	k8sConn *k8sConnections
@@ -205,6 +211,14 @@ func (m terraformDetailModel) Init() tea.Cmd {
 const progressRefreshInterval = 5 * time.Second
 
 func (m terraformDetailModel) isProgressInFlight() bool {
+	if m.tfExecutionState.hasData() {
+		if terraformStatusInFlight(m.tfExecutionState.Status) {
+			return true
+		}
+		if terraformStatusTerminal(m.tfExecutionState.Status) || m.tfExecutionState.CompletedAt != "" {
+			return false
+		}
+	}
 	if m.tfProgress == nil {
 		return false
 	}
@@ -217,7 +231,72 @@ func (m terraformDetailModel) isProgressInFlight() bool {
 		return false
 	}
 	s := strings.ToLower(m.tfProgress.Status)
-	return s == "in_progress" || s == "running" || s == "creating" || s == "updating"
+	return terraformStatusInFlight(s)
+}
+
+func terraformStatusInFlight(status string) bool {
+	switch strings.ToLower(strings.TrimSpace(status)) {
+	case "in_progress", "running", "creating", "updating", "pending", "planning", "applying", "destroying":
+		return true
+	default:
+		return false
+	}
+}
+
+func terraformStatusTerminal(status string) bool {
+	switch strings.ToLower(strings.TrimSpace(status)) {
+	case "completed", "complete", "succeeded", "success", "failed", "failure", "cancelled", "canceled", "ready":
+		return true
+	default:
+		return false
+	}
+}
+
+func terraformShellPrepMessage(summary string) string {
+	if summary == "" {
+		return "Preparing shell session..."
+	}
+	return "Preparing shell session; " + summary + "..."
+}
+
+func terraformOperationSummary(state TerraformExecutionState, progress *TerraformProgressData, history []TerraformHistoryEntry) string {
+	if state.hasData() {
+		return formatTerraformOperationSummary("tf-state", state.Operation, state.Status, state.ResourceVersion, state.StartedAt, state.CompletedAt)
+	}
+	if len(history) > 0 {
+		entry := history[len(history)-1]
+		return formatTerraformOperationSummary("history", entry.Operation, entry.Status, "", entry.StartedAt, entry.CompletedAt)
+	}
+	if progress != nil && strings.TrimSpace(progress.Status) != "" {
+		return formatTerraformOperationSummary("progress", "", progress.Status, progress.ResourceVersion, progress.StartedAt, progress.CompletedAt)
+	}
+	return ""
+}
+
+func formatTerraformOperationSummary(source, operation, status, resourceVersion, startedAt, completedAt string) string {
+	operation = strings.TrimSpace(operation)
+	status = strings.TrimSpace(status)
+
+	label := strings.TrimSpace(strings.Join([]string{operation, status}, " "))
+	if label == "" {
+		label = "state available"
+	}
+
+	var details []string
+	if resourceVersion = strings.TrimSpace(resourceVersion); resourceVersion != "" {
+		details = append(details, "rv "+resourceVersion)
+	}
+	if completedAt = strings.TrimSpace(completedAt); completedAt != "" {
+		details = append(details, "completed "+completedAt)
+	} else if startedAt = strings.TrimSpace(startedAt); startedAt != "" {
+		details = append(details, "started "+startedAt)
+	}
+
+	summary := source + " " + label
+	if len(details) > 0 {
+		summary += " (" + strings.Join(details, ", ") + ")"
+	}
+	return summary
 }
 
 func scheduleProgressRefresh() tea.Cmd {
@@ -235,10 +314,19 @@ func (m terraformDetailModel) fetchProgressOnly() tea.Cmd {
 		if err != nil {
 			return progressRefreshMsg{err: err}
 		}
-		progress, history, _, err := fetchTerraformProgress(
-			ctx, m.debugData.Token, instanceData, m.debugData.InstanceID, m.node.ID,
-		)
-		return progressRefreshMsg{progress: progress, history: history, err: err}
+		index, _, err := loadTerraformConfigMapIndexForInstance(ctx, m.debugData.Token, instanceData, m.debugData.InstanceID)
+		if err != nil {
+			return progressRefreshMsg{err: err}
+		}
+		stateData := extractTerraformStateData(index, m.debugData.InstanceID, m.node.ID)
+		if stateData == nil {
+			return progressRefreshMsg{}
+		}
+		return progressRefreshMsg{
+			progress:       stateData.Progress,
+			history:        stateData.History,
+			executionState: stateData.ExecutionState,
+		}
 	}
 }
 
@@ -263,6 +351,7 @@ func (m terraformDetailModel) fetchData() tea.Cmd {
 		// Plan previews: dedicated tf-plan-* CMs first, then state CM fallback.
 		// All lookups are best-effort.
 		var tfOutputJSON string
+		var executionState TerraformExecutionState
 		var planPreviewByOpID, planPreviewErrByOpID map[string]string
 		type workspaceCandidate struct {
 			conn     *k8sConnection
@@ -293,11 +382,14 @@ func (m terraformDetailModel) fetchData() tea.Cmd {
 				if len(stateData.PreviewErrors) > 0 {
 					planPreviewErrByOpID = stateData.PreviewErrors
 				}
-				if stateData.PodName != "" && stateData.TerraformFilesPath != "" {
+				if stateData.ExecutionState.hasData() && !executionState.hasData() {
+					executionState = stateData.ExecutionState
+				}
+				if stateData.ExecutionState.hasWorkspace() {
 					workspaceCandidates = append(workspaceCandidates, workspaceCandidate{
 						conn:     c,
-						podName:  stateData.PodName,
-						basePath: stateData.TerraformFilesPath,
+						podName:  stateData.ExecutionState.PodName,
+						basePath: stateData.ExecutionState.TerraformFilesPath,
 					})
 				}
 			}
@@ -347,6 +439,7 @@ func (m terraformDetailModel) fetchData() tea.Cmd {
 		return terraformDataMsg{
 			progress:             progress,
 			history:              history,
+			executionState:       executionState,
 			k8sConn:              conn,
 			fileTree:             fileTree,
 			tfOutputJSON:         tfOutputJSON,
@@ -628,7 +721,7 @@ func (m terraformDetailModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "s":
 			if m.activeTab == tabTfFiles && !m.viewingFile && !m.shellLaunching {
 				m.shellLaunching = true
-				m.workspaceMsg = "Preparing shell session..."
+				m.workspaceMsg = terraformShellPrepMessage(terraformOperationSummary(m.tfExecutionState, m.tfProgress, m.history))
 				return m, m.prepareShellSession()
 			}
 		case "r":
@@ -789,6 +882,7 @@ func (m terraformDetailModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.loading = false
 		m.loadErr = msg.err
 		m.tfProgress = msg.progress
+		m.tfExecutionState = msg.executionState
 		m.history = msg.history
 		m.historyDates = buildTimelineSections(msg.history)
 		m.k8sConn = msg.k8sConn
@@ -880,6 +974,9 @@ func (m terraformDetailModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.err == nil {
 			if msg.progress != nil {
 				m.tfProgress = msg.progress
+			}
+			if msg.executionState.hasData() {
+				m.tfExecutionState = msg.executionState
 			}
 			m.history = msg.history
 			// Don't rebuild timeline while user is reading error modal
@@ -1082,8 +1179,13 @@ func (m terraformDetailModel) prepareShellSession() tea.Cmd {
 		}
 		terraformName := ""
 		instanceID := m.debugData.InstanceID
+		if m.tfExecutionState.TerraformName != "" {
+			terraformName = m.tfExecutionState.TerraformName
+		}
 		if m.tfProgress != nil {
-			terraformName = m.tfProgress.TerraformName
+			if terraformName == "" {
+				terraformName = m.tfProgress.TerraformName
+			}
 			if m.tfProgress.InstanceID != "" {
 				instanceID = m.tfProgress.InstanceID
 			}
@@ -1091,14 +1193,24 @@ func (m terraformDetailModel) prepareShellSession() tea.Cmd {
 		if terraformName == "" {
 			return terraformDebugSessionMsg{err: fmt.Errorf("terraform name is not available")}
 		}
+		ctx, cancel := context.WithTimeout(context.Background(), terraformDebugSessionTimeout)
+		defer cancel()
 		session, err := prepareTerraformDebugSessionRemote(
-			context.Background(),
+			ctx,
 			c,
 			m.debugData.Token,
 			instanceID,
 			terraformName,
 			m.fileTree.BasePath,
 		)
+		if errors.Is(err, context.DeadlineExceeded) {
+			summary := terraformOperationSummary(m.tfExecutionState, m.tfProgress, m.history)
+			if summary != "" {
+				err = fmt.Errorf("timed out preparing shell session after %s; %s", terraformDebugSessionTimeout, summary)
+			} else {
+				err = fmt.Errorf("timed out preparing shell session after %s", terraformDebugSessionTimeout)
+			}
+		}
 		return terraformDebugSessionMsg{session: session, err: err}
 	})
 }
