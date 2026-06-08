@@ -76,7 +76,7 @@ jobs:
           TEST_EMAIL: ${{ secrets.SMOKE_TEST_EMAIL }}
           TEST_PASSWORD: ${{ secrets.SMOKE_TEST_PASSWORD}}
           OMNISTRATE_ROOT_DOMAIN: ${{ vars.OMNISTRATE_ROOT_DOMAIN}}
-          OMNISTRATE_LOG_LEVEL: debug
+          OMNISTRATE_LOG_LEVEL: info
           OMNISTRATE_DRY_RUN: true
           OMNISTRATE_RETRY_MAX: 8
           OMNISTRATE_RETRY_WAIT_MIN_IN_SECONDS: 60
@@ -84,7 +84,7 @@ jobs:
           OMCTL_AWS_ACCOUNT_ID: ${{ secrets.OMCTL_AWS_ACCOUNT_ID }}
           OMCTL_GCP_PROJECT_ID: ${{ secrets.OMCTL_GCP_PROJECT_ID }}
           OMCTL_GCP_PROJECT_NUMBER: ${{ secrets.OMCTL_GCP_PROJECT_NUMBER }}
-        run: gotestsum --format standard-verbose -- ./test/smoke_test/${{ matrix.test-group }} -timeout 1800s -p 1 -p 1 -v
+        run: gotestsum --format standard-quiet -- ./test/smoke_test/${{ matrix.test-group }} -timeout 1800s -p 1
 
   smoke-tests-docker-cache:
     environment: ${{ inputs.environment }}
@@ -124,9 +124,9 @@ jobs:
           TEST_EMAIL: ${{ secrets.SMOKE_TEST_EMAIL }}
           TEST_PASSWORD: ${{ secrets.SMOKE_TEST_PASSWORD }}
           OMNISTRATE_ROOT_DOMAIN: ${{ vars.OMNISTRATE_ROOT_DOMAIN }}
-          OMNISTRATE_LOG_LEVEL: debug
+          OMNISTRATE_LOG_LEVEL: info
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: gotestsum --format standard-verbose -- ./test/smoke_test/build/dockercache/... -timeout 900s -p 1 -v
+        run: gotestsum --format standard-quiet -- ./test/smoke_test/build/dockercache/... -timeout 900s -p 1
 
   smoke-tests-auth:
     environment: ${{ inputs.environment }}
@@ -169,7 +169,7 @@ jobs:
           TEST_EMAIL: ${{ secrets.SMOKE_TEST_EMAIL }}
           TEST_PASSWORD: ${{ secrets.SMOKE_TEST_PASSWORD}}
           OMNISTRATE_ROOT_DOMAIN: ${{ vars.OMNISTRATE_ROOT_DOMAIN}}
-          OMNISTRATE_LOG_LEVEL: debug
+          OMNISTRATE_LOG_LEVEL: info
           OMNISTRATE_DRY_RUN: true
           OMNISTRATE_RETRY_MAX: 8
           OMNISTRATE_RETRY_WAIT_MIN_IN_SECONDS: 60
@@ -177,7 +177,7 @@ jobs:
           OMCTL_AWS_ACCOUNT_ID: ${{ secrets.OMCTL_AWS_ACCOUNT_ID }}
           OMCTL_GCP_PROJECT_ID: ${{ secrets.OMCTL_GCP_PROJECT_ID }}
           OMCTL_GCP_PROJECT_NUMBER: ${{ secrets.OMCTL_GCP_PROJECT_NUMBER }}
-        run: go test -v -timeout 1800s -p 1 ./test/smoke_test/auth/...
+        run: go test -timeout 1800s -p 1 ./test/smoke_test/auth/...
 
   smoke-tests-with-provisioning:
     environment: ${{ inputs.environment }}
@@ -186,16 +186,37 @@ jobs:
     permissions:
       contents: read
     concurrency:
-      group: ${{ github.workflow }}-${{ inputs.environment }}-${{ matrix.test-group }}-${{ github.event.pull_request.number }}
+      group: ${{ github.workflow }}-${{ inputs.environment }}-${{ matrix.test-name }}-${{ github.event.pull_request.number }}
       cancel-in-progress: false
 
     strategy:
       fail-fast: false
       matrix:
-        test-group:
-          [
-            "instance/...",
-          ]
+        include:
+          - test-name: instance-custom-workflow
+            test-group: "instance/..."
+            test-run: "^TestInstanceCustomWorkflow"
+          - test-name: instance-create-describe-list
+            test-group: "instance/..."
+            test-run: "^TestInstanceCreateDescribeAndList$"
+          - test-name: instance-modify-tags-filters
+            test-group: "instance/..."
+            test-run: "^TestInstanceModifyTagsAndFilters$"
+          - test-name: instance-param-file-update
+            test-group: "instance/..."
+            test-run: "^TestInstanceCreateFromParamFileAndUpdate$"
+          - test-name: instance-stop-start-restart
+            test-group: "instance/..."
+            test-run: "^TestInstanceStopStartRestart$"
+          - test-name: instance-update-parameters
+            test-group: "instance/..."
+            test-run: "^TestInstanceUpdateParameters$"
+          - test-name: instance-undelete
+            test-group: "instance/..."
+            test-run: "^TestInstanceUndeleteWithInstanceID$"
+          - test-name: snapshot-restore-to-source
+            test-group: "instance/..."
+            test-run: "^TestSnapshotRestoreToSource$"
 
     steps:
       - name: Checkout repository
@@ -217,14 +238,14 @@ jobs:
         with:
           gotestsum_version: 1.13.0
 
-      - name: Smoke test ${{ matrix.test-group }}
+      - name: Smoke test ${{ matrix.test-name }}
         timeout-minutes: 90
         env:
           ENABLE_SMOKE_TEST: true
           TEST_EMAIL: ${{ secrets.SMOKE_TEST_EMAIL }}
           TEST_PASSWORD: ${{ secrets.SMOKE_TEST_PASSWORD}}
           OMNISTRATE_ROOT_DOMAIN: ${{ vars.OMNISTRATE_ROOT_DOMAIN}}
-          OMNISTRATE_LOG_LEVEL: debug
+          OMNISTRATE_LOG_LEVEL: info
           OMNISTRATE_DRY_RUN: true
           OMNISTRATE_RETRY_MAX: 8
           OMNISTRATE_RETRY_WAIT_MIN_IN_SECONDS: 60
@@ -232,5 +253,4 @@ jobs:
           OMCTL_AWS_ACCOUNT_ID: ${{ secrets.OMCTL_AWS_ACCOUNT_ID }}
           OMCTL_GCP_PROJECT_ID: ${{ secrets.OMCTL_GCP_PROJECT_ID }}
           OMCTL_GCP_PROJECT_NUMBER: ${{ secrets.OMCTL_GCP_PROJECT_NUMBER }}
-        run: gotestsum --format standard-verbose -- ./test/smoke_test/${{ matrix.test-group }} -timeout 5400s -p 1 -p 1 -v
-
+        run: gotestsum --format standard-quiet -- ./test/smoke_test/${{ matrix.test-group }} -run '${{ matrix.test-run }}' -timeout 5400s -p 1

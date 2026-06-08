@@ -9,6 +9,7 @@ import (
 
 	"github.com/charmbracelet/bubbles/progress"
 	"github.com/charmbracelet/bubbles/spinner"
+	"github.com/charmbracelet/bubbles/textarea"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 )
@@ -35,6 +36,30 @@ func init() {
 type fileContentMsg struct {
 	content string
 	err     error
+}
+
+type fileSaveMsg struct {
+	path string
+	err  error
+}
+
+type terraformDebugSessionMsg struct {
+	session *terraformDebugSession
+	err     error
+}
+
+type terraformShellFinishedMsg struct {
+	err error
+}
+
+type terraformFileTreeRefreshMsg struct {
+	tree *TerraformFileTree
+	err  error
+}
+
+type terraformWorkspacePatchMsg struct {
+	fileCount int
+	err       error
 }
 
 // Messages
@@ -92,6 +117,16 @@ type terraformDetailModel struct {
 	fileContentErr error
 	fileLoading    bool
 	fileScroll     int
+	editingFile    bool
+	editPath       string
+	editor         textarea.Model
+	savingFile     bool
+	dirtyFiles     map[string]bool
+	workspaceDirty bool
+	workspaceMsg   string
+	shellLaunching bool
+	patchConfirm   bool
+	patching       bool
 
 	// Terraform Output tab data
 	tfOutputJSON string // raw JSON from the latest output.log
@@ -143,6 +178,10 @@ func newTerraformDetailModel(node PlanDAGNode, data DebugData) terraformDetailMo
 		progress.WithDefaultGradient(),
 		progress.WithWidth(40),
 	)
+	editor := textarea.New()
+	editor.Prompt = ""
+	editor.ShowLineNumbers = true
+	editor.CharLimit = 0
 
 	return terraformDetailModel{
 		node:        node,
@@ -151,6 +190,8 @@ func newTerraformDetailModel(node PlanDAGNode, data DebugData) terraformDetailMo
 		loading:     true,
 		spinner:     s,
 		progressBar: p,
+		editor:      editor,
+		dirtyFiles:  make(map[string]bool),
 		logChan:     make(chan logLineMsg, 50),
 		logFollow:   true,
 		wfErrors:    &workflowErrorsState{},
@@ -223,6 +264,12 @@ func (m terraformDetailModel) fetchData() tea.Cmd {
 		// All lookups are best-effort.
 		var tfOutputJSON string
 		var planPreviewByOpID, planPreviewErrByOpID map[string]string
+		type workspaceCandidate struct {
+			conn     *k8sConnection
+			podName  string
+			basePath string
+		}
+		var workspaceCandidates []workspaceCandidate
 		if conn == nil {
 			return terraformDataMsg{
 				progress: progress,
@@ -246,6 +293,13 @@ func (m terraformDetailModel) fetchData() tea.Cmd {
 				if len(stateData.PreviewErrors) > 0 {
 					planPreviewErrByOpID = stateData.PreviewErrors
 				}
+				if stateData.PodName != "" && stateData.TerraformFilesPath != "" {
+					workspaceCandidates = append(workspaceCandidates, workspaceCandidate{
+						conn:     c,
+						podName:  stateData.PodName,
+						basePath: stateData.TerraformFilesPath,
+					})
+				}
 			}
 			// Also try terraformDataForResource for output logs
 			tfData := index.terraformDataForResource(m.node.ID)
@@ -263,21 +317,30 @@ func (m terraformDetailModel) fetchData() tea.Cmd {
 		// Try both dataplane and control-plane clusters.
 		var fileTree *TerraformFileTree
 		if progress != nil && conn != nil && progress.TerraformName != "" {
-			podName := terraformExecutorPodName(progress.TerraformName)
-		fileTreeSearch:
+			defaultPodName := terraformExecutorPodName(progress.TerraformName)
 			for _, c := range []*k8sConnection{conn.dataplane, conn.controlPlane} {
 				if c == nil {
 					continue
 				}
 				for _, op := range []string{"apply", "diff", "output"} {
-					basePath := terraformFilesBasePath(progress.TerraformName, progress.InstanceID, op)
-					tree, fetchErr := fetchTerraformFileTree(ctx, c, terraformConfigMapNamespace, podName, basePath)
-					if fetchErr == nil && tree != nil && len(tree.Flat) > 0 {
-						tree.conn = c
-						fileTree = tree
-						break fileTreeSearch
-					}
+					workspaceCandidates = append(workspaceCandidates, workspaceCandidate{
+						conn:     c,
+						podName:  defaultPodName,
+						basePath: terraformFilesBasePath(progress.TerraformName, progress.InstanceID, op),
+					})
 				}
+			}
+		}
+	fileTreeSearch:
+		for _, candidate := range workspaceCandidates {
+			if candidate.conn == nil || candidate.podName == "" || candidate.basePath == "" {
+				continue
+			}
+			tree, fetchErr := fetchTerraformFileTree(ctx, candidate.conn, terraformConfigMapNamespace, candidate.podName, candidate.basePath)
+			if fetchErr == nil && tree != nil && len(tree.Flat) > 0 {
+				tree.conn = candidate.conn
+				fileTree = tree
+				break fileTreeSearch
 			}
 		}
 
@@ -303,8 +366,19 @@ func (m terraformDetailModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.progressBar.Width < 20 {
 			m.progressBar.Width = 20
 		}
+		if m.editingFile {
+			m.editor.SetWidth(m.contentWidth())
+			editorHeight := m.bodyHeight() - 4
+			if editorHeight < 3 {
+				editorHeight = 3
+			}
+			m.editor.SetHeight(editorHeight)
+		}
 		return m, tea.ClearScreen
 	case tea.KeyMsg:
+		if m.editingFile {
+			return m.updateEditorKey(msg)
+		}
 		switch msg.String() {
 		case "ctrl+c", "q":
 			if m.logCancel != nil {
@@ -535,6 +609,44 @@ func (m terraformDetailModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 						m.wfErrors.modalScroll = 0
 					}
 				}
+			}
+		case "e":
+			if m.activeTab == tabTfFiles {
+				if m.viewingFile {
+					m.startEditingCurrentFile()
+					return m, nil
+				}
+				if entry := m.selectedFileEntry(); entry != nil && !entry.IsDir {
+					m.fileLoading = true
+					m.viewingFile = true
+					m.editingFile = true
+					m.editPath = entry.Path
+					m.fileScroll = 0
+					return m, m.fetchFileContent(entry.Path)
+				}
+			}
+		case "s":
+			if m.activeTab == tabTfFiles && !m.viewingFile && !m.shellLaunching {
+				m.shellLaunching = true
+				m.workspaceMsg = "Preparing shell session..."
+				return m, m.prepareShellSession()
+			}
+		case "r":
+			if m.activeTab == tabTfFiles && !m.viewingFile && m.fileTree != nil {
+				m.workspaceMsg = "Refreshing workspace..."
+				return m, m.refreshFileTree()
+			}
+		case "p":
+			if m.activeTab == tabTfFiles && !m.viewingFile && m.fileTree != nil && !m.patching {
+				if !m.patchConfirm {
+					m.patchConfirm = true
+					m.workspaceMsg = "Press p again to persist workspace through dataplane-agent patch/apply."
+					return m, nil
+				}
+				m.patchConfirm = false
+				m.patching = true
+				m.workspaceMsg = "Packaging workspace for patch..."
+				return m, m.patchWorkspace()
 			}
 		case "pgup":
 			if m.wfErrors.modalText != "" {
@@ -806,14 +918,265 @@ func (m terraformDetailModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.fileLoading = false
 		m.fileContent = msg.content
 		m.fileContentErr = msg.err
+		if m.editingFile && msg.err == nil {
+			m.configureEditor(msg.content)
+		}
+	case fileSaveMsg:
+		m.savingFile = false
+		if msg.err != nil {
+			m.workspaceMsg = fmt.Sprintf("Save failed: %v", msg.err)
+			return m, nil
+		}
+		m.fileContent = m.editor.Value()
+		if m.dirtyFiles == nil {
+			m.dirtyFiles = make(map[string]bool)
+		}
+		delete(m.dirtyFiles, msg.path)
+		m.workspaceDirty = true
+		m.workspaceMsg = "Saved to executor pod workspace. Persist separately if Omnistrate metadata should change."
+		return m, m.refreshFileTree()
+	case terraformDebugSessionMsg:
+		m.shellLaunching = false
+		if msg.err != nil {
+			m.workspaceMsg = fmt.Sprintf("Shell prep failed: %v", msg.err)
+			return m, nil
+		}
+		if msg.session == nil {
+			m.workspaceMsg = "Shell prep failed: empty session"
+			return m, nil
+		}
+		m.workspaceMsg = "Shell session active. Exit the shell to return to the TUI."
+		return m, m.openShell(msg.session)
+	case terraformShellFinishedMsg:
+		if msg.err != nil {
+			m.workspaceMsg = fmt.Sprintf("Shell exited with error: %v", msg.err)
+		} else {
+			m.workspaceMsg = "Shell exited. Workspace refreshed."
+		}
+		return m, m.refreshFileTree()
+	case terraformFileTreeRefreshMsg:
+		if msg.err != nil {
+			m.workspaceMsg = fmt.Sprintf("Refresh failed: %v", msg.err)
+			return m, nil
+		}
+		if msg.tree != nil {
+			m.fileTree = msg.tree
+			if m.fileCursor >= len(m.fileTree.Flat) {
+				m.fileCursor = len(m.fileTree.Flat) - 1
+			}
+			if m.fileCursor < 0 {
+				m.fileCursor = 0
+			}
+		}
+	case terraformWorkspacePatchMsg:
+		m.patching = false
+		if msg.err != nil {
+			m.workspaceMsg = fmt.Sprintf("Patch failed: %v", msg.err)
+			return m, nil
+		}
+		m.workspaceDirty = false
+		m.workspaceMsg = fmt.Sprintf("Persisted %d files through dataplane-agent patch/apply.", msg.fileCount)
+		return m, nil
 	case spinner.TickMsg:
-		if m.loading || m.fileLoading || m.refreshing || m.isProgressInFlight() || m.logStreaming || m.wfErrors.refreshing || isWorkflowInProgress(m.getTfWfEvents()) {
+		if m.loading || m.fileLoading || m.savingFile || m.shellLaunching || m.patching || m.refreshing || m.isProgressInFlight() || m.logStreaming || m.wfErrors.refreshing || isWorkflowInProgress(m.getTfWfEvents()) {
 			var cmd tea.Cmd
 			m.spinner, cmd = m.spinner.Update(msg)
 			return m, cmd
 		}
 	}
 	return m, nil
+}
+
+func (m terraformDetailModel) updateEditorKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch msg.String() {
+	case "ctrl+c":
+		if m.logCancel != nil {
+			m.logCancel()
+		}
+		return m, tea.Quit
+	case "esc":
+		m.editingFile = false
+		m.editPath = ""
+		m.workspaceMsg = "Edit cancelled."
+		return m, nil
+	case "ctrl+s":
+		if m.savingFile || m.fileLoading {
+			return m, nil
+		}
+		m.savingFile = true
+		m.workspaceMsg = "Saving file to executor pod..."
+		return m, m.saveEditedFile()
+	}
+	if m.fileLoading {
+		return m, nil
+	}
+
+	var cmd tea.Cmd
+	m.editor, cmd = m.editor.Update(msg)
+	if m.dirtyFiles == nil {
+		m.dirtyFiles = make(map[string]bool)
+	}
+	if m.editPath != "" {
+		m.dirtyFiles[m.editPath] = true
+	}
+	return m, cmd
+}
+
+func (m *terraformDetailModel) configureEditor(content string) {
+	m.editor.SetWidth(m.contentWidth())
+	editorHeight := m.bodyHeight() - 4
+	if editorHeight < 3 {
+		editorHeight = 3
+	}
+	m.editor.SetHeight(editorHeight)
+	m.editor.SetValue(content)
+	m.editor.Focus()
+}
+
+func (m *terraformDetailModel) startEditingCurrentFile() {
+	entry := m.selectedFileEntry()
+	if entry == nil || entry.IsDir {
+		return
+	}
+	m.editingFile = true
+	m.editPath = entry.Path
+	m.configureEditor(m.fileContent)
+}
+
+func (m terraformDetailModel) selectedFileEntry() *TerraformFileEntry {
+	if m.fileTree == nil || m.fileCursor < 0 || m.fileCursor >= len(m.fileTree.Flat) {
+		return nil
+	}
+	return m.fileTree.Flat[m.fileCursor]
+}
+
+func (m terraformDetailModel) saveEditedFile() tea.Cmd {
+	return tea.Batch(m.spinner.Tick, func() tea.Msg {
+		if m.fileTree == nil {
+			return fileSaveMsg{path: m.editPath, err: fmt.Errorf("terraform file tree is not loaded")}
+		}
+		c := m.fileTree.conn
+		if c == nil && m.k8sConn != nil {
+			c = m.k8sConn.dataplane
+		}
+		err := writeFileContentToPod(
+			context.Background(),
+			c,
+			m.fileTree.Namespace,
+			m.fileTree.PodName,
+			m.editPath,
+			[]byte(m.editor.Value()),
+		)
+		return fileSaveMsg{path: m.editPath, err: err}
+	})
+}
+
+func (m terraformDetailModel) prepareShellSession() tea.Cmd {
+	return tea.Batch(m.spinner.Tick, func() tea.Msg {
+		if m.fileTree == nil {
+			return terraformDebugSessionMsg{err: fmt.Errorf("terraform file tree is not loaded")}
+		}
+		c := m.fileTree.conn
+		if c == nil && m.k8sConn != nil {
+			c = m.k8sConn.dataplane
+		}
+		terraformName := ""
+		instanceID := m.debugData.InstanceID
+		if m.tfProgress != nil {
+			terraformName = m.tfProgress.TerraformName
+			if m.tfProgress.InstanceID != "" {
+				instanceID = m.tfProgress.InstanceID
+			}
+		}
+		if terraformName == "" {
+			return terraformDebugSessionMsg{err: fmt.Errorf("terraform name is not available")}
+		}
+		session, err := prepareTerraformDebugSessionRemote(
+			context.Background(),
+			c,
+			m.debugData.Token,
+			instanceID,
+			terraformName,
+			m.fileTree.BasePath,
+		)
+		return terraformDebugSessionMsg{session: session, err: err}
+	})
+}
+
+func (m terraformDetailModel) openShell(session *terraformDebugSession) tea.Cmd {
+	c := m.fileTree.conn
+	if c == nil && m.k8sConn != nil {
+		c = m.k8sConn.dataplane
+	}
+	container := session.ContainerName
+	if container == "" {
+		container = "terraform-executor"
+	}
+	cmd := &kubernetesExecCommand{
+		conn:      c,
+		namespace: session.Namespace,
+		podName:   session.PodName,
+		container: container,
+		command:   []string{"/bin/sh", "-lc", interactiveTerraformShellEntrypoint(session)},
+	}
+	return tea.Exec(cmd, func(err error) tea.Msg {
+		return terraformShellFinishedMsg{err: err}
+	})
+}
+
+func (m terraformDetailModel) refreshFileTree() tea.Cmd {
+	return tea.Batch(m.spinner.Tick, func() tea.Msg {
+		if m.fileTree == nil {
+			return terraformFileTreeRefreshMsg{err: fmt.Errorf("terraform file tree is not loaded")}
+		}
+		c := m.fileTree.conn
+		if c == nil && m.k8sConn != nil {
+			c = m.k8sConn.dataplane
+		}
+		tree, err := fetchTerraformFileTree(
+			context.Background(),
+			c,
+			m.fileTree.Namespace,
+			m.fileTree.PodName,
+			m.fileTree.BasePath,
+		)
+		if tree != nil {
+			tree.conn = c
+		}
+		return terraformFileTreeRefreshMsg{tree: tree, err: err}
+	})
+}
+
+func (m terraformDetailModel) patchWorkspace() tea.Cmd {
+	return tea.Batch(m.spinner.Tick, func() tea.Msg {
+		if m.fileTree == nil {
+			return terraformWorkspacePatchMsg{err: fmt.Errorf("terraform file tree is not loaded")}
+		}
+		c := m.fileTree.conn
+		if c == nil && m.k8sConn != nil {
+			c = m.k8sConn.dataplane
+		}
+		terraformName := ""
+		instanceID := m.debugData.InstanceID
+		if m.tfProgress != nil {
+			terraformName = m.tfProgress.TerraformName
+			if m.tfProgress.InstanceID != "" {
+				instanceID = m.tfProgress.InstanceID
+			}
+		}
+		if terraformName == "" {
+			return terraformWorkspacePatchMsg{err: fmt.Errorf("terraform name is not available")}
+		}
+		files, err := readWorkspaceFilesFromPod(context.Background(), c, m.fileTree.Namespace, m.fileTree.PodName, m.fileTree.BasePath)
+		if err != nil {
+			return terraformWorkspacePatchMsg{err: err}
+		}
+		if len(files) == 0 {
+			return terraformWorkspacePatchMsg{err: fmt.Errorf("no patchable terraform files found in workspace")}
+		}
+		err = patchTerraformWorkspaceRemote(context.Background(), c, m.debugData.Token, instanceID, terraformName, files)
+		return terraformWorkspacePatchMsg{fileCount: len(files), err: err}
+	})
 }
 
 func (m terraformDetailModel) logMaxScroll() int {
@@ -997,6 +1360,9 @@ func (m terraformDetailModel) copyableContent() string {
 	if m.previewModalText != "" {
 		return m.previewModalFormattedText()
 	}
+	if m.editingFile {
+		return m.editor.Value()
+	}
 	if m.viewingFile && m.fileContent != "" {
 		return m.fileContent
 	}
@@ -1177,10 +1543,12 @@ func (m terraformDetailModel) getTabContent() string {
 func (m terraformDetailModel) renderFooter() string {
 	style := lipgloss.NewStyle().Foreground(lipgloss.Color("241")).Padding(0, 1)
 	var text string
-	if m.viewingFile {
-		text = "esc: back to files  ↑↓/pgup/pgdn: scroll  y: copy  q: quit"
+	if m.editingFile {
+		text = "ctrl+s: save to pod  esc: cancel edit  q: quit"
+	} else if m.viewingFile {
+		text = "esc: back to files  e: edit  ↑↓/pgup/pgdn: scroll  y: copy  q: quit"
 	} else if m.activeTab == tabTfFiles && m.fileTree != nil && len(m.fileTree.Flat) > 0 {
-		text = "↑↓: navigate  enter: open/expand  tab/shift+tab: switch tabs  esc: back  q: quit"
+		text = "↑↓: navigate  enter: open/expand  e: edit  s: shell  p: persist  r: refresh  tab: switch  esc: back  q: quit"
 	} else if m.activeTab == tabTfOutput && len(m.outputTree) > 0 {
 		text = "↑↓: navigate  enter: expand/collapse  y: copy  tab/shift+tab: switch tabs  esc: back  q: quit"
 	} else if m.activeTab == tabLogs {
@@ -1867,13 +2235,27 @@ func (m terraformDetailModel) renderTerraformFilesTab() string {
 
 	headerStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("255"))
 	fmt.Fprintf(&b, "  %s\n\n", headerStyle.Render(fmt.Sprintf("Files in %s", m.fileTree.BasePath)))
+	if m.workspaceMsg != "" || m.workspaceDirty || m.shellLaunching || m.patching {
+		statusStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("220"))
+		if m.shellLaunching || m.patching {
+			fmt.Fprintf(&b, "  %s %s\n\n", m.spinner.View(), statusStyle.Render(m.workspaceMsg))
+		} else if m.workspaceDirty {
+			msg := m.workspaceMsg
+			if msg == "" {
+				msg = "Workspace has pod-local changes."
+			}
+			fmt.Fprintf(&b, "  %s\n\n", statusStyle.Render(msg))
+		} else {
+			fmt.Fprintf(&b, "  %s\n\n", lipgloss.NewStyle().Foreground(lipgloss.Color("245")).Render(m.workspaceMsg))
+		}
+	}
 
 	dirStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("117")).Bold(true)
 	fileStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("252"))
 	selectedStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("230")).Bold(true).Background(lipgloss.Color("62"))
 
-	// Viewport: reserve 3 lines for header + 1 for footer hint
-	visibleRows := m.bodyHeight() - 4
+	// Viewport: reserve space for header/status/footer hints.
+	visibleRows := m.bodyHeight() - 6
 	if visibleRows < 1 {
 		visibleRows = 1
 	}
@@ -1940,9 +2322,9 @@ func (m terraformDetailModel) renderTerraformFilesTab() string {
 			pos = fmt.Sprintf("%d%%", pct)
 		}
 		dimStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("241"))
-		fmt.Fprintf(&b, "\n  %s\n", dimStyle.Render(fmt.Sprintf("↑↓: navigate  enter: open/expand  esc: back  [%d/%d %s]", m.fileCursor+1, totalEntries, pos)))
+		fmt.Fprintf(&b, "\n  %s\n", dimStyle.Render(fmt.Sprintf("↑↓: navigate  enter: open/expand  e: edit  s: shell  p: persist  r: refresh  [%d/%d %s]", m.fileCursor+1, totalEntries, pos)))
 	} else {
-		fmt.Fprintf(&b, "\n  %s\n", lipgloss.NewStyle().Foreground(lipgloss.Color("241")).Render("↑↓: navigate  enter: open/expand  esc: back"))
+		fmt.Fprintf(&b, "\n  %s\n", lipgloss.NewStyle().Foreground(lipgloss.Color("241")).Render("↑↓: navigate  enter: open/expand  e: edit  s: shell  p: persist  r: refresh"))
 	}
 
 	return b.String()
@@ -1955,6 +2337,9 @@ func (m terraformDetailModel) renderFileContent() string {
 	if m.fileContentErr != nil {
 		errStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("203"))
 		return fmt.Sprintf("\n  %s\n", errStyle.Render(fmt.Sprintf("Error: %v", m.fileContentErr)))
+	}
+	if m.editingFile {
+		return m.renderFileEditor()
 	}
 
 	var b strings.Builder
@@ -2017,6 +2402,27 @@ func (m terraformDetailModel) renderFileContent() string {
 		}
 	}
 
+	return b.String()
+}
+
+func (m terraformDetailModel) renderFileEditor() string {
+	var b strings.Builder
+	entry := m.selectedFileEntry()
+	title := m.editPath
+	if entry != nil {
+		title = entry.RelPath
+	}
+	headerStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("117"))
+	fmt.Fprintf(&b, "  %s\n", headerStyle.Render(title))
+	status := "ctrl+s: save to pod  esc: cancel edit"
+	if m.savingFile {
+		status = fmt.Sprintf("%s Saving...", m.spinner.View())
+	}
+	if m.workspaceMsg != "" {
+		status = m.workspaceMsg + "  " + status
+	}
+	fmt.Fprintf(&b, "  %s\n\n", lipgloss.NewStyle().Foreground(lipgloss.Color("241")).Render(status))
+	b.WriteString(m.editor.View())
 	return b.String()
 }
 

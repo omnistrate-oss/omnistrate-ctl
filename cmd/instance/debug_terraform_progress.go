@@ -64,10 +64,18 @@ func fetchTerraformProgress(ctx context.Context, token string, instanceData *ope
 // progress, history, and plan previews. This avoids needing a second configmap
 // lookup via terraformDataForResource which can fail in some environments.
 type TerraformStateData struct {
-	Progress      *TerraformProgressData
-	History       []TerraformHistoryEntry
-	PlanPreviews  map[string]string // plan preview JSON keyed by operation ID
-	PreviewErrors map[string]string // plan preview errors keyed by operation ID
+	Progress           *TerraformProgressData
+	History            []TerraformHistoryEntry
+	PlanPreviews       map[string]string // plan preview JSON keyed by operation ID
+	PreviewErrors      map[string]string // plan preview errors keyed by operation ID
+	PodName            string
+	TerraformFilesPath string
+}
+
+type TerraformExecutionState struct {
+	PodName            string `json:"podName"`
+	TerraformName      string `json:"terraformName"`
+	TerraformFilesPath string `json:"tfFilesPath"`
 }
 
 // extractTerraformProgressFromIndex extracts terraform progress, history, and plan previews
@@ -102,6 +110,7 @@ func extractTerraformStateData(index *terraformConfigMapIndex, instanceID, resou
 	}
 
 	var history []TerraformHistoryEntry
+	var executionState TerraformExecutionState
 
 	if stateConfigMap != nil {
 		// Parse history from the configmap
@@ -110,6 +119,11 @@ func extractTerraformStateData(index *terraformConfigMapIndex, instanceID, resou
 			if err := json.Unmarshal([]byte(historyJSON), &history); err != nil {
 				// Surface history parse problems so that "no data" states are diagnosable.
 				fmt.Printf("warning: failed to parse terraform history for instance %s, resource %s: %v\n", instanceID, resourceID, err)
+			}
+		}
+		if stateJSON, ok := stateConfigMap.Data["state"]; ok {
+			if err := json.Unmarshal([]byte(stateJSON), &executionState); err != nil {
+				fmt.Printf("warning: failed to parse terraform execution state for instance %s, resource %s: %v\n", instanceID, resourceID, err)
 			}
 		}
 	}
@@ -166,15 +180,17 @@ func extractTerraformStateData(index *terraformConfigMapIndex, instanceID, resou
 
 	// Return nil only when ALL fields are empty — best-effort means we return
 	// whatever data was found, even if only one source had results.
-	if progressData == nil && len(history) == 0 && len(planPreviews) == 0 && len(previewErrors) == 0 {
+	if progressData == nil && len(history) == 0 && len(planPreviews) == 0 && len(previewErrors) == 0 && executionState.PodName == "" && executionState.TerraformFilesPath == "" {
 		return nil
 	}
 
 	return &TerraformStateData{
-		Progress:      progressData,
-		History:       history,
-		PlanPreviews:  planPreviews,
-		PreviewErrors: previewErrors,
+		Progress:           progressData,
+		History:            history,
+		PlanPreviews:       planPreviews,
+		PreviewErrors:      previewErrors,
+		PodName:            executionState.PodName,
+		TerraformFilesPath: executionState.TerraformFilesPath,
 	}
 }
 

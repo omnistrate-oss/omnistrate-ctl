@@ -3,7 +3,6 @@ package testutils
 import (
 	"context"
 	"fmt"
-	"log"
 	"time"
 
 	"github.com/cenkalti/backoff/v4"
@@ -60,11 +59,6 @@ func waitForInstanceState(ctx context.Context, instanceID string, status instanc
 			ticker.Stop()
 			return errors.New("instance deployment cancelled")
 		}
-		if tierVersion != "" {
-			log.Printf("Current instance status: %s, tier version: %s, waiting for status: %s, tier version: %s", currentStatus, currentTierVersion, status, tierVersion)
-			continue
-		}
-		log.Printf("Current instance status: %s, waiting for status: %s", currentStatus, status)
 	}
 
 	if tierVersion != "" {
