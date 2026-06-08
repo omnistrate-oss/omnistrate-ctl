@@ -68,14 +68,37 @@ type TerraformStateData struct {
 	History            []TerraformHistoryEntry
 	PlanPreviews       map[string]string // plan preview JSON keyed by operation ID
 	PreviewErrors      map[string]string // plan preview errors keyed by operation ID
+	ExecutionState     TerraformExecutionState
 	PodName            string
 	TerraformFilesPath string
 }
 
 type TerraformExecutionState struct {
+	Operation          string `json:"operation"`
+	Status             string `json:"status"`
+	StartedAt          string `json:"startedAt"`
+	CompletedAt        string `json:"completedAt"`
+	OperationID        string `json:"operationId"`
+	ResourceVersion    string `json:"resourceVersion"`
 	PodName            string `json:"podName"`
 	TerraformName      string `json:"terraformName"`
 	TerraformFilesPath string `json:"tfFilesPath"`
+}
+
+func (s TerraformExecutionState) hasData() bool {
+	return s.Operation != "" ||
+		s.Status != "" ||
+		s.StartedAt != "" ||
+		s.CompletedAt != "" ||
+		s.OperationID != "" ||
+		s.ResourceVersion != "" ||
+		s.PodName != "" ||
+		s.TerraformName != "" ||
+		s.TerraformFilesPath != ""
+}
+
+func (s TerraformExecutionState) hasWorkspace() bool {
+	return s.PodName != "" && s.TerraformFilesPath != ""
 }
 
 // extractTerraformProgressFromIndex extracts terraform progress, history, and plan previews
@@ -180,7 +203,7 @@ func extractTerraformStateData(index *terraformConfigMapIndex, instanceID, resou
 
 	// Return nil only when ALL fields are empty — best-effort means we return
 	// whatever data was found, even if only one source had results.
-	if progressData == nil && len(history) == 0 && len(planPreviews) == 0 && len(previewErrors) == 0 && executionState.PodName == "" && executionState.TerraformFilesPath == "" {
+	if progressData == nil && len(history) == 0 && len(planPreviews) == 0 && len(previewErrors) == 0 && !executionState.hasData() {
 		return nil
 	}
 
@@ -189,6 +212,7 @@ func extractTerraformStateData(index *terraformConfigMapIndex, instanceID, resou
 		History:            history,
 		PlanPreviews:       planPreviews,
 		PreviewErrors:      previewErrors,
+		ExecutionState:     executionState,
 		PodName:            executionState.PodName,
 		TerraformFilesPath: executionState.TerraformFilesPath,
 	}
