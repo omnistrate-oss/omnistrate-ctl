@@ -9,7 +9,6 @@ import (
 )
 
 const (
-const (
 	importDeploymentCellExample = `# Import a deployment cell from an imported cloud-native network
 omnistrate-ctl account cloud-native-network deployment-cell import ac-x9KpL2mQ7r --region=ap-south-1 --network-id=vpc-0f8a7c6d5e4b3a291 --name=imported-cell-r7x4q2`
 )
