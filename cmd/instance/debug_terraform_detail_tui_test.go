@@ -57,3 +57,45 @@ func TestTerraformDetailTabsOnlySwitchOnTabKeys(t *testing.T) {
 		t.Fatalf("expected shift+tab key to return to %d, got %d", tabProgress, updated.activeTab)
 	}
 }
+
+func TestTerraformOperationSummaryPrefersExecutionState(t *testing.T) {
+	got := terraformOperationSummary(
+		TerraformExecutionState{
+			Operation:       "output",
+			Status:          "completed",
+			ResourceVersion: "48.0",
+			CompletedAt:     "2026-06-08T15:44:32Z",
+		},
+		&TerraformProgressData{Status: "running", ResourceVersion: "47.0"},
+		[]TerraformHistoryEntry{{Operation: "apply", Status: "running"}},
+	)
+	want := "tf-state output completed (rv 48.0, completed 2026-06-08T15:44:32Z)"
+	if got != want {
+		t.Fatalf("terraformOperationSummary() = %q, want %q", got, want)
+	}
+}
+
+func TestTerraformOperationSummaryFallsBackToHistory(t *testing.T) {
+	got := terraformOperationSummary(
+		TerraformExecutionState{},
+		nil,
+		[]TerraformHistoryEntry{
+			{Operation: "diff", Status: "completed"},
+			{Operation: "apply", Status: "failed", CompletedAt: "2026-06-08T15:40:00Z"},
+		},
+	)
+	want := "history apply failed (completed 2026-06-08T15:40:00Z)"
+	if got != want {
+		t.Fatalf("terraformOperationSummary() = %q, want %q", got, want)
+	}
+}
+
+func TestIsProgressInFlightUsesExecutionState(t *testing.T) {
+	model := newTerraformDetailModel(PlanDAGNode{}, DebugData{})
+	model.tfExecutionState = TerraformExecutionState{Operation: "output", Status: "completed", CompletedAt: "2026-06-08T15:44:32Z"}
+	model.tfProgress = &TerraformProgressData{Status: "running", TotalResources: 1}
+
+	if model.isProgressInFlight() {
+		t.Fatal("expected completed execution state to override stale running progress")
+	}
+}

@@ -9,6 +9,11 @@ const defaultCommandPath = "account cloud-native-network"
 // Cmd is the top-level "account cloud-native-network" subcommand.
 var Cmd = NewCommand(defaultCommandPath)
 
+// NewCmd returns a fresh cloud-native-network command tree.
+func NewCmd() *cobra.Command {
+	return NewCommand(defaultCommandPath)
+}
+
 // NewCommand creates a fresh cloud-native-network command tree.
 func NewCommand(commandPath string) *cobra.Command {
 	cmd := &cobra.Command{
@@ -18,11 +23,13 @@ func NewCommand(commandPath string) *cobra.Command {
 		Run:          run,
 		SilenceUsage: true,
 	}
+
 	cmd.AddCommand(newListCmd(commandPath))
 	cmd.AddCommand(newSyncCmd(commandPath))
 	cmd.AddCommand(newImportCmd(commandPath))
 	cmd.AddCommand(newRemoveCmd(commandPath))
 	cmd.AddCommand(newHostClusterCmd(commandPath))
+	cmd.AddCommand(newDeploymentCellCmd(commandPath))
 	return cmd
 }
 

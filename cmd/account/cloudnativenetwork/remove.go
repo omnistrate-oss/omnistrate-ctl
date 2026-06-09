@@ -20,6 +20,7 @@ func newRemoveCmd(commandPath string) *cobra.Command {
 		RunE:         runRemove,
 		SilenceUsage: true,
 	}
+
 	cmd.Flags().String("region", "", "The cloud provider region of the cloud-native network to remove (required)")
 	cmd.Flags().String("network-id", "", "The cloud-native network ID to remove (required)")
 	_ = cmd.MarkFlagRequired("region")

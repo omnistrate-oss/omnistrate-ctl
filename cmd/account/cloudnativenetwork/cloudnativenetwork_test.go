@@ -23,6 +23,7 @@ func TestCloudNativeNetworkCommandStructure(t *testing.T) {
 	assert.True(t, subCmds["import"], "expected import subcommand")
 	assert.True(t, subCmds["remove"], "expected remove subcommand")
 	assert.True(t, subCmds["host-cluster"], "expected host-cluster subcommand")
+	assert.True(t, subCmds["deployment-cell"], "expected deployment-cell subcommand")
 }
 
 func TestRemoveCommandRequiresRegionAndNetworkIDFlags(t *testing.T) {
@@ -132,6 +133,22 @@ func TestSyncTargetsFromFlagsRejectsMalformedNetwork(t *testing.T) {
 	_, err := syncTargetsFromFlags(nil, nil, []string{"vpc-abc123"})
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "expected region:network-id")
+}
+
+func TestDeploymentCellCommandStructure(t *testing.T) {
+	deploymentCellCmd := findSubCommand(t, Cmd, "deployment-cell")
+	require.NotNil(t, deploymentCellCmd)
+
+	subCmds := make(map[string]*cobra.Command)
+	for _, sub := range deploymentCellCmd.Commands() {
+		subCmds[sub.Name()] = sub
+	}
+
+	importCmd := subCmds["import"]
+	require.NotNil(t, importCmd, "expected import subcommand")
+	require.NotNil(t, importCmd.Flags().Lookup("region"))
+	require.NotNil(t, importCmd.Flags().Lookup("network-id"))
+	require.NotNil(t, importCmd.Flags().Lookup("name"))
 }
 
 func findSubCommand(t *testing.T, parent *cobra.Command, name string) *cobra.Command {

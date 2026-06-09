@@ -23,11 +23,13 @@ type CloudNativeNetworkHostClusterImportResult struct {
 	Created       bool   `json:"created"`
 }
 
+// CloudNativeNetworkDeploymentCellImportResult is returned when importing a deployment cell from an imported cloud-native network.
+type CloudNativeNetworkDeploymentCellImportResult = CloudNativeNetworkHostClusterImportResult
+
 // The cloud-native-network endpoints are exposed by consumption-service under the
-// fleet path so that ingress routes them correctly. The v1 SDK currently only
-// generates the AccountConfigApi paths (/accountconfig/...), which are not
-// served, so we call the fleet routes directly. Result JSON shape matches
-// openapiclientv1.ListAccountConfigCloudNativeNetworksResult.
+// fleet path so that ingress routes them correctly. The generated SDK still lacks
+// some region-aware cloud-native-network routes, so we call the fleet routes directly.
+// Result JSON shape matches openapiclientv1.ListAccountConfigCloudNativeNetworksResult.
 func cnnFleetURL(accountConfigID string, suffix ...string) string {
 	base := fmt.Sprintf("%s://%s/2022-09-01-00/fleet/account-config/%s/cloud-native-networks",
 		config.GetHostScheme(), config.GetHost(), url.PathEscape(accountConfigID))
@@ -38,18 +40,26 @@ func cnnFleetURL(accountConfigID string, suffix ...string) string {
 }
 
 func doCNNRequest(ctx context.Context, token, method, requestURL string, body any) (*openapiclientfleet.FleetListAccountConfigCloudNativeNetworksResult, error) {
+	var result openapiclientfleet.FleetListAccountConfigCloudNativeNetworksResult
+	if err := doCNNRequestInto(ctx, token, method, requestURL, body, &result); err != nil {
+		return nil, err
+	}
+	return &result, nil
+}
+
+func doCNNRequestInto(ctx context.Context, token, method, requestURL string, body any, result any) error {
 	var reqBody io.Reader
 	if body != nil {
 		b, err := json.Marshal(body)
 		if err != nil {
-			return nil, fmt.Errorf("failed to marshal request body: %w", err)
+			return fmt.Errorf("failed to marshal request body: %w", err)
 		}
 		reqBody = bytes.NewReader(b)
 	}
 
 	req, err := http.NewRequestWithContext(ctx, method, requestURL, reqBody)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create request: %w", err)
+		return fmt.Errorf("failed to create request: %w", err)
 	}
 	req.Header.Set("Authorization", "Bearer "+token)
 	req.Header.Set("Content-Type", "application/json")
@@ -58,25 +68,24 @@ func doCNNRequest(ctx context.Context, token, method, requestURL string, body an
 	client := getRetryableHttpClient()
 	resp, err := client.Do(req) //nolint:gosec // CLI intentionally targets the configured Omnistrate API host
 	if err != nil {
-		return nil, fmt.Errorf("cloud-native-network request failed: %w", err)
+		return fmt.Errorf("cloud-native-network request failed: %w", err)
 	}
 	defer resp.Body.Close()
 
 	respBody, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return nil, fmt.Errorf("failed to read response body: %w", err)
+		return fmt.Errorf("failed to read response body: %w", err)
 	}
 	if resp.StatusCode >= 400 {
-		return nil, fmt.Errorf("cloud-native-network API returned %d: %s", resp.StatusCode, string(respBody))
+		return fmt.Errorf("cloud-native-network API returned %d: %s", resp.StatusCode, string(respBody))
 	}
 
-	var result openapiclientfleet.FleetListAccountConfigCloudNativeNetworksResult
-	if len(respBody) > 0 {
-		if err := json.Unmarshal(respBody, &result); err != nil {
-			return nil, fmt.Errorf("failed to decode response: %w (body: %s)", err, string(respBody))
+	if len(respBody) > 0 && result != nil {
+		if err := json.Unmarshal(respBody, result); err != nil {
+			return fmt.Errorf("failed to decode response: %w (body: %s)", err, string(respBody))
 		}
 	}
-	return &result, nil
+	return nil
 }
 
 func doCNNHostClusterImportRequest(ctx context.Context, token, method, requestURL string, body any) (*CloudNativeNetworkHostClusterImportResult, error) {
@@ -219,4 +228,14 @@ func ImportAccountConfigCloudNativeNetworkHostCluster(ctx context.Context, token
 		cnnFleetURL(accountConfigID, region, networkID, "host-clusters", hostClusterName, "import"),
 		nil,
 	)
+}
+
+// ImportAccountConfigCloudNativeNetworkDeploymentCell imports a deployment cell from an imported cloud-native network.
+func ImportAccountConfigCloudNativeNetworkDeploymentCell(ctx context.Context, token, accountConfigID, region, networkID, name string) (*CloudNativeNetworkDeploymentCellImportResult, error) {
+	var result CloudNativeNetworkDeploymentCellImportResult
+	err := doCNNRequestInto(ctx, token, http.MethodPost, cnnFleetURL(accountConfigID, region, networkID, "host-clusters", name, "import"), nil, &result)
+	if err != nil {
+		return nil, err
+	}
+	return &result, nil
 }

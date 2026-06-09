@@ -625,7 +625,7 @@ func TestExtractTerraformStateDataIncludesWorkspaceState(t *testing.T) {
 		stateByResource: map[string]*corev1.ConfigMap{
 			"tf-r-abc123": {
 				Data: map[string]string{
-					"state": `{"podName":"tf-executor-tf-test","terraformName":"tf-test","tfFilesPath":"/tmp/tf-r-abc123-inst-1-render/2.0-deadbeef"}`,
+					"state": `{"operation":"output","status":"completed","startedAt":"2026-06-08T15:44:32Z","completedAt":"2026-06-08T15:44:33Z","operationId":"op-1","resourceVersion":"48.0","podName":"tf-executor-tf-test","terraformName":"tf-test","tfFilesPath":"/tmp/tf-r-abc123-inst-1-render/2.0-deadbeef"}`,
 				},
 			},
 		},
@@ -637,6 +637,11 @@ func TestExtractTerraformStateDataIncludesWorkspaceState(t *testing.T) {
 	require.NotNil(stateData)
 	require.Equal("tf-executor-tf-test", stateData.PodName)
 	require.Equal("/tmp/tf-r-abc123-inst-1-render/2.0-deadbeef", stateData.TerraformFilesPath)
+	require.Equal("output", stateData.ExecutionState.Operation)
+	require.Equal("completed", stateData.ExecutionState.Status)
+	require.Equal("48.0", stateData.ExecutionState.ResourceVersion)
+	require.Equal("tf-executor-tf-test", stateData.ExecutionState.PodName)
+	require.Equal("/tmp/tf-r-abc123-inst-1-render/2.0-deadbeef", stateData.ExecutionState.TerraformFilesPath)
 }
 
 func TestExtractTerraformStateDataWithDedicatedPlanPreviewCMs(t *testing.T) {
