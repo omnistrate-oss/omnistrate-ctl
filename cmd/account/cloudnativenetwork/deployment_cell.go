@@ -15,8 +15,6 @@ const (
 omnistrate-ctl %s deployment-cell import ac-x9KpL2mQ7r --region=ap-south-1 --network-id=vpc-0f8a7c6d5e4b3a291 --name=imported-cell-r7x4q2`
 )
 
-var deploymentCellCmd = newDeploymentCellCmd(defaultCommandPath)
-
 func newDeploymentCellCmd(commandPath string) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:          "deployment-cell [operation] [flags]",
