@@ -4,15 +4,18 @@ import (
 	"github.com/spf13/cobra"
 )
 
+const defaultCommandPath = "account cloud-native-network"
+
 // Cmd is the top-level "account cloud-native-network" subcommand.
-var Cmd = newCmd(removeCmd, deploymentCellCmd)
+var Cmd = NewCommand(defaultCommandPath)
 
 // NewCmd returns a fresh cloud-native-network command tree.
 func NewCmd() *cobra.Command {
-	return newCmd(newRemoveCmd(), newDeploymentCellCmd())
+	return NewCommand(defaultCommandPath)
 }
 
-func newCmd(subCommands ...*cobra.Command) *cobra.Command {
+// NewCommand creates a fresh cloud-native-network command tree.
+func NewCommand(commandPath string) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:          "cloud-native-network [operation] [flags]",
 		Short:        "Manage cloud-native networks (VPCs) for a BYOA Cloud Provider Account",
@@ -21,8 +24,12 @@ func newCmd(subCommands ...*cobra.Command) *cobra.Command {
 		SilenceUsage: true,
 	}
 
-	cmd.AddCommand(subCommands...)
-
+	cmd.AddCommand(newListCmd(commandPath))
+	cmd.AddCommand(newSyncCmd(commandPath))
+	cmd.AddCommand(newImportCmd(commandPath))
+	cmd.AddCommand(newRemoveCmd(commandPath))
+	cmd.AddCommand(newHostClusterCmd(commandPath))
+	cmd.AddCommand(newDeploymentCellCmd(commandPath))
 	return cmd
 }
 

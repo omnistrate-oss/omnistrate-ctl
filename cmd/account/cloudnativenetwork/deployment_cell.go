@@ -1,6 +1,8 @@
 package cloudnativenetwork
 
 import (
+	"fmt"
+
 	"github.com/omnistrate-oss/omnistrate-ctl/cmd/common"
 	"github.com/omnistrate-oss/omnistrate-ctl/internal/config"
 	"github.com/omnistrate-oss/omnistrate-ctl/internal/dataaccess"
@@ -10,12 +12,10 @@ import (
 
 const (
 	importDeploymentCellExample = `# Import a deployment cell from an imported cloud-native network
-omnistrate-ctl account cloud-native-network deployment-cell import ac-x9KpL2mQ7r --region=ap-south-1 --network-id=vpc-0f8a7c6d5e4b3a291 --name=imported-cell-r7x4q2`
+omnistrate-ctl %s deployment-cell import ac-x9KpL2mQ7r --region=ap-south-1 --network-id=vpc-0f8a7c6d5e4b3a291 --name=imported-cell-r7x4q2`
 )
 
-var deploymentCellCmd = newDeploymentCellCmd()
-
-func newDeploymentCellCmd() *cobra.Command {
+func newDeploymentCellCmd(commandPath string) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:          "deployment-cell [operation] [flags]",
 		Short:        "Manage deployment cells backed by imported cloud-native networks",
@@ -24,17 +24,17 @@ func newDeploymentCellCmd() *cobra.Command {
 		SilenceUsage: true,
 	}
 
-	cmd.AddCommand(newDeploymentCellImportCmd())
+	cmd.AddCommand(newDeploymentCellImportCmd(commandPath))
 
 	return cmd
 }
 
-func newDeploymentCellImportCmd() *cobra.Command {
+func newDeploymentCellImportCmd(commandPath string) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:          "import [account-id] --region=[region] --network-id=[network-id] --name=[name]",
 		Short:        "Import a deployment cell from an imported cloud-native network",
 		Long:         `Creates or returns an Omnistrate deployment cell record backed by an imported cloud-native network.`,
-		Example:      importDeploymentCellExample,
+		Example:      fmt.Sprintf(importDeploymentCellExample, commandPath),
 		Args:         cobra.ExactArgs(1),
 		RunE:         runDeploymentCellImport,
 		SilenceUsage: true,

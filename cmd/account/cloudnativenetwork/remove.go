@@ -1,6 +1,8 @@
 package cloudnativenetwork
 
 import (
+	"fmt"
+
 	"github.com/omnistrate-oss/omnistrate-ctl/cmd/common"
 	"github.com/omnistrate-oss/omnistrate-ctl/internal/config"
 	"github.com/omnistrate-oss/omnistrate-ctl/internal/dataaccess"
@@ -8,27 +10,21 @@ import (
 	"github.com/spf13/cobra"
 )
 
-const (
-	removeExample = `# Remove a cloud-native network (revert to AVAILABLE)
-omnistrate-ctl account customer cloud-native-network remove [account-id] --network-id=[network-id]`
-)
-
-var removeCmd = newRemoveCmd()
-
-func newRemoveCmd() *cobra.Command {
+func newRemoveCmd(commandPath string) *cobra.Command {
 	cmd := &cobra.Command{
-		Use:          "remove [account-id] --network-id=[network-id]",
+		Use:          "remove [account-id] --region=[region] --network-id=[network-id]",
 		Short:        "Remove an imported cloud-native network (revert to AVAILABLE)",
 		Long:         `Reverts a previously imported cloud-native network from READY back to AVAILABLE status, removing it from the deployment target pool.`,
-		Example:      removeExample,
+		Example:      fmt.Sprintf("# Remove a cloud-native network (revert to AVAILABLE)\nomnistrate-ctl %s remove [account-id] --region=[region] --network-id=[network-id]", commandPath),
 		Args:         cobra.ExactArgs(1),
 		RunE:         runRemove,
 		SilenceUsage: true,
 	}
 
+	cmd.Flags().String("region", "", "The cloud provider region of the cloud-native network to remove (required)")
 	cmd.Flags().String("network-id", "", "The cloud-native network ID to remove (required)")
+	_ = cmd.MarkFlagRequired("region")
 	_ = cmd.MarkFlagRequired("network-id")
-
 	return cmd
 }
 
@@ -36,8 +32,21 @@ func runRemove(cmd *cobra.Command, args []string) error {
 	defer config.CleanupArgsAndFlags(cmd, &args)
 
 	accountID := args[0]
+	region, _ := cmd.Flags().GetString("region")
 	networkID, _ := cmd.Flags().GetString("network-id")
 	output, _ := cmd.Flags().GetString("output")
+
+	if region == "" {
+		return fmt.Errorf("region cannot be empty")
+	}
+	if networkID == "" {
+		return fmt.Errorf("network-id cannot be empty")
+	}
+
+	targets := []dataaccess.CloudNativeNetworkTarget{{
+		Region:    region,
+		NetworkID: networkID,
+	}}
 
 	token, err := common.GetTokenWithLogin()
 	if err != nil {
@@ -53,7 +62,7 @@ func runRemove(cmd *cobra.Command, args []string) error {
 		sm.Start()
 	}
 
-	result, err := dataaccess.UnimportAccountConfigCloudNativeNetwork(cmd.Context(), token, accountID, networkID)
+	result, err := dataaccess.BulkUnimportAccountConfigCloudNativeNetworks(cmd.Context(), token, accountID, targets)
 	if err != nil {
 		utils.HandleSpinnerError(spinner, sm, err)
 		return err

@@ -15,12 +15,12 @@ var Cmd = &cobra.Command{
 
 func init() {
 	Cmd.AddCommand(createCmd)
+	Cmd.AddCommand(cloudnativenetwork.NewCommand("account cloud-native-network"))
 	Cmd.AddCommand(customerCmd)
 	Cmd.AddCommand(updateCmd)
 	Cmd.AddCommand(listCmd)
 	Cmd.AddCommand(describeCmd)
 	Cmd.AddCommand(deleteCmd)
-	Cmd.AddCommand(cloudnativenetwork.NewCmd())
 }
 
 func run(cmd *cobra.Command, args []string) {
