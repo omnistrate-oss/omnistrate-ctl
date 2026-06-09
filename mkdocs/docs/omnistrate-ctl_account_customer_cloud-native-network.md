@@ -26,5 +26,6 @@ omnistrate-ctl account customer cloud-native-network [operation] [flags]
 ### SEE ALSO
 
 * [omnistrate-ctl account customer](omnistrate-ctl_account_customer.md)	 - Manage customer BYOA account onboarding
+* [omnistrate-ctl account customer cloud-native-network deployment-cell](omnistrate-ctl_account_customer_cloud-native-network_deployment-cell.md)	 - Manage deployment cells backed by imported cloud-native networks
 * [omnistrate-ctl account customer cloud-native-network remove](omnistrate-ctl_account_customer_cloud-native-network_remove.md)	 - Remove an imported cloud-native network (revert to AVAILABLE)
 

@@ -13,19 +13,23 @@ const (
 omnistrate-ctl account customer cloud-native-network remove [account-id] --network-id=[network-id]`
 )
 
-var removeCmd = &cobra.Command{
-	Use:          "remove [account-id] --network-id=[network-id]",
-	Short:        "Remove an imported cloud-native network (revert to AVAILABLE)",
-	Long:         `Reverts a previously imported cloud-native network from READY back to AVAILABLE status, removing it from the deployment target pool.`,
-	Example:      removeExample,
-	Args:         cobra.ExactArgs(1),
-	RunE:         runRemove,
-	SilenceUsage: true,
-}
+var removeCmd = newRemoveCmd()
 
-func init() {
-	removeCmd.Flags().String("network-id", "", "The cloud-native network ID to remove (required)")
-	_ = removeCmd.MarkFlagRequired("network-id")
+func newRemoveCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:          "remove [account-id] --network-id=[network-id]",
+		Short:        "Remove an imported cloud-native network (revert to AVAILABLE)",
+		Long:         `Reverts a previously imported cloud-native network from READY back to AVAILABLE status, removing it from the deployment target pool.`,
+		Example:      removeExample,
+		Args:         cobra.ExactArgs(1),
+		RunE:         runRemove,
+		SilenceUsage: true,
+	}
+
+	cmd.Flags().String("network-id", "", "The cloud-native network ID to remove (required)")
+	_ = cmd.MarkFlagRequired("network-id")
+
+	return cmd
 }
 
 func runRemove(cmd *cobra.Command, args []string) error {
