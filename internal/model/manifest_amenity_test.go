@@ -3,6 +3,7 @@ package model
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"gopkg.in/yaml.v3"
@@ -379,6 +380,266 @@ func TestProcessManifestAmenities_InvalidYAML(t *testing.T) {
 	_, err := ProcessManifestAmenities(amenities, tmpDir)
 	if err == nil {
 		t.Fatal("expected error for invalid YAML, got nil")
+	}
+}
+
+func TestProcessManifestAmenities_OnlyEmptyDocuments(t *testing.T) {
+	// Create a temporary directory for test files
+	tmpDir := t.TempDir()
+
+	// Create a YAML file that contains only document separators (no actual content)
+	emptyDocsYAML := "---\n---\n---\n"
+	if err := os.WriteFile(filepath.Join(tmpDir, "empty-docs.yaml"), []byte(emptyDocsYAML), 0600); err != nil {
+		t.Fatalf("failed to create empty-docs.yaml: %v", err)
+	}
+
+	manifestType := AmenityTypeKubernetesManifest
+	amenities := []Amenity{
+		{
+			Name: "empty-docs",
+			Type: &manifestType,
+			Properties: map[string]interface{}{
+				"manifests": []interface{}{
+					map[string]interface{}{"file": "empty-docs.yaml"},
+				},
+			},
+		},
+	}
+
+	// Process the amenities - should fail because file contains no valid YAML documents
+	_, err := ProcessManifestAmenities(amenities, tmpDir)
+	if err == nil {
+		t.Fatal("expected error for file with only empty YAML documents, got nil")
+	}
+
+	// Verify the error message is descriptive
+	expectedSubstring := "contains no valid YAML documents"
+	if !strings.Contains(err.Error(), expectedSubstring) {
+		t.Errorf("expected error to contain %q, got: %v", expectedSubstring, err)
+	}
+}
+
+func TestProcessManifestAmenities_MultiDocumentYAML(t *testing.T) {
+	// Create a temporary directory for test files
+	tmpDir := t.TempDir()
+
+	// Create a multi-document YAML file with three documents
+	multiDocYAML := `apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: config-1
+  namespace: default
+data:
+  key1: value1
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: config-2
+  namespace: default
+data:
+  key2: value2
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: secret-1
+  namespace: default
+type: Opaque
+stringData:
+  password: s3cr3t`
+
+	manifestFile := filepath.Join(tmpDir, "multi-doc.yaml")
+	if err := os.WriteFile(manifestFile, []byte(multiDocYAML), 0600); err != nil {
+		t.Fatalf("failed to create multi-doc.yaml: %v", err)
+	}
+
+	// Create an amenity with a file reference to the multi-document file
+	manifestType := AmenityTypeKubernetesManifest
+	amenities := []Amenity{
+		{
+			Name: "multi-doc-manifests",
+			Type: &manifestType,
+			Properties: map[string]interface{}{
+				"manifests": []interface{}{
+					map[string]interface{}{"file": "multi-doc.yaml"},
+				},
+			},
+		},
+	}
+
+	// Process the amenities
+	result, err := ProcessManifestAmenities(amenities, tmpDir)
+	if err != nil {
+		t.Fatalf("ProcessManifestAmenities failed: %v", err)
+	}
+
+	// Verify the result
+	if len(result) != 1 {
+		t.Fatalf("expected 1 amenity, got %d", len(result))
+	}
+
+	props := result[0].Properties
+	manifests, ok := props["manifests"].([]map[string]interface{})
+	if !ok {
+		t.Fatalf("manifests property is not []map[string]interface{}")
+	}
+
+	// Should have 3 manifests from the 3 documents
+	if len(manifests) != 3 {
+		t.Fatalf("expected 3 manifests from multi-document file, got %d", len(manifests))
+	}
+
+	// Check each document was parsed correctly
+	expectedKinds := []string{"ConfigMap", "ConfigMap", "Secret"}
+	expectedNames := []string{"config-1", "config-2", "secret-1"}
+	for i, expectedKind := range expectedKinds {
+		def, ok := manifests[i]["def"].(map[string]interface{})
+		if !ok {
+			t.Fatalf("manifest %d: def property is not a map[string]interface{}", i)
+		}
+		if def["kind"] != expectedKind {
+			t.Errorf("manifest %d: expected kind '%s', got '%v'", i, expectedKind, def["kind"])
+		}
+		metadata, ok := def["metadata"].(map[string]interface{})
+		if !ok {
+			t.Fatalf("manifest %d: metadata is not a map[string]interface{}", i)
+		}
+		if metadata["name"] != expectedNames[i] {
+			t.Errorf("manifest %d: expected name '%s', got '%v'", i, expectedNames[i], metadata["name"])
+		}
+	}
+}
+
+func TestProcessManifestAmenities_MultiDocumentWithTrailingSeparator(t *testing.T) {
+	// Create a temporary directory for test files
+	tmpDir := t.TempDir()
+
+	// Multi-document YAML with a trailing '---' (empty final document)
+	multiDocYAML := `apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: config-1
+data:
+  key: value
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: config-2
+data:
+  key: value
+---
+`
+
+	manifestFile := filepath.Join(tmpDir, "trailing-sep.yaml")
+	if err := os.WriteFile(manifestFile, []byte(multiDocYAML), 0600); err != nil {
+		t.Fatalf("failed to create trailing-sep.yaml: %v", err)
+	}
+
+	manifestType := AmenityTypeKubernetesManifest
+	amenities := []Amenity{
+		{
+			Name: "trailing-separator",
+			Type: &manifestType,
+			Properties: map[string]interface{}{
+				"manifests": []interface{}{
+					map[string]interface{}{"file": "trailing-sep.yaml"},
+				},
+			},
+		},
+	}
+
+	// Process the amenities - should succeed, ignoring the empty trailing document
+	result, err := ProcessManifestAmenities(amenities, tmpDir)
+	if err != nil {
+		t.Fatalf("ProcessManifestAmenities failed: %v", err)
+	}
+
+	props := result[0].Properties
+	manifests, ok := props["manifests"].([]map[string]interface{})
+	if !ok {
+		t.Fatalf("manifests property is not []map[string]interface{}")
+	}
+
+	// Should only have 2 valid documents (trailing empty document is skipped)
+	if len(manifests) != 2 {
+		t.Fatalf("expected 2 manifests (empty trailing doc skipped), got %d", len(manifests))
+	}
+}
+
+func TestProcessManifestAmenities_MultiDocumentMixedWithInline(t *testing.T) {
+	// Create a temporary directory for test files
+	tmpDir := t.TempDir()
+
+	// Multi-document file
+	multiDocYAML := `apiVersion: v1
+kind: Namespace
+metadata:
+  name: my-ns
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: ns-config
+  namespace: my-ns
+data:
+  key: value`
+
+	manifestFile := filepath.Join(tmpDir, "multi.yaml")
+	if err := os.WriteFile(manifestFile, []byte(multiDocYAML), 0600); err != nil {
+		t.Fatalf("failed to create multi.yaml: %v", err)
+	}
+
+	// Create an amenity with both a multi-doc file and an inline def
+	manifestType := AmenityTypeKubernetesManifest
+	inlineDef := map[string]interface{}{
+		"apiVersion": "v1",
+		"kind":       "Secret",
+		"metadata": map[string]interface{}{
+			"name": "my-secret",
+		},
+	}
+	amenities := []Amenity{
+		{
+			Name: "mixed-multi-doc",
+			Type: &manifestType,
+			Properties: map[string]interface{}{
+				"manifests": []interface{}{
+					map[string]interface{}{"file": "multi.yaml"},
+					map[string]interface{}{"def": inlineDef},
+				},
+			},
+		},
+	}
+
+	// Process the amenities
+	result, err := ProcessManifestAmenities(amenities, tmpDir)
+	if err != nil {
+		t.Fatalf("ProcessManifestAmenities failed: %v", err)
+	}
+
+	props := result[0].Properties
+	manifests, ok := props["manifests"].([]map[string]interface{})
+	if !ok {
+		t.Fatalf("manifests property is not []map[string]interface{}")
+	}
+
+	// Should have 3 manifests: 2 from the multi-doc file + 1 inline
+	if len(manifests) != 3 {
+		t.Fatalf("expected 3 manifests (2 from file + 1 inline), got %d", len(manifests))
+	}
+
+	// Verify order: Namespace, ConfigMap (from file), then Secret (inline)
+	expectedKinds := []string{"Namespace", "ConfigMap", "Secret"}
+	for i, expectedKind := range expectedKinds {
+		def, ok := manifests[i]["def"].(map[string]interface{})
+		if !ok {
+			t.Fatalf("manifest %d: def property is not a map[string]interface{}", i)
+		}
+		if def["kind"] != expectedKind {
+			t.Errorf("manifest %d: expected kind '%s', got '%v'", i, expectedKind, def["kind"])
+		}
 	}
 }
 

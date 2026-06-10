@@ -1,8 +1,11 @@
 package model
 
 import (
+	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 
@@ -97,14 +100,15 @@ func processAmenity(amenity Amenity, baseDir string) (Amenity, error) {
 		return amenity, err
 	}
 
-	// Process each manifest entry and convert file references to inline definitions
+	// Process each manifest entry and convert file references to inline definitions.
+	// A single file entry may produce multiple entries if the file contains multiple YAML documents.
 	processedEntries := make([]ManifestEntry, 0, len(manifestProps.Manifests))
 	for i, entry := range manifestProps.Manifests {
 		processed, err := processManifestEntry(entry, baseDir, i)
 		if err != nil {
 			return amenity, err
 		}
-		processedEntries = append(processedEntries, processed)
+		processedEntries = append(processedEntries, processed...)
 	}
 
 	// Create a new amenity with processed properties
@@ -147,11 +151,13 @@ func parseManifestProperties(properties map[string]interface{}) (ManifestPropert
 	return manifestProps, nil
 }
 
-// processManifestEntry processes a single manifest entry, reading file content if necessary
-func processManifestEntry(entry ManifestEntry, baseDir string, index int) (ManifestEntry, error) {
+// processManifestEntry processes a single manifest entry, reading file content if necessary.
+// A file may contain multiple YAML documents separated by '---', in which case multiple
+// ManifestEntry values are returned.
+func processManifestEntry(entry ManifestEntry, baseDir string, index int) ([]ManifestEntry, error) {
 	// If it already has a def, return as-is
 	if len(entry.Def) > 0 {
-		return ManifestEntry{Def: entry.Def}, nil
+		return []ManifestEntry{{Def: entry.Def}}, nil
 	}
 
 	// Read the file and parse YAML to map
@@ -162,14 +168,32 @@ func processManifestEntry(entry ManifestEntry, baseDir string, index int) (Manif
 
 	content, err := os.ReadFile(filePath)
 	if err != nil {
-		return ManifestEntry{}, fmt.Errorf("manifest entry %d: failed to read file '%s': %w", index, filePath, err)
+		return nil, fmt.Errorf("manifest entry %d: failed to read file '%s': %w", index, filePath, err)
 	}
 
-	// Parse YAML content into a map
-	var defMap map[string]interface{}
-	if err := yaml.Unmarshal(content, &defMap); err != nil {
-		return ManifestEntry{}, fmt.Errorf("manifest entry %d: failed to parse YAML from file '%s': %w", index, filePath, err)
+	// Parse all YAML documents from the file
+	decoder := yaml.NewDecoder(bytes.NewReader(content))
+	var entries []ManifestEntry
+
+	for {
+		var defMap map[string]interface{}
+		err := decoder.Decode(&defMap)
+		if errors.Is(err, io.EOF) {
+			break
+		}
+		if err != nil {
+			return nil, fmt.Errorf("manifest entry %d: failed to parse YAML from file '%s': %w", index, filePath, err)
+		}
+		// Skip empty documents (e.g. from trailing '---')
+		if len(defMap) == 0 {
+			continue
+		}
+		entries = append(entries, ManifestEntry{Def: defMap})
 	}
 
-	return ManifestEntry{Def: defMap}, nil
+	if len(entries) == 0 {
+		return nil, fmt.Errorf("manifest entry %d: file '%s' contains no valid YAML documents", index, filePath)
+	}
+
+	return entries, nil
 }
