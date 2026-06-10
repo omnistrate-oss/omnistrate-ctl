@@ -43,6 +43,10 @@ func TestSyncCommandSupportsRegionAndNetworkIDFlags(t *testing.T) {
 	require.NotNil(t, syncCmd.Flags().Lookup("region"))
 	require.NotNil(t, syncCmd.Flags().Lookup("network-id"))
 	require.NotNil(t, syncCmd.Flags().Lookup("network"))
+	includeHostClustersFlag := syncCmd.Flags().Lookup("include-host-clusters")
+	require.NotNil(t, includeHostClustersFlag)
+	assert.Equal(t, "bool", includeHostClustersFlag.Value.Type())
+	assert.Equal(t, "false", includeHostClustersFlag.DefValue)
 }
 
 func TestHostClusterImportCommandRequiresFlags(t *testing.T) {

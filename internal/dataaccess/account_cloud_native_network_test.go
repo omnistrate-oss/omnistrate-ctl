@@ -66,6 +66,36 @@ func TestSyncAccountConfigCloudNativeNetworksByTargetSendsRegionAndNetworkID(t *
 	require.True(t, ok)
 	assert.Equal(t, azureVNetID, target["cloudNativeNetworkId"])
 	assert.Equal(t, "eastus", target["region"])
+	assert.NotContains(t, target, "includeHostClusters")
+}
+
+func TestSyncAccountConfigCloudNativeNetworksByTargetSendsIncludeHostClusters(t *testing.T) {
+	includeHostClusters := true
+	var capturedBody map[string]any
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		require.NoError(t, json.NewDecoder(r.Body).Decode(&capturedBody))
+
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"cloudNativeNetworks":[]}`))
+	}))
+	defer server.Close()
+	setAccountCloudNativeNetworkTestHost(t, server.URL)
+
+	_, err := SyncAccountConfigCloudNativeNetworksByTarget(context.Background(), "test-token", "ac-test", []CloudNativeNetworkTarget{
+		{Region: "eastus", IncludeHostClusters: &includeHostClusters},
+	})
+	require.NoError(t, err)
+
+	targets, ok := capturedBody["cloudNativeNetworks"].([]any)
+	require.True(t, ok)
+	require.Len(t, targets, 1)
+	target, ok := targets[0].(map[string]any)
+	require.True(t, ok)
+	assert.Equal(t, "eastus", target["region"])
+	assert.Equal(t, true, target["includeHostClusters"])
+	assert.NotContains(t, target, "cloudNativeNetworkId")
 }
 
 func TestBulkImportAccountConfigCloudNativeNetworksSendsRegion(t *testing.T) {
