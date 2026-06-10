@@ -570,6 +570,40 @@ func TestPlanPreviewsForResource_MultiOpCM(t *testing.T) {
 	require.Equal("Warning: partial failure", previewErrors["op3.nonce3"])
 }
 
+func TestPlanPreviewDiffsForResource_PreferSeparateDiffCMs(t *testing.T) {
+	require := require.New(t)
+
+	configMaps := []corev1.ConfigMap{
+		{
+			ObjectMeta: metav1.ObjectMeta{Name: "tf-plan-diff-tf-r-abc-instance-xyz"},
+			Data: map[string]string{
+				"op1.nonce1-plan-preview": "  # aws_instance.web will be created\n  + resource \"aws_instance\" \"web\" {\n    }\n",
+			},
+		},
+		{
+			ObjectMeta: metav1.ObjectMeta{Name: "tf-plan-tf-r-abc-instance-xyz"},
+			Data: map[string]string{
+				"op1.nonce1-plan-preview": `{"format_version":"1.2","resource_changes":[]}`,
+			},
+		},
+	}
+
+	index := newTerraformConfigMapIndex("instance-xyz", configMaps)
+
+	require.Empty(index.planPreviewByResource, "diff ConfigMap must not be mis-indexed as a JSON plan ConfigMap")
+	require.Len(index.planPreviewMultiByResource["tf-r-abc"], 1)
+	require.Len(index.planPreviewDiffMultiByResource["tf-r-abc"], 1)
+
+	diffs := index.planPreviewDiffsForResource("r-abc")
+	require.Len(diffs, 1)
+	require.Contains(diffs["op1.nonce1"], "aws_instance.web will be created")
+
+	previews, previewErrors := index.planPreviewsForResource("r-abc")
+	require.Len(previews, 1)
+	require.Equal(`{"format_version":"1.2","resource_changes":[]}`, previews["op1.nonce1"])
+	require.Empty(previewErrors)
+}
+
 func TestPlanPreviewsForResource_MixedFormats(t *testing.T) {
 	require := require.New(t)
 

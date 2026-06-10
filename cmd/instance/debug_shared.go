@@ -85,6 +85,7 @@ type ResourceDebugInfo struct {
 	TerraformFiles            map[string]string       `json:"terraformFiles,omitempty"`
 	TerraformLogs             map[string]string       `json:"terraformLogs,omitempty"`
 	TerraformPlanPreview      map[string]string       `json:"terraformPlanPreview,omitempty"`
+	TerraformPlanPreviewDiff  map[string]string       `json:"terraformPlanPreviewDiff,omitempty"`
 	TerraformPlanPreviewError map[string]string       `json:"terraformPlanPreviewError,omitempty"`
 
 	// Operator-specific data (populated for operator resources)
@@ -98,7 +99,7 @@ type ResourceDebugInfo struct {
 func (r *ResourceDebugInfo) hasData() bool {
 	return r.Helm != nil || r.Operator != nil || r.Compose != nil || r.TerraformProgress != nil ||
 		len(r.TerraformHistory) > 0 || len(r.TerraformFiles) > 0 || len(r.TerraformLogs) > 0 ||
-		len(r.TerraformPlanPreview) > 0 || len(r.TerraformPlanPreviewError) > 0
+		len(r.TerraformPlanPreview) > 0 || len(r.TerraformPlanPreviewDiff) > 0 || len(r.TerraformPlanPreviewError) > 0
 }
 
 func parseHelmData(debugData map[string]interface{}) *HelmData {

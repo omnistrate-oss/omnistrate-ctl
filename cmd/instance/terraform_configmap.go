@@ -22,6 +22,7 @@ const (
 	terraformConfigMapNamespace      = "dataplane-agent"
 	terraformProgressConfigMapPrefix = "terraform-progress-"
 	terraformPlanPreviewPrefix       = "tf-plan-"
+	terraformPlanPreviewDiffPrefix   = "tf-plan-diff-"
 
 	// planPreviewDataKey is the ConfigMap data key that holds the full plan JSON
 	// inside a per-operation plan preview ConfigMap.
@@ -33,8 +34,9 @@ const (
 )
 
 var (
-	terraformStateConfigMapPattern = regexp.MustCompile(`^tf-state-(.+)-instance-(.+)$`)
-	terraformPlanConfigMapPattern  = regexp.MustCompile(`^tf-plan-(.+)-instance-(.+)$`)
+	terraformStateConfigMapPattern    = regexp.MustCompile(`^tf-state-(.+)-instance-(.+)$`)
+	terraformPlanConfigMapPattern     = regexp.MustCompile(`^` + regexp.QuoteMeta(terraformPlanPreviewPrefix) + `(.+)-instance-(.+)$`)
+	terraformPlanDiffConfigMapPattern = regexp.MustCompile(`^` + regexp.QuoteMeta(terraformPlanPreviewDiffPrefix) + `(.+)-instance-(.+)$`)
 )
 
 // planPreviewEntry holds a dedicated tf-plan-* ConfigMap together with the
@@ -45,16 +47,18 @@ type planPreviewEntry struct {
 }
 
 type terraformConfigMapIndex struct {
-	instanceID            string
-	instanceSuffix        string
-	stateByResource       map[string]*corev1.ConfigMap
-	progress              []*corev1.ConfigMap
-	planPreviewByResource map[string][]planPreviewEntry
+	instanceID                string
+	instanceSuffix            string
+	stateByResource           map[string]*corev1.ConfigMap
+	progress                  []*corev1.ConfigMap
+	planPreviewByResource     map[string][]planPreviewEntry
+	planPreviewDiffByResource map[string][]planPreviewEntry
 
 	// planPreviewMultiByResource maps resource ID → tf-plan-* ConfigMaps that
 	// belong to this instance but contain multiple operations in their data keys
 	// (Format 2: no operation suffix in CM name, data keys are "{opID}-plan-preview").
-	planPreviewMultiByResource map[string][]*corev1.ConfigMap
+	planPreviewMultiByResource     map[string][]*corev1.ConfigMap
+	planPreviewDiffMultiByResource map[string][]*corev1.ConfigMap
 }
 
 // k8sConnection holds both the clientset and rest config for k8s operations
@@ -251,18 +255,37 @@ func loadTerraformConfigMapIndex(ctx context.Context, clientset kubernetes.Inter
 
 func newTerraformConfigMapIndex(instanceID string, configMaps []corev1.ConfigMap) *terraformConfigMapIndex {
 	index := &terraformConfigMapIndex{
-		instanceID:                 instanceID,
-		instanceSuffix:             normalizeInstanceIDForConfigMap(instanceID),
-		stateByResource:            make(map[string]*corev1.ConfigMap),
-		progress:                   []*corev1.ConfigMap{},
-		planPreviewByResource:      make(map[string][]planPreviewEntry),
-		planPreviewMultiByResource: make(map[string][]*corev1.ConfigMap),
+		instanceID:                     instanceID,
+		instanceSuffix:                 normalizeInstanceIDForConfigMap(instanceID),
+		stateByResource:                make(map[string]*corev1.ConfigMap),
+		progress:                       []*corev1.ConfigMap{},
+		planPreviewByResource:          make(map[string][]planPreviewEntry),
+		planPreviewDiffByResource:      make(map[string][]planPreviewEntry),
+		planPreviewMultiByResource:     make(map[string][]*corev1.ConfigMap),
+		planPreviewDiffMultiByResource: make(map[string][]*corev1.ConfigMap),
 	}
 
 	for i := range configMaps {
 		cm := &configMaps[i]
 		if strings.HasPrefix(cm.Name, terraformProgressConfigMapPrefix) {
 			index.progress = append(index.progress, cm)
+			continue
+		}
+
+		// Match tf-plan-diff-* ConfigMaps before tf-plan-* because the prefixes overlap.
+		if planDiffMatches := terraformPlanDiffConfigMapPattern.FindStringSubmatch(cm.Name); len(planDiffMatches) == 3 {
+			resourceID := planDiffMatches[1]
+			instanceAndOp := planDiffMatches[2]
+
+			opSuffix := extractPlanPreviewOpSuffix(instanceAndOp, index.instanceSuffix, index.instanceID)
+			if opSuffix != "" {
+				index.planPreviewDiffByResource[resourceID] = append(index.planPreviewDiffByResource[resourceID], planPreviewEntry{
+					cm:       cm,
+					opSuffix: opSuffix,
+				})
+			} else if isExactInstanceMatch(instanceAndOp, index.instanceSuffix, index.instanceID) {
+				index.planPreviewDiffMultiByResource[resourceID] = append(index.planPreviewDiffMultiByResource[resourceID], cm)
+			}
 			continue
 		}
 
@@ -319,8 +342,14 @@ func (index *terraformConfigMapIndex) merge(other *terraformConfigMapIndex) {
 	for resourceID, entries := range other.planPreviewByResource {
 		index.planPreviewByResource[resourceID] = append(index.planPreviewByResource[resourceID], entries...)
 	}
+	for resourceID, entries := range other.planPreviewDiffByResource {
+		index.planPreviewDiffByResource[resourceID] = append(index.planPreviewDiffByResource[resourceID], entries...)
+	}
 	for resourceID, cms := range other.planPreviewMultiByResource {
 		index.planPreviewMultiByResource[resourceID] = append(index.planPreviewMultiByResource[resourceID], cms...)
+	}
+	for resourceID, cms := range other.planPreviewDiffMultiByResource {
+		index.planPreviewDiffMultiByResource[resourceID] = append(index.planPreviewDiffMultiByResource[resourceID], cms...)
 	}
 }
 
@@ -528,6 +557,40 @@ func (index *terraformConfigMapIndex) planPreviewsForResource(resourceID string)
 	}
 
 	return previews, previewErrors
+}
+
+// planPreviewDiffsForResource returns human-readable plan preview text from
+// dedicated tf-plan-diff-* ConfigMaps for a given resource. The returned map is
+// keyed by operation ID/suffix. It intentionally does not read tf-plan-* JSON
+// previews; callers can fall back to planPreviewsForResource when no diff exists.
+func (index *terraformConfigMapIndex) planPreviewDiffsForResource(resourceID string) map[string]string {
+	diffs := make(map[string]string)
+	if index == nil {
+		return diffs
+	}
+
+	for _, key := range resourceConfigMapKeys(resourceID) {
+		entries, ok := index.planPreviewDiffByResource[key]
+		if ok {
+			for _, entry := range entries {
+				if v, ok := entry.cm.Data[planPreviewDataKey]; ok && v != "" {
+					diffs[entry.opSuffix] = v
+				}
+			}
+		}
+
+		multiCMs, multiOk := index.planPreviewDiffMultiByResource[key]
+		if multiOk {
+			for _, cm := range multiCMs {
+				p, _ := findAllPlanPreviews(cm.Data)
+				for opID, v := range p {
+					diffs[opID] = v
+				}
+			}
+		}
+	}
+
+	return diffs
 }
 
 // extractPlanPreviewOpSuffix extracts the operation suffix from the instance-and-operation

@@ -67,6 +67,7 @@ type TerraformStateData struct {
 	Progress           *TerraformProgressData
 	History            []TerraformHistoryEntry
 	PlanPreviews       map[string]string // plan preview JSON keyed by operation ID
+	PlanPreviewDiffs   map[string]string // human-readable plan preview text keyed by operation ID
 	PreviewErrors      map[string]string // plan preview errors keyed by operation ID
 	ExecutionState     TerraformExecutionState
 	PodName            string
@@ -154,6 +155,7 @@ func extractTerraformStateData(index *terraformConfigMapIndex, instanceID, resou
 	// Load plan previews/errors from dedicated tf-plan-* ConfigMaps first.
 	// These are per-operation ConfigMaps with data keys "plan-preview" and "plan-preview-error".
 	planPreviews, previewErrors := index.planPreviewsForResource(resourceID)
+	planPreviewDiffs := index.planPreviewDiffsForResource(resourceID)
 
 	// Fall back to the state configmap if dedicated CMs yielded nothing.
 	// State CM stores previews as "{opID}-plan-preview" / "{opID}-plan-preview-error" keys.
@@ -203,7 +205,7 @@ func extractTerraformStateData(index *terraformConfigMapIndex, instanceID, resou
 
 	// Return nil only when ALL fields are empty — best-effort means we return
 	// whatever data was found, even if only one source had results.
-	if progressData == nil && len(history) == 0 && len(planPreviews) == 0 && len(previewErrors) == 0 && !executionState.hasData() {
+	if progressData == nil && len(history) == 0 && len(planPreviews) == 0 && len(planPreviewDiffs) == 0 && len(previewErrors) == 0 && !executionState.hasData() {
 		return nil
 	}
 
@@ -211,6 +213,7 @@ func extractTerraformStateData(index *terraformConfigMapIndex, instanceID, resou
 		Progress:           progressData,
 		History:            history,
 		PlanPreviews:       planPreviews,
+		PlanPreviewDiffs:   planPreviewDiffs,
 		PreviewErrors:      previewErrors,
 		ExecutionState:     executionState,
 		PodName:            executionState.PodName,

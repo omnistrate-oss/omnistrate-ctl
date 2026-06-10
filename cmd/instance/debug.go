@@ -447,6 +447,9 @@ func collectTerraformDebugInfo(ctx context.Context, token string, instanceData *
 			if len(stateData.PlanPreviews) > 0 {
 				info.TerraformPlanPreview = stateData.PlanPreviews
 			}
+			if len(stateData.PlanPreviewDiffs) > 0 {
+				info.TerraformPlanPreviewDiff = stateData.PlanPreviewDiffs
+			}
 			if len(stateData.PreviewErrors) > 0 {
 				info.TerraformPlanPreviewError = stateData.PreviewErrors
 			}
