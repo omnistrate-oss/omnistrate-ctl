@@ -3,6 +3,7 @@ package model
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"gopkg.in/yaml.v3"
@@ -379,6 +380,42 @@ func TestProcessManifestAmenities_InvalidYAML(t *testing.T) {
 	_, err := ProcessManifestAmenities(amenities, tmpDir)
 	if err == nil {
 		t.Fatal("expected error for invalid YAML, got nil")
+	}
+}
+
+func TestProcessManifestAmenities_OnlyEmptyDocuments(t *testing.T) {
+	// Create a temporary directory for test files
+	tmpDir := t.TempDir()
+
+	// Create a YAML file that contains only document separators (no actual content)
+	emptyDocsYAML := "---\n---\n---\n"
+	if err := os.WriteFile(filepath.Join(tmpDir, "empty-docs.yaml"), []byte(emptyDocsYAML), 0600); err != nil {
+		t.Fatalf("failed to create empty-docs.yaml: %v", err)
+	}
+
+	manifestType := AmenityTypeKubernetesManifest
+	amenities := []Amenity{
+		{
+			Name: "empty-docs",
+			Type: &manifestType,
+			Properties: map[string]interface{}{
+				"manifests": []interface{}{
+					map[string]interface{}{"file": "empty-docs.yaml"},
+				},
+			},
+		},
+	}
+
+	// Process the amenities - should fail because file contains no valid YAML documents
+	_, err := ProcessManifestAmenities(amenities, tmpDir)
+	if err == nil {
+		t.Fatal("expected error for file with only empty YAML documents, got nil")
+	}
+
+	// Verify the error message is descriptive
+	expectedSubstring := "contains no valid YAML documents"
+	if !strings.Contains(err.Error(), expectedSubstring) {
+		t.Errorf("expected error to contain %q, got: %v", expectedSubstring, err)
 	}
 }
 
