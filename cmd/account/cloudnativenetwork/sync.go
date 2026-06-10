@@ -23,7 +23,10 @@ omnistrate-ctl %s sync [account-id]
 omnistrate-ctl %s sync [account-id] --region=us-east-1 --region=us-west-2
 
 # Sync specific networks
-omnistrate-ctl %s sync [account-id] --region=us-east-1 --network-id=vpc-abc123`, commandPath, commandPath, commandPath),
+omnistrate-ctl %s sync [account-id] --region=us-east-1 --network-id=vpc-abc123
+
+# Sync networks and include host clusters in discovery
+omnistrate-ctl %s sync [account-id] --region=us-east-1 --include-host-clusters`, commandPath, commandPath, commandPath, commandPath),
 		Args:         cobra.ExactArgs(1),
 		RunE:         runSync,
 		SilenceUsage: true,
@@ -31,6 +34,7 @@ omnistrate-ctl %s sync [account-id] --region=us-east-1 --network-id=vpc-abc123`,
 	cmd.Flags().StringSlice("region", nil, "Cloud region to discover (repeatable)")
 	cmd.Flags().StringSlice("network-id", nil, "Cloud-native network ID to sync in the specified region (repeatable)")
 	cmd.Flags().StringSlice("network", nil, "Specific network to sync in region:network-id format (repeatable)")
+	cmd.Flags().Bool("include-host-clusters", false, "Include host clusters when syncing targeted cloud-native networks")
 	return cmd
 }
 
@@ -42,11 +46,22 @@ func runSync(cmd *cobra.Command, args []string) error {
 	regions, _ := cmd.Flags().GetStringSlice("region")
 	networkIDs, _ := cmd.Flags().GetStringSlice("network-id")
 	networks, _ := cmd.Flags().GetStringSlice("network")
+	includeHostClusters, _ := cmd.Flags().GetBool("include-host-clusters")
 
 	targets, err := syncTargetsFromFlags(regions, networkIDs, networks)
 	if err != nil {
 		utils.PrintError(err)
 		return err
+	}
+	if includeHostClusters && len(targets) == 0 {
+		err := fmt.Errorf("include-host-clusters requires at least one sync target (--region, --network-id, or --network)")
+		utils.PrintError(err)
+		return err
+	}
+	if includeHostClusters {
+		for i := range targets {
+			targets[i].IncludeHostClusters = &includeHostClusters
+		}
 	}
 
 	token, err := common.GetTokenWithLogin()
