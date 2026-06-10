@@ -16,9 +16,21 @@ func formatTerraformPlan(rawJSON string) string {
 		return ""
 	}
 
+	planJSON := rawJSON
 	var plan tfPlan
-	if err := json.Unmarshal([]byte(rawJSON), &plan); err != nil {
-		// Not valid JSON — return as-is
+	if err := json.Unmarshal([]byte(planJSON), &plan); err != nil {
+		extracted, ok := extractEmbeddedTerraformPlanJSON(rawJSON)
+		if !ok {
+			// Not valid JSON — return as-is
+			return rawJSON
+		}
+		planJSON = extracted
+		if err := json.Unmarshal([]byte(planJSON), &plan); err != nil {
+			return rawJSON
+		}
+	}
+
+	if !looksLikeTerraformPlan(plan) {
 		return rawJSON
 	}
 
@@ -92,6 +104,43 @@ func formatTerraformPlan(rawJSON string) string {
 		toCreate+toReplace, toUpdate, toDelete+toReplace)
 
 	return b.String()
+}
+
+func extractEmbeddedTerraformPlanJSON(raw string) (string, bool) {
+	search := raw
+	offset := 0
+	for {
+		idx := strings.Index(search, "{")
+		if idx == -1 {
+			return "", false
+		}
+		start := offset + idx
+		candidate := strings.TrimSpace(raw[start:])
+
+		dec := json.NewDecoder(strings.NewReader(candidate))
+		var msg json.RawMessage
+		if err := dec.Decode(&msg); err == nil {
+			var plan tfPlan
+			if err := json.Unmarshal(msg, &plan); err == nil && looksLikeTerraformPlan(plan) {
+				return string(msg), true
+			}
+		}
+
+		next := start + 1
+		if next >= len(raw) {
+			return "", false
+		}
+		search = raw[next:]
+		offset = next
+	}
+}
+
+func looksLikeTerraformPlan(plan tfPlan) bool {
+	return plan.FormatVersion != "" ||
+		plan.TerraformVersion != "" ||
+		plan.PlannedValues != nil ||
+		len(plan.ResourceChanges) > 0 ||
+		len(plan.OutputChanges) > 0
 }
 
 // ──────────────────────────────────────────────────────────────────────────────

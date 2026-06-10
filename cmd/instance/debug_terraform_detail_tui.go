@@ -73,7 +73,7 @@ type terraformDataMsg struct {
 	k8sConn              *k8sConnections
 	fileTree             *TerraformFileTree
 	tfOutputJSON         string            // latest terraform output JSON from configmap
-	planPreviewByOpID    map[string]string // plan preview JSON keyed by operation ID
+	planPreviewByOpID    map[string]string // display plan preview keyed by operation ID
 	planPreviewErrByOpID map[string]string // plan preview errors keyed by operation ID
 	err                  error
 }
@@ -373,11 +373,23 @@ func (m terraformDetailModel) fetchData() tea.Cmd {
 			if indexErr != nil || index == nil {
 				continue
 			}
-			// Extract plan previews (dedicated tf-plan-* CMs first, state CM fallback)
+			// Extract plan previews. Prefer human-readable tf-plan-diff-* previews
+			// for the modal, then fall back to JSON previews.
 			stateData := extractTerraformStateData(index, m.debugData.InstanceID, m.node.ID)
 			if stateData != nil {
 				if len(stateData.PlanPreviews) > 0 {
-					planPreviewByOpID = stateData.PlanPreviews
+					planPreviewByOpID = make(map[string]string, len(stateData.PlanPreviews)+len(stateData.PlanPreviewDiffs))
+					for opID, preview := range stateData.PlanPreviews {
+						planPreviewByOpID[opID] = preview
+					}
+				}
+				if len(stateData.PlanPreviewDiffs) > 0 {
+					if planPreviewByOpID == nil {
+						planPreviewByOpID = make(map[string]string, len(stateData.PlanPreviewDiffs))
+					}
+					for opID, preview := range stateData.PlanPreviewDiffs {
+						planPreviewByOpID[opID] = preview
+					}
 				}
 				if len(stateData.PreviewErrors) > 0 {
 					planPreviewErrByOpID = stateData.PreviewErrors

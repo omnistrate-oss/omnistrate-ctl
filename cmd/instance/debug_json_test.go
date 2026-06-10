@@ -865,6 +865,32 @@ func TestResourceDebugInfoPlanPreviewJSON(t *testing.T) {
 	require.NotContains(decoded, "terraformPlanPreviewError")
 }
 
+func TestResourceDebugInfoPlanPreviewDiffJSON(t *testing.T) {
+	require := require.New(t)
+
+	info := ResourceDebugInfo{
+		ResourceID:   "tf-r-1",
+		ResourceKey:  "database",
+		ResourceType: "terraform",
+		TerraformPlanPreview: map[string]string{
+			"op-1": `{"format_version":"1.2","planned_values":{}}`,
+		},
+		TerraformPlanPreviewDiff: map[string]string{
+			"op-1": "# aws_db_instance.main will be created",
+		},
+	}
+
+	jsonBytes, err := json.Marshal(info)
+	require.NoError(err)
+
+	var decoded map[string]interface{}
+	err = json.Unmarshal(jsonBytes, &decoded)
+	require.NoError(err)
+
+	require.Contains(decoded, "terraformPlanPreview")
+	require.Contains(decoded, "terraformPlanPreviewDiff")
+}
+
 func TestResourceDebugInfoPlanPreviewErrorJSON(t *testing.T) {
 	require := require.New(t)
 
@@ -910,6 +936,7 @@ func TestResourceDebugInfoOmitsEmptyPlanPreview(t *testing.T) {
 	require.NoError(err)
 
 	require.NotContains(decoded, "terraformPlanPreview")
+	require.NotContains(decoded, "terraformPlanPreviewDiff")
 	require.NotContains(decoded, "terraformPlanPreviewError")
 }
 
@@ -1033,6 +1060,16 @@ func TestResourceDebugInfoHasDataWithPlanPreview(t *testing.T) {
 		},
 	}
 	require.True(info2.hasData())
+
+	infoDiff := ResourceDebugInfo{
+		ResourceID:   "r-1",
+		ResourceKey:  "db",
+		ResourceType: "terraform",
+		TerraformPlanPreviewDiff: map[string]string{
+			"op-1": "# aws_instance.web will be created",
+		},
+	}
+	require.True(infoDiff.hasData())
 
 	// Empty info still returns false
 	info3 := ResourceDebugInfo{

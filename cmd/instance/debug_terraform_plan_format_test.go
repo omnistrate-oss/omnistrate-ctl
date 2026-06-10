@@ -24,6 +24,35 @@ func TestFormatTerraformPlan_InvalidJSON(t *testing.T) {
 	require.Equal(t, raw, result)
 }
 
+func TestFormatTerraformPlan_PrefixedPlanJSON(t *testing.T) {
+	rawPlan := `{
+		"format_version": "1.2",
+		"terraform_version": "1.11.5",
+		"resource_changes": [{
+			"address": "aws_instance.web",
+			"type": "aws_instance",
+			"name": "web",
+			"change": {
+				"actions": ["create"],
+				"before": null,
+				"after": {"ami": "ami-123", "instance_type": "t3.micro"},
+				"after_unknown": {"id": true}
+			}
+		}]
+	}`
+	raw := "[... truncated older logs ...]\n" + rawPlan
+
+	result := formatTerraformPlan(raw)
+
+	require.NotContains(t, result, "[... truncated older logs ...]")
+	require.NotContains(t, result, `"format_version"`)
+	require.Contains(t, result, "Terraform v1.11.5")
+	require.Contains(t, result, "# aws_instance.web will be created")
+	require.Contains(t, result, `+ resource "aws_instance" "web"`)
+	require.Contains(t, result, "(known after apply)")
+	require.Contains(t, result, "Plan: 1 to add, 0 to change, 0 to destroy.")
+}
+
 func TestFormatTerraformPlan_NoResourceChanges(t *testing.T) {
 	raw := `{"format_version":"1.2","planned_values":{}}`
 	result := formatTerraformPlan(raw)
