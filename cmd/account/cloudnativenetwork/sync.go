@@ -34,7 +34,7 @@ omnistrate-ctl %s sync [account-id] --region=us-east-1 --include-host-clusters`,
 	cmd.Flags().StringSlice("region", nil, "Cloud region to discover (repeatable)")
 	cmd.Flags().StringSlice("network-id", nil, "Cloud-native network ID to sync in the specified region (repeatable)")
 	cmd.Flags().StringSlice("network", nil, "Specific network to sync in region:network-id format (repeatable)")
-	cmd.Flags().Bool("include-host-clusters", false, "Include host clusters when refreshing targeted cloud-native networks")
+	cmd.Flags().Bool("include-host-clusters", false, "Include host clusters when syncing targeted cloud-native networks")
 	return cmd
 }
 
