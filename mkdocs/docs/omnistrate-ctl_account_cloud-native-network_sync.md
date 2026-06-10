@@ -30,7 +30,7 @@ omnistrate-ctl account cloud-native-network sync [account-id] --region=us-east-1
 
 ```
   -h, --help                    help for sync
-      --include-host-clusters   Include host clusters when refreshing targeted cloud-native networks
+      --include-host-clusters   Include host clusters when syncing targeted cloud-native networks
       --network strings         Specific network to sync in region:network-id format (repeatable)
       --network-id strings      Cloud-native network ID to sync in the specified region (repeatable)
       --region strings          Cloud region to discover (repeatable)
