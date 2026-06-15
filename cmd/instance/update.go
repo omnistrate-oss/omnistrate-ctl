@@ -124,7 +124,7 @@ func runUpdate(cmd *cobra.Command, args []string) error {
 	}
 
 	// Format instance
-	formattedInstance := formatInstance(&searchRes.ResourceInstanceResults[0], false)
+	formattedInstance := formatInstance(&searchRes.ResourceInstanceResults[0])
 
 	// Print output
 	if err = utils.PrintTextTableJsonOutput(output, formattedInstance); err != nil {

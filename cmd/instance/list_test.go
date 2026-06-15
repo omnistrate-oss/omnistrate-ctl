@@ -32,7 +32,7 @@ func TestFormatListedInstance(t *testing.T) {
 			Region:         &region,
 			Status:         &status,
 			TierVersion:    &tierVersion,
-			SubscriptionId:  listStringPtr("sub-override"),
+			SubscriptionId: listStringPtr("sub-override"),
 			CustomTags:     []openapiclientfleet.CustomTag{{Key: "env", Value: "prod"}},
 		},
 	}
