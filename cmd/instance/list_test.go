@@ -149,6 +149,74 @@ func TestFetchListedInstancesSkipsHostClusterNotFoundErrors(t *testing.T) {
 	require.Equal(t, "instance-valid", instances[0].ConsumptionResourceInstanceResult.GetId())
 }
 
+func TestFetchListedInstancesSkipsDeletedServicesWhenListingEnvironments(t *testing.T) {
+	ctx := context.Background()
+	listServices := func(context.Context, string) (*openapiclientv1.ListServiceResult, error) {
+		return &openapiclientv1.ListServiceResult{Ids: []string{"s-deleted", "s-valid"}}, nil
+	}
+	listEnvironments := func(_ context.Context, _ string, serviceID string) (*openapiclientv1.ListServiceEnvironmentsResult, error) {
+		switch serviceID {
+		case "s-deleted":
+			return nil, errors.New("bad_request\nDetail: Invalid request: service not found")
+		case "s-valid":
+			return &openapiclientv1.ListServiceEnvironmentsResult{Ids: []string{"se-valid"}}, nil
+		default:
+			t.Fatalf("unexpected service ID %q", serviceID)
+			return nil, nil
+		}
+	}
+	listInstances := func(_ context.Context, _ string, serviceID, environmentID string, _ *dataaccess.ListResourceInstanceOptions) ([]openapiclientfleet.ResourceInstance, error) {
+		instanceID := serviceID + "-" + environmentID + "-instance"
+		return []openapiclientfleet.ResourceInstance{
+			{
+				ServiceName:    serviceID,
+				ServiceEnvName: environmentID,
+				ConsumptionResourceInstanceResult: openapiclientfleet.DescribeResourceInstanceResult{
+					Id: &instanceID,
+				},
+			},
+		}, nil
+	}
+
+	instances, err := fetchListedInstances(ctx, "token", listServices, listEnvironments, listInstances)
+
+	require.NoError(t, err)
+	require.Len(t, instances, 1)
+	require.Equal(t, "s-valid-se-valid-instance", instances[0].ConsumptionResourceInstanceResult.GetId())
+}
+
+func TestFetchListedInstancesSkipsDeletedServicesWhenListingInstances(t *testing.T) {
+	ctx := context.Background()
+	listServices := func(context.Context, string) (*openapiclientv1.ListServiceResult, error) {
+		return &openapiclientv1.ListServiceResult{Ids: []string{"s-deleted", "s-valid"}}, nil
+	}
+	listEnvironments := func(context.Context, string, string) (*openapiclientv1.ListServiceEnvironmentsResult, error) {
+		return &openapiclientv1.ListServiceEnvironmentsResult{Ids: []string{"se-valid"}}, nil
+	}
+	listInstances := func(_ context.Context, _ string, serviceID, environmentID string, _ *dataaccess.ListResourceInstanceOptions) ([]openapiclientfleet.ResourceInstance, error) {
+		if serviceID == "s-deleted" {
+			return nil, errors.New("bad_request\nDetail: Invalid request: service not found")
+		}
+
+		instanceID := serviceID + "-" + environmentID + "-instance"
+		return []openapiclientfleet.ResourceInstance{
+			{
+				ServiceName:    serviceID,
+				ServiceEnvName: environmentID,
+				ConsumptionResourceInstanceResult: openapiclientfleet.DescribeResourceInstanceResult{
+					Id: &instanceID,
+				},
+			},
+		}, nil
+	}
+
+	instances, err := fetchListedInstances(ctx, "token", listServices, listEnvironments, listInstances)
+
+	require.NoError(t, err)
+	require.Len(t, instances, 1)
+	require.Equal(t, "s-valid-se-valid-instance", instances[0].ConsumptionResourceInstanceResult.GetId())
+}
+
 func listStringPtr(value string) *string {
 	return &value
 }
