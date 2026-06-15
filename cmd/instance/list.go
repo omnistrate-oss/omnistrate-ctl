@@ -223,7 +223,8 @@ func isSkippableListInstancesError(err error) bool {
 
 	msg := strings.ToLower(err.Error())
 	return strings.Contains(msg, "not_found") && strings.Contains(msg, "host cluster not found") ||
-		strings.Contains(msg, "bad_request") && strings.Contains(msg, "invalid request: service not found")
+		strings.Contains(msg, "bad_request") && strings.Contains(msg, "invalid request: service not found") ||
+		strings.Contains(msg, "auth_failure")
 }
 
 func formatListedInstance(instance *openapiclientfleet.ResourceInstance, truncateNames bool) model.Instance {
