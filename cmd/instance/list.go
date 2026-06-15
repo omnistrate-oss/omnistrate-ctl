@@ -201,6 +201,9 @@ func fetchListedInstances(
 		for _, environmentID := range environments.GetIds() {
 			environmentInstances, err := listResourceInstances(ctx, token, serviceID, environmentID, options)
 			if err != nil {
+				if isSkippableListInstancesError(err) {
+					continue
+				}
 				return nil, err
 			}
 			instances = append(instances, environmentInstances...)
@@ -208,6 +211,15 @@ func fetchListedInstances(
 	}
 
 	return instances, nil
+}
+
+func isSkippableListInstancesError(err error) bool {
+	if err == nil {
+		return false
+	}
+
+	msg := strings.ToLower(err.Error())
+	return strings.Contains(msg, "not_found") && strings.Contains(msg, "host cluster not found")
 }
 
 func formatListedInstance(instance *openapiclientfleet.ResourceInstance, truncateNames bool) model.Instance {

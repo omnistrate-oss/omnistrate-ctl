@@ -2,6 +2,7 @@ package instance
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	"github.com/omnistrate-oss/omnistrate-ctl/internal/dataaccess"
@@ -105,6 +106,47 @@ func TestFetchListedInstancesUsesFleetListForEachServiceEnvironment(t *testing.T
 	require.Len(t, instances, 3)
 	require.Equal(t, "s-1-se-1-instance", instances[0].ConsumptionResourceInstanceResult.GetId())
 	require.Equal(t, "s-2-se-3-instance", instances[2].ConsumptionResourceInstanceResult.GetId())
+}
+
+func TestFetchListedInstancesSkipsHostClusterNotFoundErrors(t *testing.T) {
+	ctx := context.Background()
+	listServices := func(context.Context, string) (*openapiclientv1.ListServiceResult, error) {
+		return &openapiclientv1.ListServiceResult{Ids: []string{"s-1", "s-2"}}, nil
+	}
+	listEnvironments := func(_ context.Context, _ string, serviceID string) (*openapiclientv1.ListServiceEnvironmentsResult, error) {
+		switch serviceID {
+		case "s-1":
+			return &openapiclientv1.ListServiceEnvironmentsResult{Ids: []string{"se-broken"}}, nil
+		case "s-2":
+			return &openapiclientv1.ListServiceEnvironmentsResult{Ids: []string{"se-valid"}}, nil
+		default:
+			t.Fatalf("unexpected service ID %q", serviceID)
+			return nil, nil
+		}
+	}
+
+	listInstances := func(_ context.Context, _ string, serviceID, environmentID string, _ *dataaccess.ListResourceInstanceOptions) ([]openapiclientfleet.ResourceInstance, error) {
+		if serviceID == "s-1" && environmentID == "se-broken" {
+			return nil, errors.New("not_found\nDetail: Invalid request: failed to describe resource instance: failed to query host cluster: host cluster not found: record not found")
+		}
+
+		instanceID := "instance-valid"
+		return []openapiclientfleet.ResourceInstance{
+			{
+				ServiceName:    serviceID,
+				ServiceEnvName: environmentID,
+				ConsumptionResourceInstanceResult: openapiclientfleet.DescribeResourceInstanceResult{
+					Id: &instanceID,
+				},
+			},
+		}, nil
+	}
+
+	instances, err := fetchListedInstances(ctx, "token", listServices, listEnvironments, listInstances)
+
+	require.NoError(t, err)
+	require.Len(t, instances, 1)
+	require.Equal(t, "instance-valid", instances[0].ConsumptionResourceInstanceResult.GetId())
 }
 
 func listStringPtr(value string) *string {
