@@ -83,6 +83,6 @@ func TestListAllSnapshotsOmitsEmptyFilters(t *testing.T) {
 
 	require.NoError(t, err)
 	require.NotNil(t, result)
-	assert.Empty(t, capturedQuery.Get("productTierId"))
-	assert.Empty(t, capturedQuery.Get("snapshotType"))
+	assert.NotContains(t, capturedQuery, "productTierId")
+	assert.NotContains(t, capturedQuery, "snapshotType")
 }
