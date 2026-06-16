@@ -85,8 +85,14 @@ func CreateInstanceSnapshot(ctx context.Context, token, serviceID, environmentID
 	return
 }
 
-// ListAllSnapshots lists all snapshots for a service environment (no instance ID required).
-func ListAllSnapshots(ctx context.Context, token, serviceID, environmentID string) (res *openapiclientfleet.FleetListInstanceSnapshotResult, err error) {
+// ListAllSnapshotsOptions controls optional filters for service environment snapshot listing.
+type ListAllSnapshotsOptions struct {
+	ProductTierID string
+	SnapshotType  string
+}
+
+// ListAllSnapshots lists snapshots for a service environment (no instance ID required).
+func ListAllSnapshots(ctx context.Context, token, serviceID, environmentID string, opts ListAllSnapshotsOptions) (res *openapiclientfleet.FleetListInstanceSnapshotResult, err error) {
 	ctxWithToken := context.WithValue(ctx, openapiclientfleet.ContextAccessToken, token)
 	apiClient := getFleetClient()
 
@@ -95,6 +101,12 @@ func ListAllSnapshots(ctx context.Context, token, serviceID, environmentID strin
 		serviceID,
 		environmentID,
 	)
+	if opts.ProductTierID != "" {
+		req = req.ProductTierId(opts.ProductTierID)
+	}
+	if opts.SnapshotType != "" {
+		req = req.SnapshotType(opts.SnapshotType)
+	}
 
 	var r *http.Response
 	defer func() {

@@ -2,6 +2,7 @@ package snapshot
 
 import (
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/omnistrate-oss/omnistrate-ctl/cmd/common"
@@ -14,6 +15,10 @@ import (
 const (
 	listExample = `# List all snapshots for a service environment
 omnistrate-ctl snapshot list --service-id service-abcd --environment-id env-1234`
+
+	snapshotTypeManual    = "ManualSnapshot"
+	snapshotTypeAutomated = "AutomatedSnapshot"
+	snapshotTypeAll       = "all"
 )
 
 var listCmd = &cobra.Command{
@@ -29,6 +34,8 @@ func init() {
 	listCmd.Args = cobra.NoArgs
 	listCmd.Flags().String("service-id", "", "The ID of the service (required)")
 	listCmd.Flags().String("environment-id", "", "The ID of the environment (required)")
+	listCmd.Flags().String("snapshot-type", snapshotTypeManual, "Filter by snapshot type: ManualSnapshot, AutomatedSnapshot, or all")
+	listCmd.Flags().String("product-tier-id", "", "Filter snapshots by product tier ID")
 
 	if err := listCmd.MarkFlagRequired("service-id"); err != nil {
 		return
@@ -69,6 +76,23 @@ func runList(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
+	snapshotType, err := cmd.Flags().GetString("snapshot-type")
+	if err != nil {
+		utils.PrintError(err)
+		return err
+	}
+	snapshotType, err = normalizeSnapshotType(snapshotType)
+	if err != nil {
+		utils.PrintError(err)
+		return err
+	}
+
+	productTierID, err := cmd.Flags().GetString("product-tier-id")
+	if err != nil {
+		utils.PrintError(err)
+		return err
+	}
+
 	output, err := cmd.Flags().GetString("output")
 	if err != nil {
 		utils.PrintError(err)
@@ -89,7 +113,10 @@ func runList(cmd *cobra.Command, args []string) error {
 		sm.Start()
 	}
 
-	result, err := dataaccess.ListAllSnapshots(cmd.Context(), token, serviceID, environmentID)
+	result, err := dataaccess.ListAllSnapshots(cmd.Context(), token, serviceID, environmentID, dataaccess.ListAllSnapshotsOptions{
+		ProductTierID: productTierID,
+		SnapshotType:  snapshotType,
+	})
 	if err != nil {
 		utils.HandleSpinnerError(spinner, sm, err)
 		return err
@@ -137,4 +164,17 @@ func formatSnapshotDisplayTime(raw string) string {
 	}
 
 	return parsed.UTC().Format(snapshotDisplayTimeLayout)
+}
+
+func normalizeSnapshotType(raw string) (string, error) {
+	switch strings.ToLower(strings.TrimSpace(raw)) {
+	case "", strings.ToLower(snapshotTypeManual), "manual":
+		return snapshotTypeManual, nil
+	case strings.ToLower(snapshotTypeAutomated), "automated":
+		return snapshotTypeAutomated, nil
+	case snapshotTypeAll:
+		return "", nil
+	default:
+		return "", fmt.Errorf("invalid snapshot type %q (supported: ManualSnapshot, AutomatedSnapshot, all)", raw)
+	}
 }
