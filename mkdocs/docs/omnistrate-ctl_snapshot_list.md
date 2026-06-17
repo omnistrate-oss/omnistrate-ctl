@@ -20,9 +20,11 @@ omnistrate-ctl snapshot list --service-id service-abcd --environment-id env-1234
 ### Options
 
 ```
-      --environment-id string   The ID of the environment (required)
-  -h, --help                    help for list
-      --service-id string       The ID of the service (required)
+      --environment-id string    The ID of the environment (required)
+  -h, --help                     help for list
+      --product-tier-id string   Filter snapshots by product tier ID
+      --service-id string        The ID of the service (required)
+      --snapshot-type string     Filter by snapshot type: ManualSnapshot, AutomatedSnapshot, or all (default "ManualSnapshot")
 ```
 
 ### Options inherited from parent commands
