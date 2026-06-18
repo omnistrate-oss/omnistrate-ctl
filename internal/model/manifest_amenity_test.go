@@ -110,6 +110,46 @@ spec:
 	}
 }
 
+func TestProcessManifestAmenitiesPreservesDisable(t *testing.T) {
+	tmpDir := t.TempDir()
+	testManifest := `apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: test-config`
+
+	manifestFile := filepath.Join(tmpDir, "test-manifest.yaml")
+	if err := os.WriteFile(manifestFile, []byte(testManifest), 0600); err != nil {
+		t.Fatalf("failed to create test manifest file: %v", err)
+	}
+
+	manifestType := AmenityTypeKubernetesManifest
+	disable := `$sys.deploymentCell.isImported`
+	amenities := []Amenity{
+		{
+			Name:    "test-config",
+			Type:    &manifestType,
+			Disable: &disable,
+			Properties: map[string]interface{}{
+				"manifests": []interface{}{
+					map[string]interface{}{"file": "test-manifest.yaml"},
+				},
+			},
+		},
+	}
+
+	result, err := ProcessManifestAmenities(amenities, tmpDir)
+	if err != nil {
+		t.Fatalf("ProcessManifestAmenities failed: %v", err)
+	}
+
+	if len(result) != 1 {
+		t.Fatalf("expected 1 amenity, got %d", len(result))
+	}
+	if result[0].Disable == nil || *result[0].Disable != disable {
+		t.Fatalf("unexpected disable: %#v", result[0].Disable)
+	}
+}
+
 func TestProcessManifestAmenities_InlineDefinition(t *testing.T) {
 	// Create an amenity with an inline definition as a map
 	manifestType := AmenityTypeKubernetesManifest

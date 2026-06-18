@@ -180,6 +180,7 @@ func convertToDeploymentCellConfiguration(cellConfig interface{}) (model.Deploym
 			Name:        amenity.Name,
 			Description: amenity.Description,
 			Type:        amenity.Type,
+			Disable:     amenity.Disable,
 			DependsOn:   amenity.DependsOn,
 			Properties:  amenity.Properties,
 		}

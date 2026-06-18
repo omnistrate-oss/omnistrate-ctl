@@ -42,6 +42,24 @@ func TestDeploymentCellTemplateForCloudProviderNormalizesAndSelectsExistingConfi
 	require.NotContains(t, managedAmenityNames(template), "Headlamp")
 }
 
+func TestDeploymentCellTemplateForCloudProviderPreservesDisable(t *testing.T) {
+	const disable = `$sys.deploymentCell.isImported`
+	amenity := apiAmenity("External DNS", true)
+	amenity.Disable = utils.ToPtr(disable)
+	configs := map[string]openapiclient.DeploymentCellConfiguration{
+		"aws": {
+			Amenities: []openapiclient.Amenity{amenity},
+		},
+	}
+
+	template, err := deploymentCellTemplateForCloudProvider(&configs, "aws")
+	require.NoError(t, err)
+
+	require.Len(t, template.ManagedAmenities, 1)
+	require.NotNil(t, template.ManagedAmenities[0].Disable)
+	require.Equal(t, disable, *template.ManagedAmenities[0].Disable)
+}
+
 func TestDeploymentCellTemplateForCloudProviderReturnsErrorForMissingNonBYOCConfig(t *testing.T) {
 	configs := map[string]openapiclient.DeploymentCellConfiguration{
 		"aws": {
