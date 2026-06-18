@@ -333,6 +333,7 @@ func updateDeploymentCellFromFile(ctx context.Context, token string, deploymentC
 		pendingChanges = append(pendingChanges, fleet.Amenity{
 			Name:        utils.ToPtr(a.Name),
 			Description: a.Description,
+			Disable:     a.Disable,
 			Type:        a.Type,
 			DependsOn:   a.DependsOn,
 			Properties:  a.Properties,
@@ -344,6 +345,7 @@ func updateDeploymentCellFromFile(ctx context.Context, token string, deploymentC
 		pendingChanges = append(pendingChanges, fleet.Amenity{
 			Name:        utils.ToPtr(a.Name),
 			Description: a.Description,
+			Disable:     a.Disable,
 			Type:        a.Type,
 			DependsOn:   a.DependsOn,
 			Properties:  a.Properties,
