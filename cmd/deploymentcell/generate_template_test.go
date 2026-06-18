@@ -18,7 +18,7 @@ func TestDeploymentCellTemplateForCloudProviderReturnsErrorForMissingBYOCOnPremC
 	configs := map[string]openapiclient.DeploymentCellConfiguration{
 		"aws": {
 			Amenities: []openapiclient.Amenity{
-				apiAmenity("AWS Amenity", true),
+				apiAmenity("AWS Amenity"),
 			},
 		},
 	}
@@ -31,7 +31,7 @@ func TestDeploymentCellTemplateForCloudProviderNormalizesAndSelectsExistingConfi
 	configs := map[string]openapiclient.DeploymentCellConfiguration{
 		"byoc-onprem": {
 			Amenities: []openapiclient.Amenity{
-				apiAmenity("Custom BYOC Template Amenity", true),
+				apiAmenity("Custom BYOC Template Amenity"),
 			},
 		},
 	}
@@ -44,7 +44,7 @@ func TestDeploymentCellTemplateForCloudProviderNormalizesAndSelectsExistingConfi
 
 func TestDeploymentCellTemplateForCloudProviderPreservesDisable(t *testing.T) {
 	const disable = `$sys.deploymentCell.isImported`
-	amenity := apiAmenity("External DNS", true)
+	amenity := apiAmenity("External DNS")
 	amenity.Disable = utils.ToPtr(disable)
 	configs := map[string]openapiclient.DeploymentCellConfiguration{
 		"aws": {
@@ -64,7 +64,7 @@ func TestDeploymentCellTemplateForCloudProviderReturnsErrorForMissingNonBYOCConf
 	configs := map[string]openapiclient.DeploymentCellConfiguration{
 		"aws": {
 			Amenities: []openapiclient.Amenity{
-				apiAmenity("AWS Amenity", true),
+				apiAmenity("AWS Amenity"),
 			},
 		},
 	}
@@ -73,12 +73,12 @@ func TestDeploymentCellTemplateForCloudProviderReturnsErrorForMissingNonBYOCConf
 	require.ErrorContains(t, err, "no configuration found for cloud provider 'gcp'")
 }
 
-func apiAmenity(name string, isManaged bool) openapiclient.Amenity {
+func apiAmenity(name string) openapiclient.Amenity {
 	return openapiclient.Amenity{
 		Name:        utils.ToPtr(name),
 		Description: utils.ToPtr(name),
 		Type:        utils.ToPtr("Helm"),
-		IsManaged:   utils.ToPtr(isManaged),
+		IsManaged:   utils.ToPtr(true),
 	}
 }
 
