@@ -17,7 +17,6 @@ func DebugHostCluster(ctx context.Context, token string, hostClusterID string) (
 	ctxWithToken := context.WithValue(ctx, openapiclientfleet.ContextAccessToken, token)
 	apiClient := getFleetClient()
 
-	fmt.Printf("Debugging host cluster with ID: %s\n", hostClusterID)
 	req := apiClient.HostclusterApiAPI.HostclusterApiDebugHostCluster(ctxWithToken, hostClusterID).
 		IncludeAmenitiesInstallationLogs(true)
 

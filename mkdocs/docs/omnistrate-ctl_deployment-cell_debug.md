@@ -1,10 +1,10 @@
 ## omnistrate-ctl deployment-cell debug
 
-Debug deployment cell resources and retrieve custom helm execution logs
+Debug deployment cell amenities
 
 ### Synopsis
 
-Debug deployment cell resources with custom helm execution logs and save them to a specified output directory.
+Debug deployment cell amenity template resolution, per-amenity status, rendered artifacts, and workflow logs. Use --output=json for automation.
 
 ```
 omnistrate-ctl deployment-cell debug [flags]
@@ -13,6 +13,8 @@ omnistrate-ctl deployment-cell debug [flags]
 ### Examples
 
 ```
+  omnistrate-ctl deployment-cell debug --id <deployment-cell-id>
+  omnistrate-ctl deployment-cell debug --id <deployment-cell-id> --output json
   omnistrate-ctl deployment-cell debug --id <deployment-cell-id> --output-dir ./debug-output
 ```
 
@@ -21,7 +23,7 @@ omnistrate-ctl deployment-cell debug [flags]
 ```
   -h, --help                help for debug
   -i, --id string           Deployment cell ID (required)
-  -d, --output-dir string   Output directory to save debug logs (default "./debug-output")
+  -d, --output-dir string   Optional directory to export Helm logs
 ```
 
 ### Options inherited from parent commands
