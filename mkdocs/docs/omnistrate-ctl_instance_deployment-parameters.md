@@ -7,28 +7,30 @@ List API parameters configurable for instance deployment
 This command retrieves and displays the configurable API parameters from the service offerings API that can be used during instance deployment.
 
 ```
-omnistrate-ctl instance deployment-parameters --service=[service] --plan=[plan] --version=[version] --resource=[resource] [flags]
+omnistrate-ctl instance deployment-parameters --service=[service] --environment=[environment] --plan=[plan] --version=[version] --resource=[resource] [flags]
 ```
 
 ### Examples
 
 ```
-  omnistrate-ctl instance deployment-parameters --service=mysql --plan=mysql --version=latest --resource=mySQL
-  omnistrate-ctl instance deployment-parameters --service=mysql --plan=mysql --version=latest --resource=mySQL --output=json
+  omnistrate-ctl instance deployment-parameters --service=mysql --environment=dev --plan=mysql --version=latest --resource=mySQL
+  omnistrate-ctl instance deployment-parameters --service=mysql --environment=dev --plan=mysql --version=latest --resource=mySQL --output=json
 ```
 
 ### Options
 
 ```
-  -h, --help              help for deployment-parameters
-  -o, --output string     Output format (table|json) (default "table")
-      --plan string       Service plan name
-      --resource string   Resource name
-      --service string    Service name
-      --version string    Service plan version (latest|preferred|1.0 etc.) (default "preferred")
+      --environment string   Environment name or ID
+  -h, --help                 help for deployment-parameters
+  -o, --output string        Output format (table|json) (default "table")
+      --plan string          Service plan name
+      --resource string      Resource name
+      --service string       Service name
+      --version string       Service plan version (latest|preferred|1.0 etc.) (default "preferred")
 ```
 
 ### SEE ALSO
 
 * [omnistrate-ctl instance](omnistrate-ctl_instance.md)	 - Manage Instance Deployments for your service
+* [omnistrate-ctl instance deployment-parameters template](omnistrate-ctl_instance_deployment-parameters_template.md)	 - Generate a JSON parameter template for instance create
 
