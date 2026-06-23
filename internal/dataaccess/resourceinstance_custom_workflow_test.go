@@ -23,7 +23,10 @@ func TestExecuteResourceInstanceCustomWorkflow(t *testing.T) {
 		capturedMethod = r.Method
 		capturedPath = r.URL.Path
 		capturedAuth = r.Header.Get("Authorization")
-		require.NoError(t, json.NewDecoder(r.Body).Decode(&capturedBody))
+		if err := json.NewDecoder(r.Body).Decode(&capturedBody); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
 
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusAccepted)
@@ -93,7 +96,10 @@ func TestDeleteResourceInstancePassesSkipFinalSnapshot(t *testing.T) {
 		capturedMethod = r.Method
 		capturedPath = r.URL.Path
 		capturedAuth = r.Header.Get("Authorization")
-		require.NoError(t, json.NewDecoder(r.Body).Decode(&capturedBody))
+		if err := json.NewDecoder(r.Body).Decode(&capturedBody); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
 
 		w.WriteHeader(http.StatusNoContent)
 	}))
