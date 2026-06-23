@@ -3,11 +3,11 @@ package snapshot
 import (
 	"fmt"
 	"strings"
-	"time"
 
 	"github.com/omnistrate-oss/omnistrate-ctl/cmd/common"
 	"github.com/omnistrate-oss/omnistrate-ctl/internal/config"
 	"github.com/omnistrate-oss/omnistrate-ctl/internal/dataaccess"
+	"github.com/omnistrate-oss/omnistrate-ctl/internal/formatter"
 	"github.com/omnistrate-oss/omnistrate-ctl/internal/utils"
 	"github.com/spf13/cobra"
 )
@@ -43,22 +43,6 @@ func init() {
 	if err := listCmd.MarkFlagRequired("environment-id"); err != nil {
 		return
 	}
-}
-
-const snapshotDisplayTimeLayout = "2006-01-02 15:04:05 MST"
-
-type SnapshotDetail struct {
-	SnapshotID       string `json:"snapshotId"`
-	Status           string `json:"status"`
-	Region           string `json:"region"`
-	SnapshotType     string `json:"snapshotType"`
-	Progress         string `json:"progress"`
-	CreatedAt        string `json:"createdAt"`
-	CompletedAt      string `json:"completedAt"`
-	SourceInstanceID string `json:"sourceInstanceId"`
-	ProductTierID    string `json:"productTierId"`
-	ProductTierVer   string `json:"productTierVersion"`
-	Encrypted        bool   `json:"encrypted"`
 }
 
 func runList(cmd *cobra.Command, args []string) error {
@@ -133,37 +117,7 @@ func runList(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
-	summaries := make([]SnapshotDetail, 0, len(result.Snapshots))
-	for _, snap := range result.Snapshots {
-		summaries = append(summaries, SnapshotDetail{
-			SnapshotID:       utils.FromPtr(snap.SnapshotId),
-			Status:           utils.FromPtr(snap.Status),
-			Region:           utils.FromPtr(snap.Region),
-			SnapshotType:     utils.FromPtr(snap.SnapshotType),
-			Progress:         fmt.Sprintf("%d%%", utils.FromPtr(snap.Progress)),
-			CreatedAt:        formatSnapshotDisplayTime(utils.FromPtr(snap.CreatedTime)),
-			CompletedAt:      formatSnapshotDisplayTime(utils.FromPtr(snap.CompleteTime)),
-			SourceInstanceID: utils.FromPtr(snap.SourceInstanceId),
-			ProductTierID:    utils.FromPtr(snap.ProductTierId),
-			ProductTierVer:   utils.FromPtr(snap.ProductTierVersion),
-			Encrypted:        utils.FromPtr(snap.Encrypted),
-		})
-	}
-
-	return utils.PrintTextTableJsonArrayOutput(output, summaries)
-}
-
-func formatSnapshotDisplayTime(raw string) string {
-	if raw == "" {
-		return ""
-	}
-
-	parsed, err := time.Parse(time.RFC3339, raw)
-	if err != nil {
-		return raw
-	}
-
-	return parsed.UTC().Format(snapshotDisplayTimeLayout)
+	return utils.PrintTextTableJsonArrayOutput(output, formatter.FormatSnapshotSummaries(result.Snapshots))
 }
 
 func normalizeSnapshotType(raw string) (string, error) {
