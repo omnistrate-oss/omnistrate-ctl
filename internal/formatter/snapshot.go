@@ -5,31 +5,17 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/omnistrate-oss/omnistrate-ctl/internal/model"
 	"github.com/omnistrate-oss/omnistrate-ctl/internal/utils"
 	openapiclientfleet "github.com/omnistrate-oss/omnistrate-sdk-go/fleet"
 )
 
 const snapshotDisplayTimeLayout = "2006-01-02 15:04:05 MST"
 
-type SnapshotDetail struct {
-	SnapshotID       string `json:"snapshotId"`
-	Status           string `json:"status"`
-	Region           string `json:"region"`
-	SnapshotType     string `json:"snapshotType"`
-	Progress         string `json:"progress"`
-	CreatedAt        string `json:"createdAt"`
-	CompletedAt      string `json:"completedAt"`
-	SourceInstanceID string `json:"sourceInstanceId"`
-	ProductTierID    string `json:"productTierId"`
-	ProductTierVer   string `json:"productTierVersion"`
-	Encrypted        bool   `json:"encrypted"`
-	SnapshotMetadata string `json:"snapshotMetadata,omitempty"`
-}
-
-func FormatSnapshotSummaries(snapshots []openapiclientfleet.FleetDescribeInstanceSnapshotResult) []SnapshotDetail {
-	summaries := make([]SnapshotDetail, 0, len(snapshots))
+func FormatSnapshotSummaries(snapshots []openapiclientfleet.FleetDescribeInstanceSnapshotResult) []model.SnapshotDetail {
+	summaries := make([]model.SnapshotDetail, 0, len(snapshots))
 	for _, snapshot := range snapshots {
-		summary := SnapshotDetail{
+		summary := model.SnapshotDetail{
 			SnapshotID:       utils.FromPtr(snapshot.SnapshotId),
 			Status:           utils.FromPtr(snapshot.Status),
 			Region:           utils.FromPtr(snapshot.Region),
