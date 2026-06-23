@@ -82,3 +82,43 @@ func TestExecuteResourceInstanceCustomWorkflowPropagatesError(t *testing.T) {
 	assert.Contains(t, err.Error(), "bad_request")
 	assert.Contains(t, err.Error(), "workflow is not invokable")
 }
+
+func TestDeleteResourceInstancePassesSkipFinalSnapshot(t *testing.T) {
+	var capturedMethod string
+	var capturedPath string
+	var capturedAuth string
+	var capturedBody map[string]any
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		capturedMethod = r.Method
+		capturedPath = r.URL.Path
+		capturedAuth = r.Header.Get("Authorization")
+		require.NoError(t, json.NewDecoder(r.Body).Decode(&capturedBody))
+
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer server.Close()
+
+	serverURL, err := url.Parse(server.URL)
+	require.NoError(t, err)
+	t.Setenv("OMNISTRATE_HOST", serverURL.Host)
+	t.Setenv("OMNISTRATE_HOST_SCHEME", serverURL.Scheme)
+	t.Setenv("CLIENT_TIMEOUT_IN_SECONDS", "5")
+
+	err = DeleteResourceInstance(
+		context.Background(),
+		"test-token",
+		"s-123",
+		"env-123",
+		"r-123",
+		"instance-123",
+		true,
+	)
+	require.NoError(t, err)
+
+	assert.Equal(t, http.MethodDelete, capturedMethod)
+	assert.Equal(t, "/2022-09-01-00/fleet/service/s-123/environment/env-123/instance/instance-123", capturedPath)
+	assert.Equal(t, "Bearer test-token", capturedAuth)
+	assert.Equal(t, "r-123", capturedBody["resourceId"])
+	assert.Equal(t, true, capturedBody["skipFinalSnapshot"])
+}

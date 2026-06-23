@@ -20,8 +20,9 @@ omnistrate-ctl instance delete instance-abcd1234
 ### Options
 
 ```
-  -h, --help   help for delete
-  -y, --yes    Pre-approve the deletion of the instance without prompting for confirmation
+  -h, --help                  help for delete
+      --skip-final-snapshot   Skip taking the automatic final snapshot before deletion without prompting for confirmation
+  -y, --yes                   Pre-approve the deletion of the instance without prompting for confirmation
 ```
 
 ### Options inherited from parent commands
