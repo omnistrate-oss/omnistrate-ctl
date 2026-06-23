@@ -72,7 +72,7 @@ func runCustomerDelete(cmd *cobra.Command, args []string) error {
 		sm.Start()
 	}
 
-	if err = deleteResourceInstanceFn(cmd.Context(), token, ref.ServiceID, ref.EnvironmentID, ref.ResourceID, ref.InstanceID); err != nil {
+	if err = deleteResourceInstanceFn(cmd.Context(), token, ref.ServiceID, ref.EnvironmentID, ref.ResourceID, ref.InstanceID, false); err != nil {
 		utils.HandleSpinnerError(spinner, sm, err)
 		return err
 	}

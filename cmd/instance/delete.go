@@ -25,6 +25,7 @@ var deleteCmd = &cobra.Command{
 
 func init() {
 	deleteCmd.Flags().BoolP("yes", "y", false, "Pre-approve the deletion of the instance without prompting for confirmation")
+	deleteCmd.Flags().Bool("skip-final-snapshot", false, "Skip taking the automatic final snapshot before deletion")
 	deleteCmd.Args = cobra.ExactArgs(1) // Require exactly one argument
 }
 
@@ -37,6 +38,7 @@ func runDelete(cmd *cobra.Command, args []string) error {
 	// Retrieve flags
 	output, _ := cmd.Flags().GetString("output")
 	yes, _ := cmd.Flags().GetBool("yes")
+	skipFinalSnapshot, _ := cmd.Flags().GetBool("skip-final-snapshot")
 
 	// Validate user login
 	token, err := common.GetTokenWithLogin()
@@ -75,7 +77,7 @@ func runDelete(cmd *cobra.Command, args []string) error {
 	}
 
 	// Delete the instance
-	err = dataaccess.DeleteResourceInstance(cmd.Context(), token, serviceID, environmentID, resourceID, instanceID)
+	err = dataaccess.DeleteResourceInstance(cmd.Context(), token, serviceID, environmentID, resourceID, instanceID, skipFinalSnapshot)
 	if err != nil {
 		utils.HandleSpinnerError(spinner, sm, err)
 		return err
