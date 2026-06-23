@@ -10,8 +10,6 @@ import (
 	openapiclientfleet "github.com/omnistrate-oss/omnistrate-sdk-go/fleet"
 )
 
-const snapshotDisplayTimeLayout = "2006-01-02 15:04:05 MST"
-
 func FormatSnapshotSummaries(snapshots []openapiclientfleet.FleetDescribeInstanceSnapshotResult) []model.SnapshotDetail {
 	summaries := make([]model.SnapshotDetail, 0, len(snapshots))
 	for _, snapshot := range snapshots {
@@ -58,5 +56,5 @@ func FormatSnapshotDisplayTime(raw string) string {
 		return raw
 	}
 
-	return parsed.UTC().Format(snapshotDisplayTimeLayout)
+	return parsed.UTC().Format(time.RFC3339)
 }

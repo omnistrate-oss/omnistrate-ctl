@@ -15,7 +15,7 @@ func TestFormatSnapshotDisplayTime(t *testing.T) {
 		input    string
 		expected string
 	}{
-		{"valid RFC3339", "2024-01-15T10:30:00Z", "2024-01-15 10:30:00 UTC"},
+		{"valid RFC3339", "2024-01-15T10:30:00Z", "2024-01-15T10:30:00Z"},
 		{"empty string", "", ""},
 		{"invalid format returns raw", "not-a-date", "not-a-date"},
 	}
