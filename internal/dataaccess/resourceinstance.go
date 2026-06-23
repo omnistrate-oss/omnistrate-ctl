@@ -409,7 +409,7 @@ func CopyResourceInstanceSnapshot(ctx context.Context, token string, serviceID, 
 	return
 }
 
-func DeleteResourceInstance(ctx context.Context, token, serviceID, environmentID, resourceID, instanceID string) (err error) {
+func DeleteResourceInstance(ctx context.Context, token, serviceID, environmentID, resourceID, instanceID string, skipFinalSnapshot bool) (err error) {
 	ctxWithToken := context.WithValue(ctx, openapiclientfleet.ContextAccessToken, token)
 	apiClient := getFleetClient()
 
@@ -419,7 +419,8 @@ func DeleteResourceInstance(ctx context.Context, token, serviceID, environmentID
 		environmentID,
 		instanceID,
 	).FleetDeleteResourceInstanceRequest2(openapiclientfleet.FleetDeleteResourceInstanceRequest2{
-		ResourceId: resourceID,
+		ResourceId:        resourceID,
+		SkipFinalSnapshot: utils.ToPtr(skipFinalSnapshot),
 	})
 
 	var r *http.Response
