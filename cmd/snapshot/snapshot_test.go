@@ -125,6 +125,10 @@ func TestRestoreCommandUse_IncludesSubscriptionID(t *testing.T) {
 	assert.Contains(t, restoreCmd.Use, "--subscription-id")
 }
 
+func TestRestoreCommandUse_IncludesCustomNetworkID(t *testing.T) {
+	assert.Contains(t, restoreCmd.Use, "--custom-network-id")
+}
+
 func TestFormatSnapshotDisplayTime(t *testing.T) {
 	tests := []struct {
 		name     string

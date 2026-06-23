@@ -19,7 +19,7 @@ omnistrate-ctl snapshot restore --service-id service-abcd --environment-id env-1
 )
 
 var restoreCmd = &cobra.Command{
-	Use:          "restore --service-id <service-id> --environment-id <environment-id> --snapshot-id <snapshot-id> [--subscription-id <subscription-id>] [--restore-to-source]",
+	Use:          "restore --service-id <service-id> --environment-id <environment-id> --snapshot-id <snapshot-id> [--custom-network-id <custom-network-id>] [--subscription-id <subscription-id>] [--restore-to-source]",
 	Short:        "Create an instance by restoring from a snapshot",
 	Long:         `This command helps you create an instance by restoring from a snapshot.`,
 	Example:      restoreExample,
@@ -155,7 +155,14 @@ func runRestore(cmd *cobra.Command, args []string) error {
 		sm.Start()
 	}
 
-	result, err := dataaccess.RestoreSnapshot(cmd.Context(), token, serviceID, environmentID, snapshotID, formattedParams, tierVersionOverride, networkType, customNetworkID, subscriptionID, restoreToSource)
+	result, err := dataaccess.RestoreSnapshot(cmd.Context(), token, serviceID, environmentID, snapshotID, dataaccess.RestoreSnapshotOptions{
+		InputParametersOverride:    formattedParams,
+		ProductTierVersionOverride: tierVersionOverride,
+		NetworkType:                networkType,
+		CustomNetworkID:            customNetworkID,
+		SubscriptionID:             subscriptionID,
+		RestoreToSource:            restoreToSource,
+	})
 	if err != nil {
 		utils.HandleSpinnerError(spinner, sm, err)
 		return err

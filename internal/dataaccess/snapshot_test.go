@@ -118,12 +118,16 @@ func TestRestoreSnapshotSendsSubscriptionAndCustomNetwork(t *testing.T) {
 		"s-123",
 		"env-123",
 		"instance-ss-123",
-		map[string]any{"size": "large"},
-		"2.0",
-		"INTERNAL",
-		"cn-123",
-		"sub-target",
-		false,
+		RestoreSnapshotOptions{
+			InputParametersOverride:    map[string]any{"size": "large"},
+			ProductTierVersionOverride: "2.0",
+			NetworkType:                "INTERNAL",
+			CustomNetworkID:            "cn-123",
+			SubscriptionID:             "sub-target",
+			AdditionalProperties: map[string]any{
+				"requestSource": "unit-test",
+			},
+		},
 	)
 
 	require.NoError(t, err)
@@ -136,6 +140,7 @@ func TestRestoreSnapshotSendsSubscriptionAndCustomNetwork(t *testing.T) {
 	assert.Equal(t, "cn-123", capturedBody["custom_network_id"])
 	assert.Equal(t, "INTERNAL", capturedBody["network_type"])
 	assert.Equal(t, "2.0", capturedBody["productTierVersionOverride"])
+	assert.Equal(t, "unit-test", capturedBody["requestSource"])
 	assert.Equal(t, map[string]any{"size": "large"}, capturedBody["inputParametersOverride"])
 	assert.NotContains(t, capturedBody, "restoreToSourceInstance")
 }

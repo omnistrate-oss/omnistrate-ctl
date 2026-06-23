@@ -7,7 +7,7 @@ Create an instance by restoring from a snapshot
 This command helps you create an instance by restoring from a snapshot.
 
 ```
-omnistrate-ctl snapshot restore --service-id <service-id> --environment-id <environment-id> --snapshot-id <snapshot-id> [--subscription-id <subscription-id>] [--restore-to-source] [flags]
+omnistrate-ctl snapshot restore --service-id <service-id> --environment-id <environment-id> --snapshot-id <snapshot-id> [--custom-network-id <custom-network-id>] [--subscription-id <subscription-id>] [--restore-to-source] [flags]
 ```
 
 ### Examples
