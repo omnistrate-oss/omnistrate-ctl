@@ -7,7 +7,7 @@ Create an instance by restoring from a snapshot
 This command helps you create an instance by restoring from a snapshot.
 
 ```
-omnistrate-ctl snapshot restore --service-id <service-id> --environment-id <environment-id> --snapshot-id <snapshot-id> [--restore-to-source] [flags]
+omnistrate-ctl snapshot restore --service-id <service-id> --environment-id <environment-id> --snapshot-id <snapshot-id> [--subscription-id <subscription-id>] [--restore-to-source] [flags]
 ```
 
 ### Examples
@@ -23,6 +23,7 @@ omnistrate-ctl snapshot restore --service-id service-abcd --environment-id env-1
 ### Options
 
 ```
+      --custom-network-id string      Optional custom network ID for the restored instance
       --environment-id string         The ID of the environment (required)
   -h, --help                          help for restore
       --network-type string           Optional network type change for the instance deployment (PUBLIC / INTERNAL)
@@ -31,6 +32,7 @@ omnistrate-ctl snapshot restore --service-id service-abcd --environment-id env-1
       --restore-to-source             Restore to the original source instance, preserving its ID and endpoint
       --service-id string             The ID of the service (required)
       --snapshot-id string            The ID of the snapshot to restore from (required)
+      --subscription-id string        Optional target subscription ID for the restored instance
       --tierversion-override string   Override the tier version for the restored instance
 ```
 
@@ -44,4 +46,3 @@ omnistrate-ctl snapshot restore --service-id service-abcd --environment-id env-1
 ### SEE ALSO
 
 * [omnistrate-ctl snapshot](omnistrate-ctl_snapshot.md)	 - Manage instance snapshots and backups
-

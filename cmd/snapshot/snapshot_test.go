@@ -99,7 +99,7 @@ func TestRestoreCommandFlags(t *testing.T) {
 	require.Contains(restoreCmd.Use, "restore")
 	require.NotEmpty(restoreCmd.Example)
 
-	flags := []string{"service-id", "environment-id", "snapshot-id", "param", "param-file", "tierversion-override", "network-type", "restore-to-source"}
+	flags := []string{"service-id", "environment-id", "snapshot-id", "param", "param-file", "tierversion-override", "network-type", "custom-network-id", "subscription-id", "restore-to-source"}
 	for _, flagName := range flags {
 		flag := restoreCmd.Flags().Lookup(flagName)
 		require.NotNil(flag, "Expected flag '%s' not found", flagName)
@@ -119,6 +119,10 @@ func TestRestoreCommandHelpText(t *testing.T) {
 
 func TestRestoreCommandUse_IncludesRestoreToSource(t *testing.T) {
 	assert.Contains(t, restoreCmd.Use, "--restore-to-source")
+}
+
+func TestRestoreCommandUse_IncludesSubscriptionID(t *testing.T) {
+	assert.Contains(t, restoreCmd.Use, "--subscription-id")
 }
 
 func TestFormatSnapshotDisplayTime(t *testing.T) {
