@@ -17,5 +17,5 @@ func TestDeleteCommandFlags(t *testing.T) {
 	require.NotNil(t, skipFinalSnapshotFlag)
 	require.Equal(t, "false", skipFinalSnapshotFlag.DefValue)
 	require.Equal(t, "bool", skipFinalSnapshotFlag.Value.Type())
-	require.Contains(t, skipFinalSnapshotFlag.Usage, "without prompting for confirmation")
+	require.NotContains(t, skipFinalSnapshotFlag.Usage, "without prompting for confirmation")
 }
