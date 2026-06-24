@@ -52,6 +52,45 @@ func TestListCommandFlags(t *testing.T) {
 
 	environmentIDFlag := listCmd.Flags().Lookup("environment-id")
 	require.NotNil(environmentIDFlag, "Expected flag 'environment-id' not found")
+
+	snapshotTypeFlag := listCmd.Flags().Lookup("snapshot-type")
+	require.NotNil(snapshotTypeFlag, "Expected flag 'snapshot-type' not found")
+	require.Equal("ManualSnapshot", snapshotTypeFlag.DefValue)
+
+	productTierIDFlag := listCmd.Flags().Lookup("product-tier-id")
+	require.NotNil(productTierIDFlag, "Expected flag 'product-tier-id' not found")
+}
+
+func TestNormalizeSnapshotType(t *testing.T) {
+	tests := []struct {
+		name          string
+		input         string
+		expected      string
+		expectError   bool
+		errorContains string
+	}{
+		{"empty defaults to manual", "", "ManualSnapshot", false, ""},
+		{"manual exact", "ManualSnapshot", "ManualSnapshot", false, ""},
+		{"manual shorthand", "manual", "ManualSnapshot", false, ""},
+		{"automated exact", "AutomatedSnapshot", "AutomatedSnapshot", false, ""},
+		{"automated shorthand", "automated", "AutomatedSnapshot", false, ""},
+		{"all disables snapshot type filter", "all", "", false, ""},
+		{"invalid snapshot type", "FinalSnapshot", "", true, "invalid snapshot type"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result, err := normalizeSnapshotType(tt.input)
+			if tt.expectError {
+				require.Error(t, err)
+				assert.Contains(t, err.Error(), tt.errorContains)
+				return
+			}
+
+			require.NoError(t, err)
+			assert.Equal(t, tt.expected, result)
+		})
+	}
 }
 
 func TestRestoreCommandFlags(t *testing.T) {
@@ -80,25 +119,4 @@ func TestRestoreCommandHelpText(t *testing.T) {
 
 func TestRestoreCommandUse_IncludesRestoreToSource(t *testing.T) {
 	assert.Contains(t, restoreCmd.Use, "--restore-to-source")
-}
-
-func TestFormatSnapshotDisplayTime(t *testing.T) {
-	tests := []struct {
-		name     string
-		input    string
-		expected string
-	}{
-		{"valid RFC3339", "2024-01-15T10:30:00Z", "2024-01-15 10:30:00 UTC"},
-		{"empty string", "", ""},
-		{"invalid format returns raw", "not-a-date", "not-a-date"},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			result := formatSnapshotDisplayTime(tt.input)
-			if result != tt.expected {
-				t.Errorf("expected %q, got %q", tt.expected, result)
-			}
-		})
-	}
 }

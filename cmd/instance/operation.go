@@ -353,7 +353,7 @@ func triggerSystemOperation(
 				return nil, nil
 			}
 		}
-		err := dataaccess.DeleteResourceInstance(cmd.Context(), token, serviceID, environmentID, resourceID, instanceID)
+		err := dataaccess.DeleteResourceInstance(cmd.Context(), token, serviceID, environmentID, resourceID, instanceID, false)
 		if err != nil {
 			return nil, err
 		}

@@ -33,9 +33,22 @@ func TestSnapshotListEmpty(t *testing.T) {
 	require.NoError(t, err)
 	require.NotEmpty(t, build.ServiceID)
 	require.NotEmpty(t, build.EnvironmentID)
+	require.NotEmpty(t, build.ProductTierID)
 
 	// List snapshots — should succeed with empty results
 	cmd.RootCmd.SetArgs([]string{"snapshot", "list", "--service-id", build.ServiceID, "--environment-id", build.EnvironmentID, "--output", "json"})
+	err = cmd.RootCmd.ExecuteContext(ctx)
+	require.NoError(t, err)
+
+	// List all snapshot types with a product tier filter — should also succeed with empty results
+	cmd.RootCmd.SetArgs([]string{
+		"snapshot", "list",
+		"--service-id", build.ServiceID,
+		"--environment-id", build.EnvironmentID,
+		"--snapshot-type", "all",
+		"--product-tier-id", build.ProductTierID,
+		"--output", "json",
+	})
 	err = cmd.RootCmd.ExecuteContext(ctx)
 	require.NoError(t, err)
 

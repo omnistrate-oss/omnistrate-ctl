@@ -274,6 +274,7 @@ func GetOrganizationDeploymentCellTemplate(ctx context.Context, token string, en
 			Name:        amenity.Name,
 			Description: amenity.Description,
 			Type:        amenity.Type,
+			Disable:     amenity.Disable,
 			DependsOn:   amenity.DependsOn,
 			Properties:  amenity.Properties,
 		}

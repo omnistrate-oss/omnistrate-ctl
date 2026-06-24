@@ -4415,7 +4415,7 @@ func (productionServicePlanBrowserLoader) DeleteCustomerCloudAccount(ctx context
 	if serviceID == "" || environmentID == "" || resourceID == "" || strings.TrimSpace(account.InstanceID) == "" {
 		return fmt.Errorf("cloud account delete is missing required identifiers")
 	}
-	return dataaccess.DeleteResourceInstance(ctx, token, serviceID, environmentID, resourceID, account.InstanceID)
+	return dataaccess.DeleteResourceInstance(ctx, token, serviceID, environmentID, resourceID, account.InstanceID, false)
 }
 
 func (productionServicePlanBrowserLoader) RetryCustomerCloudAccount(ctx context.Context, token string, request servicePlanCustomerCloudAccountActionRequest) (servicePlanCustomerCloudAccountRow, error) {

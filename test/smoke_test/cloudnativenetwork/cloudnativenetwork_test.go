@@ -404,7 +404,7 @@ func Test_gcp_cloud_native_network_discovery(t *testing.T) {
 				{Region: importedNetworkRegion, NetworkID: importedNetworkID},
 			})
 		}
-		_ = dataaccess.DeleteResourceInstance(ctx, token, ref.ServiceID, ref.EnvironmentID, ref.ResourceID, ref.InstanceID)
+		_ = dataaccess.DeleteResourceInstance(ctx, token, ref.ServiceID, ref.EnvironmentID, ref.ResourceID, ref.InstanceID, false)
 	})
 
 	_, err = dataaccess.SyncAccountConfigCloudNativeNetworks(ctx, token, accountConfigID, []string{region})

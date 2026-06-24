@@ -130,6 +130,7 @@ func processAmenity(amenity Amenity, baseDir string) (Amenity, error) {
 		Name:        amenity.Name,
 		Description: amenity.Description,
 		Type:        amenity.Type,
+		Disable:     amenity.Disable,
 		DependsOn:   amenity.DependsOn,
 		Properties:  newProperties,
 	}, nil

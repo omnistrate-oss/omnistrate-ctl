@@ -39,6 +39,7 @@ func convertTemplateToOpenAPIFormat(deploymentConfig model.DeploymentCellTemplat
 		apiAmenity := openapiclient.Amenity{
 			Name:        utils.ToPtr(amenity.Name),
 			Description: amenity.Description,
+			Disable:     amenity.Disable,
 			Type:        amenity.Type,
 			DependsOn:   amenity.DependsOn,
 			Properties:  amenity.Properties,
@@ -50,6 +51,7 @@ func convertTemplateToOpenAPIFormat(deploymentConfig model.DeploymentCellTemplat
 		apiAmenity := openapiclient.Amenity{
 			Name:        utils.ToPtr(amenity.Name),
 			Description: amenity.Description,
+			Disable:     amenity.Disable,
 			Type:        amenity.Type,
 			DependsOn:   amenity.DependsOn,
 			Properties:  amenity.Properties,

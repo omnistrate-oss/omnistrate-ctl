@@ -2,11 +2,12 @@ package snapshot
 
 import (
 	"fmt"
-	"time"
+	"strings"
 
 	"github.com/omnistrate-oss/omnistrate-ctl/cmd/common"
 	"github.com/omnistrate-oss/omnistrate-ctl/internal/config"
 	"github.com/omnistrate-oss/omnistrate-ctl/internal/dataaccess"
+	"github.com/omnistrate-oss/omnistrate-ctl/internal/formatter"
 	"github.com/omnistrate-oss/omnistrate-ctl/internal/utils"
 	"github.com/spf13/cobra"
 )
@@ -14,6 +15,10 @@ import (
 const (
 	listExample = `# List all snapshots for a service environment
 omnistrate-ctl snapshot list --service-id service-abcd --environment-id env-1234`
+
+	snapshotTypeManual    = "ManualSnapshot"
+	snapshotTypeAutomated = "AutomatedSnapshot"
+	snapshotTypeAll       = "all"
 )
 
 var listCmd = &cobra.Command{
@@ -29,6 +34,8 @@ func init() {
 	listCmd.Args = cobra.NoArgs
 	listCmd.Flags().String("service-id", "", "The ID of the service (required)")
 	listCmd.Flags().String("environment-id", "", "The ID of the environment (required)")
+	listCmd.Flags().String("snapshot-type", snapshotTypeManual, "Filter by snapshot type: ManualSnapshot, AutomatedSnapshot, or all")
+	listCmd.Flags().String("product-tier-id", "", "Filter snapshots by product tier ID")
 
 	if err := listCmd.MarkFlagRequired("service-id"); err != nil {
 		return
@@ -36,22 +43,6 @@ func init() {
 	if err := listCmd.MarkFlagRequired("environment-id"); err != nil {
 		return
 	}
-}
-
-const snapshotDisplayTimeLayout = "2006-01-02 15:04:05 MST"
-
-type SnapshotDetail struct {
-	SnapshotID       string `json:"snapshotId"`
-	Status           string `json:"status"`
-	Region           string `json:"region"`
-	SnapshotType     string `json:"snapshotType"`
-	Progress         string `json:"progress"`
-	CreatedAt        string `json:"createdAt"`
-	CompletedAt      string `json:"completedAt"`
-	SourceInstanceID string `json:"sourceInstanceId"`
-	ProductTierID    string `json:"productTierId"`
-	ProductTierVer   string `json:"productTierVersion"`
-	Encrypted        bool   `json:"encrypted"`
 }
 
 func runList(cmd *cobra.Command, args []string) error {
@@ -64,6 +55,23 @@ func runList(cmd *cobra.Command, args []string) error {
 	}
 
 	environmentID, err := cmd.Flags().GetString("environment-id")
+	if err != nil {
+		utils.PrintError(err)
+		return err
+	}
+
+	snapshotType, err := cmd.Flags().GetString("snapshot-type")
+	if err != nil {
+		utils.PrintError(err)
+		return err
+	}
+	snapshotType, err = normalizeSnapshotType(snapshotType)
+	if err != nil {
+		utils.PrintError(err)
+		return err
+	}
+
+	productTierID, err := cmd.Flags().GetString("product-tier-id")
 	if err != nil {
 		utils.PrintError(err)
 		return err
@@ -89,7 +97,10 @@ func runList(cmd *cobra.Command, args []string) error {
 		sm.Start()
 	}
 
-	result, err := dataaccess.ListAllSnapshots(cmd.Context(), token, serviceID, environmentID)
+	result, err := dataaccess.ListAllSnapshots(cmd.Context(), token, serviceID, environmentID, dataaccess.ListAllSnapshotsOptions{
+		ProductTierID: productTierID,
+		SnapshotType:  snapshotType,
+	})
 	if err != nil {
 		utils.HandleSpinnerError(spinner, sm, err)
 		return err
@@ -106,35 +117,18 @@ func runList(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
-	summaries := make([]SnapshotDetail, 0, len(result.Snapshots))
-	for _, snap := range result.Snapshots {
-		summaries = append(summaries, SnapshotDetail{
-			SnapshotID:       utils.FromPtr(snap.SnapshotId),
-			Status:           utils.FromPtr(snap.Status),
-			Region:           utils.FromPtr(snap.Region),
-			SnapshotType:     utils.FromPtr(snap.SnapshotType),
-			Progress:         fmt.Sprintf("%d%%", utils.FromPtr(snap.Progress)),
-			CreatedAt:        formatSnapshotDisplayTime(utils.FromPtr(snap.CreatedTime)),
-			CompletedAt:      formatSnapshotDisplayTime(utils.FromPtr(snap.CompleteTime)),
-			SourceInstanceID: utils.FromPtr(snap.SourceInstanceId),
-			ProductTierID:    utils.FromPtr(snap.ProductTierId),
-			ProductTierVer:   utils.FromPtr(snap.ProductTierVersion),
-			Encrypted:        utils.FromPtr(snap.Encrypted),
-		})
-	}
-
-	return utils.PrintTextTableJsonArrayOutput(output, summaries)
+	return utils.PrintTextTableJsonArrayOutput(output, formatter.FormatSnapshotSummaries(result.Snapshots))
 }
 
-func formatSnapshotDisplayTime(raw string) string {
-	if raw == "" {
-		return ""
+func normalizeSnapshotType(raw string) (string, error) {
+	switch strings.ToLower(strings.TrimSpace(raw)) {
+	case "", strings.ToLower(snapshotTypeManual), "manual":
+		return snapshotTypeManual, nil
+	case strings.ToLower(snapshotTypeAutomated), "automated":
+		return snapshotTypeAutomated, nil
+	case snapshotTypeAll:
+		return "", nil
+	default:
+		return "", fmt.Errorf("invalid snapshot type %q (supported: ManualSnapshot, AutomatedSnapshot, all)", raw)
 	}
-
-	parsed, err := time.Parse(time.RFC3339, raw)
-	if err != nil {
-		return raw
-	}
-
-	return parsed.UTC().Format(snapshotDisplayTimeLayout)
 }
