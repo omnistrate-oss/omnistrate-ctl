@@ -91,7 +91,7 @@ func runStop(cmd *cobra.Command, args []string) error {
 	}
 
 	// Format instance
-	formattedInstance := formatInstance(&searchRes.ResourceInstanceResults[0])
+	formattedInstance := formatInstance(&searchRes.ResourceInstanceResults[0], false)
 
 	// Print output
 	if err = utils.PrintTextTableJsonOutput(output, formattedInstance); err != nil {

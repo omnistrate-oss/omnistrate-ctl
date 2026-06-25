@@ -512,7 +512,7 @@ func matchesIDOrName(id, name, arg string) bool {
 	return strings.EqualFold(id, arg) || strings.EqualFold(name, arg)
 }
 
-func formatInstance(instance *openapiclientfleet.ResourceInstanceSearchRecord) model.Instance {
+func formatInstance(instance *openapiclientfleet.ResourceInstanceSearchRecord, truncateNames bool) model.Instance {
 	planName := ""
 	if instance.ProductTierName != nil {
 		planName = *instance.ProductTierName
@@ -522,6 +522,10 @@ func formatInstance(instance *openapiclientfleet.ResourceInstanceSearchRecord) m
 		planVersion = *instance.ProductTierVersion
 	}
 	serviceName := instance.ServiceName
+	if truncateNames {
+		serviceName = utils.TruncateString(serviceName, defaultMaxNameLength)
+		planName = utils.TruncateString(planName, defaultMaxNameLength)
+	}
 	subscriptionID := ""
 	if instance.SubscriptionId != nil {
 		subscriptionID = *instance.SubscriptionId
