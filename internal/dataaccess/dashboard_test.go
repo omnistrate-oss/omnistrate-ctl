@@ -19,11 +19,11 @@ func TestDashboardServiceGetDashboardCatalogIncludesCustomerAndInternalMetrics(t
 					"enabled":                    true,
 					"grafanaEndpoint":            "https://grafana.example.com",
 					"instanceOrgId":              "customer-org",
-					"instanceOrgPassword":        "customer-secret",
+					"instanceOrgPassword":        "customer-value",
 					"serviceProviderOrgId":       "sp-customer-org",
-					"serviceProviderOrgPassword": "sp-customer-secret",
+					"serviceProviderOrgPassword": "sp-customer-value",
 					"serviceAccountUsername":     "sa-instance-123",
-					"serviceAccountPassword":     "glsa_example_token",
+					"serviceAccountPassword":     "glsa_example_value",
 					"dashboards": map[string]interface{}{
 						"overview": map[string]interface{}{
 							"description":   "Overview",
@@ -44,7 +44,7 @@ func TestDashboardServiceGetDashboardCatalogIncludesCustomerAndInternalMetrics(t
 					"enabled":                    true,
 					"grafanaEndpoint":            "https://grafana.internal.example.com",
 					"serviceProviderOrgId":       "sp-org",
-					"serviceProviderOrgPassword": "sp-secret",
+					"serviceProviderOrgPassword": "sp-value",
 					"dashboards": map[string]interface{}{
 						"networking": map[string]interface{}{
 							"description":   "Networking",
@@ -67,10 +67,10 @@ func TestDashboardServiceGetDashboardCatalogIncludesCustomerAndInternalMetrics(t
 	require.Equal(t, "Customer", customer.Label)
 	require.Equal(t, "https://grafana.example.com", customer.GrafanaEndpoint)
 	require.Equal(t, "sp-customer-org", customer.GrafanaUIUsername)
-	require.Equal(t, "sp-customer-secret", customer.GrafanaUIPassword)
+	require.Equal(t, "sp-customer-value", customer.GrafanaUIPassword)
 	require.Equal(t, "provider", customer.GrafanaUILoginScope)
 	require.Equal(t, "sa-instance-123", customer.ServiceAccountName)
-	require.Equal(t, "glsa_example_token", customer.ServiceAccountToken)
+	require.Equal(t, "glsa_example_value", customer.ServiceAccountToken)
 	require.Len(t, customer.Dashboards, 1)
 	require.Equal(t, DashboardRef{Name: "overview", Description: "Overview", URL: "https://grafana.example.com/d/overview"}, customer.Dashboards[0])
 	require.Len(t, customer.DashboardDefinitions, 1)
@@ -81,7 +81,7 @@ func TestDashboardServiceGetDashboardCatalogIncludesCustomerAndInternalMetrics(t
 	require.Equal(t, "Internal", internal.Label)
 	require.Equal(t, "https://grafana.internal.example.com", internal.GrafanaEndpoint)
 	require.Equal(t, "sp-org", internal.GrafanaUIUsername)
-	require.Equal(t, "sp-secret", internal.GrafanaUIPassword)
+	require.Equal(t, "sp-value", internal.GrafanaUIPassword)
 	require.Equal(t, "provider", internal.GrafanaUILoginScope)
 	require.Len(t, internal.Dashboards, 1)
 	require.Equal(t, DashboardRef{Name: "networking", Description: "Networking", URL: "https://grafana.internal.example.com/d/networking"}, internal.Dashboards[0])
@@ -99,15 +99,15 @@ func TestDashboardServiceGetDashboardInfoPrefersCustomerMetrics(t *testing.T) {
 					"enabled":                    true,
 					"grafanaEndpoint":            "https://grafana.example.com",
 					"instanceOrgId":              "customer-org",
-					"instanceOrgPassword":        "customer-secret",
+					"instanceOrgPassword":        "customer-value",
 					"serviceProviderOrgId":       "sp-customer-org",
-					"serviceProviderOrgPassword": "sp-customer-secret",
+					"serviceProviderOrgPassword": "sp-customer-value",
 				},
 				internalMetricsFeatureKey: map[string]interface{}{
 					"enabled":                    true,
 					"grafanaEndpoint":            "https://grafana.internal.example.com",
 					"serviceProviderOrgId":       "sp-org",
-					"serviceProviderOrgPassword": "sp-secret",
+					"serviceProviderOrgPassword": "sp-value",
 				},
 			},
 		},
@@ -119,7 +119,7 @@ func TestDashboardServiceGetDashboardInfoPrefersCustomerMetrics(t *testing.T) {
 	require.Equal(t, customerMetricsFeatureKey, info.MetricsFeatureKey)
 	require.Equal(t, "Customer", info.MetricsFeatureLabel)
 	require.Equal(t, "sp-customer-org", info.GrafanaLoginUsername)
-	require.Equal(t, "sp-customer-secret", info.GrafanaLoginPassword)
+	require.Equal(t, "sp-customer-value", info.GrafanaLoginPassword)
 	require.Equal(t, "provider", info.GrafanaLoginScope)
 }
 
@@ -135,12 +135,12 @@ func TestDashboardServiceGetDashboardInfoPrefersServiceProviderCredentials(t *te
 					"enabled":                    true,
 					"grafanaEndpoint":            "https://grafana.example.com",
 					"instanceOrgId":              "stale-org",
-					"instanceOrgPassword":        "stale-secret",
+					"instanceOrgPassword":        "stale-value",
 					"serviceProviderOrgId":       "provider-org",
-					"serviceProviderOrgPassword": "provider-secret",
+					"serviceProviderOrgPassword": "provider-value",
 					"auth": map[string]interface{}{
 						"username": "auth-user",
-						"password": "auth-secret",
+						"password": "auth-value",
 					},
 				},
 			},
@@ -150,7 +150,7 @@ func TestDashboardServiceGetDashboardInfoPrefersServiceProviderCredentials(t *te
 	info, err := service.GetDashboardInfo(instance)
 	require.NoError(t, err)
 	require.Equal(t, "provider-org", info.GrafanaLoginUsername)
-	require.Equal(t, "provider-secret", info.GrafanaLoginPassword)
+	require.Equal(t, "provider-value", info.GrafanaLoginPassword)
 	require.Equal(t, "provider", info.GrafanaLoginScope)
 }
 
@@ -166,7 +166,7 @@ func TestDashboardServiceGetDashboardCatalogSharesProviderCredentialsForSameGraf
 					"enabled":             true,
 					"grafanaEndpoint":     "https://grafana.example.com/",
 					"instanceOrgId":       "customer-org",
-					"instanceOrgPassword": "customer-secret",
+					"instanceOrgPassword": "customer-value",
 					"dashboards": map[string]interface{}{
 						"overview": map[string]interface{}{
 							"description":   "Overview",
@@ -178,7 +178,7 @@ func TestDashboardServiceGetDashboardCatalogSharesProviderCredentialsForSameGraf
 					"enabled":                    true,
 					"grafanaEndpoint":            "https://grafana.example.com",
 					"serviceProviderOrgId":       "provider-org",
-					"serviceProviderOrgPassword": "provider-secret",
+					"serviceProviderOrgPassword": "provider-value",
 					"dashboards": map[string]interface{}{
 						"networking": map[string]interface{}{
 							"description":   "Networking",
@@ -197,13 +197,13 @@ func TestDashboardServiceGetDashboardCatalogSharesProviderCredentialsForSameGraf
 	customer := catalog.Features[0]
 	require.Equal(t, customerMetricsFeatureKey, customer.Key)
 	require.Equal(t, "provider-org", customer.GrafanaUIUsername)
-	require.Equal(t, "provider-secret", customer.GrafanaUIPassword)
+	require.Equal(t, "provider-value", customer.GrafanaUIPassword)
 	require.Equal(t, "provider", customer.GrafanaUILoginScope)
 
 	internal := catalog.Features[1]
 	require.Equal(t, internalMetricsFeatureKey, internal.Key)
 	require.Equal(t, "provider-org", internal.GrafanaUIUsername)
-	require.Equal(t, "provider-secret", internal.GrafanaUIPassword)
+	require.Equal(t, "provider-value", internal.GrafanaUIPassword)
 	require.Equal(t, "provider", internal.GrafanaUILoginScope)
 }
 
@@ -219,13 +219,13 @@ func TestDashboardServiceGetDashboardCatalogDoesNotShareProviderCredentialsAcros
 					"enabled":             true,
 					"grafanaEndpoint":     "https://grafana.customer.example.com",
 					"instanceOrgId":       "customer-org",
-					"instanceOrgPassword": "customer-secret",
+					"instanceOrgPassword": "customer-value",
 				},
 				internalMetricsFeatureKey: map[string]interface{}{
 					"enabled":                    true,
 					"grafanaEndpoint":            "https://grafana.provider.example.com",
 					"serviceProviderOrgId":       "provider-org",
-					"serviceProviderOrgPassword": "provider-secret",
+					"serviceProviderOrgPassword": "provider-value",
 				},
 			},
 		},
@@ -238,7 +238,7 @@ func TestDashboardServiceGetDashboardCatalogDoesNotShareProviderCredentialsAcros
 	customer := catalog.Features[0]
 	require.Equal(t, customerMetricsFeatureKey, customer.Key)
 	require.Equal(t, "customer-org", customer.GrafanaUIUsername)
-	require.Equal(t, "customer-secret", customer.GrafanaUIPassword)
+	require.Equal(t, "customer-value", customer.GrafanaUIPassword)
 	require.Equal(t, "customer", customer.GrafanaUILoginScope)
 }
 
@@ -251,7 +251,7 @@ func TestDashboardServiceGetDashboardInfoDerivesEndpointFromDashboardLink(t *tes
 				customerMetricsFeatureKey: map[string]interface{}{
 					"enabled":             true,
 					"instanceOrgId":       "customer-org",
-					"instanceOrgPassword": "customer-secret",
+					"instanceOrgPassword": "customer-value",
 					"dashboards": map[string]interface{}{
 						"overview": map[string]interface{}{
 							"description":   "Overview",
