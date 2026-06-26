@@ -115,6 +115,73 @@ func TestBuildParamTemplate(t *testing.T) {
 	require.Equal(int64(3306), template["port"])
 }
 
+func TestMergeRenderedCreateAPIParametersAddsCustomCreateParams(t *testing.T) {
+	require := require.New(t)
+
+	params := []ParameterInfo{
+		{Key: "databaseName", Type: "String", DisplayName: "Database Name"},
+	}
+	apis := []openapiclientfleet.APIEntity{
+		{
+			Verb: "DESCRIBE",
+			InputParameters: []openapiclientfleet.InputParameterEntity{
+				{
+					Custom:      true,
+					Key:         "describe_only",
+					DisplayName: "Describe Only",
+					Description: "Not a create parameter",
+					Type:        "String",
+				},
+			},
+		},
+		{
+			Verb: "CREATE",
+			InputParameters: []openapiclientfleet.InputParameterEntity{
+				{
+					Custom:      false,
+					Key:         "cloud_provider",
+					DisplayName: "Cloud Provider",
+					Description: "Top-level create request field",
+					Type:        "String",
+					Required:    true,
+				},
+				{
+					Custom:      false,
+					Key:         "region",
+					DisplayName: "Region",
+					Description: "Top-level create request field",
+					Type:        "String",
+					Required:    true,
+				},
+				{
+					Custom:      true,
+					Key:         "databaseName",
+					DisplayName: "Database Name",
+					Description: "Already returned by ListInputParameters",
+					Type:        "String",
+				},
+				{
+					Custom:      true,
+					Key:         "cloud_provider_native_network_id",
+					DisplayName: "Cloud Provider Native Network ID",
+					Description: "Cloud provider native network ID to use for the account",
+					Type:        "String",
+				},
+			},
+		},
+	}
+
+	merged := mergeRenderedCreateAPIParameters(params, apis)
+	template := buildParamTemplate(merged)
+
+	require.Len(merged, 2)
+	require.Contains(template, "databaseName")
+	require.Contains(template, "cloud_provider_native_network_id")
+	require.NotContains(template, "cloud_provider")
+	require.NotContains(template, "region")
+	require.NotContains(template, "describe_only")
+}
+
 func TestDeploymentParametersTemplateCommand(t *testing.T) {
 	require := require.New(t)
 

@@ -220,6 +220,17 @@ func fetchDeploymentParameters(ctx context.Context, token, serviceName, planName
 		})
 	}
 
+	serviceOfferingResourceInstanceIDPlaceholder := "none"
+	resourceParametersResult, serviceOfferingErr := dataaccess.DescribeServiceOfferingResource(
+		ctx, token, serviceID, resourceID, serviceOfferingResourceInstanceIDPlaceholder, productTierID, productTierVersion)
+	if serviceOfferingErr != nil {
+		return DeploymentParametersOutput{}, fmt.Errorf("failed to describe service offering resource: %w", serviceOfferingErr)
+	}
+	if resourceParametersResult != nil {
+		resourceDescription := resourceParametersResult.GetConsumptionDescribeServiceOfferingResourceResult()
+		parameters = mergeRenderedCreateAPIParameters(parameters, resourceDescription.GetApis())
+	}
+
 	sort.Slice(parameters, func(i, j int) bool {
 		return parameters[i].Key < parameters[j].Key
 	})
@@ -231,6 +242,68 @@ func fetchDeploymentParameters(ctx context.Context, token, serviceName, planName
 		ResourceName: resourceName,
 		Parameters:   parameters,
 	}, nil
+}
+
+// mergeRenderedCreateAPIParameters adds rendered custom create parameters that
+// are not returned by ListInputParameters, such as injected BYOA parameters.
+func mergeRenderedCreateAPIParameters(parameters []ParameterInfo, apis []openapiclientfleet.APIEntity) []ParameterInfo {
+	seen := make(map[string]struct{}, len(parameters))
+	for _, parameter := range parameters {
+		seen[parameter.Key] = struct{}{}
+	}
+
+	for _, api := range apis {
+		if !strings.EqualFold(api.GetVerb(), "CREATE") {
+			continue
+		}
+
+		for _, inputParameter := range api.GetInputParameters() {
+			if !inputParameter.GetCustom() || inputParameter.GetKey() == "" {
+				continue
+			}
+			if _, exists := seen[inputParameter.GetKey()]; exists {
+				continue
+			}
+
+			parameters = append(parameters, parameterInfoFromRenderedInputParameter(inputParameter))
+			seen[inputParameter.GetKey()] = struct{}{}
+		}
+		break
+	}
+
+	return parameters
+}
+
+func parameterInfoFromRenderedInputParameter(param openapiclientfleet.InputParameterEntity) ParameterInfo {
+	var defaultValue *string
+	if val, ok := param.GetDefaultValueOk(); ok && val != nil {
+		defaultValue = val
+	}
+
+	var regex *string
+	if val, ok := param.GetRegexOk(); ok && val != nil {
+		regex = val
+	}
+
+	var options []string
+	if param.GetOptions() != nil {
+		options = param.GetOptions()
+	}
+
+	return ParameterInfo{
+		Key:          param.GetKey(),
+		DisplayName:  param.GetDisplayName(),
+		Description:  param.GetDescription(),
+		Type:         param.GetType(),
+		Required:     param.GetRequired(),
+		Modifiable:   param.GetModifiable(),
+		IsList:       param.GetIsList(),
+		DefaultValue: defaultValue,
+		Options:      options,
+		Regex:        regex,
+		Custom:       param.GetCustom(),
+		API:          "create",
+	}
 }
 
 var templateCmd = &cobra.Command{
