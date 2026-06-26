@@ -552,11 +552,11 @@ func (m dagModel) updateMetricsDashboard(msg tea.Msg) (tea.Model, tea.Cmd) {
 				break
 			}
 			if selected.expandable && selected.expanded {
-				if setDashboardNodeExpanded(m.metricsRootNodes, selected.key, false) {
+				if collapseDashboardNode(m.metricsRootNodes, selected.key) {
 					m.rebuildMetricsItems(selected.key)
 				}
 			} else if selected.parentKey != "" {
-				if setDashboardNodeExpanded(m.metricsRootNodes, selected.parentKey, false) {
+				if collapseDashboardNode(m.metricsRootNodes, selected.parentKey) {
 					m.rebuildMetricsItems(selected.parentKey)
 				}
 			}
@@ -909,7 +909,7 @@ func (m dagModel) View() string {
 	return lipgloss.JoinVertical(lipgloss.Left, header, body, help)
 }
 
-func (m dagModel) bodySize() (int, int) {
+func (m dagModel) bodyHeight() int {
 	headerHeight := 1
 	helpHeight := 1
 	tabFrameHeight := 4
@@ -917,15 +917,11 @@ func (m dagModel) bodySize() (int, int) {
 	if bodyHeight < 1 {
 		bodyHeight = 1
 	}
-	bodyWidth := m.width
-	if bodyWidth < 1 {
-		bodyWidth = 1
-	}
-	return bodyWidth, bodyHeight
+	return bodyHeight
 }
 
 func (m dagModel) renderTabsWithBody() string {
-	_, bodyHeight := m.bodySize()
+	bodyHeight := m.bodyHeight()
 	content := m.renderActiveTabContent()
 	if m.activeTab == dagTabMetrics {
 		row := renderResourceDetailTabRow(m.width, dagTabNames, m.activeTab, false)
@@ -935,7 +931,7 @@ func (m dagModel) renderTabsWithBody() string {
 }
 
 func (m dagModel) renderActiveTabContent() string {
-	_, bodyHeight := m.bodySize()
+	bodyHeight := m.bodyHeight()
 	switch m.activeTab {
 	case dagTabMetrics:
 		if len(m.metricsItems) == 0 {
@@ -949,8 +945,7 @@ func (m dagModel) renderActiveTabContent() string {
 }
 
 func (m dagModel) metricsDashboardHeight() int {
-	_, bodyHeight := m.bodySize()
-	return bodyHeight
+	return m.bodyHeight()
 }
 
 func (m dagModel) metricsPageSize() int {
@@ -1240,7 +1235,7 @@ func (m dagModel) renderBody(width, height int) string {
 }
 
 func (m dagModel) pageSize() int {
-	_, height := m.bodySize()
+	height := m.bodyHeight()
 	if height < 1 {
 		return 1
 	}
@@ -1248,7 +1243,7 @@ func (m dagModel) pageSize() int {
 }
 
 func (m dagModel) maxScrollY() int {
-	_, height := m.bodySize()
+	height := m.bodyHeight()
 	maxVal := len(m.lines) - height
 	if maxVal < 0 {
 		return 0
@@ -1313,7 +1308,7 @@ func (m *dagModel) ensureSelectedVisible() {
 		return
 	}
 
-	_, bodyHeight := m.bodySize()
+	bodyHeight := m.bodyHeight()
 	bodyWidth := resourceDetailContentWidth(m.width)
 	margin := 2
 

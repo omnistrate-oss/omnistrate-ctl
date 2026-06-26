@@ -330,7 +330,7 @@ func (m *dashboardModel) collapseSelectedItem() bool {
 	}
 
 	if selected.expandable && selected.expanded {
-		if setDashboardNodeExpanded(m.rootNodes, selected.key, false) {
+		if collapseDashboardNode(m.rootNodes, selected.key) {
 			m.rebuildVisibleItems(selected.key)
 			return true
 		}
@@ -341,7 +341,7 @@ func (m *dashboardModel) collapseSelectedItem() bool {
 		return false
 	}
 
-	if setDashboardNodeExpanded(m.rootNodes, selected.parentKey, false) {
+	if collapseDashboardNode(m.rootNodes, selected.parentKey) {
 		m.rebuildVisibleItems(selected.parentKey)
 		return true
 	}
@@ -900,12 +900,12 @@ func toggleDashboardNodeExpanded(nodes []*dashboardNode, key string) bool {
 	return true
 }
 
-func setDashboardNodeExpanded(nodes []*dashboardNode, key string, expanded bool) bool {
+func collapseDashboardNode(nodes []*dashboardNode, key string) bool {
 	node := findDashboardNode(nodes, key)
 	if node == nil || !node.expandable {
 		return false
 	}
-	node.expanded = expanded
+	node.expanded = false
 	return true
 }
 

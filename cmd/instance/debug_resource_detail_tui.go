@@ -301,19 +301,6 @@ func renderResourceMetricsTab(debugData DebugData, bodyHeight, contentWidth, scr
 	return strings.Join(visible, "\n")
 }
 
-func resourceMetricsMaxScroll(debugData DebugData, bodyHeight, contentWidth int) int {
-	content := renderDashboardDetailContent(resourceMetricsCopyText(debugData), contentWidth)
-	visibleRows := bodyHeight - 1
-	if visibleRows < 1 {
-		visibleRows = 1
-	}
-	maxScroll := len(strings.Split(content, "\n")) - visibleRows
-	if maxScroll < 0 {
-		return 0
-	}
-	return maxScroll
-}
-
 func resourceMetricsCopyText(debugData DebugData) string {
 	catalog := debugData.DashboardCatalog
 	if catalog == nil || len(catalog.Features) == 0 {
