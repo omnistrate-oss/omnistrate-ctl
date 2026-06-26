@@ -153,6 +153,7 @@ func TestHelmTabConstants(t *testing.T) {
 	require.Len(helmTabNames, helmNumTabs)
 	require.Equal("Deployment API parameters", helmTabNames[helmTabInputVars])
 	require.Equal("Deployment Output Parameters", helmTabNames[helmTabOutputVars])
+	require.Equal("Workflow Events", helmTabNames[helmTabWfErrors])
 }
 
 func TestHelmInputParamTreeBuildsFromOperatorInputParam(t *testing.T) {

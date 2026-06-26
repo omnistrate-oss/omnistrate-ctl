@@ -28,7 +28,7 @@ func TestNewComposeDetailModel(t *testing.T) {
 	require.Equal(t, "my-compose", m.node.Key)
 }
 
-func TestComposeTabCyclesAllThreeTabs(t *testing.T) {
+func TestComposeTabCyclesAllTabs(t *testing.T) {
 	model := composeDetailModel{
 		activeTab: composeTabInputVars,
 		wfErrors:  &workflowErrorsState{},

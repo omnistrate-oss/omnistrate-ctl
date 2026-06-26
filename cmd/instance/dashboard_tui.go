@@ -566,6 +566,12 @@ func buildDashboardNodes(catalog *dataaccess.DashboardCatalog) []*dashboardNode 
 		if host := dashboardHost(feature.GrafanaEndpoint); host != "" {
 			descriptionParts = append(descriptionParts, host)
 		}
+		if feature.GrafanaUIUsername != "" {
+			descriptionParts = append(descriptionParts, fmt.Sprintf("username: %s", feature.GrafanaUIUsername))
+		}
+		if feature.GrafanaUIPassword != "" {
+			descriptionParts = append(descriptionParts, fmt.Sprintf("password: %s", feature.GrafanaUIPassword))
+		}
 
 		node := &dashboardNode{
 			key:         feature.Key,
@@ -619,6 +625,12 @@ func buildDashboardChildNode(feature dataaccess.DashboardFeatureInfo, dashboard 
 	if description == "" {
 		description = dashboardHost(dashboard.URL)
 	}
+	if dashboard.URL != "" {
+		if description != "" {
+			description += "  |  "
+		}
+		description += dashboard.URL
+	}
 
 	return &dashboardNode{
 		key:         fmt.Sprintf("%s/%s", feature.Key, dashboard.Name),
@@ -632,6 +644,14 @@ func buildDashboardChildNode(feature dataaccess.DashboardFeatureInfo, dashboard 
 func buildDashboardFeatureContent(feature dataaccess.DashboardFeatureInfo) string {
 	lines := []string{
 		dashboardFeatureDisplayName(feature),
+	}
+
+	if feature.GrafanaEndpoint != "" {
+		lines = append(lines,
+			"",
+			"Grafana Access:",
+			fmt.Sprintf("Grafana Endpoint: %s", dashboardDisplayValue(feature.GrafanaEndpoint)),
+		)
 	}
 
 	if feature.GrafanaUIUsername != "" || feature.GrafanaUIPassword != "" {
@@ -893,6 +913,18 @@ func setDashboardNodeExpanded(nodes []*dashboardNode, key string, expanded bool)
 	}
 	node.expanded = expanded
 	return true
+}
+
+func setDashboardTreeExpanded(node *dashboardNode, expanded bool) {
+	if node == nil {
+		return
+	}
+	if node.expandable {
+		node.expanded = expanded
+	}
+	for _, child := range node.children {
+		setDashboardTreeExpanded(child, expanded)
+	}
 }
 
 func findDashboardNode(nodes []*dashboardNode, key string) *dashboardNode {

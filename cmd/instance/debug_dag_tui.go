@@ -45,6 +45,14 @@ type dagRefreshMsg struct {
 
 const dagRefreshInterval = 5 * time.Second
 
+const (
+	dagTabResources = 0
+	dagTabMetrics   = 1
+	dagNumTabs      = 2
+)
+
+var dagTabNames = []string{"Resource Details", "Metrics"}
+
 type dagModel struct {
 	debugData    DebugData
 	instanceID   string
@@ -71,6 +79,14 @@ type dagModel struct {
 	// Sub-view
 	detailModel tea.Model
 	inDetail    bool
+	activeTab   int
+
+	// Metrics view
+	metricsRootNodes []*dashboardNode
+	metricsItems     []dashboardItem
+	metricsCursor    int
+	metricsScroll    int
+	metricsStatus    string
 
 	// Progress loading
 	progressLoading    bool
@@ -104,18 +120,29 @@ func newDagModel(data DebugData) dagModel {
 	if hasNodes {
 		data.PlanDAG.ProgressLoading = true
 	}
+	var metricsRootNodes []*dashboardNode
+	var metricsItems []dashboardItem
+	if data.DashboardCatalog != nil {
+		metricsRootNodes = buildDashboardNodes(data.DashboardCatalog)
+		for _, node := range metricsRootNodes {
+			setDashboardTreeExpanded(node, false)
+		}
+		metricsItems = flattenDashboardNodes(metricsRootNodes, 0, "")
+	}
 	return dagModel{
-		debugData:       data,
-		instanceID:      data.InstanceID,
-		plan:            data.PlanDAG,
-		lines:           []string{},
-		selectableNodes: nodes,
-		nodeLevels:      levels,
-		showCursor:      len(nodes) > 0,
-		expandedNodes:   make(map[string]bool),
-		highlightDeps:   false,
-		progressLoading: hasNodes,
-		spinner:         s,
+		debugData:        data,
+		instanceID:       data.InstanceID,
+		plan:             data.PlanDAG,
+		lines:            []string{},
+		selectableNodes:  nodes,
+		nodeLevels:       levels,
+		showCursor:       len(nodes) > 0,
+		expandedNodes:    make(map[string]bool),
+		highlightDeps:    false,
+		metricsRootNodes: metricsRootNodes,
+		metricsItems:     metricsItems,
+		progressLoading:  hasNodes,
+		spinner:          s,
 	}
 }
 
@@ -339,59 +366,88 @@ func (m dagModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		switch msg.String() {
 		case "ctrl+c", "q":
 			return m, tea.Quit
+		case "tab":
+			m.activeTab = (m.activeTab + 1) % dagNumTabs
+			m.clampScroll()
+			return m, nil
+		case "shift+tab":
+			m.activeTab = (m.activeTab - 1 + dagNumTabs) % dagNumTabs
+			m.clampScroll()
+			return m, nil
 		case "pgup":
-			m.scrollY -= m.pageSize()
+			if m.activeTab == dagTabMetrics {
+				return m.updateMetricsDashboard(msg)
+			} else {
+				m.scrollY -= m.pageSize()
+			}
 		case "pgdown":
-			m.scrollY += m.pageSize()
+			if m.activeTab == dagTabMetrics {
+				return m.updateMetricsDashboard(msg)
+			} else {
+				m.scrollY += m.pageSize()
+			}
 		case "home", "g":
-			m.scrollY = 0
+			if m.activeTab == dagTabMetrics {
+				return m.updateMetricsDashboard(msg)
+			} else {
+				m.scrollY = 0
+			}
 		case "end", "G":
-			m.scrollY = m.maxScrollY()
+			if m.activeTab == dagTabMetrics {
+				return m.updateMetricsDashboard(msg)
+			} else {
+				m.scrollY = m.maxScrollY()
+			}
 		case "up", "k":
-			if m.showCursor && len(m.selectableNodes) > 0 {
+			if m.activeTab == dagTabMetrics {
+				return m.updateMetricsDashboard(msg)
+			} else if m.showCursor && len(m.selectableNodes) > 0 {
 				m.moveCursorInLevel(-1)
 				m.rebuildLayout()
 			}
 		case "down", "j":
-			if m.showCursor && len(m.selectableNodes) > 0 {
+			if m.activeTab == dagTabMetrics {
+				return m.updateMetricsDashboard(msg)
+			} else if m.showCursor && len(m.selectableNodes) > 0 {
 				m.moveCursorInLevel(1)
 				m.rebuildLayout()
 			}
 		case "left", "h":
-			if m.showCursor && len(m.selectableNodes) > 0 {
+			if m.activeTab == dagTabResources && m.showCursor && len(m.selectableNodes) > 0 {
 				m.moveCursorToLevel(-1)
 				m.rebuildLayout()
 			}
 		case "right", "l":
-			if m.showCursor && len(m.selectableNodes) > 0 {
+			if m.activeTab == dagTabResources && m.showCursor && len(m.selectableNodes) > 0 {
 				m.moveCursorToLevel(1)
 				m.rebuildLayout()
 			}
-		case "tab":
-			if m.showCursor && len(m.selectableNodes) > 0 && m.cursorIndex < len(m.selectableNodes)-1 {
-				m.cursorIndex++
-				m.rebuildLayout()
-			}
-		case "shift+tab":
-			if m.showCursor && len(m.selectableNodes) > 0 && m.cursorIndex > 0 {
-				m.cursorIndex--
-				m.rebuildLayout()
-			}
 		case "enter":
-			if m.showCursor && len(m.selectableNodes) > 0 {
+			if m.activeTab == dagTabResources && m.showCursor && len(m.selectableNodes) > 0 {
 				return m.openNodeDetail()
 			}
 		case " ":
-			if m.showCursor && len(m.selectableNodes) > 0 {
+			if m.activeTab == dagTabResources && m.showCursor && len(m.selectableNodes) > 0 {
 				nodeID := m.selectableNodes[m.cursorIndex]
 				m.expandedNodes[nodeID] = !m.expandedNodes[nodeID]
 				m.rebuildLayout()
 			}
 		case "d":
-			m.highlightDeps = !m.highlightDeps
-			m.rebuildLayout()
+			if m.activeTab == dagTabResources {
+				m.highlightDeps = !m.highlightDeps
+				m.rebuildLayout()
+			}
+		case "y":
+			if m.activeTab == dagTabMetrics {
+				return m.updateMetricsDashboard(msg)
+			}
+		}
+		if m.activeTab == dagTabMetrics {
+			return m.updateMetricsDashboard(msg)
 		}
 		m.clampScroll()
+	case dashboardActionResultMsg:
+		return m.updateMetricsDashboard(msg)
 	case wfProgressMsg:
 		m.wfResolved = true
 		m.wfResult = &msg
@@ -445,6 +501,83 @@ func (m dagModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 	}
 
+	return m, nil
+}
+
+func (m dagModel) updateMetricsDashboard(msg tea.Msg) (tea.Model, tea.Cmd) {
+	if len(m.metricsItems) == 0 {
+		return m, nil
+	}
+
+	switch msg := msg.(type) {
+	case dashboardActionResultMsg:
+		if msg.err != nil {
+			m.metricsStatus = msg.err.Error()
+		} else {
+			m.metricsStatus = msg.message
+		}
+		return m, nil
+	case tea.KeyMsg:
+		switch msg.String() {
+		case "up", "k":
+			if m.metricsCursor > 0 {
+				m.metricsCursor--
+			}
+		case "down", "j":
+			if m.metricsCursor < len(m.metricsItems)-1 {
+				m.metricsCursor++
+			}
+		case "pgup":
+			m.metricsCursor -= m.metricsPageSize()
+			if m.metricsCursor < 0 {
+				m.metricsCursor = 0
+			}
+		case "pgdown":
+			m.metricsCursor += m.metricsPageSize()
+			if m.metricsCursor >= len(m.metricsItems) {
+				m.metricsCursor = len(m.metricsItems) - 1
+			}
+		case "home", "g":
+			m.metricsCursor = 0
+		case "end", "G":
+			m.metricsCursor = len(m.metricsItems) - 1
+		case "enter", " ", "right", "l":
+			selected := m.selectedMetricsItem()
+			if selected != nil && selected.expandable && toggleDashboardNodeExpanded(m.metricsRootNodes, selected.key) {
+				m.rebuildMetricsItems(selected.key)
+			}
+		case "left", "h":
+			selected := m.selectedMetricsItem()
+			if selected == nil {
+				break
+			}
+			if selected.expandable && selected.expanded {
+				if setDashboardNodeExpanded(m.metricsRootNodes, selected.key, false) {
+					m.rebuildMetricsItems(selected.key)
+				}
+			} else if selected.parentKey != "" {
+				if setDashboardNodeExpanded(m.metricsRootNodes, selected.parentKey, false) {
+					m.rebuildMetricsItems(selected.parentKey)
+				}
+			}
+		case "c", "C", "y", "Y":
+			text := selectedDashboardCopyText(m.selectedMetricsItem())
+			if text == "" {
+				m.metricsStatus = "Nothing actionable to copy from this section"
+				return m, nil
+			}
+			return m, copyDashboardTextCmd(text, "Copied selected value to clipboard")
+		case "o", "O":
+			selected := m.selectedMetricsItem()
+			if selected == nil || strings.TrimSpace(selected.openURL) == "" {
+				m.metricsStatus = "No URL available for the selected section"
+				return m, nil
+			}
+			return m, openDashboardURLCmd(selected.openURL)
+		}
+	}
+
+	m.ensureMetricsCursorVisible()
 	return m, nil
 }
 
@@ -769,10 +902,8 @@ func (m dagModel) View() string {
 		return "Loading..."
 	}
 
-	bodyWidth, bodyHeight := m.bodySize()
-	body := m.renderBody(bodyWidth, bodyHeight)
-
 	header := m.renderHeader()
+	body := m.renderTabsWithBody()
 	help := m.renderHelp()
 
 	return lipgloss.JoinVertical(lipgloss.Left, header, body, help)
@@ -781,7 +912,8 @@ func (m dagModel) View() string {
 func (m dagModel) bodySize() (int, int) {
 	headerHeight := 1
 	helpHeight := 1
-	bodyHeight := m.height - headerHeight - helpHeight
+	tabFrameHeight := 4
+	bodyHeight := m.height - headerHeight - helpHeight - tabFrameHeight
 	if bodyHeight < 1 {
 		bodyHeight = 1
 	}
@@ -790,6 +922,226 @@ func (m dagModel) bodySize() (int, int) {
 		bodyWidth = 1
 	}
 	return bodyWidth, bodyHeight
+}
+
+func (m dagModel) renderTabsWithBody() string {
+	_, bodyHeight := m.bodySize()
+	content := m.renderActiveTabContent()
+	if m.activeTab == dagTabMetrics {
+		row := renderResourceDetailTabRow(m.width, dagTabNames, m.activeTab, false)
+		return lipgloss.JoinVertical(lipgloss.Left, row, content)
+	}
+	return renderResourceDetailTabsWithBody(m.width, bodyHeight, dagTabNames, m.activeTab, content)
+}
+
+func (m dagModel) renderActiveTabContent() string {
+	_, bodyHeight := m.bodySize()
+	switch m.activeTab {
+	case dagTabMetrics:
+		if len(m.metricsItems) == 0 {
+			return renderResourceMetricsTab(m.debugData, bodyHeight, m.width, 0)
+		}
+		return m.renderMetricsTree(m.width, m.metricsDashboardHeight())
+	default:
+		contentWidth := resourceDetailContentWidth(m.width)
+		return m.renderBody(contentWidth, bodyHeight)
+	}
+}
+
+func (m dagModel) metricsDashboardHeight() int {
+	_, bodyHeight := m.bodySize()
+	return bodyHeight
+}
+
+func (m dagModel) metricsPageSize() int {
+	height := m.metricsDashboardHeight() - 2
+	if height < 1 {
+		return 1
+	}
+	return height
+}
+
+func (m dagModel) selectedMetricsItem() *dashboardItem {
+	if m.metricsCursor < 0 || m.metricsCursor >= len(m.metricsItems) {
+		return nil
+	}
+	return &m.metricsItems[m.metricsCursor]
+}
+
+func (m *dagModel) rebuildMetricsItems(selectedKey string) {
+	m.metricsItems = flattenDashboardNodes(m.metricsRootNodes, 0, "")
+	if len(m.metricsItems) == 0 {
+		m.metricsCursor = 0
+		m.metricsScroll = 0
+		return
+	}
+	if selectedKey != "" {
+		for index, item := range m.metricsItems {
+			if item.key == selectedKey {
+				m.metricsCursor = index
+				break
+			}
+		}
+	}
+	if m.metricsCursor >= len(m.metricsItems) {
+		m.metricsCursor = len(m.metricsItems) - 1
+	}
+	m.ensureMetricsCursorVisible()
+}
+
+func (m *dagModel) ensureMetricsCursorVisible() {
+	_, starts := m.metricsTreeLines(resourceDetailContentWidth(m.width))
+	if len(starts) == 0 || m.metricsCursor < 0 || m.metricsCursor >= len(starts) {
+		m.metricsScroll = 0
+		return
+	}
+	visibleRows := m.metricsDashboardHeight() - 2
+	if m.metricsStatus != "" {
+		visibleRows--
+	}
+	if visibleRows < 1 {
+		visibleRows = 1
+	}
+
+	cursorLine := starts[m.metricsCursor]
+	if cursorLine < m.metricsScroll {
+		m.metricsScroll = cursorLine
+	} else if cursorLine >= m.metricsScroll+visibleRows {
+		m.metricsScroll = cursorLine - visibleRows + 1
+	}
+	if m.metricsScroll < 0 {
+		m.metricsScroll = 0
+	}
+}
+
+func (m dagModel) renderMetricsTree(width, height int) string {
+	contentWidth := width - dashboardPanelStyle(lipgloss.Color("117")).GetHorizontalFrameSize()
+	if contentWidth < 20 {
+		contentWidth = 20
+	}
+	lines, _ := m.metricsTreeLines(contentWidth)
+	visibleRows := height - dashboardPanelStyle(lipgloss.Color("117")).GetVerticalFrameSize()
+	if m.metricsStatus != "" {
+		visibleRows--
+	}
+	if visibleRows < 1 {
+		visibleRows = 1
+	}
+
+	maxScroll := len(lines) - visibleRows
+	if maxScroll < 0 {
+		maxScroll = 0
+	}
+	scroll := clamp(m.metricsScroll, 0, maxScroll)
+	end := scroll + visibleRows
+	if end > len(lines) {
+		end = len(lines)
+	}
+
+	visible := append([]string(nil), lines[scroll:end]...)
+	for len(visible) < visibleRows {
+		visible = append(visible, "")
+	}
+	if m.metricsStatus != "" {
+		visible = append(visible, lipgloss.NewStyle().Foreground(lipgloss.Color("111")).Render(m.metricsStatus))
+	}
+
+	for index, line := range visible {
+		visible[index] = padRightANSI(line, contentWidth)
+	}
+	return dashboardPanelStyle(lipgloss.Color("117")).Width(width).Render(strings.Join(visible, "\n"))
+}
+
+func (m dagModel) metricsTreeLines(width int) ([]string, []int) {
+	selectedStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("230")).Background(lipgloss.Color("62"))
+	titleStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("252"))
+	descriptionStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("245"))
+	urlStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("81")).Underline(true)
+
+	lines := make([]string, 0, len(m.metricsItems)*2)
+	starts := make([]int, 0, len(m.metricsItems))
+	for index, item := range m.metricsItems {
+		starts = append(starts, len(lines))
+		indent := strings.Repeat("  ", item.level)
+		prefix := ""
+		switch {
+		case item.expandable && item.expanded:
+			prefix = "▾ "
+		case item.expandable:
+			prefix = "▸ "
+		case item.level > 0:
+			prefix = "• "
+		}
+
+		title := indent + prefix + item.title
+		if index == m.metricsCursor {
+			lines = append(lines, selectedStyle.Render(title))
+		} else {
+			lines = append(lines, titleStyle.Render(title))
+		}
+
+		if strings.TrimSpace(item.description) == "" {
+			continue
+		}
+		descriptionIndent := indent + "  "
+		descriptionWidth := width - lipgloss.Width(descriptionIndent)
+		if descriptionWidth < 20 {
+			descriptionWidth = 20
+		}
+		lines = append(lines, renderMetricsDescriptionLines(item, descriptionIndent, descriptionWidth, descriptionStyle, urlStyle)...)
+	}
+	return lines, starts
+}
+
+func renderMetricsDescriptionLines(
+	item dashboardItem,
+	indent string,
+	width int,
+	descriptionStyle lipgloss.Style,
+	urlStyle lipgloss.Style,
+) []string {
+	description := strings.TrimSpace(item.description)
+	if description == "" {
+		return nil
+	}
+
+	url := strings.TrimSpace(item.openURL)
+	if url == "" {
+		return renderMetricsWrappedDescription(description, indent, width, descriptionStyle)
+	}
+
+	var lines []string
+	linkPrefix := "Link: "
+	linkWidth := width - lipgloss.Width(linkPrefix)
+	if linkWidth < 20 {
+		linkWidth = 20
+	}
+	wrappedURL := wrapDashboardLine(url, linkWidth)
+	for index, part := range wrappedURL {
+		linePrefix := strings.Repeat(" ", lipgloss.Width(linkPrefix))
+		if index == 0 {
+			linePrefix = linkPrefix
+		}
+		clickablePart := terminalHyperlink(url, urlStyle.Render(part))
+		lines = append(lines, descriptionStyle.Render(indent+linePrefix)+clickablePart)
+	}
+	return lines
+}
+
+func renderMetricsWrappedDescription(description, indent string, width int, style lipgloss.Style) []string {
+	wrapped := wrapDashboardLine(description, width)
+	lines := make([]string, 0, len(wrapped))
+	for _, line := range wrapped {
+		lines = append(lines, style.Render(indent+line))
+	}
+	return lines
+}
+
+func terminalHyperlink(url, label string) string {
+	if strings.TrimSpace(url) == "" {
+		return label
+	}
+	return "\x1b]8;;" + url + "\x1b\\" + label + "\x1b]8;;\x1b\\"
 }
 
 func (m dagModel) renderHeader() string {
@@ -817,9 +1169,12 @@ func (m dagModel) renderHelp() string {
 		if m.highlightDeps {
 			depGraphLabel = "hide dep graph"
 		}
-		text = fmt.Sprintf("tab/shift+tab: select  space: deps  d: %s  enter: open  arrows: scroll  q: quit  │  %s", depGraphLabel, selectedStyle.Render(nodeLabel(node)))
+		text = fmt.Sprintf("tab/shift+tab: switch tabs  space: deps  d: %s  enter: open  arrows: navigate  q: quit  │  %s", depGraphLabel, selectedStyle.Render(nodeLabel(node)))
 	} else {
-		text = "arrows: scroll  pgup/pgdn: page  home/end: jump  q: quit"
+		text = "tab/shift+tab: switch tabs  arrows: scroll  pgup/pgdn: page  home/end: jump  q: quit"
+	}
+	if m.activeTab == dagTabMetrics {
+		text = "tab/shift+tab: switch tabs  ↑/↓: navigate  enter: expand/collapse  c/y: copy  o: open URL  q: quit"
 	}
 	return lipgloss.Place(m.width, 1, lipgloss.Left, lipgloss.Top, style.Render(text))
 }
@@ -862,8 +1217,7 @@ func (m dagModel) maxScrollY() int {
 }
 
 func (m dagModel) maxScrollX() int {
-	bodyWidth, _ := m.bodySize()
-	maxVal := m.contentWidth - bodyWidth
+	maxVal := m.contentWidth - resourceDetailContentWidth(m.width)
 	if maxVal < 0 {
 		return 0
 	}
@@ -886,10 +1240,7 @@ func (m *dagModel) clampScroll() {
 }
 
 func (m *dagModel) rebuildLayout() {
-	bodyWidth, _ := m.bodySize()
-	if bodyWidth < 1 {
-		bodyWidth = m.width
-	}
+	bodyWidth := resourceDetailContentWidth(m.width)
 
 	selectedNodeID := ""
 	if m.showCursor && len(m.selectableNodes) > 0 {
@@ -922,7 +1273,8 @@ func (m *dagModel) ensureSelectedVisible() {
 		return
 	}
 
-	bodyWidth, bodyHeight := m.bodySize()
+	_, bodyHeight := m.bodySize()
+	bodyWidth := resourceDetailContentWidth(m.width)
 	margin := 2
 
 	// The placement y is relative to the diagram canvas; add prefixRows

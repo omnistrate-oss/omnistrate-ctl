@@ -3,6 +3,7 @@ package instance
 import (
 	"testing"
 
+	tea "github.com/charmbracelet/bubbletea"
 	openapiclientfleet "github.com/omnistrate-oss/omnistrate-sdk-go/fleet"
 )
 
@@ -23,6 +24,47 @@ func TestComputePlanLevels(t *testing.T) {
 	}
 	if len(levels) != 2 {
 		t.Fatalf("expected 2 levels, got %d", len(levels))
+	}
+}
+
+func TestDagTopLevelTabNames(t *testing.T) {
+	if len(dagTabNames) != dagNumTabs {
+		t.Fatalf("dagTabNames length %d does not match dagNumTabs %d", len(dagTabNames), dagNumTabs)
+	}
+	if dagTabNames[dagTabResources] != "Resource Details" {
+		t.Fatalf("expected resource details tab, got %q", dagTabNames[dagTabResources])
+	}
+	if dagTabNames[dagTabMetrics] != "Metrics" {
+		t.Fatalf("expected metrics tab, got %q", dagTabNames[dagTabMetrics])
+	}
+}
+
+func TestDagTopLevelTabSwitching(t *testing.T) {
+	model := newDagModel(DebugData{
+		PlanDAG: &PlanDAG{
+			Nodes: map[string]PlanDAGNode{
+				"r-postgres": {ID: "r-postgres", Key: "postgres", Name: "postgres", Type: "Resource"},
+			},
+			Levels: [][]string{{"r-postgres"}},
+		},
+	})
+	model.width = 100
+	model.height = 30
+	model.rebuildLayout()
+
+	updatedAny, cmd := model.Update(tea.KeyMsg{Type: tea.KeyTab})
+	if cmd != nil {
+		t.Fatalf("expected nil cmd on top-level tab switch, got %v", cmd)
+	}
+	updated := updatedAny.(dagModel)
+	if updated.activeTab != dagTabMetrics {
+		t.Fatalf("expected metrics tab after tab key, got %d", updated.activeTab)
+	}
+
+	updatedAny, _ = updated.Update(tea.KeyMsg{Type: tea.KeyShiftTab})
+	updated = updatedAny.(dagModel)
+	if updated.activeTab != dagTabResources {
+		t.Fatalf("expected resource details tab after shift+tab, got %d", updated.activeTab)
 	}
 }
 
