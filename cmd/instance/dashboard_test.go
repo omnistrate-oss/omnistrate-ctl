@@ -14,6 +14,26 @@ func TestDashboardCommand(t *testing.T) {
 	assert.Contains(t, dashboardCmd.Short, "Grafana dashboard")
 }
 
+func TestDashboardTreeSummaryOmitsCredentials(t *testing.T) {
+	catalog := &dataaccess.DashboardCatalog{
+		Features: []dataaccess.DashboardFeatureInfo{
+			{
+				Key:               "METRICS",
+				Label:             "Customer",
+				GrafanaEndpoint:   "https://grafana.example.com",
+				GrafanaUIUsername: "org-user",
+				GrafanaUIPassword: "plain-secret",
+			},
+		},
+	}
+
+	nodes := buildDashboardNodes(catalog)
+
+	assert.Len(t, nodes, 1)
+	assert.NotContains(t, nodes[0].description, "org-user")
+	assert.NotContains(t, nodes[0].description, "plain-secret")
+}
+
 func TestResourceMetricsCopyTextDeduplicatesSharedMetricsDetails(t *testing.T) {
 	catalog := &dataaccess.DashboardCatalog{
 		InstanceID:          "instance-123",

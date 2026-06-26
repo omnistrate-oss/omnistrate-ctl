@@ -566,12 +566,6 @@ func buildDashboardNodes(catalog *dataaccess.DashboardCatalog) []*dashboardNode 
 		if host := dashboardHost(feature.GrafanaEndpoint); host != "" {
 			descriptionParts = append(descriptionParts, host)
 		}
-		if feature.GrafanaUIUsername != "" {
-			descriptionParts = append(descriptionParts, fmt.Sprintf("username: %s", feature.GrafanaUIUsername))
-		}
-		if feature.GrafanaUIPassword != "" {
-			descriptionParts = append(descriptionParts, fmt.Sprintf("password: %s", feature.GrafanaUIPassword))
-		}
 
 		node := &dashboardNode{
 			key:         feature.Key,

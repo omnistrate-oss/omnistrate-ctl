@@ -1089,8 +1089,36 @@ func (m dagModel) metricsTreeLines(width int) ([]string, []int) {
 			descriptionWidth = 20
 		}
 		lines = append(lines, renderMetricsDescriptionLines(item, descriptionIndent, descriptionWidth, descriptionStyle, urlStyle)...)
+		if item.parentKey == "" && item.expandable && item.expanded {
+			lines = append(lines, m.renderMetricsCredentialLines(item.key, descriptionIndent, descriptionWidth, descriptionStyle)...)
+		}
 	}
 	return lines, starts
+}
+
+func (m dagModel) renderMetricsCredentialLines(featureKey, indent string, width int, style lipgloss.Style) []string {
+	username, password := m.metricsFeatureCredentials(featureKey)
+	var lines []string
+	if username != "" {
+		lines = append(lines, renderMetricsWrappedDescription("username: "+username, indent, width, style)...)
+	}
+	if password != "" {
+		lines = append(lines, renderMetricsWrappedDescription("password: "+password, indent, width, style)...)
+	}
+	return lines
+}
+
+func (m dagModel) metricsFeatureCredentials(featureKey string) (username, password string) {
+	catalog := m.debugData.DashboardCatalog
+	if catalog == nil {
+		return "", ""
+	}
+	for _, feature := range catalog.Features {
+		if feature.Key == featureKey {
+			return feature.GrafanaUIUsername, feature.GrafanaUIPassword
+		}
+	}
+	return "", ""
 }
 
 func renderMetricsDescriptionLines(
@@ -1141,7 +1169,19 @@ func terminalHyperlink(url, label string) string {
 	if strings.TrimSpace(url) == "" {
 		return label
 	}
+	if containsControlCharacter(url) {
+		return label
+	}
 	return "\x1b]8;;" + url + "\x1b\\" + label + "\x1b]8;;\x1b\\"
+}
+
+func containsControlCharacter(value string) bool {
+	for _, r := range value {
+		if r < 0x20 || r == 0x7f {
+			return true
+		}
+	}
+	return false
 }
 
 func (m dagModel) renderHeader() string {
