@@ -15,6 +15,10 @@ func TestCreateCommandFlags(t *testing.T) {
 	flag := createCmd.Flags().Lookup("customer-account-id")
 	require.NotNil(t, flag)
 	assert.Contains(t, flag.Usage, "account customer list")
+
+	flag = createCmd.Flags().Lookup("cloud-provider-native-network-id")
+	require.NotNil(t, flag)
+	assert.Contains(t, flag.Usage, cloudProviderNativeNetworkIDParamKey)
 }
 
 func TestCreateCommandFlags_InstanceID(t *testing.T) {
@@ -28,7 +32,7 @@ func TestCreateCommandFlags_AllExpectedFlags(t *testing.T) {
 	expectedFlags := []string{
 		"service", "environment", "plan", "version", "resource",
 		"cloud-provider", "region", "param", "param-file",
-		"customer-account-id", "tags", "breakpoints",
+		"customer-account-id", "cloud-provider-native-network-id", "tags", "breakpoints",
 		"subscription-id", "instance-id", "wait",
 	}
 	for _, flagName := range expectedFlags {
@@ -101,6 +105,42 @@ func TestApplyCustomerAccountIDParam_AddsCustomerAccountID(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "value", updated["existing"])
 	assert.Equal(t, "instance-abcd1234", updated[customerAccountConfigIDParamKey])
+}
+
+func TestApplyCloudProviderNativeNetworkIDParam_NoNativeNetworkID(t *testing.T) {
+	params := map[string]any{"existing": "value"}
+
+	updated := applyCloudProviderNativeNetworkIDParam(params, "")
+
+	assert.Equal(t, params, updated)
+}
+
+func TestApplyCloudProviderNativeNetworkIDParam_OverwritesExistingMagicParam(t *testing.T) {
+	updated := applyCloudProviderNativeNetworkIDParam(
+		map[string]any{cloudProviderNativeNetworkIDParamKey: "vpc-existing"},
+		"vpc-abcd1234",
+	)
+
+	assert.Equal(t, "vpc-abcd1234", updated[cloudProviderNativeNetworkIDParamKey])
+}
+
+func TestApplyCloudProviderNativeNetworkIDParam_IgnoresEmptyMagicParam(t *testing.T) {
+	updated := applyCloudProviderNativeNetworkIDParam(
+		map[string]any{cloudProviderNativeNetworkIDParamKey: ""},
+		"vpc-abcd1234",
+	)
+
+	assert.Equal(t, "vpc-abcd1234", updated[cloudProviderNativeNetworkIDParamKey])
+}
+
+func TestApplyCloudProviderNativeNetworkIDParam_AddsNativeNetworkID(t *testing.T) {
+	updated := applyCloudProviderNativeNetworkIDParam(
+		map[string]any{"existing": "value"},
+		"vpc-abcd1234",
+	)
+
+	assert.Equal(t, "value", updated["existing"])
+	assert.Equal(t, "vpc-abcd1234", updated[cloudProviderNativeNetworkIDParamKey])
 }
 
 func TestResolveServicePlanCandidates_ScopesToRequestedService(t *testing.T) {
