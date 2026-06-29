@@ -20,7 +20,6 @@ func TestBuildResourceInstanceSearchFilters(t *testing.T) {
 			"region":          "us-west-2",
 			"status":          "RUNNING",
 			"subscription_id": "sub-1",
-			"tags":            "team=platform",
 		},
 		{
 			"service": "mysql",
@@ -45,7 +44,6 @@ func TestBuildResourceInstanceSearchFilters(t *testing.T) {
 	assert.Equal(t, "us-west-2", filters.ResourceInstance.Predicates[0].RegionCode)
 	assert.Equal(t, "RUNNING", filters.ResourceInstance.Predicates[0].Status)
 	assert.Equal(t, "sub-1", filters.ResourceInstance.Predicates[0].SubscriptionID)
-	assert.Equal(t, "", filters.ResourceInstance.Predicates[0].Tags)
 	assert.Equal(t, "mysql", filters.ResourceInstance.Predicates[1].ServiceName)
 	assert.ElementsMatch(t, []resourceInstanceTagFilter{
 		{Key: "env", Value: "prod"},

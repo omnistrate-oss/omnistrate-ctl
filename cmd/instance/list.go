@@ -189,7 +189,6 @@ type resourceInstanceFilterGroup struct {
 	RegionCode         string `json:"regionCode,omitempty"`
 	Status             string `json:"status,omitempty"`
 	SubscriptionID     string `json:"subscriptionID,omitempty"`
-	Tags               string `json:"-"`
 }
 
 type resourceInstanceTagFilter struct {
