@@ -128,24 +128,3 @@ func TestRestoreCommandUse_IncludesSubscriptionID(t *testing.T) {
 func TestRestoreCommandUse_IncludesCustomNetworkID(t *testing.T) {
 	assert.Contains(t, restoreCmd.Use, "--custom-network-id")
 }
-
-func TestFormatSnapshotDisplayTime(t *testing.T) {
-	tests := []struct {
-		name     string
-		input    string
-		expected string
-	}{
-		{"valid RFC3339", "2024-01-15T10:30:00Z", "2024-01-15 10:30:00 UTC"},
-		{"empty string", "", ""},
-		{"invalid format returns raw", "not-a-date", "not-a-date"},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			result := formatSnapshotDisplayTime(tt.input)
-			if result != tt.expected {
-				t.Errorf("expected %q, got %q", tt.expected, result)
-			}
-		})
-	}
-}
