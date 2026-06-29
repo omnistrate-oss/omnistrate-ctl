@@ -20,7 +20,6 @@ func TestSearchInventoryIncludesOptionalFilters(t *testing.T) {
 
 	var body map[string]any
 	require.NoError(t, json.Unmarshal(bodyBytes, &body))
-	require.NoError(t, err)
 	assert.Equal(t, "resourceinstance:i", body["query"])
 	assert.Equal(t, map[string]any{
 		"resourceInstance": map[string]any{
