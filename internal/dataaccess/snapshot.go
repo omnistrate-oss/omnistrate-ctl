@@ -156,7 +156,6 @@ type RestoreSnapshotOptions struct {
 	CustomNetworkID            string
 	SubscriptionID             string
 	RestoreToSource            bool
-	AdditionalProperties       map[string]any
 }
 
 // RestoreSnapshot restores a snapshot either to a new instance or, when RestoreToSource is true, to the original source instance.
@@ -169,36 +168,8 @@ func RestoreSnapshot(ctx context.Context, token, serviceID, environmentID, snaps
 		networkType = "PUBLIC"
 	}
 
-	reqBody := openapiclientfleet.FleetRestoreResourceInstanceFromSnapshotRequest2{
-		InputParametersOverride: opts.InputParametersOverride,
-		NetworkType:             utils.ToPtr(networkType),
-	}
-
-	if opts.ProductTierVersionOverride != "" {
-		reqBody.ProductTierVersionOverride = &opts.ProductTierVersionOverride
-	}
-
-	if opts.CustomNetworkID != "" {
-		reqBody.CustomNetworkId = &opts.CustomNetworkID
-	}
-
-	if len(opts.AdditionalProperties) > 0 {
-		reqBody.AdditionalProperties = make(map[string]interface{}, len(opts.AdditionalProperties)+1)
-		for key, value := range opts.AdditionalProperties {
-			reqBody.AdditionalProperties[key] = value
-		}
-	}
-
-	if opts.SubscriptionID != "" {
-		if reqBody.AdditionalProperties == nil {
-			reqBody.AdditionalProperties = make(map[string]interface{}, 1)
-		}
-		reqBody.AdditionalProperties["subscriptionId"] = opts.SubscriptionID
-	}
-
-	if opts.RestoreToSource {
-		reqBody.RestoreToSourceInstance = utils.ToPtr(true)
-	}
+	reqBody := buildRestoreSnapshotRequestBody(opts)
+	reqBody.NetworkType = utils.ToPtr(networkType)
 
 	req := apiClient.InventoryApiAPI.InventoryApiRestoreResourceInstanceFromSnapshot(
 		ctxWithToken,
@@ -219,4 +190,28 @@ func RestoreSnapshot(ctx context.Context, token, serviceID, environmentID, snaps
 		return nil, handleFleetError(err)
 	}
 	return
+}
+
+func buildRestoreSnapshotRequestBody(opts RestoreSnapshotOptions) openapiclientfleet.FleetRestoreResourceInstanceFromSnapshotRequest2 {
+	reqBody := openapiclientfleet.FleetRestoreResourceInstanceFromSnapshotRequest2{
+		InputParametersOverride: opts.InputParametersOverride,
+	}
+
+	if opts.ProductTierVersionOverride != "" {
+		reqBody.ProductTierVersionOverride = &opts.ProductTierVersionOverride
+	}
+
+	if opts.CustomNetworkID != "" {
+		reqBody.CustomNetworkId = &opts.CustomNetworkID
+	}
+
+	if opts.SubscriptionID != "" {
+		reqBody.SubscriptionId = &opts.SubscriptionID
+	}
+
+	if opts.RestoreToSource {
+		reqBody.RestoreToSourceInstance = utils.ToPtr(true)
+	}
+
+	return reqBody
 }
