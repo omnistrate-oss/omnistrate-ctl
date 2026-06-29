@@ -4,7 +4,18 @@ import (
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/stretchr/testify/require"
 )
+
+func TestTerraformTabNames(t *testing.T) {
+	require.Equal(t, numTabs, len(tabNames), "tabNames length must match numTabs")
+	require.Equal(t, "Progress", tabNames[tabProgress])
+	require.Equal(t, "Terraform Files", tabNames[tabTfFiles])
+	require.Equal(t, "Terraform Output", tabNames[tabTfOutput])
+	require.Equal(t, "Live Logs", tabNames[tabLogs])
+	require.Equal(t, "Operation History", tabNames[tabOpHistory])
+	require.Equal(t, "Workflow Events", tabNames[tabWfErrors])
+}
 
 func TestTerraformDetailTabsOnlySwitchOnTabKeys(t *testing.T) {
 	model := newTerraformDetailModel(PlanDAGNode{}, DebugData{})

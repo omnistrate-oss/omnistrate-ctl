@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/url"
 	"sort"
+	"strings"
 
 	openapiclientfleet "github.com/omnistrate-oss/omnistrate-sdk-go/fleet"
 )
@@ -64,6 +65,13 @@ type DashboardDefinition struct {
 type metricsFeatureConfig struct {
 	Enabled                bool                                       `json:"enabled"`
 	GrafanaEndpoint        string                                     `json:"grafanaEndpoint,omitempty"`
+	Auth                   *metricsFeatureAuth                        `json:"auth,omitempty"`
+	GrafanaUIUsername      string                                     `json:"grafanaUiUsername,omitempty"`
+	GrafanaUIPassword      string                                     `json:"grafanaUiPassword,omitempty"`
+	GrafanaUIUsernameAlt   string                                     `json:"grafanaUIUsername,omitempty"`
+	GrafanaUIPasswordAlt   string                                     `json:"grafanaUIPassword,omitempty"`
+	GrafanaUsername        string                                     `json:"grafanaUsername,omitempty"`
+	GrafanaPassword        string                                     `json:"grafanaPassword,omitempty"`
 	ServiceAccountUsername string                                     `json:"serviceAccountUsername,omitempty"`
 	ServiceAccountPassword string                                     `json:"serviceAccountPassword,omitempty"`
 	InstanceOrgID          string                                     `json:"instanceOrgId,omitempty"`
@@ -72,6 +80,11 @@ type metricsFeatureConfig struct {
 	ServiceProviderOrgPass string                                     `json:"serviceProviderOrgPassword,omitempty"`
 	Dashboards             map[string]metricsFeatureDashboard         `json:"dashboards,omitempty"`
 	AdditionalMetrics      map[string]metricsFeatureAdditionalMetrics `json:"additionalMetrics,omitempty"`
+}
+
+type metricsFeatureAuth struct {
+	Username string `json:"username,omitempty"`
+	Password string `json:"password,omitempty"`
 }
 
 type metricsFeatureDashboard struct {
@@ -123,6 +136,7 @@ func (d *DashboardService) GetDashboardCatalog(instance *openapiclientfleet.Reso
 		}
 		catalog.Features = append(catalog.Features, featureInfo)
 	}
+	applySharedProviderGrafanaCredentials(catalog.Features)
 
 	return catalog, nil
 }
@@ -233,16 +247,7 @@ func buildDashboardFeatureInfo(featureKey string, feature metricsFeatureConfig) 
 		ServiceAccountToken: feature.ServiceAccountPassword,
 	}
 
-	switch {
-	case feature.InstanceOrgID != "" || feature.InstanceOrgPassword != "":
-		info.GrafanaUIUsername = feature.InstanceOrgID
-		info.GrafanaUIPassword = feature.InstanceOrgPassword
-		info.GrafanaUILoginScope = "customer"
-	case feature.ServiceProviderOrgID != "" || feature.ServiceProviderOrgPass != "":
-		info.GrafanaUIUsername = feature.ServiceProviderOrgID
-		info.GrafanaUIPassword = feature.ServiceProviderOrgPass
-		info.GrafanaUILoginScope = "provider"
-	}
+	info.GrafanaUIUsername, info.GrafanaUIPassword, info.GrafanaUILoginScope = resolveGrafanaUICredentials(featureKey, feature)
 
 	if len(feature.Dashboards) > 0 {
 		dashboardNames := make([]string, 0, len(feature.Dashboards))
@@ -290,6 +295,109 @@ func buildDashboardFeatureInfo(featureKey string, feature metricsFeatureConfig) 
 	}
 
 	return info, nil
+}
+
+func resolveGrafanaUICredentials(featureKey string, feature metricsFeatureConfig) (username, password, scope string) {
+	featureScope := metricsFeatureLoginScope(featureKey)
+	candidates := []struct {
+		username string
+		password string
+		scope    string
+	}{
+		{feature.ServiceProviderOrgID, feature.ServiceProviderOrgPass, "provider"},
+		{feature.GrafanaUIUsername, feature.GrafanaUIPassword, featureScope},
+		{feature.GrafanaUIUsernameAlt, feature.GrafanaUIPasswordAlt, featureScope},
+		{feature.GrafanaUsername, feature.GrafanaPassword, featureScope},
+	}
+	if feature.Auth != nil {
+		candidates = append(candidates, struct {
+			username string
+			password string
+			scope    string
+		}{feature.Auth.Username, feature.Auth.Password, featureScope})
+	}
+	candidates = append(candidates,
+		struct {
+			username string
+			password string
+			scope    string
+		}{feature.InstanceOrgID, feature.InstanceOrgPassword, "customer"},
+	)
+
+	for _, candidate := range candidates {
+		if candidate.username != "" || candidate.password != "" {
+			return candidate.username, candidate.password, candidate.scope
+		}
+	}
+	return "", "", ""
+}
+
+type dashboardUICredentials struct {
+	username string
+	password string
+	scope    string
+}
+
+func applySharedProviderGrafanaCredentials(features []DashboardFeatureInfo) {
+	providerCredentialsByEndpoint := make(map[string]dashboardUICredentials)
+	for _, feature := range features {
+		if !isProviderGrafanaLogin(feature) {
+			continue
+		}
+
+		endpoint := normalizeDashboardEndpoint(feature.GrafanaEndpoint)
+		if endpoint == "" {
+			continue
+		}
+
+		providerCredentialsByEndpoint[endpoint] = dashboardUICredentials{
+			username: feature.GrafanaUIUsername,
+			password: feature.GrafanaUIPassword,
+			scope:    feature.GrafanaUILoginScope,
+		}
+	}
+
+	if len(providerCredentialsByEndpoint) == 0 {
+		return
+	}
+
+	for index := range features {
+		if isProviderGrafanaLogin(features[index]) {
+			continue
+		}
+
+		endpoint := normalizeDashboardEndpoint(features[index].GrafanaEndpoint)
+		providerCredentials, ok := providerCredentialsByEndpoint[endpoint]
+		if !ok {
+			continue
+		}
+
+		features[index].GrafanaUIUsername = providerCredentials.username
+		features[index].GrafanaUIPassword = providerCredentials.password
+		features[index].GrafanaUILoginScope = providerCredentials.scope
+	}
+}
+
+func isProviderGrafanaLogin(feature DashboardFeatureInfo) bool {
+	if feature.GrafanaUILoginScope != "provider" {
+		return false
+	}
+	return feature.GrafanaUIUsername != "" || feature.GrafanaUIPassword != ""
+}
+
+func normalizeDashboardEndpoint(endpoint string) string {
+	return strings.TrimRight(strings.TrimSpace(endpoint), "/")
+}
+
+func metricsFeatureLoginScope(featureKey string) string {
+	switch featureKey {
+	case internalMetricsFeatureKey:
+		return "provider"
+	case customerMetricsFeatureKey:
+		return "customer"
+	default:
+		return ""
+	}
 }
 
 func metricsFeatureLabel(featureKey string) string {
