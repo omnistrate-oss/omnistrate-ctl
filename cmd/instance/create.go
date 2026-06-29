@@ -34,17 +34,21 @@ omnistrate-ctl instance create --service=mysql --environment=dev --plan=mysql --
 omnistrate-ctl instance create --service=mysql --environment=dev --plan=mysql --version=latest --resource=mySQL --cloud-provider=aws --region=ca-central-1 --param-file /path/to/params.json --breakpoints writer,reader
 
 # Create a BYOA instance deployment using a customer account onboarding instance
-omnistrate-ctl instance create --service=Nebius --environment=dev --plan='Nebius BYOA Compute Variants' --resource=NebiusRedis --cloud-provider=nebius --region=eu-north1 --customer-account-id instance-cg1tthkj0`
+omnistrate-ctl instance create --service=Nebius --environment=dev --plan='Nebius BYOA Compute Variants' --resource=NebiusRedis --cloud-provider=nebius --region=eu-north1 --customer-account-id instance-cg1tthkj0
 
-	customerAccountConfigIDParamKey = "cloud_provider_account_config_id"
-	serviceModelTypeBYOA            = "BYOA"
+# Create a BYOA instance deployment using a customer account onboarding instance with imported network
+omnistrate-ctl instance create --service=MyService --environment=dev --plan='AWS BYOA' --resource=myResource --cloud-provider=aws --region=us-east-2 --customer-account-id instance-cg1tthkj0 --cloud-provider-native-network-id vpc-0123456789abcdef0`
+
+	customerAccountConfigIDParamKey      = "cloud_provider_account_config_id"
+	cloudProviderNativeNetworkIDParamKey = "cloud_provider_native_network_id"
+	serviceModelTypeBYOA                 = "BYOA"
 )
 
 var InstanceID string
 var SubscriptionID string
 
 var createCmd = &cobra.Command{
-	Use:          "create --service=[service] --environment=[environment] --plan=[plan] --version=[version] --resource=[resource] --cloud-provider=[aws|gcp|azure|nebius] --region=[region] [--param=param] [--param-file=file-path] [--instance-id=id] [--customer-account-id=account-instance-id] [--tags key=value,key2=value2] [--breakpoints id-or-key,id-or-key]",
+	Use:          "create --service=[service] --environment=[environment] --plan=[plan] --version=[version] --resource=[resource] --cloud-provider=[aws|gcp|azure|nebius] --region=[region] [--param=param] [--param-file=file-path] [--instance-id=id] [--customer-account-id=account-instance-id] [--cloud-provider-native-network-id=network-id] [--tags key=value,key2=value2] [--breakpoints id-or-key,id-or-key]",
 	Short:        "Create an instance deployment",
 	Long:         `This command helps you create an instance deployment for your service.`,
 	Example:      createExample,
@@ -63,6 +67,7 @@ func init() {
 	createCmd.Flags().String("param", "", "Parameters for the instance deployment")
 	createCmd.Flags().String("param-file", "", "Json file containing parameters for the instance deployment")
 	createCmd.Flags().String("customer-account-id", "", "Customer BYOA account onboarding instance ID to inject as the cloud account. Use 'omnistrate-ctl account customer list' or 'omnistrate-ctl account customer describe <instance-id>' to find it.")
+	createCmd.Flags().String("cloud-provider-native-network-id", "", fmt.Sprintf("Cloud provider native network ID to inject as %s in instance deployment parameters", cloudProviderNativeNetworkIDParamKey))
 	createCmd.Flags().String("tags", "", "Custom tags to add to the instance deployment (format: key=value,key2=value2)")
 	createCmd.Flags().String("breakpoints", "", "Workflow breakpoint resource IDs or resource keys (comma-separated)")
 	createCmd.Flags().StringP("subscription-id", "", "", "Subscription ID to use for the instance deployment. If not provided, instance deployment will be created in your own subscription.")
@@ -145,6 +150,11 @@ func runCreate(cmd *cobra.Command, args []string) error {
 		return err
 	}
 	customerAccountID, err := cmd.Flags().GetString("customer-account-id")
+	if err != nil {
+		utils.PrintError(err)
+		return err
+	}
+	cloudProviderNativeNetworkID, err := cmd.Flags().GetString("cloud-provider-native-network-id")
 	if err != nil {
 		utils.PrintError(err)
 		return err
@@ -254,6 +264,7 @@ func runCreate(cmd *cobra.Command, args []string) error {
 		utils.HandleSpinnerError(spinner, sm, err)
 		return err
 	}
+	formattedParams = applyCloudProviderNativeNetworkIDParam(formattedParams, cloudProviderNativeNetworkID)
 
 	var resourceKey string
 	found := false
@@ -661,6 +672,22 @@ func applyCustomerAccountIDParam(
 	}
 	params[customerAccountConfigIDParamKey] = customerAccountID
 	return params, nil
+}
+
+func applyCloudProviderNativeNetworkIDParam(
+	params map[string]any,
+	cloudProviderNativeNetworkID string,
+) map[string]any {
+	cloudProviderNativeNetworkID = strings.TrimSpace(cloudProviderNativeNetworkID)
+	if cloudProviderNativeNetworkID == "" {
+		return params
+	}
+
+	if params == nil {
+		params = make(map[string]any)
+	}
+	params[cloudProviderNativeNetworkIDParamKey] = cloudProviderNativeNetworkID
+	return params
 }
 
 func customerAccountParamValue(params map[string]any) string {
