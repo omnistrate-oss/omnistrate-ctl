@@ -21,7 +21,7 @@ require (
 	github.com/mitchellh/go-wordwrap v1.0.1
 	github.com/muesli/cancelreader v0.2.2
 	github.com/njayp/ophis v1.1.4
-	github.com/omnistrate-oss/omnistrate-sdk-go v0.0.118
+	github.com/omnistrate-oss/omnistrate-sdk-go v0.0.119
 	github.com/pkg/browser v0.0.0-20240102092130-5ac0b6a4141c
 	github.com/pkg/errors v0.9.1
 	github.com/rs/zerolog v1.35.0

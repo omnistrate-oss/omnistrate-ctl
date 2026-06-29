@@ -148,27 +148,28 @@ func DeleteSnapshot(ctx context.Context, token, serviceID, environmentID, snapsh
 	return
 }
 
-// RestoreSnapshot restores a snapshot either to a new instance or, when restoreToSource is true, to the original source instance.
-func RestoreSnapshot(ctx context.Context, token, serviceID, environmentID, snapshotID string, formattedParams map[string]any, tierVersionOverride string, networkType string, restoreToSource bool) (res *openapiclientfleet.FleetRestoreResourceInstanceResult, err error) {
+// RestoreSnapshotOptions controls optional restore behavior.
+type RestoreSnapshotOptions struct {
+	InputParametersOverride    map[string]any
+	ProductTierVersionOverride string
+	NetworkType                string
+	CustomNetworkID            string
+	SubscriptionID             string
+	RestoreToSource            bool
+}
+
+// RestoreSnapshot restores a snapshot either to a new instance or, when RestoreToSource is true, to the original source instance.
+func RestoreSnapshot(ctx context.Context, token, serviceID, environmentID, snapshotID string, opts RestoreSnapshotOptions) (res *openapiclientfleet.FleetRestoreResourceInstanceResult, err error) {
 	ctxWithToken := context.WithValue(ctx, openapiclientfleet.ContextAccessToken, token)
 	apiClient := getFleetClient()
 
+	networkType := opts.NetworkType
 	if networkType == "" {
 		networkType = "PUBLIC"
 	}
 
-	reqBody := openapiclientfleet.FleetRestoreResourceInstanceFromSnapshotRequest2{
-		InputParametersOverride: formattedParams,
-		NetworkType:             utils.ToPtr(networkType),
-	}
-
-	if tierVersionOverride != "" {
-		reqBody.ProductTierVersionOverride = &tierVersionOverride
-	}
-
-	if restoreToSource {
-		reqBody.RestoreToSourceInstance = utils.ToPtr(true)
-	}
+	reqBody := buildRestoreSnapshotRequestBody(opts)
+	reqBody.NetworkType = utils.ToPtr(networkType)
 
 	req := apiClient.InventoryApiAPI.InventoryApiRestoreResourceInstanceFromSnapshot(
 		ctxWithToken,
@@ -189,4 +190,28 @@ func RestoreSnapshot(ctx context.Context, token, serviceID, environmentID, snaps
 		return nil, handleFleetError(err)
 	}
 	return
+}
+
+func buildRestoreSnapshotRequestBody(opts RestoreSnapshotOptions) openapiclientfleet.FleetRestoreResourceInstanceFromSnapshotRequest2 {
+	reqBody := openapiclientfleet.FleetRestoreResourceInstanceFromSnapshotRequest2{
+		InputParametersOverride: opts.InputParametersOverride,
+	}
+
+	if opts.ProductTierVersionOverride != "" {
+		reqBody.ProductTierVersionOverride = &opts.ProductTierVersionOverride
+	}
+
+	if opts.CustomNetworkID != "" {
+		reqBody.CustomNetworkId = &opts.CustomNetworkID
+	}
+
+	if opts.SubscriptionID != "" {
+		reqBody.SubscriptionId = &opts.SubscriptionID
+	}
+
+	if opts.RestoreToSource {
+		reqBody.RestoreToSourceInstance = utils.ToPtr(true)
+	}
+
+	return reqBody
 }

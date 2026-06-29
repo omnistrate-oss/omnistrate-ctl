@@ -3,6 +3,7 @@ package snapshot
 import (
 	"context"
 	"fmt"
+	"os"
 	"testing"
 
 	"github.com/google/uuid"
@@ -54,6 +55,45 @@ func TestSnapshotListEmpty(t *testing.T) {
 
 	// Cleanup: delete the service
 	cmd.RootCmd.SetArgs([]string{"service", "delete", serviceName})
+	err = cmd.RootCmd.ExecuteContext(ctx)
+	require.NoError(t, err)
+}
+
+func TestSnapshotRestoreWithTargetingFlags(t *testing.T) {
+	testutils.SmokeTest(t)
+
+	serviceID := os.Getenv("SNAPSHOT_RESTORE_TEST_SERVICE_ID")
+	environmentID := os.Getenv("SNAPSHOT_RESTORE_TEST_ENVIRONMENT_ID")
+	snapshotID := os.Getenv("SNAPSHOT_RESTORE_TEST_SNAPSHOT_ID")
+	customNetworkID := os.Getenv("SNAPSHOT_RESTORE_TEST_CUSTOM_NETWORK_ID")
+	subscriptionID := os.Getenv("SNAPSHOT_RESTORE_TEST_SUBSCRIPTION_ID")
+	if serviceID == "" || environmentID == "" || snapshotID == "" || customNetworkID == "" || subscriptionID == "" {
+		t.Skip("set SNAPSHOT_RESTORE_TEST_SERVICE_ID, SNAPSHOT_RESTORE_TEST_ENVIRONMENT_ID, SNAPSHOT_RESTORE_TEST_SNAPSHOT_ID, SNAPSHOT_RESTORE_TEST_CUSTOM_NETWORK_ID, and SNAPSHOT_RESTORE_TEST_SUBSCRIPTION_ID")
+	}
+
+	ctx := context.TODO()
+	defer testutils.Cleanup()
+
+	testEmail, testPassword, err := testutils.GetTestAccount()
+	require.NoError(t, err)
+	cmd.RootCmd.SetArgs([]string{"login", fmt.Sprintf("--email=%s", testEmail), fmt.Sprintf("--password=%s", testPassword)})
+	err = cmd.RootCmd.ExecuteContext(ctx)
+	require.NoError(t, err)
+
+	restoreArgs := []string{
+		"snapshot", "restore",
+		"--service-id", serviceID,
+		"--environment-id", environmentID,
+		"--snapshot-id", snapshotID,
+		"--custom-network-id", customNetworkID,
+		"--subscription-id", subscriptionID,
+		"--output", "json",
+	}
+	if rawParams := os.Getenv("SNAPSHOT_RESTORE_TEST_PARAM_JSON"); rawParams != "" {
+		restoreArgs = append(restoreArgs, "--param", rawParams)
+	}
+
+	cmd.RootCmd.SetArgs(restoreArgs)
 	err = cmd.RootCmd.ExecuteContext(ctx)
 	require.NoError(t, err)
 }
