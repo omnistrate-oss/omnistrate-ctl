@@ -330,7 +330,7 @@ func (m *dashboardModel) collapseSelectedItem() bool {
 	}
 
 	if selected.expandable && selected.expanded {
-		if setDashboardNodeExpanded(m.rootNodes, selected.key, false) {
+		if collapseDashboardNode(m.rootNodes, selected.key) {
 			m.rebuildVisibleItems(selected.key)
 			return true
 		}
@@ -341,7 +341,7 @@ func (m *dashboardModel) collapseSelectedItem() bool {
 		return false
 	}
 
-	if setDashboardNodeExpanded(m.rootNodes, selected.parentKey, false) {
+	if collapseDashboardNode(m.rootNodes, selected.parentKey) {
 		m.rebuildVisibleItems(selected.parentKey)
 		return true
 	}
@@ -619,6 +619,12 @@ func buildDashboardChildNode(feature dataaccess.DashboardFeatureInfo, dashboard 
 	if description == "" {
 		description = dashboardHost(dashboard.URL)
 	}
+	if dashboard.URL != "" {
+		if description != "" {
+			description += "  |  "
+		}
+		description += dashboard.URL
+	}
 
 	return &dashboardNode{
 		key:         fmt.Sprintf("%s/%s", feature.Key, dashboard.Name),
@@ -632,6 +638,14 @@ func buildDashboardChildNode(feature dataaccess.DashboardFeatureInfo, dashboard 
 func buildDashboardFeatureContent(feature dataaccess.DashboardFeatureInfo) string {
 	lines := []string{
 		dashboardFeatureDisplayName(feature),
+	}
+
+	if feature.GrafanaEndpoint != "" {
+		lines = append(lines,
+			"",
+			"Grafana Access:",
+			fmt.Sprintf("Grafana Endpoint: %s", dashboardDisplayValue(feature.GrafanaEndpoint)),
+		)
 	}
 
 	if feature.GrafanaUIUsername != "" || feature.GrafanaUIPassword != "" {
@@ -886,13 +900,25 @@ func toggleDashboardNodeExpanded(nodes []*dashboardNode, key string) bool {
 	return true
 }
 
-func setDashboardNodeExpanded(nodes []*dashboardNode, key string, expanded bool) bool {
+func collapseDashboardNode(nodes []*dashboardNode, key string) bool {
 	node := findDashboardNode(nodes, key)
 	if node == nil || !node.expandable {
 		return false
 	}
-	node.expanded = expanded
+	node.expanded = false
 	return true
+}
+
+func setDashboardTreeExpanded(node *dashboardNode, expanded bool) {
+	if node == nil {
+		return
+	}
+	if node.expandable {
+		node.expanded = expanded
+	}
+	for _, child := range node.children {
+		setDashboardTreeExpanded(child, expanded)
+	}
 }
 
 func findDashboardNode(nodes []*dashboardNode, key string) *dashboardNode {

@@ -34,6 +34,7 @@ type DebugData struct {
 	EnvironmentID     string                        `json:"environmentId,omitempty"`
 	ProductTierID     string                        `json:"productTierId,omitempty"`
 	TierVersion       string                        `json:"tierVersion,omitempty"`
+	DashboardCatalog  *dataaccess.DashboardCatalog  `json:"-"`
 	Token             string                        `json:"-"`
 	ResultParams      map[string]interface{}        `json:"-"`
 	InputParams       map[string]interface{}        `json:"-"`
@@ -104,6 +105,10 @@ func fetchDebugData(instanceID, token string) tea.Cmd {
 		if err != nil {
 			return debugDataMsg{err: fmt.Errorf("failed to describe resource instance: %w", err)}
 		}
+		dashboardCatalog, _ := dataaccess.NewDashboardService().GetDashboardCatalog(instanceData)
+		if dashboardCatalog != nil && dashboardCatalog.InstanceID == "" {
+			dashboardCatalog.InstanceID = instanceID
+		}
 
 		planDAG, err := buildPlanDAG(ctx, token, serviceID, instanceData)
 		if err != nil {
@@ -130,15 +135,16 @@ func fetchDebugData(instanceID, token string) tea.Cmd {
 
 		return debugDataMsg{
 			data: DebugData{
-				InstanceID:    instanceID,
-				PlanDAG:       planDAG,
-				ServiceID:     serviceID,
-				EnvironmentID: environmentID,
-				ProductTierID: instanceData.ProductTierId,
-				TierVersion:   instanceData.TierVersion,
-				Token:         token,
-				ResultParams:  resultParams,
-				InputParams:   inputParams,
+				InstanceID:       instanceID,
+				PlanDAG:          planDAG,
+				ServiceID:        serviceID,
+				EnvironmentID:    environmentID,
+				ProductTierID:    instanceData.ProductTierId,
+				TierVersion:      instanceData.TierVersion,
+				DashboardCatalog: dashboardCatalog,
+				Token:            token,
+				ResultParams:     resultParams,
+				InputParams:      inputParams,
 			},
 		}
 	}
