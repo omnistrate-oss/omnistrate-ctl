@@ -10,6 +10,7 @@ import (
 	"github.com/omnistrate-oss/omnistrate-ctl/internal/dataaccess"
 	"github.com/omnistrate-oss/omnistrate-ctl/internal/model"
 	"github.com/omnistrate-oss/omnistrate-ctl/internal/utils"
+	openapiclientfleet "github.com/omnistrate-oss/omnistrate-sdk-go/fleet"
 	"github.com/spf13/cobra"
 )
 
@@ -102,8 +103,15 @@ func runList(cmd *cobra.Command, args []string) error {
 		sm.Start()
 	}
 
-	// Get all instances
-	searchRes, err := dataaccess.SearchInventory(cmd.Context(), token, "resourceinstance:i")
+	// Get instances matching supported filters from the backend, then keep the
+	// existing local checks as a final compatibility guard.
+	searchFilters := buildResourceInstanceSearchFilters(filterMaps, parsedTagFilters)
+	var searchRes *openapiclientfleet.SearchInventoryResult
+	if searchFilters.HasResourceInstanceFilters() {
+		searchRes, err = dataaccess.SearchInventory(cmd.Context(), token, "resourceinstance:i", searchFilters)
+	} else {
+		searchRes, err = dataaccess.SearchInventory(cmd.Context(), token, "resourceinstance:i")
+	}
 	if err != nil {
 		utils.HandleSpinnerError(spinner, sm, err)
 		return err
@@ -155,6 +163,82 @@ func runList(cmd *cobra.Command, args []string) error {
 	}
 
 	return nil
+}
+
+type searchInventoryFilters struct {
+	ResourceInstance resourceInstanceSearchFilters `json:"resourceInstance,omitempty"`
+}
+
+func (f searchInventoryFilters) HasResourceInstanceFilters() bool {
+	return len(f.ResourceInstance.Predicates) > 0 || len(f.ResourceInstance.Tags) > 0
+}
+
+type resourceInstanceSearchFilters struct {
+	Predicates []resourceInstanceFilterGroup `json:"predicates,omitempty"`
+	Tags       []resourceInstanceTagFilter   `json:"tags,omitempty"`
+}
+
+type resourceInstanceFilterGroup struct {
+	InstanceID         string `json:"instanceID,omitempty"`
+	ServiceName        string `json:"serviceName,omitempty"`
+	EnvironmentName    string `json:"environmentName,omitempty"`
+	ProductTierName    string `json:"productTierName,omitempty"`
+	ProductTierVersion string `json:"productTierVersion,omitempty"`
+	ResourceName       string `json:"resourceName,omitempty"`
+	CloudProvider      string `json:"cloudProvider,omitempty"`
+	RegionCode         string `json:"regionCode,omitempty"`
+	Status             string `json:"status,omitempty"`
+	SubscriptionID     string `json:"subscriptionID,omitempty"`
+	Tags               string `json:"-"`
+}
+
+type resourceInstanceTagFilter struct {
+	Key   string `json:"key"`
+	Value string `json:"value"`
+}
+
+func buildResourceInstanceSearchFilters(filterMaps []map[string]string, tagFilters map[string]string) searchInventoryFilters {
+	filters := searchInventoryFilters{}
+
+	for _, filterMap := range filterMaps {
+		predicate := resourceInstanceFilterGroup{
+			InstanceID:         filterMap["instance_id"],
+			ServiceName:        filterMap["service"],
+			EnvironmentName:    filterMap["environment"],
+			ProductTierName:    filterMap["plan"],
+			ProductTierVersion: filterMap["version"],
+			ResourceName:       filterMap["resource"],
+			CloudProvider:      filterMap["cloud_provider"],
+			RegionCode:         filterMap["region"],
+			Status:             filterMap["status"],
+			SubscriptionID:     filterMap["subscription_id"],
+		}
+		if predicate.hasFilters() {
+			filters.ResourceInstance.Predicates = append(filters.ResourceInstance.Predicates, predicate)
+		}
+	}
+
+	for key, value := range tagFilters {
+		filters.ResourceInstance.Tags = append(filters.ResourceInstance.Tags, resourceInstanceTagFilter{
+			Key:   key,
+			Value: value,
+		})
+	}
+
+	return filters
+}
+
+func (f resourceInstanceFilterGroup) hasFilters() bool {
+	return f.InstanceID != "" ||
+		f.ServiceName != "" ||
+		f.EnvironmentName != "" ||
+		f.ProductTierName != "" ||
+		f.ProductTierVersion != "" ||
+		f.ResourceName != "" ||
+		f.CloudProvider != "" ||
+		f.RegionCode != "" ||
+		f.Status != "" ||
+		f.SubscriptionID != ""
 }
 
 func runInteractiveInstanceList(instances []model.Instance) error {
