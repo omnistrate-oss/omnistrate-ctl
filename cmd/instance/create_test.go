@@ -19,6 +19,10 @@ func TestCreateCommandFlags(t *testing.T) {
 	flag = createCmd.Flags().Lookup("cloud-provider-native-network-id")
 	require.NotNil(t, flag)
 	assert.Contains(t, flag.Usage, cloudProviderNativeNetworkIDParamKey)
+
+	flag = createCmd.Flags().Lookup("breakpoints")
+	require.NotNil(t, flag)
+	assert.Contains(t, flag.Usage, "id-or-key:event")
 }
 
 func TestCreateCommandFlags_InstanceID(t *testing.T) {

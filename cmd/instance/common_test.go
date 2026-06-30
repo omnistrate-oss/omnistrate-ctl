@@ -273,11 +273,12 @@ func TestEnsureUniqueTagKeys(t *testing.T) {
 
 func TestParseWorkflowBreakpoints(t *testing.T) {
 	tests := []struct {
-		name        string
-		input       string
-		expectedIDs []string
-		expectErr   bool
-		errContains string
+		name           string
+		input          string
+		expectedIDs    []string
+		expectedEvents [][]string
+		expectErr      bool
+		errContains    string
 	}{
 		{
 			name:        "no breakpoints",
@@ -304,6 +305,60 @@ func TestParseWorkflowBreakpoints(t *testing.T) {
 			input:       " writer , reader ",
 			expectedIDs: []string{"writer", "reader"},
 		},
+		{
+			name:           "single event scoped breakpoint",
+			input:          "terraform:StartTerraformPlan",
+			expectedIDs:    []string{"terraform"},
+			expectedEvents: [][]string{{"StartTerraformPlan"}},
+		},
+		{
+			name:           "multiple event scoped breakpoints merge by resource",
+			input:          "terraform:StartTerraformPlan,terraform:CompleteTerraformPlan,helm:StartHelmInstall|CompleteHelmInstall",
+			expectedIDs:    []string{"terraform", "helm"},
+			expectedEvents: [][]string{{"StartTerraformPlan", "CompleteTerraformPlan"}, {"StartHelmInstall", "CompleteHelmInstall"}},
+		},
+		{
+			name:           "pipe separated terraform events in one breakpoint spec",
+			input:          "datarobot-infra:StartTerraformPlan|CompleteTerraformPlan|FailTerraformPlan|StartTerraformApply|CompleteTerraformApply|FailTerraformApply",
+			expectedIDs:    []string{"datarobot-infra"},
+			expectedEvents: [][]string{{"StartTerraformPlan", "CompleteTerraformPlan", "FailTerraformPlan", "StartTerraformApply", "CompleteTerraformApply", "FailTerraformApply"}},
+		},
+		{
+			name:           "event duplicates are de-duplicated",
+			input:          "terraform:StartTerraformPlan,terraform:StartTerraformPlan+CompleteTerraformPlan",
+			expectedIDs:    []string{"terraform"},
+			expectedEvents: [][]string{{"StartTerraformPlan", "CompleteTerraformPlan"}},
+		},
+		{
+			name:           "all supported helm and terraform events are accepted",
+			input:          "resource:StartHelmInstall+CompleteHelmInstall+FailHelmInstall+StartTerraformPlan+CompleteTerraformPlan+FailTerraformPlan+StartTerraformApply+CompleteTerraformApply+FailTerraformApply",
+			expectedIDs:    []string{"resource"},
+			expectedEvents: [][]string{{"StartHelmInstall", "CompleteHelmInstall", "FailHelmInstall", "StartTerraformPlan", "CompleteTerraformPlan", "FailTerraformPlan", "StartTerraformApply", "CompleteTerraformApply", "FailTerraformApply"}},
+		},
+		{
+			name:           "resource level and event scoped breakpoint can coexist for same resource",
+			input:          "terraform,terraform:StartTerraformPlan",
+			expectedIDs:    []string{"terraform", "terraform"},
+			expectedEvents: [][]string{nil, {"StartTerraformPlan"}},
+		},
+		{
+			name:        "empty event list is rejected",
+			input:       "terraform:",
+			expectErr:   true,
+			errContains: "event list cannot be empty",
+		},
+		{
+			name:        "empty event name is rejected",
+			input:       "terraform:StartTerraformPlan+",
+			expectErr:   true,
+			errContains: "event cannot be empty",
+		},
+		{
+			name:        "unknown event is rejected",
+			input:       "terraform:StartTerraformDestroy",
+			expectErr:   true,
+			errContains: "unsupported breakpoint event",
+		},
 	}
 
 	for _, tt := range tests {
@@ -319,6 +374,11 @@ func TestParseWorkflowBreakpoints(t *testing.T) {
 			require.Len(t, breakpoints, len(tt.expectedIDs))
 			for i, id := range tt.expectedIDs {
 				require.Equal(t, id, breakpoints[i].Id)
+				if len(tt.expectedEvents) > i {
+					require.Equal(t, tt.expectedEvents[i], breakpoints[i].Events)
+				} else {
+					require.Empty(t, breakpoints[i].Events)
+				}
 			}
 		})
 	}
