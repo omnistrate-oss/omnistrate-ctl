@@ -49,18 +49,6 @@ omnistrate-ctl instance create --service=MyService --environment=dev --plan='AWS
 	workflowBreakpointEventSeparator = "+"
 )
 
-var supportedWorkflowBreakpointEvents = map[string]struct{}{
-	"StartHelmInstall":       {},
-	"CompleteHelmInstall":    {},
-	"FailHelmInstall":        {},
-	"StartTerraformPlan":     {},
-	"CompleteTerraformPlan":  {},
-	"FailTerraformPlan":      {},
-	"StartTerraformApply":    {},
-	"CompleteTerraformApply": {},
-	"FailTerraformApply":     {},
-}
-
 var supportedWorkflowBreakpointEventNames = []string{
 	"StartHelmInstall",
 	"CompleteHelmInstall",
@@ -72,6 +60,14 @@ var supportedWorkflowBreakpointEventNames = []string{
 	"CompleteTerraformApply",
 	"FailTerraformApply",
 }
+
+var supportedWorkflowBreakpointEvents = func() map[string]struct{} {
+	m := make(map[string]struct{}, len(supportedWorkflowBreakpointEventNames))
+	for _, event := range supportedWorkflowBreakpointEventNames {
+		m[event] = struct{}{}
+	}
+	return m
+}()
 
 var InstanceID string
 var SubscriptionID string
