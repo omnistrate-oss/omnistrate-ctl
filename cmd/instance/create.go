@@ -33,6 +33,9 @@ omnistrate-ctl instance create --service=mysql --environment=dev --plan=mysql --
 # Create an instance deployment with workflow breakpoints
 omnistrate-ctl instance create --service=mysql --environment=dev --plan=mysql --version=latest --resource=mySQL --cloud-provider=aws --region=ca-central-1 --param-file /path/to/params.json --breakpoints writer,reader
 
+# Create an instance deployment with resource event workflow breakpoints
+omnistrate-ctl instance create --service=mysql --environment=dev --plan=mysql --version=latest --resource=mySQL --cloud-provider=aws --region=ca-central-1 --param-file /path/to/params.json --breakpoints 'terraform:StartTerraformPlan|CompleteTerraformPlan,helm:StartHelmInstall|CompleteHelmInstall'
+
 # Create a BYOA instance deployment using a customer account onboarding instance
 omnistrate-ctl instance create --service=Nebius --environment=dev --plan='Nebius BYOA Compute Variants' --resource=NebiusRedis --cloud-provider=nebius --region=eu-north1 --customer-account-id instance-cg1tthkj0
 
@@ -42,13 +45,39 @@ omnistrate-ctl instance create --service=MyService --environment=dev --plan='AWS
 	customerAccountConfigIDParamKey      = "cloud_provider_account_config_id"
 	cloudProviderNativeNetworkIDParamKey = "cloud_provider_native_network_id"
 	serviceModelTypeBYOA                 = "BYOA"
+
+	workflowBreakpointEventSeparator = "+"
 )
+
+var supportedWorkflowBreakpointEvents = map[string]struct{}{
+	"StartHelmInstall":       {},
+	"CompleteHelmInstall":    {},
+	"FailHelmInstall":        {},
+	"StartTerraformPlan":     {},
+	"CompleteTerraformPlan":  {},
+	"FailTerraformPlan":      {},
+	"StartTerraformApply":    {},
+	"CompleteTerraformApply": {},
+	"FailTerraformApply":     {},
+}
+
+var supportedWorkflowBreakpointEventNames = []string{
+	"StartHelmInstall",
+	"CompleteHelmInstall",
+	"FailHelmInstall",
+	"StartTerraformPlan",
+	"CompleteTerraformPlan",
+	"FailTerraformPlan",
+	"StartTerraformApply",
+	"CompleteTerraformApply",
+	"FailTerraformApply",
+}
 
 var InstanceID string
 var SubscriptionID string
 
 var createCmd = &cobra.Command{
-	Use:          "create --service=[service] --environment=[environment] --plan=[plan] --version=[version] --resource=[resource] --cloud-provider=[aws|gcp|azure|nebius] --region=[region] [--param=param] [--param-file=file-path] [--instance-id=id] [--customer-account-id=account-instance-id] [--cloud-provider-native-network-id=network-id] [--tags key=value,key2=value2] [--breakpoints id-or-key,id-or-key]",
+	Use:          "create --service=[service] --environment=[environment] --plan=[plan] --version=[version] --resource=[resource] --cloud-provider=[aws|gcp|azure|nebius] --region=[region] [--param=param] [--param-file=file-path] [--instance-id=id] [--customer-account-id=account-instance-id] [--cloud-provider-native-network-id=network-id] [--tags key=value,key2=value2] [--breakpoints id-or-key[:event[|event...]],...]",
 	Short:        "Create an instance deployment",
 	Long:         `This command helps you create an instance deployment for your service.`,
 	Example:      createExample,
@@ -69,7 +98,7 @@ func init() {
 	createCmd.Flags().String("customer-account-id", "", "Customer BYOA account onboarding instance ID to inject as the cloud account. Use 'omnistrate-ctl account customer list' or 'omnistrate-ctl account customer describe <instance-id>' to find it.")
 	createCmd.Flags().String("cloud-provider-native-network-id", "", fmt.Sprintf("Cloud provider native network ID to inject as %s in instance deployment parameters", cloudProviderNativeNetworkIDParamKey))
 	createCmd.Flags().String("tags", "", "Custom tags to add to the instance deployment (format: key=value,key2=value2)")
-	createCmd.Flags().String("breakpoints", "", "Workflow breakpoint resource IDs or resource keys (comma-separated)")
+	createCmd.Flags().String("breakpoints", "", "Workflow breakpoint resource IDs or resource keys, optionally scoped to events as id-or-key:event or id-or-key:event|event")
 	createCmd.Flags().StringP("subscription-id", "", "", "Subscription ID to use for the instance deployment. If not provided, instance deployment will be created in your own subscription.")
 	createCmd.Flags().String("instance-id", "", "ID of a previously deleted instance to restore")
 	createCmd.Flags().Bool("wait", false, "Wait for deployment to complete and show progress")
@@ -601,22 +630,60 @@ func parseWorkflowBreakpoints(valuesCSV string) ([]openapiclientfleet.WorkflowBr
 		return nil, nil
 	}
 
-	var breakpoints []openapiclientfleet.WorkflowBreakpoint
-	seen := make(map[string]struct{})
+	type breakpointAccumulator struct {
+		breakpoint openapiclientfleet.WorkflowBreakpoint
+		eventsSeen map[string]struct{}
+	}
+
+	var entries []breakpointAccumulator
+	resourceBreakpointIndex := make(map[string]int)
+	eventBreakpointIndex := make(map[string]int)
 
 	// Split the input by comma and trim spaces to get individual IDs or keys
 	values := strings.Split(valuesCSV, ",")
 
 	for _, v := range values {
-		idOrKey := strings.TrimSpace(v)
+		idOrKey, events, err := parseWorkflowBreakpointSpec(v)
+		if err != nil {
+			return nil, err
+		}
 		if idOrKey == "" {
 			continue
 		}
-		if _, exists := seen[idOrKey]; exists {
+
+		if len(events) == 0 {
+			if _, exists := resourceBreakpointIndex[idOrKey]; exists {
+				continue
+			}
+			resourceBreakpointIndex[idOrKey] = len(entries)
+			entries = append(entries, breakpointAccumulator{
+				breakpoint: openapiclientfleet.WorkflowBreakpoint{Id: idOrKey},
+			})
 			continue
 		}
-		seen[idOrKey] = struct{}{}
-		breakpoints = append(breakpoints, openapiclientfleet.WorkflowBreakpoint{Id: idOrKey})
+
+		entryIndex, exists := eventBreakpointIndex[idOrKey]
+		if !exists {
+			entryIndex = len(entries)
+			eventBreakpointIndex[idOrKey] = entryIndex
+			entries = append(entries, breakpointAccumulator{
+				breakpoint: openapiclientfleet.WorkflowBreakpoint{Id: idOrKey},
+				eventsSeen: make(map[string]struct{}),
+			})
+		}
+
+		for _, event := range events {
+			if _, exists := entries[entryIndex].eventsSeen[event]; exists {
+				continue
+			}
+			entries[entryIndex].eventsSeen[event] = struct{}{}
+			entries[entryIndex].breakpoint.Events = append(entries[entryIndex].breakpoint.Events, event)
+		}
+	}
+
+	breakpoints := make([]openapiclientfleet.WorkflowBreakpoint, 0, len(entries))
+	for _, entry := range entries {
+		breakpoints = append(breakpoints, entry.breakpoint)
 	}
 
 	if len(breakpoints) == 0 {
@@ -624,6 +691,46 @@ func parseWorkflowBreakpoints(valuesCSV string) ([]openapiclientfleet.WorkflowBr
 	}
 
 	return breakpoints, nil
+}
+
+func parseWorkflowBreakpointSpec(raw string) (string, []string, error) {
+	value := strings.TrimSpace(raw)
+	if value == "" {
+		return "", nil, nil
+	}
+
+	idOrKey := value
+	var eventsRaw string
+	if before, after, found := strings.Cut(value, ":"); found {
+		idOrKey = strings.TrimSpace(before)
+		eventsRaw = strings.TrimSpace(after)
+		if idOrKey == "" {
+			return "", nil, fmt.Errorf("breakpoint resource ID/key cannot be empty in %q", raw)
+		}
+		if eventsRaw == "" {
+			return "", nil, fmt.Errorf("breakpoint event list cannot be empty for %q", idOrKey)
+		}
+	}
+
+	if eventsRaw == "" {
+		return idOrKey, nil, nil
+	}
+
+	normalizedEventsRaw := strings.ReplaceAll(eventsRaw, "|", workflowBreakpointEventSeparator)
+	eventParts := strings.Split(normalizedEventsRaw, workflowBreakpointEventSeparator)
+	events := make([]string, 0, len(eventParts))
+	for _, part := range eventParts {
+		event := strings.TrimSpace(part)
+		if event == "" {
+			return "", nil, fmt.Errorf("breakpoint event cannot be empty for %q", idOrKey)
+		}
+		if _, ok := supportedWorkflowBreakpointEvents[event]; !ok {
+			return "", nil, fmt.Errorf("unsupported breakpoint event %q for %q; supported events: %s", event, idOrKey, strings.Join(supportedWorkflowBreakpointEventNames, ", "))
+		}
+		events = append(events, event)
+	}
+
+	return idOrKey, events, nil
 }
 
 func applyCustomerAccountIDParam(
