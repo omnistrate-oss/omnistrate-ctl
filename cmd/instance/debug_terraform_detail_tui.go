@@ -13,6 +13,8 @@ import (
 	"github.com/charmbracelet/bubbles/textarea"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+
+	"github.com/omnistrate-oss/omnistrate-ctl/internal/syntax"
 )
 
 const (
@@ -2517,7 +2519,7 @@ func (m terraformDetailModel) renderFileContent() string {
 
 	for i := scroll; i < end; i++ {
 		vl := vlines[i]
-		code := syntaxHighlightLine(vl.text, filename)
+		code := syntax.HighlightLine(vl.text, filename)
 		if vl.sourceNum > 0 {
 			lineNum := lineNumStyle.Render(fmt.Sprintf("%4d", vl.sourceNum))
 			fmt.Fprintf(&b, "  %s │ %s\n", lineNum, code)

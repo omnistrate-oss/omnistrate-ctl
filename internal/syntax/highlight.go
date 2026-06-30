@@ -1,4 +1,6 @@
-package instance
+// Package syntax provides lightweight, line-based syntax highlighting for
+// terminal output (HCL/Terraform, JSON and shell), built on lipgloss styles.
+package syntax
 
 import (
 	"regexp"
@@ -54,6 +56,21 @@ var (
 
 	hclNumberRegex = regexp.MustCompile(`^-?\d+\.?\d*$`)
 )
+
+// HighlightLine dispatches to the appropriate highlighter based on file extension.
+func HighlightLine(line, filename string) string {
+	lower := strings.ToLower(filename)
+	switch {
+	case strings.HasSuffix(lower, ".tf"), strings.HasSuffix(lower, ".tfvars"), strings.HasSuffix(lower, ".hcl"):
+		return highlightHCLLine(line)
+	case strings.HasSuffix(lower, ".json"):
+		return highlightJSONLine(line)
+	case strings.HasSuffix(lower, ".sh"):
+		return highlightShellLine(line)
+	default:
+		return lipgloss.NewStyle().Foreground(lipgloss.Color("252")).Render(line)
+	}
+}
 
 // highlightHCLLine applies syntax highlighting to a single HCL line
 func highlightHCLLine(line string) string {
@@ -351,21 +368,6 @@ func consumeJSONString(runes []rune, start int) (string, int, bool) {
 		i++
 	}
 	return string(runes[start:]), n - start, false
-}
-
-// syntaxHighlightLine dispatches to the appropriate highlighter based on file extension
-func syntaxHighlightLine(line, filename string) string {
-	lower := strings.ToLower(filename)
-	switch {
-	case strings.HasSuffix(lower, ".tf"), strings.HasSuffix(lower, ".tfvars"), strings.HasSuffix(lower, ".hcl"):
-		return highlightHCLLine(line)
-	case strings.HasSuffix(lower, ".json"):
-		return highlightJSONLine(line)
-	case strings.HasSuffix(lower, ".sh"):
-		return highlightShellLine(line)
-	default:
-		return lipgloss.NewStyle().Foreground(lipgloss.Color("252")).Render(line)
-	}
 }
 
 // highlightShellLine applies basic shell script highlighting

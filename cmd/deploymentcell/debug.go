@@ -14,6 +14,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/spf13/cobra"
+	"gopkg.in/yaml.v3"
 
 	"github.com/omnistrate-oss/omnistrate-ctl/cmd/common"
 	"github.com/omnistrate-oss/omnistrate-ctl/internal/config"
@@ -22,12 +23,8 @@ import (
 )
 
 const (
-	artifactHelmValuesTemplate         = "HELM_VALUES_TEMPLATE"
 	artifactHelmValuesRendered         = "HELM_VALUES_RENDERED"
-	artifactKubernetesManifestTemplate = "KUBERNETES_MANIFEST_TEMPLATE"
 	artifactKubernetesManifestRendered = "KUBERNETES_MANIFEST_RENDERED"
-	artifactKubernetesManifestStatus   = "KUBERNETES_MANIFEST_STATUS"
-	artifactGenericCRDDescribeResult   = "GENERIC_CRD_DESCRIBE_RESULT"
 	amenityTypeHelm                    = "Helm"
 	amenityTypeKubernetesManifest      = "KubernetesManifest"
 )
@@ -186,61 +183,116 @@ func exportHelmLogs(dir string, logs map[string]string) error {
 	return nil
 }
 
+// deploymentCellDebugModel is the amenity list screen. Selecting an amenity
+// (enter) opens a full-screen, scrollable detail view; esc returns here.
 type deploymentCellDebugModel struct {
 	data     deploymentCellDebugData
 	selected int
-	viewMode int
+	scroll   int
 	width    int
 	height   int
+	inDetail bool
+	detail   amenityDetailModel
 }
 
 func newDeploymentCellDebugModel(data deploymentCellDebugData) deploymentCellDebugModel {
 	return deploymentCellDebugModel{data: data}
 }
 
+// backToListMsg signals that the detail screen wants to return to the list.
+type backToListMsg struct{}
+
 func (m deploymentCellDebugModel) Init() tea.Cmd {
 	return nil
 }
 
 func (m deploymentCellDebugModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
-	switch msg := msg.(type) {
-	case tea.WindowSizeMsg:
-		m.width = msg.Width
-		m.height = msg.Height
-	case tea.KeyMsg:
-		switch msg.String() {
-		case "ctrl+c", "q", "esc":
-			return m, tea.Quit
-		case "up", "k":
-			if m.selected > 0 {
-				m.selected--
-				m.viewMode = 0
-			}
-		case "down", "j":
-			if m.selected < len(m.data.AmenityStatuses)-1 {
-				m.selected++
-				m.viewMode = 0
-			}
-		case "tab":
-			m.viewMode = (m.viewMode + 1) % len(m.availableViews())
+	if _, ok := msg.(backToListMsg); ok {
+		m.inDetail = false
+		return m, nil
+	}
+
+	if ws, ok := msg.(tea.WindowSizeMsg); ok {
+		m.width = ws.Width
+		m.height = ws.Height
+	}
+
+	if m.inDetail {
+		detail, cmd := m.detail.Update(msg)
+		m.detail = detail
+		return m, cmd
+	}
+
+	if key, ok := msg.(tea.KeyMsg); ok {
+		return m.updateList(key)
+	}
+	return m, nil
+}
+
+func (m deploymentCellDebugModel) updateList(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch msg.String() {
+	case "ctrl+c", "q", "esc":
+		return m, tea.Quit
+	case "up", "k":
+		if m.selected > 0 {
+			m.selected--
+		}
+		(&m).normalizeListViewport()
+	case "down", "j":
+		if m.selected < len(m.data.AmenityStatuses)-1 {
+			m.selected++
+		}
+		(&m).normalizeListViewport()
+	case "enter":
+		if len(m.data.AmenityStatuses) > 0 {
+			status := m.data.AmenityStatuses[m.selected]
+			m.detail = newAmenityDetailModel(m.data, status, m.width, m.height)
+			m.inDetail = true
 		}
 	}
 	return m, nil
 }
 
+// normalizeListViewport keeps the selected amenity within the visible window.
+func (m *deploymentCellDebugModel) normalizeListViewport() {
+	visible := m.listBodyHeight()
+	if m.selected < m.scroll {
+		m.scroll = m.selected
+	} else if m.selected >= m.scroll+visible {
+		m.scroll = m.selected - visible + 1
+	}
+	if m.scroll < 0 {
+		m.scroll = 0
+	}
+}
+
+// listBodyHeight is the number of amenity rows visible at once: terminal height
+// minus the title + template header (2), the footer (1) and the list border (2).
+func (m deploymentCellDebugModel) listBodyHeight() int {
+	h := m.height - 5
+	if h < 1 {
+		h = 1
+	}
+	return h
+}
+
 func (m deploymentCellDebugModel) View() string {
+	if m.inDetail {
+		return m.detail.View()
+	}
+	if m.width == 0 || m.height == 0 {
+		return "Loading..."
+	}
 	if len(m.data.AmenityStatuses) == 0 {
 		return "No amenity state rows found for this deployment cell.\n\nq: quit\n"
 	}
 
 	header := titleStyle.Render("Deployment Cell " + m.data.DeploymentCellID)
 	template := m.templateLine()
-	left := m.amenityListView()
-	right := m.detailView()
-	body := lipgloss.JoinHorizontal(lipgloss.Top, left, right)
-	footer := mutedStyle.Render("up/down: select  tab: toggle template/rendered/log/status  q: quit")
+	list := m.amenityListView()
+	footer := mutedStyle.Render("↑↓: select   enter: open   q: quit")
 
-	return lipgloss.JoinVertical(lipgloss.Left, header, template, "", body, "", footer)
+	return lipgloss.JoinVertical(lipgloss.Left, header, template, list, footer)
 }
 
 func (m deploymentCellDebugModel) templateLine() string {
@@ -257,112 +309,121 @@ func (m deploymentCellDebugModel) templateLine() string {
 }
 
 func (m deploymentCellDebugModel) amenityListView() string {
+	bodyH := m.listBodyHeight()
+
+	scroll := m.scroll
+	if maxScroll := len(m.data.AmenityStatuses) - bodyH; scroll > maxScroll {
+		scroll = maxScroll
+	}
+	if scroll < 0 {
+		scroll = 0
+	}
+	end := scroll + bodyH
+	if end > len(m.data.AmenityStatuses) {
+		end = len(m.data.AmenityStatuses)
+	}
+
+	width := m.width - 2
+	if width < 20 {
+		width = 20
+	}
+
+	const tagText = "managed"
+	const tagCols = len(tagText) + 1 // tag plus a leading space
+
 	var b strings.Builder
-	for i, status := range m.data.AmenityStatuses {
+	for i := scroll; i < end; i++ {
+		status := m.data.AmenityStatuses[i]
 		prefix := "  "
 		style := rowStyle
-		if i == m.selected {
+		selected := i == m.selected
+		if selected {
 			prefix = "> "
 			style = selectedRowStyle
 		}
-		line := fmt.Sprintf("%s%-28s %-18s %s", prefix, truncate(status.Name, 28), status.Type, status.DesiredStatus)
-		b.WriteString(style.Render(line))
-		b.WriteString("\n")
-	}
-	return panelStyle.Width(68).Render(b.String())
-}
+		line := fmt.Sprintf("%s%-32s %-20s %s", prefix, truncate(status.Name, 32), truncate(status.Type, 20), status.DesiredStatus)
 
-func (m deploymentCellDebugModel) detailView() string {
-	status := m.data.AmenityStatuses[m.selected]
-	views := m.availableViews()
-	if m.viewMode >= len(views) {
-		m.viewMode = 0
-	}
-	view := views[m.viewMode]
-
-	var b strings.Builder
-	b.WriteString(titleStyle.Render(status.Name))
-	b.WriteString("\n")
-	b.WriteString(fmt.Sprintf("type=%s status=%s generation=%d\n", status.Type, status.DesiredStatus, status.Generation))
-	if status.Source != nil || status.SourceEnvironmentType != nil {
-		b.WriteString(fmt.Sprintf("source=%s env=%s cloud=%s\n",
-			valueOrDefault(status.Source, "-"),
-			valueOrDefault(status.SourceEnvironmentType, "-"),
-			valueOrDefault(status.SourceCloudProviderID, "-"),
-		))
-	}
-	if status.WorkflowID != nil || status.WorkflowRunID != nil {
-		b.WriteString(fmt.Sprintf("workflow=%s run=%s\n",
-			valueOrDefault(status.WorkflowID, "-"),
-			valueOrDefault(status.WorkflowRunID, "-"),
-		))
-	}
-	if status.LastError != nil && *status.LastError != "" {
-		b.WriteString(errorStyle.Render(*status.LastError))
-		b.WriteString("\n")
-	}
-	b.WriteString("\n")
-	b.WriteString(m.payloadForView(status, view))
-
-	return panelStyle.Width(100).Render(b.String())
-}
-
-func (m deploymentCellDebugModel) availableViews() []string {
-	if len(m.data.AmenityStatuses) == 0 {
-		return []string{"status"}
-	}
-	status := m.data.AmenityStatuses[m.selected]
-	switch status.Type {
-	case amenityTypeHelm:
-		return []string{"rendered values", "template values", "helm logs"}
-	case amenityTypeKubernetesManifest:
-		return []string{"rendered manifest", "template manifest", "cluster status"}
-	default:
-		return []string{"status"}
-	}
-}
-
-func (m deploymentCellDebugModel) payloadForView(status deploymentCellAmenityStatus, view string) string {
-	switch view {
-	case "rendered values":
-		return m.artifactPayload(status.Name, artifactHelmValuesRendered)
-	case "template values":
-		return m.artifactPayload(status.Name, artifactHelmValuesTemplate)
-	case "helm logs":
-		return decodeBase64String(m.data.CustomHelmExecutionLogsBase64[status.Name])
-	case "rendered manifest":
-		return m.artifactPayload(status.Name, artifactKubernetesManifestRendered)
-	case "template manifest":
-		return m.artifactPayload(status.Name, artifactKubernetesManifestTemplate)
-	case "cluster status":
-		if payload := m.artifactPayload(status.Name, artifactKubernetesManifestStatus); payload != "" {
-			return payload
+		if isManaged(status) {
+			// Reserve space on the right for a green "managed" tag.
+			left := padOrTruncate(line, width-tagCols) + " "
+			if selected {
+				// Whole row is highlighted; keep the tag inline.
+				b.WriteString(style.Render(left + tagText))
+			} else {
+				b.WriteString(style.Render(left) + managedTagStyle.Render(tagText))
+			}
+		} else {
+			b.WriteString(style.Render(padOrTruncate(line, width)))
 		}
-		return m.artifactPayload(status.Name, artifactGenericCRDDescribeResult)
-	default:
-		return "No detail available."
+		b.WriteString("\n")
 	}
+	// Pad to a stable height so the footer never moves.
+	for i := end - scroll; i < bodyH; i++ {
+		b.WriteString(strings.Repeat(" ", width))
+		b.WriteString("\n")
+	}
+
+	return listPanelStyle.Width(width).Render(strings.TrimRight(b.String(), "\n"))
 }
 
-func (m deploymentCellDebugModel) artifactPayload(amenityName string, artifactKind string) string {
-	for _, artifact := range m.data.AmenityArtifacts {
+// artifactPayload returns the decoded payload for an amenity artifact and
+// whether a matching artifact was found and decoded successfully.
+func artifactPayload(data deploymentCellDebugData, amenityName string, artifactKind string) (string, bool) {
+	for _, artifact := range data.AmenityArtifacts {
 		if artifact.AmenityName != amenityName || artifact.ArtifactKind != artifactKind || artifact.PayloadBase64 == nil {
 			continue
 		}
-		return decodeBase64String(*artifact.PayloadBase64)
+		return decodeBase64(*artifact.PayloadBase64)
 	}
-	return fmt.Sprintf("No %s artifact found.", artifactKind)
+	return fmt.Sprintf("No %s artifact found.", artifactKind), false
 }
 
-func decodeBase64String(value string) string {
+// toPrettyJSON parses raw as JSON (falling back to YAML) and re-marshals it as
+// indented JSON. It only converts structured payloads (objects/arrays); bare
+// scalars and unparseable text are returned unchanged with ok=false so
+// placeholder messages and Go templates are left untouched.
+func toPrettyJSON(raw string) (string, bool) {
+	var obj interface{}
+	if err := json.Unmarshal([]byte(raw), &obj); err != nil {
+		if err := yaml.Unmarshal([]byte(raw), &obj); err != nil {
+			return raw, false
+		}
+	}
+
+	switch obj.(type) {
+	case map[string]interface{}, []interface{}:
+		pretty, err := json.MarshalIndent(obj, "", "  ")
+		if err != nil {
+			return raw, false
+		}
+		return string(pretty), true
+	default:
+		return raw, false
+	}
+}
+
+// workflowLine renders the workflow/run identifiers for an amenity, omitting
+// whichever IDs are absent. Returns an empty string when neither exists.
+func workflowLine(status deploymentCellAmenityStatus) string {
+	var parts []string
+	if status.WorkflowID != nil && *status.WorkflowID != "" {
+		parts = append(parts, "workflow="+*status.WorkflowID)
+	}
+	if status.WorkflowRunID != nil && *status.WorkflowRunID != "" {
+		parts = append(parts, "run="+*status.WorkflowRunID)
+	}
+	return strings.Join(parts, " ")
+}
+
+func decodeBase64(value string) (string, bool) {
 	if value == "" {
-		return "No payload found."
+		return "No payload found.", false
 	}
 	decoded, err := base64.StdEncoding.DecodeString(value)
 	if err != nil {
-		return fmt.Sprintf("Failed to decode payload: %v", err)
+		return fmt.Sprintf("Failed to decode payload: %v", err), false
 	}
-	return string(decoded)
+	return string(decoded), true
 }
 
 func valueOrDefault(value *string, fallback string) string {
@@ -382,11 +443,33 @@ func truncate(value string, maxLen int) string {
 	return value[:maxLen-3] + "..."
 }
 
+// padOrTruncate forces a string to exactly width display columns (runes), so
+// styled rows fill the panel width and never wrap.
+func padOrTruncate(s string, width int) string {
+	if width < 0 {
+		width = 0
+	}
+	r := []rune(s)
+	if len(r) > width {
+		return string(r[:width])
+	}
+	return s + strings.Repeat(" ", width-len(r))
+}
+
+// omnistrateGreen approximates the green of the omnistrate.com logo.
+var omnistrateGreen = lipgloss.Color("42")
+
 var (
-	titleStyle       = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("69"))
-	mutedStyle       = lipgloss.NewStyle().Foreground(lipgloss.Color("244"))
-	errorStyle       = lipgloss.NewStyle().Foreground(lipgloss.Color("196"))
-	rowStyle         = lipgloss.NewStyle()
-	selectedRowStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("229")).Background(lipgloss.Color("57"))
-	panelStyle       = lipgloss.NewStyle().Padding(1, 2).Border(lipgloss.RoundedBorder()).BorderForeground(lipgloss.Color("240"))
+	titleStyle        = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("69"))
+	mutedStyle        = lipgloss.NewStyle().Foreground(lipgloss.Color("244"))
+	errorStyle        = lipgloss.NewStyle().Foreground(lipgloss.Color("196"))
+	clipStyle         = lipgloss.NewStyle().Foreground(lipgloss.Color("82"))
+	rowStyle          = lipgloss.NewStyle()
+	selectedRowStyle  = lipgloss.NewStyle().Foreground(lipgloss.Color("229")).Background(lipgloss.Color("57"))
+	listPanelStyle    = lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(lipgloss.Color("240"))
+	detailWindowStyle = lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(lipgloss.Color("62")).Padding(0, 1)
+	activeTabStyle    = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("230")).Background(lipgloss.Color("62"))
+	inactiveTabStyle  = lipgloss.NewStyle().Foreground(lipgloss.Color("245"))
+	managedBadgeStyle = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("232")).Background(omnistrateGreen).Padding(0, 1)
+	managedTagStyle   = lipgloss.NewStyle().Bold(true).Foreground(omnistrateGreen)
 )
