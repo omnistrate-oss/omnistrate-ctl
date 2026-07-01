@@ -91,6 +91,7 @@ func TestChangeTargetVersionCommandFlags(t *testing.T) {
 
 			require.Equal(t, "change-target-version <upgrade-path-id>", cmd.Use)
 			require.Equal(t, "Change the target version for a scheduled upgrade path", cmd.Short)
+			require.True(t, cmd.SilenceUsage)
 
 			serviceIDFlag := cmd.Flags().Lookup("service-id")
 			require.NotNil(t, serviceIDFlag)

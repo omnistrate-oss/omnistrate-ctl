@@ -1,9 +1,8 @@
 package upgrade
 
 import (
-	"context"
-
 	"github.com/omnistrate-oss/omnistrate-ctl/cmd/common"
+	"github.com/omnistrate-oss/omnistrate-ctl/internal/config"
 	"github.com/omnistrate-oss/omnistrate-ctl/internal/dataaccess"
 	"github.com/omnistrate-oss/omnistrate-ctl/internal/utils"
 	"github.com/spf13/cobra"
@@ -13,12 +12,13 @@ const changeTargetVersionExample = `# Change the target version for a scheduled 
 omnistrate-ctl upgrade change-target-version upgrade-abcd1234 --service-id s-abcd1234 --product-tier-id pt-abcd1234 --target-version 90.0`
 
 var changeTargetVersionCmd = &cobra.Command{
-	Use:     "change-target-version <upgrade-path-id>",
-	Short:   "Change the target version for a scheduled upgrade path",
-	Long:    "Change the target product tier version for a scheduled upgrade path before it starts.",
-	Example: changeTargetVersionExample,
-	Args:    cobra.ExactArgs(1),
-	RunE:    runChangeTargetVersion,
+	Use:          "change-target-version <upgrade-path-id>",
+	Short:        "Change the target version for a scheduled upgrade path",
+	Long:         "Change the target product tier version for a scheduled upgrade path before it starts.",
+	Example:      changeTargetVersionExample,
+	Args:         cobra.ExactArgs(1),
+	RunE:         runChangeTargetVersion,
+	SilenceUsage: true,
 }
 
 func init() {
@@ -32,7 +32,7 @@ func init() {
 }
 
 func runChangeTargetVersion(cmd *cobra.Command, args []string) error {
-	ctx := context.Background()
+	defer config.CleanupArgsAndFlags(cmd, &args)
 
 	upgradePathID := args[0]
 	serviceID, _ := cmd.Flags().GetString("service-id")
@@ -44,7 +44,7 @@ func runChangeTargetVersion(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	result, err := dataaccess.ChangeUpgradePathTargetVersion(ctx, token, serviceID, productTierID, upgradePathID, targetVersion)
+	result, err := dataaccess.ChangeUpgradePathTargetVersion(cmd.Context(), token, serviceID, productTierID, upgradePathID, targetVersion)
 	if err != nil {
 		return err
 	}
