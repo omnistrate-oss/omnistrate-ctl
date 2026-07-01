@@ -11,7 +11,7 @@ func TestUpgradeCommands(t *testing.T) {
 	require.Equal(t, "Upgrade Instance Deployments to a newer or older version", Cmd.Short)
 
 	// Check that subcommands are registered
-	subCommands := []string{"list", "describe", "create"}
+	subCommands := []string{"list", "describe", "create", "change-target-version"}
 	actualCommands := make([]string, 0)
 	for _, cmd := range Cmd.Commands() {
 		actualCommands = append(actualCommands, cmd.Name())
@@ -79,4 +79,33 @@ func TestDescribeCommandFlags(t *testing.T) {
 	productTierIDFlag := cmd.Flags().Lookup("product-tier-id")
 	require.NotNil(t, productTierIDFlag)
 	require.Equal(t, "p", productTierIDFlag.Shorthand)
+}
+
+func TestChangeTargetVersionCommandFlags(t *testing.T) {
+	var cmdFound bool
+	var cmdName string
+	for _, cmd := range Cmd.Commands() {
+		if cmd.Name() == "change-target-version" {
+			cmdFound = true
+			cmdName = cmd.Use
+
+			require.Equal(t, "change-target-version <upgrade-path-id>", cmd.Use)
+			require.Equal(t, "Change the target version for a scheduled upgrade path", cmd.Short)
+
+			serviceIDFlag := cmd.Flags().Lookup("service-id")
+			require.NotNil(t, serviceIDFlag)
+			require.Equal(t, "s", serviceIDFlag.Shorthand)
+
+			productTierIDFlag := cmd.Flags().Lookup("product-tier-id")
+			require.NotNil(t, productTierIDFlag)
+			require.Equal(t, "p", productTierIDFlag.Shorthand)
+
+			targetVersionFlag := cmd.Flags().Lookup("target-version")
+			require.NotNil(t, targetVersionFlag)
+			require.Empty(t, targetVersionFlag.Shorthand)
+			break
+		}
+	}
+
+	require.True(t, cmdFound, "Expected command change-target-version not found; found %s", cmdName)
 }
