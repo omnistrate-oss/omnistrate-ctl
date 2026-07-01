@@ -107,7 +107,7 @@ func runList(cmd *cobra.Command, args []string) error {
 	// existing local checks as a final compatibility guard.
 	searchFilters := buildResourceInstanceSearchFilters(filterMaps, parsedTagFilters)
 	var searchRes *openapiclientfleet.SearchInventoryResult
-	if searchFilters.HasResourceInstanceFilters() {
+	if hasResourceInstanceFilters(searchFilters) {
 		searchRes, err = dataaccess.SearchInventory(cmd.Context(), token, "resourceinstance:i", searchFilters)
 	} else {
 		searchRes, err = dataaccess.SearchInventory(cmd.Context(), token, "resourceinstance:i")
@@ -165,60 +165,36 @@ func runList(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
-type searchInventoryFilters struct {
-	ResourceInstance resourceInstanceSearchFilters `json:"resourceInstance,omitempty"`
+func hasResourceInstanceFilters(filters openapiclientfleet.SearchInventoryFilters) bool {
+	return filters.ResourceInstance != nil &&
+		(len(filters.ResourceInstance.Predicates) > 0 || len(filters.ResourceInstance.Tags) > 0)
 }
 
-func (f searchInventoryFilters) HasResourceInstanceFilters() bool {
-	return len(f.ResourceInstance.Predicates) > 0 || len(f.ResourceInstance.Tags) > 0
-}
-
-type resourceInstanceSearchFilters struct {
-	Predicates []resourceInstanceFilterGroup `json:"predicates,omitempty"`
-	Tags       []resourceInstanceTagFilter   `json:"tags,omitempty"`
-}
-
-type resourceInstanceFilterGroup struct {
-	InstanceID         string `json:"instanceID,omitempty"`
-	ServiceName        string `json:"serviceName,omitempty"`
-	EnvironmentName    string `json:"environmentName,omitempty"`
-	ProductTierName    string `json:"productTierName,omitempty"`
-	ProductTierVersion string `json:"productTierVersion,omitempty"`
-	ResourceName       string `json:"resourceName,omitempty"`
-	CloudProvider      string `json:"cloudProvider,omitempty"`
-	RegionCode         string `json:"regionCode,omitempty"`
-	Status             string `json:"status,omitempty"`
-	SubscriptionID     string `json:"subscriptionID,omitempty"`
-}
-
-type resourceInstanceTagFilter struct {
-	Key   string `json:"key"`
-	Value string `json:"value"`
-}
-
-func buildResourceInstanceSearchFilters(filterMaps []map[string]string, tagFilters map[string]string) searchInventoryFilters {
-	filters := searchInventoryFilters{}
+func buildResourceInstanceSearchFilters(filterMaps []map[string]string, tagFilters map[string]string) openapiclientfleet.SearchInventoryFilters {
+	filters := openapiclientfleet.SearchInventoryFilters{
+		ResourceInstance: &openapiclientfleet.ResourceInstanceSearchFilters{},
+	}
 
 	for _, filterMap := range filterMaps {
-		predicate := resourceInstanceFilterGroup{
-			InstanceID:         filterMap["instance_id"],
-			ServiceName:        filterMap["service"],
-			EnvironmentName:    filterMap["environment"],
-			ProductTierName:    filterMap["plan"],
-			ProductTierVersion: filterMap["version"],
-			ResourceName:       filterMap["resource"],
-			CloudProvider:      filterMap["cloud_provider"],
-			RegionCode:         filterMap["region"],
-			Status:             filterMap["status"],
-			SubscriptionID:     filterMap["subscription_id"],
-		}
-		if predicate.hasFilters() {
+		predicate := openapiclientfleet.ResourceInstanceFilterGroup{}
+		setResourceInstanceFilterGroupField(filterMap["instance_id"], predicate.SetInstanceId)
+		setResourceInstanceFilterGroupField(filterMap["service"], predicate.SetServiceName)
+		setResourceInstanceFilterGroupField(filterMap["environment"], predicate.SetEnvironmentName)
+		setResourceInstanceFilterGroupField(filterMap["plan"], predicate.SetProductTierName)
+		setResourceInstanceFilterGroupField(filterMap["version"], predicate.SetProductTierVersion)
+		setResourceInstanceFilterGroupField(filterMap["resource"], predicate.SetResourceName)
+		setResourceInstanceFilterGroupField(filterMap["cloud_provider"], predicate.SetCloudProvider)
+		setResourceInstanceFilterGroupField(filterMap["region"], predicate.SetRegionCode)
+		setResourceInstanceFilterGroupField(filterMap["status"], predicate.SetStatus)
+		setResourceInstanceFilterGroupField(filterMap["subscription_id"], predicate.SetSubscriptionId)
+
+		if hasResourceInstanceFilterGroupFields(predicate) {
 			filters.ResourceInstance.Predicates = append(filters.ResourceInstance.Predicates, predicate)
 		}
 	}
 
 	for key, value := range tagFilters {
-		filters.ResourceInstance.Tags = append(filters.ResourceInstance.Tags, resourceInstanceTagFilter{
+		filters.ResourceInstance.Tags = append(filters.ResourceInstance.Tags, openapiclientfleet.ResourceInstanceTagFilter{
 			Key:   key,
 			Value: value,
 		})
@@ -227,17 +203,23 @@ func buildResourceInstanceSearchFilters(filterMaps []map[string]string, tagFilte
 	return filters
 }
 
-func (f resourceInstanceFilterGroup) hasFilters() bool {
-	return f.InstanceID != "" ||
-		f.ServiceName != "" ||
-		f.EnvironmentName != "" ||
-		f.ProductTierName != "" ||
-		f.ProductTierVersion != "" ||
-		f.ResourceName != "" ||
-		f.CloudProvider != "" ||
-		f.RegionCode != "" ||
-		f.Status != "" ||
-		f.SubscriptionID != ""
+func setResourceInstanceFilterGroupField(value string, setter func(string)) {
+	if value != "" {
+		setter(value)
+	}
+}
+
+func hasResourceInstanceFilterGroupFields(f openapiclientfleet.ResourceInstanceFilterGroup) bool {
+	return f.HasInstanceId() ||
+		f.HasServiceName() ||
+		f.HasEnvironmentName() ||
+		f.HasProductTierName() ||
+		f.HasProductTierVersion() ||
+		f.HasResourceName() ||
+		f.HasCloudProvider() ||
+		f.HasRegionCode() ||
+		f.HasStatus() ||
+		f.HasSubscriptionId()
 }
 
 func runInteractiveInstanceList(instances []model.Instance) error {

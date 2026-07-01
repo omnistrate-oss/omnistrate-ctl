@@ -4,17 +4,30 @@ import (
 	"encoding/json"
 	"testing"
 
+	openapiclientfleet "github.com/omnistrate-oss/omnistrate-sdk-go/fleet"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
 func TestSearchInventoryIncludesOptionalFilters(t *testing.T) {
-	req := newSearchInventoryRequest("resourceinstance:i", map[string]any{
-		"resourceInstance": map[string]any{
-			"predicates": []map[string]string{{"serviceName": "postgres"}},
-			"tags":       []map[string]string{{"key": "env", "value": "prod"}},
+	req := newSearchInventoryRequest("resourceinstance:i", openapiclientfleet.SearchInventoryFilters{
+		ResourceInstance: &openapiclientfleet.ResourceInstanceSearchFilters{
+			Predicates: []openapiclientfleet.ResourceInstanceFilterGroup{
+				{
+					ServiceName: ptrTo("postgres"),
+				},
+			},
+			Tags: []openapiclientfleet.ResourceInstanceTagFilter{
+				{
+					Key:   "env",
+					Value: "prod",
+				},
+			},
 		},
 	})
+	require.NotNil(t, req.Filters)
+	assert.Nil(t, req.AdditionalProperties)
+
 	bodyBytes, err := json.Marshal(req)
 	require.NoError(t, err)
 
@@ -27,4 +40,8 @@ func TestSearchInventoryIncludesOptionalFilters(t *testing.T) {
 			"tags":       []any{map[string]any{"key": "env", "value": "prod"}},
 		},
 	}, body["filters"])
+}
+
+func ptrTo[T any](value T) *T {
+	return &value
 }
