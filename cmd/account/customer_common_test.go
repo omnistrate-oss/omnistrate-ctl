@@ -81,7 +81,7 @@ func TestResolveCustomerAccountInstanceByID(t *testing.T) {
 	version := "2026-04-01"
 	subscriptionID := "sub-123"
 
-	searchInventoryFn = func(ctx context.Context, token string, query string) (*openapiclientfleet.SearchInventoryResult, error) {
+	searchInventoryFn = func(ctx context.Context, token string, query string, filters ...any) (*openapiclientfleet.SearchInventoryResult, error) {
 		assert.Equal(t, "token", token)
 		assert.Equal(t, "resourceinstance:instance-123", query)
 		return &openapiclientfleet.SearchInventoryResult{

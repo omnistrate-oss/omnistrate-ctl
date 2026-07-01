@@ -1,7 +1,6 @@
 package instance
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
 	"strings"
@@ -12,7 +11,6 @@ import (
 	"github.com/omnistrate-oss/omnistrate-ctl/internal/model"
 	"github.com/omnistrate-oss/omnistrate-ctl/internal/utils"
 	openapiclientfleet "github.com/omnistrate-oss/omnistrate-sdk-go/fleet"
-	openapiclientv1 "github.com/omnistrate-oss/omnistrate-sdk-go/v1"
 	"github.com/spf13/cobra"
 )
 
@@ -105,26 +103,29 @@ func runList(cmd *cobra.Command, args []string) error {
 		sm.Start()
 	}
 
-	// Get all instances using the paginated Fleet instances API.
-	listedInstances, err := fetchListedInstances(
-		cmd.Context(),
-		token,
-		dataaccess.ListServices,
-		dataaccess.ListServiceEnvironments,
-		dataaccess.ListAllResourceInstances,
-	)
+	// Get instances matching supported filters from the backend, then keep the
+	// existing local checks as a final compatibility guard.
+	searchFilters := buildResourceInstanceSearchFilters(filterMaps, parsedTagFilters)
+	var searchRes *openapiclientfleet.SearchInventoryResult
+	if searchFilters.HasResourceInstanceFilters() {
+		searchRes, err = dataaccess.SearchInventory(cmd.Context(), token, "resourceinstance:i", searchFilters)
+	} else {
+		searchRes, err = dataaccess.SearchInventory(cmd.Context(), token, "resourceinstance:i")
+	}
 	if err != nil {
 		utils.HandleSpinnerError(spinner, sm, err)
 		return err
 	}
 
 	formattedInstances := make([]model.Instance, 0)
-	for i := range listedInstances {
-		instance := listedInstances[i]
-		formattedInstance := formatListedInstance(&instance, truncateNames)
-		if formattedInstance.InstanceID == "" {
+	for i := range searchRes.ResourceInstanceResults {
+		instance := searchRes.ResourceInstanceResults[i]
+		if instance.Id == "" {
 			continue
 		}
+
+		// Format instance
+		formattedInstance := formatInstance(&instance, truncateNames)
 
 		// Check if the instance matches the filters
 		ok, err := utils.MatchesFilters(formattedInstance, filterMaps)
@@ -164,127 +165,79 @@ func runList(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
-type listServicesFunc func(context.Context, string) (*openapiclientv1.ListServiceResult, error)
-type listServiceEnvironmentsFunc func(context.Context, string, string) (*openapiclientv1.ListServiceEnvironmentsResult, error)
-type listResourceInstancesFunc func(context.Context, string, string, string, *dataaccess.ListResourceInstanceOptions) ([]openapiclientfleet.ResourceInstance, error)
-
-func fetchListedInstances(
-	ctx context.Context,
-	token string,
-	listServices listServicesFunc,
-	listServiceEnvironments listServiceEnvironmentsFunc,
-	listResourceInstances listResourceInstancesFunc,
-) ([]openapiclientfleet.ResourceInstance, error) {
-	services, err := listServices(ctx, token)
-	if err != nil {
-		return nil, err
-	}
-
-	filter := "excludeCloudAccounts"
-	exclude := true
-	options := &dataaccess.ListResourceInstanceOptions{
-		Filter:                  &filter,
-		ExcludeDetail:           &exclude,
-		ExcludeNetworkTopology:  &exclude,
-		ExcludeHAStatus:         &exclude,
-		ExcludeIntegrations:     &exclude,
-		ExcludeMaintenanceTasks: &exclude,
-	}
-
-	instances := make([]openapiclientfleet.ResourceInstance, 0)
-	for _, serviceID := range services.GetIds() {
-		environments, err := listServiceEnvironments(ctx, token, serviceID)
-		if err != nil {
-			if isSkippableListInstancesError(err) {
-				continue
-			}
-			return nil, err
-		}
-
-		for _, environmentID := range environments.GetIds() {
-			environmentInstances, err := listResourceInstances(ctx, token, serviceID, environmentID, options)
-			if err != nil {
-				if isSkippableListInstancesError(err) {
-					continue
-				}
-				return nil, err
-			}
-			instances = append(instances, environmentInstances...)
-		}
-	}
-
-	return instances, nil
+type searchInventoryFilters struct {
+	ResourceInstance resourceInstanceSearchFilters `json:"resourceInstance,omitempty"`
 }
 
-func isSkippableListInstancesError(err error) bool {
-	if err == nil {
-		return false
-	}
-
-	msg := strings.ToLower(err.Error())
-	return strings.Contains(msg, "not_found") && strings.Contains(msg, "host cluster not found") ||
-		strings.Contains(msg, "bad_request") && strings.Contains(msg, "invalid request: service not found") ||
-		strings.Contains(msg, "auth_failure")
+func (f searchInventoryFilters) HasResourceInstanceFilters() bool {
+	return len(f.ResourceInstance.Predicates) > 0 || len(f.ResourceInstance.Tags) > 0
 }
 
-func formatListedInstance(instance *openapiclientfleet.ResourceInstance, truncateNames bool) model.Instance {
-	if instance == nil {
-		return model.Instance{}
-	}
-
-	details := instance.GetConsumptionResourceInstanceResult()
-
-	serviceName := instance.GetServiceName()
-	planName := instance.GetProductTierName()
-	if truncateNames {
-		serviceName = utils.TruncateString(serviceName, defaultMaxNameLength)
-		planName = utils.TruncateString(planName, defaultMaxNameLength)
-	}
-
-	subscriptionID := instance.GetSubscriptionId()
-	if details.SubscriptionId != nil {
-		subscriptionID = *details.SubscriptionId
-	}
-
-	version := instance.GetTierVersion()
-	if details.TierVersion != nil {
-		version = *details.TierVersion
-	}
-
-	return model.Instance{
-		InstanceID:     details.GetId(),
-		Service:        serviceName,
-		Environment:    instance.GetServiceEnvName(),
-		Plan:           planName,
-		Version:        version,
-		Resource:       listedInstanceResourceName(instance),
-		CloudProvider:  instance.GetCloudProvider(),
-		Region:         details.GetRegion(),
-		Status:         details.GetStatus(),
-		SubscriptionID: subscriptionID,
-		Tags:           formatTags(details.CustomTags),
-	}
+type resourceInstanceSearchFilters struct {
+	Predicates []resourceInstanceFilterGroup `json:"predicates,omitempty"`
+	Tags       []resourceInstanceTagFilter   `json:"tags,omitempty"`
 }
 
-func listedInstanceResourceName(instance *openapiclientfleet.ResourceInstance) string {
-	if instance == nil {
-		return ""
-	}
+type resourceInstanceFilterGroup struct {
+	InstanceID         string `json:"instanceID,omitempty"`
+	ServiceName        string `json:"serviceName,omitempty"`
+	EnvironmentName    string `json:"environmentName,omitempty"`
+	ProductTierName    string `json:"productTierName,omitempty"`
+	ProductTierVersion string `json:"productTierVersion,omitempty"`
+	ResourceName       string `json:"resourceName,omitempty"`
+	CloudProvider      string `json:"cloudProvider,omitempty"`
+	RegionCode         string `json:"regionCode,omitempty"`
+	Status             string `json:"status,omitempty"`
+	SubscriptionID     string `json:"subscriptionID,omitempty"`
+}
 
-	resourceID := instance.ConsumptionResourceInstanceResult.GetResourceID()
-	for _, resource := range instance.GetResourceVersionSummaries() {
-		if resourceID != "" && resource.GetResourceId() == resourceID {
-			return resource.GetResourceName()
+type resourceInstanceTagFilter struct {
+	Key   string `json:"key"`
+	Value string `json:"value"`
+}
+
+func buildResourceInstanceSearchFilters(filterMaps []map[string]string, tagFilters map[string]string) searchInventoryFilters {
+	filters := searchInventoryFilters{}
+
+	for _, filterMap := range filterMaps {
+		predicate := resourceInstanceFilterGroup{
+			InstanceID:         filterMap["instance_id"],
+			ServiceName:        filterMap["service"],
+			EnvironmentName:    filterMap["environment"],
+			ProductTierName:    filterMap["plan"],
+			ProductTierVersion: filterMap["version"],
+			ResourceName:       filterMap["resource"],
+			CloudProvider:      filterMap["cloud_provider"],
+			RegionCode:         filterMap["region"],
+			Status:             filterMap["status"],
+			SubscriptionID:     filterMap["subscription_id"],
+		}
+		if predicate.hasFilters() {
+			filters.ResourceInstance.Predicates = append(filters.ResourceInstance.Predicates, predicate)
 		}
 	}
 
-	for _, resource := range instance.GetResourceVersionSummaries() {
-		if resource.GetResourceName() != "" {
-			return resource.GetResourceName()
-		}
+	for key, value := range tagFilters {
+		filters.ResourceInstance.Tags = append(filters.ResourceInstance.Tags, resourceInstanceTagFilter{
+			Key:   key,
+			Value: value,
+		})
 	}
 
-	return ""
+	return filters
+}
+
+func (f resourceInstanceFilterGroup) hasFilters() bool {
+	return f.InstanceID != "" ||
+		f.ServiceName != "" ||
+		f.EnvironmentName != "" ||
+		f.ProductTierName != "" ||
+		f.ProductTierVersion != "" ||
+		f.ResourceName != "" ||
+		f.CloudProvider != "" ||
+		f.RegionCode != "" ||
+		f.Status != "" ||
+		f.SubscriptionID != ""
 }
 
 func runInteractiveInstanceList(instances []model.Instance) error {
