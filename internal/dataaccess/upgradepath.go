@@ -76,6 +76,33 @@ func ManageLifecycleWithPayload(ctx context.Context, token, serviceID, productTi
 
 	return resp, nil
 }
+
+func ChangeUpgradePathTargetVersion(ctx context.Context, token, serviceID, productTierID, upgradePathID, targetVersion string) (*openapiclientfleet.UpgradePath, error) {
+	ctxWithToken := context.WithValue(ctx, openapiclientfleet.ContextAccessToken, token)
+	apiClient := getFleetClient()
+
+	req := apiClient.InventoryApiAPI.InventoryApiChangeUpgradePathTargetVersion(
+		ctxWithToken,
+		serviceID,
+		productTierID,
+		upgradePathID,
+	).ChangeUpgradePathTargetVersionRequest2(openapiclientfleet.ChangeUpgradePathTargetVersionRequest2{
+		TargetVersion: targetVersion,
+	})
+
+	resp, r, err := req.Execute()
+	defer func() {
+		if r != nil {
+			_ = r.Body.Close()
+		}
+	}()
+	if err != nil {
+		return nil, handleFleetError(err)
+	}
+
+	return resp, nil
+}
+
 func DescribeUpgradePath(ctx context.Context, token, serviceID, productTierID, upgradePathID string) (*openapiclientfleet.UpgradePath, error) {
 	ctxWithToken := context.WithValue(ctx, openapiclientfleet.ContextAccessToken, token)
 	apiClient := getFleetClient()
