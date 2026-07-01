@@ -32,7 +32,7 @@ func TestRunCustomerInstallKitMissingAccountConfigID(t *testing.T) {
 	require.NoError(t, os.Setenv("OMNISTRATE_DRY_RUN", "true"))
 
 	resourceID := "r-injectedaccountconfigpt123"
-	searchInventoryFn = func(_ context.Context, _ string, _ string, _ ...any) (*openapiclientfleet.SearchInventoryResult, error) {
+	searchInventoryFn = func(_ context.Context, _ string, _ string, _ ...openapiclientfleet.SearchInventoryFilters) (*openapiclientfleet.SearchInventoryResult, error) {
 		return &openapiclientfleet.SearchInventoryResult{
 			ResourceInstanceResults: []openapiclientfleet.ResourceInstanceSearchRecord{
 				{
@@ -79,7 +79,7 @@ func TestRunCustomerInstallKitCreatesOutputDirectory(t *testing.T) {
 	require.NoError(t, os.Setenv("OMNISTRATE_DRY_RUN", "true"))
 
 	resourceID := "r-injectedaccountconfigpt123"
-	searchInventoryFn = func(_ context.Context, _ string, _ string, _ ...any) (*openapiclientfleet.SearchInventoryResult, error) {
+	searchInventoryFn = func(_ context.Context, _ string, _ string, _ ...openapiclientfleet.SearchInventoryFilters) (*openapiclientfleet.SearchInventoryResult, error) {
 		return &openapiclientfleet.SearchInventoryResult{
 			ResourceInstanceResults: []openapiclientfleet.ResourceInstanceSearchRecord{
 				{
