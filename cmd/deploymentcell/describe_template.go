@@ -19,8 +19,8 @@ var describeTemplateCmd = &cobra.Command{
 	Short: "Describe deployment cell configuration template",
 	Long: `Describe the current deployment cell configuration template for your organization.
 
-This command shows the current amenities configuration template that is applied to 
-new deployment cells in the specified environment and cloud provider.
+This command shows the current amenities and workload identities configuration template
+that is applied to new deployment cells in the specified environment and cloud provider.
 
 You can also describe the configuration of a specific deployment cell by providing 
 its ID as an argument.
@@ -173,7 +173,8 @@ func describeOrganizationTemplate(ctx context.Context, token string, environment
 	fmt.Printf("Organization: %s\n", utils.FromPtr(spOrg.Id))
 	fmt.Printf("Environment: %s\n", environment)
 	fmt.Printf("Cloud Provider: %s\n", cloudProvider)
-	fmt.Printf("Total Amenities: %d (Managed: %d, Custom: %d)\n\n", totalAmenities, len(template.ManagedAmenities), len(template.CustomAmenities))
+	fmt.Printf("Total Amenities: %d (Managed: %d, Custom: %d)\n", totalAmenities, len(template.ManagedAmenities), len(template.CustomAmenities))
+	fmt.Printf("Workload Identities: %d\n\n", len(template.WorkloadIdentities))
 
 	// Print output based on format - always show output even when saving to file
 	switch output {
@@ -264,6 +265,15 @@ func printTemplateAsTable(template *model.DeploymentCellTemplate) error {
 		tableData = append(tableData, view)
 	}
 
+	for _, workloadIdentity := range template.WorkloadIdentities {
+		tableData = append(tableData, AmenityTableView{
+			Name:        workloadIdentity.Identifier,
+			Type:        "WorkloadIdentity",
+			IsManaged:   "Yes",
+			Description: utils.FromPtr(workloadIdentity.Description),
+		})
+	}
+
 	return utils.PrintTextTableJsonArrayOutput("table", tableData)
 }
 
@@ -298,6 +308,13 @@ func createDeploymentCellTemplate(deploymentCell *fleet.HostCluster) *model.Depl
 	template := &model.DeploymentCellTemplate{
 		ManagedAmenities: managedAmenities,
 		CustomAmenities:  customAmenities,
+	}
+	if deploymentCell.AdditionalProperties != nil {
+		if workloadIdentitiesData, ok := deploymentCell.AdditionalProperties["WorkloadIdentities"]; ok {
+			if workloadIdentities, err := dataaccess.ConvertToManagedWorkloadIdentities(workloadIdentitiesData); err == nil {
+				template.WorkloadIdentities = workloadIdentities
+			}
+		}
 	}
 
 	return template
@@ -345,6 +362,15 @@ func printDeploymentCellTemplateAsTable(template *model.DeploymentCellTemplate) 
 		}
 
 		tableData = append(tableData, view)
+	}
+
+	for _, workloadIdentity := range template.WorkloadIdentities {
+		tableData = append(tableData, AmenityTableView{
+			Name:        workloadIdentity.Identifier,
+			Type:        "WorkloadIdentity",
+			IsManaged:   "Yes",
+			Description: utils.FromPtr(workloadIdentity.Description),
+		})
 	}
 
 	return utils.PrintTextTableJsonArrayOutput("table", tableData)

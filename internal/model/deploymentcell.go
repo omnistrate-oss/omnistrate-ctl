@@ -8,8 +8,59 @@ import (
 
 // DeploymentCellTemplate represents a template structure for API responses
 type DeploymentCellTemplate struct {
-	ManagedAmenities []Amenity `json:"managed_amenities,omitempty" yaml:"managedAmenities,omitempty"`
-	CustomAmenities  []Amenity `json:"custom_amenities,omitempty" yaml:"customAmenities,omitempty"`
+	ManagedAmenities   []Amenity                 `json:"managed_amenities,omitempty" yaml:"managedAmenities,omitempty"`
+	CustomAmenities    []Amenity                 `json:"custom_amenities,omitempty" yaml:"customAmenities,omitempty"`
+	WorkloadIdentities []ManagedWorkloadIdentity `json:"workload_identities,omitempty" yaml:"workloadIdentities,omitempty"`
+}
+
+func (t DeploymentCellTemplate) MarshalYAML() (interface{}, error) {
+	type deploymentCellTemplateYAML struct {
+		ManagedAmenities   []Amenity                  `yaml:"managedAmenities,omitempty"`
+		CustomAmenities    []Amenity                  `yaml:"customAmenities,omitempty"`
+		WorkloadIdentities *[]ManagedWorkloadIdentity `yaml:"workloadIdentities,omitempty"`
+	}
+
+	result := deploymentCellTemplateYAML{
+		ManagedAmenities: t.ManagedAmenities,
+		CustomAmenities:  t.CustomAmenities,
+	}
+	if t.WorkloadIdentities != nil {
+		result.WorkloadIdentities = &t.WorkloadIdentities
+	}
+
+	return result, nil
+}
+
+// ManagedWorkloadIdentity represents a managed workload identity in a deployment cell template.
+type ManagedWorkloadIdentity struct {
+	Identifier  string                              `json:"Identifier" yaml:"identifier"`
+	Description *string                             `json:"Description,omitempty" yaml:"description,omitempty"`
+	Bindings    []ManagedWorkloadIdentityBinding    `json:"Bindings,omitempty" yaml:"bindings,omitempty"`
+	Permissions *ManagedWorkloadIdentityPermissions `json:"Permissions,omitempty" yaml:"permissions,omitempty"`
+}
+
+// ManagedWorkloadIdentityBinding represents a workload identity binding.
+type ManagedWorkloadIdentityBinding struct {
+	ServiceAccount *ManagedWorkloadIdentityServiceAccount `json:"ServiceAccount,omitempty" yaml:"serviceAccount,omitempty"`
+}
+
+// ManagedWorkloadIdentityServiceAccount represents a Kubernetes service account binding target.
+type ManagedWorkloadIdentityServiceAccount struct {
+	Namespace string `json:"Namespace" yaml:"namespace"`
+	Name      string `json:"Name" yaml:"name"`
+}
+
+// ManagedWorkloadIdentityPermissions represents cloud-provider permissions assigned to a workload identity.
+type ManagedWorkloadIdentityPermissions struct {
+	Policies    map[string]string                        `json:"Policies,omitempty" yaml:"policies,omitempty"`
+	Roles       map[string][]ManagedWorkloadIdentityRole `json:"Roles,omitempty" yaml:"roles,omitempty"`
+	Permissions map[string][]string                      `json:"Permissions,omitempty" yaml:"permissions,omitempty"`
+}
+
+// ManagedWorkloadIdentityRole represents a cloud-provider role assigned to a workload identity.
+type ManagedWorkloadIdentityRole struct {
+	Name string  `json:"Name" yaml:"name"`
+	Type *string `json:"Type,omitempty" yaml:"type,omitempty"`
 }
 
 // DeploymentCell represents a complete view of a host cluster/deployment cell

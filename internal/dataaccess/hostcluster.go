@@ -263,33 +263,12 @@ func GetOrganizationDeploymentCellTemplate(ctx context.Context, token string, en
 		return nil, fmt.Errorf("no deployment cell configurations found for cloud provider '%s'", cloudProvider)
 	}
 
-	amenitiesInternalModel, err := ConvertToInternalAmenitiesList(amenitiesPerCloudProvider)
+	template, err := ConvertToDeploymentCellTemplate(amenitiesPerCloudProvider)
 	if err != nil {
-		return nil, fmt.Errorf("failed to convert amenities list: %w", err)
+		return nil, fmt.Errorf("failed to convert deployment cell template: %w", err)
 	}
 
-	var managedAmenities []model.Amenity
-	var customAmenities []model.Amenity
-	for _, amenity := range amenitiesInternalModel {
-		externalModel := model.Amenity{
-			Name:        amenity.Name,
-			Description: amenity.Description,
-			Type:        amenity.Type,
-			Disable:     amenity.Disable,
-			DependsOn:   amenity.DependsOn,
-			Properties:  amenity.Properties,
-		}
-		if utils.FromPtr(amenity.IsManaged) {
-			managedAmenities = append(managedAmenities, externalModel)
-		} else {
-			customAmenities = append(customAmenities, externalModel)
-		}
-	}
-
-	return &model.DeploymentCellTemplate{
-		ManagedAmenities: managedAmenities,
-		CustomAmenities:  customAmenities,
-	}, nil
+	return template, nil
 }
 
 func ConvertToInternalAmenitiesList(data interface{}) ([]model.InternalAmenity, error) {
@@ -315,6 +294,66 @@ func ConvertToInternalAmenitiesList(data interface{}) ([]model.InternalAmenity, 
 	}
 
 	return result, nil
+}
+
+// ConvertToDeploymentCellTemplate converts an SDK deployment cell configuration into the ctl template model.
+func ConvertToDeploymentCellTemplate(data interface{}) (*model.DeploymentCellTemplate, error) {
+	result := &model.DeploymentCellTemplate{}
+	if data == nil {
+		return result, nil
+	}
+
+	jsonBytes, err := json.Marshal(data)
+	if err != nil {
+		return nil, err
+	}
+
+	var configWrapper struct {
+		Amenities          []model.InternalAmenity         `json:"Amenities"`
+		WorkloadIdentities []model.ManagedWorkloadIdentity `json:"WorkloadIdentities"`
+	}
+	if err = json.Unmarshal(jsonBytes, &configWrapper); err != nil {
+		var amenities []model.InternalAmenity
+		if err = json.Unmarshal(jsonBytes, &amenities); err == nil {
+			configWrapper.Amenities = amenities
+		} else {
+			return nil, err
+		}
+	}
+
+	for _, amenity := range configWrapper.Amenities {
+		externalModel := model.Amenity{
+			Name:        amenity.Name,
+			Description: amenity.Description,
+			Type:        amenity.Type,
+			Disable:     amenity.Disable,
+			DependsOn:   amenity.DependsOn,
+			Properties:  amenity.Properties,
+		}
+		if utils.FromPtr(amenity.IsManaged) {
+			result.ManagedAmenities = append(result.ManagedAmenities, externalModel)
+		} else {
+			result.CustomAmenities = append(result.CustomAmenities, externalModel)
+		}
+	}
+	result.WorkloadIdentities = configWrapper.WorkloadIdentities
+
+	return result, nil
+}
+
+// ConvertToManagedWorkloadIdentities converts arbitrary SDK JSON data into workload identity models.
+func ConvertToManagedWorkloadIdentities(data interface{}) ([]model.ManagedWorkloadIdentity, error) {
+	jsonBytes, err := json.Marshal(data)
+	if err != nil {
+		return nil, err
+	}
+
+	var workloadIdentities []model.ManagedWorkloadIdentity
+	if err = json.Unmarshal(jsonBytes, &workloadIdentities); err != nil {
+		return nil, err
+	}
+
+	return workloadIdentities, nil
 }
 
 func interfaceToMap(data interface{}) (map[string]interface{}, error) {

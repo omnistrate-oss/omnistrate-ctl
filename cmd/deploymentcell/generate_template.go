@@ -22,12 +22,13 @@ var generateTemplateCmd = &cobra.Command{
 	Short: "Generate deployment cell configuration template",
 	Long: `Generate a deployment cell configuration template with available amenities for a specific cloud provider.
 
-This command creates a YAML template file containing all available amenities (Helm charts) 
-that can be configured for deployment cells. The template includes both managed amenities 
-(maintained by Omnistrate) and custom amenities based on the organization's current configuration.
+This command creates a YAML template file containing all available amenities (Helm charts)
+and workload identities that can be configured for deployment cells. The template includes
+managed amenities (maintained by Omnistrate), custom amenities, and workload identities based
+on the organization's current configuration.
 
-The generated template can be customized and used with the update-config-template command 
-to configure deployment cell amenities for your organization.
+The generated template can be customized and used with the update-config-template command
+to configure deployment cell amenities and workload identities for your organization.
 
 Examples:
   # Generate template for AWS cloud provider
@@ -161,37 +162,10 @@ func normalizeDeploymentCellTemplateCloudProviderName(cloudProviderName string) 
 }
 
 func convertToDeploymentCellConfiguration(cellConfig interface{}) (model.DeploymentCellTemplate, error) {
-	result := model.DeploymentCellTemplate{}
-
-	// Handle the case where apiResponse is nil
-	if cellConfig == nil {
-		return result, nil
-	}
-
-	internalAmenities, err := dataaccess.ConvertToInternalAmenitiesList(cellConfig)
+	template, err := dataaccess.ConvertToDeploymentCellTemplate(cellConfig)
 	if err != nil {
-		return result, fmt.Errorf("failed to convert amenities list: %w", err)
+		return model.DeploymentCellTemplate{}, fmt.Errorf("failed to convert deployment cell template: %w", err)
 	}
 
-	var managedAmenities []model.Amenity
-	var customAmenities []model.Amenity
-	for _, amenity := range internalAmenities {
-		externalModel := model.Amenity{
-			Name:        amenity.Name,
-			Description: amenity.Description,
-			Type:        amenity.Type,
-			Disable:     amenity.Disable,
-			DependsOn:   amenity.DependsOn,
-			Properties:  amenity.Properties,
-		}
-		if utils.FromPtr(amenity.IsManaged) {
-			managedAmenities = append(managedAmenities, externalModel)
-		} else {
-			customAmenities = append(customAmenities, externalModel)
-		}
-	}
-
-	result.ManagedAmenities = managedAmenities
-	result.CustomAmenities = customAmenities
-	return result, nil
+	return *template, nil
 }

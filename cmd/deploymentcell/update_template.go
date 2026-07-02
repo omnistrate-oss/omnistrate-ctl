@@ -26,6 +26,7 @@ This command allows you to:
 1. Update the organization-level template that applies to new deployment cells
 2. Update configuration for a specific deployment cell
 3. Sync a deployment cell with the organization template
+4. Configure deployment cell amenities and workload identities
 
 When updating the organization template, you must specify the environment and cloud provider.
 When updating a specific deployment cell, provide the deployment cell ID as an argument or use the --id flag.
