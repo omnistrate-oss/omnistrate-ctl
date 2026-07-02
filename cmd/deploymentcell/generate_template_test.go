@@ -60,6 +60,46 @@ func TestDeploymentCellTemplateForCloudProviderPreservesDisable(t *testing.T) {
 	require.Equal(t, disable, *template.ManagedAmenities[0].Disable)
 }
 
+func TestDeploymentCellTemplateForCloudProviderPreservesWorkloadIdentities(t *testing.T) {
+	description := "Allows workloads to publish queue messages"
+	configs := map[string]openapiclient.DeploymentCellConfiguration{
+		"aws": {
+			Amenities: []openapiclient.Amenity{
+				apiAmenity("External DNS"),
+			},
+			AdditionalProperties: map[string]interface{}{
+				"WorkloadIdentities": []model.ManagedWorkloadIdentity{
+					{
+						Identifier:  "queue-writer",
+						Description: &description,
+						Bindings: []model.ManagedWorkloadIdentityBinding{
+							{
+								ServiceAccount: &model.ManagedWorkloadIdentityServiceAccount{
+									Namespace: "queue-system",
+									Name:      "queue-writer",
+								},
+							},
+						},
+						Permissions: &model.ManagedWorkloadIdentityPermissions{
+							Permissions: map[string][]string{
+								"oci": {"manage queues"},
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	template, err := deploymentCellTemplateForCloudProvider(&configs, "aws")
+	require.NoError(t, err)
+
+	require.Len(t, template.WorkloadIdentities, 1)
+	require.Equal(t, "queue-writer", template.WorkloadIdentities[0].Identifier)
+	require.Equal(t, "queue-system", template.WorkloadIdentities[0].Bindings[0].ServiceAccount.Namespace)
+	require.Equal(t, "manage queues", template.WorkloadIdentities[0].Permissions.Permissions["oci"][0])
+}
+
 func TestDeploymentCellTemplateForCloudProviderReturnsErrorForMissingNonBYOCConfig(t *testing.T) {
 	configs := map[string]openapiclient.DeploymentCellConfiguration{
 		"aws": {

@@ -59,9 +59,16 @@ func convertTemplateToOpenAPIFormat(deploymentConfig model.DeploymentCellTemplat
 		}
 		amenitiesAPI = append(amenitiesAPI, apiAmenity)
 	}
-	configPerCloudProvider[cloudProvider] = openapiclient.DeploymentCellConfiguration{
+	deploymentCellConfiguration := openapiclient.DeploymentCellConfiguration{
 		Amenities: amenitiesAPI,
 	}
+	if deploymentConfig.WorkloadIdentities != nil {
+		deploymentCellConfiguration.AdditionalProperties = map[string]interface{}{
+			"WorkloadIdentities": deploymentConfig.WorkloadIdentities,
+		}
+	}
+
+	configPerCloudProvider[cloudProvider] = deploymentCellConfiguration
 
 	apiModel.DeploymentCellConfigurationPerCloudProvider = utils.ToPtr(configPerCloudProvider)
 
