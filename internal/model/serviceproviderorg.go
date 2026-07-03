@@ -63,6 +63,34 @@ type Amenity struct {
 	Properties  map[string]interface{} `json:"properties,omitempty" yaml:"properties,omitempty"`
 }
 
+// ManagedWorkloadIdentity represents a managed workload identity in the deployment cell template.
+type ManagedWorkloadIdentity struct {
+	Identifier  string                              `json:"identifier" yaml:"identifier"`
+	Description *string                             `json:"description,omitempty" yaml:"description,omitempty"`
+	Bindings    []ManagedWorkloadIdentityBinding    `json:"bindings,omitempty" yaml:"bindings,omitempty"`
+	Permissions *ManagedWorkloadIdentityPermissions `json:"permissions,omitempty" yaml:"permissions,omitempty"`
+}
+
+type ManagedWorkloadIdentityBinding struct {
+	ServiceAccount ManagedWorkloadIdentityServiceAccount `json:"serviceAccount" yaml:"serviceAccount"`
+}
+
+type ManagedWorkloadIdentityServiceAccount struct {
+	Namespace string `json:"namespace" yaml:"namespace"`
+	Name      string `json:"name" yaml:"name"`
+}
+
+type ManagedWorkloadIdentityPermissions struct {
+	Policies    map[string]string                        `json:"policies,omitempty" yaml:"policies,omitempty"`
+	Roles       map[string][]ManagedWorkloadIdentityRole `json:"roles,omitempty" yaml:"roles,omitempty"`
+	Permissions map[string][]string                      `json:"permissions,omitempty" yaml:"permissions,omitempty"`
+}
+
+type ManagedWorkloadIdentityRole struct {
+	Name string  `json:"name" yaml:"name"`
+	Type *string `json:"type,omitempty" yaml:"type,omitempty"`
+}
+
 type InternalAmenity struct {
 	Name        string                 `json:"name" yaml:"name"`
 	Description *string                `json:"description,omitempty" yaml:"description,omitempty"`

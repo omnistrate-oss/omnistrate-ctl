@@ -8,8 +8,9 @@ import (
 
 // DeploymentCellTemplate represents a template structure for API responses
 type DeploymentCellTemplate struct {
-	ManagedAmenities []Amenity `json:"managed_amenities,omitempty" yaml:"managedAmenities,omitempty"`
-	CustomAmenities  []Amenity `json:"custom_amenities,omitempty" yaml:"customAmenities,omitempty"`
+	ManagedIdentities []ManagedWorkloadIdentity `json:"managed_identities,omitempty" yaml:"managedIdentities,omitempty"`
+	ManagedAmenities  []Amenity                 `json:"managed_amenities,omitempty" yaml:"managedAmenities,omitempty"`
+	CustomAmenities   []Amenity                 `json:"custom_amenities,omitempty" yaml:"customAmenities,omitempty"`
 }
 
 // DeploymentCell represents a complete view of a host cluster/deployment cell
