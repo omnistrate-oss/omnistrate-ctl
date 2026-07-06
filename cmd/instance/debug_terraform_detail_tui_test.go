@@ -13,6 +13,7 @@ func TestTerraformTabNames(t *testing.T) {
 	require.Equal(t, "Terraform Files", tabNames[tabTfFiles])
 	require.Equal(t, "Terraform Output", tabNames[tabTfOutput])
 	require.Equal(t, "Live Logs", tabNames[tabLogs])
+	require.Equal(t, "App Logs", tabNames[tabAppLogs])
 	require.Equal(t, "Operation History", tabNames[tabOpHistory])
 	require.Equal(t, "Workflow Events", tabNames[tabWfErrors])
 }

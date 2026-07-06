@@ -12,13 +12,14 @@ import (
 )
 
 const (
-	composeTabInputVars  = 0
-	composeTabOutputVars = 1
-	composeTabWfErrors   = 2
-	composeNumTabs       = 3
+	composeTabAppLogs    = 0
+	composeTabInputVars  = 1
+	composeTabOutputVars = 2
+	composeTabWfErrors   = 3
+	composeNumTabs       = 4
 )
 
-var composeTabNames = []string{"Deployment API parameters", "Deployment Output Parameters", "Workflow Events"}
+var composeTabNames = []string{"App Logs", "Deployment API parameters", "Deployment Output Parameters", "Workflow Events"}
 
 func init() {
 	if len(composeTabNames) != composeNumTabs {
@@ -48,6 +49,8 @@ type composeDetailModel struct {
 
 	composeData *ComposeData
 
+	appLogs *appLogsState
+
 	// Input variables tree
 	inputTree   []outputNode
 	inputCursor int
@@ -68,15 +71,16 @@ func newComposeDetailModel(node PlanDAGNode, data DebugData) composeDetailModel 
 	return composeDetailModel{
 		node:      node,
 		debugData: data,
-		activeTab: composeTabInputVars,
+		activeTab: composeTabAppLogs,
 		loading:   true,
 		spinner:   newResourceDetailSpinner(),
+		appLogs:   newAppLogsState(appLogStreamsForResource(data, node)),
 		wfErrors:  &workflowErrorsState{},
 	}
 }
 
 func (m composeDetailModel) Init() tea.Cmd {
-	return tea.Batch(m.spinner.Tick, m.fetchComposeData())
+	return tea.Batch(m.spinner.Tick, m.fetchComposeData(), m.appLogs.start())
 }
 
 func (m composeDetailModel) fetchComposeData() tea.Cmd {
@@ -123,7 +127,7 @@ func (m composeDetailModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case spinner.TickMsg:
-		if m.loading || m.wfErrors.refreshing || isWorkflowInProgress(m.getWfEvents()) {
+		if m.loading || m.wfErrors.refreshing || isWorkflowInProgress(m.getWfEvents()) || (m.appLogs != nil && m.appLogs.streaming) {
 			var cmd tea.Cmd
 			m.spinner, cmd = m.spinner.Update(msg)
 			return m, cmd
@@ -147,10 +151,15 @@ func (m composeDetailModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, handleResourceWorkflowRefresh(m.debugData, m.node, m.wfErrors, msg)
 	case wfCountdownTickMsg:
 		return m, handleResourceWorkflowCountdown(m.debugData, m.node)
+	case appLogLineMsg:
+		return m, m.appLogs.handleLine(msg, m.composeBodyHeight(), m.composeContentWidth())
+	case appLogStreamDoneMsg:
+		m.appLogs.handleDone(msg)
 
 	case tea.KeyMsg:
 		switch msg.String() {
 		case "ctrl+c", "q":
+			m.appLogs.stop()
 			return m, tea.Quit
 		case "esc":
 			if m.wfErrors.modalText != "" {
@@ -159,6 +168,7 @@ func (m composeDetailModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.wfErrors.modalScroll = 0
 				return m, nil
 			}
+			m.appLogs.stop()
 			return m, func() tea.Msg { return backToDagMsg{} }
 		case "tab":
 			if m.wfErrors.modalText != "" {
@@ -180,6 +190,8 @@ func (m composeDetailModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, nil
 			}
 			switch m.activeTab {
+			case composeTabAppLogs:
+				m.appLogs.scrollUp()
 			case composeTabInputVars:
 				m.inputCursor, m.inputScroll = moveResourceDetailTreeUp(m.inputTree, m.inputCursor, m.inputScroll, m.composeVisibleRows())
 			case composeTabOutputVars:
@@ -201,6 +213,8 @@ func (m composeDetailModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, nil
 			}
 			switch m.activeTab {
+			case composeTabAppLogs:
+				m.appLogs.scrollDown(m.composeBodyHeight(), m.composeContentWidth())
 			case composeTabInputVars:
 				m.inputCursor, m.inputScroll = moveResourceDetailTreeDown(m.inputTree, m.inputCursor, m.inputScroll, m.composeVisibleRows())
 			case composeTabOutputVars:
@@ -245,6 +259,8 @@ func (m composeDetailModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		case "pgup":
 			switch m.activeTab {
+			case composeTabAppLogs:
+				m.appLogs.pageUp(m.composeBodyHeight())
 			case composeTabWfErrors:
 				m.wfErrors.cursor -= m.composeVisibleRows()
 				if m.wfErrors.cursor < 0 {
@@ -253,6 +269,8 @@ func (m composeDetailModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		case "pgdown":
 			switch m.activeTab {
+			case composeTabAppLogs:
+				m.appLogs.pageDown(m.composeBodyHeight(), m.composeContentWidth())
 			case composeTabWfErrors:
 				items := flattenWfEventItems(m.getWfEvents())
 				m.wfErrors.cursor += m.composeVisibleRows()
@@ -262,6 +280,10 @@ func (m composeDetailModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				if m.wfErrors.cursor < 0 {
 					m.wfErrors.cursor = 0
 				}
+			}
+		case "f":
+			if m.activeTab == composeTabAppLogs {
+				m.appLogs.toggleFollow(m.composeBodyHeight(), m.composeContentWidth())
 			}
 		case "y":
 			content := m.composeCopyableContent()
@@ -309,6 +331,8 @@ func (m composeDetailModel) renderComposeTabsWithBody() string {
 
 func (m composeDetailModel) getComposeTabContent() string {
 	switch m.activeTab {
+	case composeTabAppLogs:
+		return m.renderComposeAppLogsTab()
 	case composeTabInputVars:
 		return m.renderComposeInputVarsTab()
 	case composeTabOutputVars:
@@ -317,6 +341,10 @@ func (m composeDetailModel) getComposeTabContent() string {
 		return m.renderComposeWfErrorsTab()
 	}
 	return ""
+}
+
+func (m composeDetailModel) renderComposeAppLogsTab() string {
+	return renderAppLogsTab(m.appLogs, appLogsUnavailableMessage(m.debugData, m.node), m.spinner.View(), m.composeBodyHeight(), m.composeContentWidth())
 }
 
 func (m composeDetailModel) renderComposeInputVarsTab() string {
@@ -338,6 +366,8 @@ func (m composeDetailModel) renderComposeWfErrorsTab() string {
 func (m composeDetailModel) renderComposeFooter() string {
 	var text string
 	switch m.activeTab {
+	case composeTabAppLogs:
+		text = "↑↓/pgup/pgdn: scroll  f: toggle follow  y: copy  tab/shift+tab: switch tabs  esc: back  q: quit"
 	case composeTabInputVars, composeTabOutputVars:
 		if (m.activeTab == composeTabInputVars && len(m.inputTree) > 0) ||
 			(m.activeTab == composeTabOutputVars && len(m.outputTree) > 0) {
@@ -355,6 +385,8 @@ func (m composeDetailModel) renderComposeFooter() string {
 
 func (m composeDetailModel) composeCopyableContent() string {
 	switch m.activeTab {
+	case composeTabAppLogs:
+		return m.appLogs.copyText()
 	case composeTabInputVars:
 		if m.composeData != nil && len(m.composeData.InputParams) > 0 {
 			raw, err := json.Marshal(m.composeData.InputParams)

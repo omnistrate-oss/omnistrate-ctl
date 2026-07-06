@@ -16,14 +16,15 @@ import (
 
 const (
 	helmTabLogs       = 0
-	helmTabValues     = 1
-	helmTabInputVars  = 2
-	helmTabOutputVars = 3
-	helmTabWfErrors   = 4
-	helmNumTabs       = 5
+	helmTabAppLogs    = 1
+	helmTabValues     = 2
+	helmTabInputVars  = 3
+	helmTabOutputVars = 4
+	helmTabWfErrors   = 5
+	helmNumTabs       = 6
 )
 
-var helmTabNames = []string{"Helm Logs", "Chart Values", "Deployment API parameters", "Deployment Output Parameters", "Workflow Events"}
+var helmTabNames = []string{"Helm Logs", "App Logs", "Chart Values", "Deployment API parameters", "Deployment Output Parameters", "Workflow Events"}
 
 func init() {
 	if len(helmTabNames) != helmNumTabs {
@@ -51,6 +52,8 @@ type helmDetailModel struct {
 
 	// Helm data
 	helmData *HelmData
+
+	appLogs *appLogsState
 
 	// Logs tab (streaming)
 	logLines     []string
@@ -95,6 +98,7 @@ func newHelmDetailModel(node PlanDAGNode, data DebugData) helmDetailModel {
 		activeTab: helmTabLogs,
 		loading:   true,
 		spinner:   s,
+		appLogs:   newAppLogsState(appLogStreamsForResource(data, node)),
 		logChan:   make(chan logLineMsg, 50),
 		logFollow: true,
 		wfErrors:  &workflowErrorsState{},
@@ -102,7 +106,7 @@ func newHelmDetailModel(node PlanDAGNode, data DebugData) helmDetailModel {
 }
 
 func (m helmDetailModel) Init() tea.Cmd {
-	return tea.Batch(m.spinner.Tick, m.fetchHelmData())
+	return tea.Batch(m.spinner.Tick, m.fetchHelmData(), m.appLogs.start())
 }
 
 func (m helmDetailModel) fetchHelmData() tea.Cmd {
@@ -256,7 +260,7 @@ func (m helmDetailModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case spinner.TickMsg:
-		if m.loading || m.logStreaming || m.wfErrors.refreshing || isWorkflowInProgress(m.getWfEvents()) {
+		if m.loading || m.logStreaming || m.wfErrors.refreshing || isWorkflowInProgress(m.getWfEvents()) || (m.appLogs != nil && m.appLogs.streaming) {
 			var cmd tea.Cmd
 			m.spinner, cmd = m.spinner.Update(msg)
 			return m, cmd
@@ -343,6 +347,10 @@ func (m helmDetailModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			)
 		}
 		m.logDone = true
+	case appLogLineMsg:
+		return m, m.appLogs.handleLine(msg, m.helmBodyHeight(), m.helmContentWidth())
+	case appLogStreamDoneMsg:
+		m.appLogs.handleDone(msg)
 
 	case wfEventsRefreshTickMsg:
 		steps := m.getWfEvents()
@@ -375,6 +383,7 @@ func (m helmDetailModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if m.logCancel != nil {
 				m.logCancel()
 			}
+			m.appLogs.stop()
 			return m, tea.Quit
 		case "esc":
 			if m.wfErrors.modalText != "" {
@@ -386,6 +395,7 @@ func (m helmDetailModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if m.logCancel != nil {
 				m.logCancel()
 			}
+			m.appLogs.stop()
 			return m, func() tea.Msg { return backToDagMsg{} }
 		case "tab":
 			if m.wfErrors.modalText != "" {
@@ -411,6 +421,8 @@ func (m helmDetailModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				if m.logScroll > 0 {
 					m.logScroll--
 				}
+			} else if m.activeTab == helmTabAppLogs {
+				m.appLogs.scrollUp()
 			} else if m.activeTab == helmTabValues && len(m.valuesTree) > 0 {
 				visibleNodes := flattenOutputTree(m.valuesTree)
 				if m.valuesCursor > 0 {
@@ -466,6 +478,8 @@ func (m helmDetailModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				if m.logScroll > m.helmLogMaxScroll() {
 					m.logScroll = m.helmLogMaxScroll()
 				}
+			} else if m.activeTab == helmTabAppLogs {
+				m.appLogs.scrollDown(m.helmBodyHeight(), m.helmContentWidth())
 			} else if m.activeTab == helmTabValues && len(m.valuesTree) > 0 {
 				visibleNodes := flattenOutputTree(m.valuesTree)
 				if m.valuesCursor < len(visibleNodes)-1 {
@@ -520,6 +534,8 @@ func (m helmDetailModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				if m.logScroll < 0 {
 					m.logScroll = 0
 				}
+			case helmTabAppLogs:
+				m.appLogs.pageUp(m.helmBodyHeight())
 			case helmTabWfErrors:
 				items := flattenWfEventItems(m.getWfEvents())
 				pageItems := m.helmBodyHeight() / 2
@@ -548,6 +564,8 @@ func (m helmDetailModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				if m.logScroll > m.helmLogMaxScroll() {
 					m.logScroll = m.helmLogMaxScroll()
 				}
+			case helmTabAppLogs:
+				m.appLogs.pageDown(m.helmBodyHeight(), m.helmContentWidth())
 			case helmTabWfErrors:
 				items := flattenWfEventItems(m.getWfEvents())
 				pageItems := m.helmBodyHeight() / 2
@@ -576,6 +594,8 @@ func (m helmDetailModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					}
 					m.logScroll = maxSc
 				}
+			} else if m.activeTab == helmTabAppLogs {
+				m.appLogs.toggleFollow(m.helmBodyHeight(), m.helmContentWidth())
 			}
 		case "enter":
 			if m.activeTab == helmTabWfErrors {
@@ -863,6 +883,8 @@ func (m helmDetailModel) getHelmTabContent() string {
 	switch m.activeTab {
 	case helmTabLogs:
 		return m.renderHelmLogsTab()
+	case helmTabAppLogs:
+		return m.renderHelmAppLogsTab()
 	case helmTabValues:
 		return m.renderHelmValuesTab()
 	case helmTabInputVars:
@@ -873,6 +895,10 @@ func (m helmDetailModel) getHelmTabContent() string {
 		return m.renderHelmWfErrorsTab()
 	}
 	return ""
+}
+
+func (m helmDetailModel) renderHelmAppLogsTab() string {
+	return renderAppLogsTab(m.appLogs, appLogsUnavailableMessage(m.debugData, m.node), m.spinner.View(), m.helmBodyHeight(), m.helmContentWidth())
 }
 
 func (m helmDetailModel) renderHelmLogsTab() string {
@@ -1103,6 +1129,12 @@ func (m helmDetailModel) renderHelmFooter() string {
 			followHint = "f: unfollow"
 		}
 		text = fmt.Sprintf("↑↓/pgup/pgdn: scroll  %s  y: copy  tab/shift+tab: switch tabs  esc: back  q: quit", followHint)
+	} else if m.activeTab == helmTabAppLogs {
+		followHint := "f: follow"
+		if m.appLogs != nil && m.appLogs.follow {
+			followHint = "f: unfollow"
+		}
+		text = fmt.Sprintf("↑↓/pgup/pgdn: scroll  %s  y: copy  tab/shift+tab: switch tabs  esc: back  q: quit", followHint)
 	} else if m.activeTab == helmTabValues && len(m.valuesTree) > 0 {
 		text = "↑↓: navigate  ←→/enter: expand/collapse  y: copy  tab/shift+tab: switch tabs  esc: back  q: quit"
 	} else if m.activeTab == helmTabInputVars && len(m.inputTree) > 0 {
@@ -1128,6 +1160,8 @@ func (m helmDetailModel) helmCopyableContent() string {
 		if len(m.logLines) > 0 {
 			return strings.Join(m.logLines, "\n")
 		}
+	case helmTabAppLogs:
+		return m.appLogs.copyText()
 	case helmTabValues:
 		if m.helmData != nil && len(m.helmData.ChartValues) > 0 {
 			raw, err := json.Marshal(m.helmData.ChartValues)

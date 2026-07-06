@@ -271,6 +271,44 @@ func TestEmptyResourceTypeOpensComposeDetail(t *testing.T) {
 	}
 }
 
+func TestUnsupportedResourceTypeWithAppLogsOpensAppLogsDetail(t *testing.T) {
+	model := dagModel{
+		debugData: DebugData{
+			AppLogStreams: map[string][]dataaccess.LogsStream{
+				"mysql-proxy": {
+					{PodName: "mysql-proxy-0", Namespace: "instance-test", ContainerName: "mysql-proxy"},
+				},
+			},
+		},
+		plan: &PlanDAG{
+			Nodes: map[string]PlanDAGNode{
+				"r-proxy": {ID: "r-proxy", Key: "mysql-proxy", Name: "MySQL proxy", Type: "Portsbasedproxy"},
+			},
+			Levels: [][]string{{"r-proxy"}},
+		},
+		selectableNodes: []string{"r-proxy"},
+		cursorIndex:     0,
+		width:           100,
+		height:          30,
+	}
+
+	updated, cmd := model.openNodeDetail()
+	updatedModel := updated.(dagModel)
+
+	if !updatedModel.inDetail {
+		t.Fatalf("expected portsbasedproxy node with logs to enter detail view")
+	}
+	if updatedModel.detailModel == nil {
+		t.Fatalf("expected portsbasedproxy node to open a detail model")
+	}
+	if _, ok := updatedModel.detailModel.(appLogsDetailModel); !ok {
+		t.Fatalf("expected portsbasedproxy node to open app logs detail model, got %T", updatedModel.detailModel)
+	}
+	if cmd == nil {
+		t.Fatalf("expected detail init command")
+	}
+}
+
 func TestPlanHasHitBreakpoint(t *testing.T) {
 	planWithoutHit := &PlanDAG{
 		BreakpointByID: map[string]string{
