@@ -267,6 +267,10 @@ func GetOrganizationDeploymentCellTemplate(ctx context.Context, token string, en
 	if err != nil {
 		return nil, fmt.Errorf("failed to convert amenities list: %w", err)
 	}
+	managedIdentities, err := ConvertToInternalManagedWorkloadIdentityList(amenitiesPerCloudProvider)
+	if err != nil {
+		return nil, fmt.Errorf("failed to convert managed workload identities list: %w", err)
+	}
 
 	var managedAmenities []model.Amenity
 	var customAmenities []model.Amenity
@@ -287,8 +291,9 @@ func GetOrganizationDeploymentCellTemplate(ctx context.Context, token string, en
 	}
 
 	return &model.DeploymentCellTemplate{
-		ManagedAmenities: managedAmenities,
-		CustomAmenities:  customAmenities,
+		ManagedIdentities: managedIdentities,
+		ManagedAmenities:  managedAmenities,
+		CustomAmenities:   customAmenities,
 	}, nil
 }
 
@@ -299,12 +304,16 @@ func ConvertToInternalAmenitiesList(data interface{}) ([]model.InternalAmenity, 
 		return nil, err
 	}
 
-	var configWrapper struct {
-		Amenities []model.InternalAmenity `json:"Amenities"`
-	}
-	err = json.Unmarshal(jsonBytes, &configWrapper)
-	if err == nil && len(configWrapper.Amenities) > 0 {
-		return configWrapper.Amenities, nil
+	var rawObject map[string]json.RawMessage
+	if err = json.Unmarshal(jsonBytes, &rawObject); err == nil {
+		if rawAmenities, ok := rawObject["Amenities"]; ok {
+			var amenities []model.InternalAmenity
+			if err = json.Unmarshal(rawAmenities, &amenities); err != nil {
+				return nil, err
+			}
+			return amenities, nil
+		}
+		return nil, nil
 	}
 
 	// If that fails, try to unmarshal directly as an array

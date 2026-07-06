@@ -172,6 +172,10 @@ func convertToDeploymentCellConfiguration(cellConfig interface{}) (model.Deploym
 	if err != nil {
 		return result, fmt.Errorf("failed to convert amenities list: %w", err)
 	}
+	managedIdentities, err := dataaccess.ConvertToInternalManagedWorkloadIdentityList(cellConfig)
+	if err != nil {
+		return result, fmt.Errorf("failed to convert managed workload identities list: %w", err)
+	}
 
 	var managedAmenities []model.Amenity
 	var customAmenities []model.Amenity
@@ -191,6 +195,7 @@ func convertToDeploymentCellConfiguration(cellConfig interface{}) (model.Deploym
 		}
 	}
 
+	result.ManagedIdentities = managedIdentities
 	result.ManagedAmenities = managedAmenities
 	result.CustomAmenities = customAmenities
 	return result, nil
