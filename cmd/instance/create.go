@@ -40,7 +40,10 @@ omnistrate-ctl instance create --service=mysql --environment=dev --plan=mysql --
 omnistrate-ctl instance create --service=Nebius --environment=dev --plan='Nebius BYOA Compute Variants' --resource=NebiusRedis --cloud-provider=nebius --region=eu-north1 --customer-account-id instance-cg1tthkj0
 
 # Create a BYOA instance deployment using a customer account onboarding instance with imported network
-omnistrate-ctl instance create --service=MyService --environment=dev --plan='AWS BYOA' --resource=myResource --cloud-provider=aws --region=us-east-2 --customer-account-id instance-cg1tthkj0 --cloud-provider-native-network-id vpc-0123456789abcdef0`
+omnistrate-ctl instance create --service=MyService --environment=dev --plan='AWS BYOA' --resource=myResource --cloud-provider=aws --region=us-east-2 --customer-account-id instance-cg1tthkj0 --cloud-provider-native-network-id vpc-0123456789abcdef0
+
+# Create an air-gapped/on-prem installer-backed instance. Do not pass --cloud-provider or --region with --onprem-platform.
+omnistrate-ctl instance create --service=MyService --environment=dev --plan='Airgap' --resource=myResource --onprem-platform=Generic --param-file /path/to/params.json`
 
 	customerAccountConfigIDParamKey      = "cloud_provider_account_config_id"
 	cloudProviderNativeNetworkIDParamKey = "cloud_provider_native_network_id"
@@ -73,7 +76,7 @@ var InstanceID string
 var SubscriptionID string
 
 var createCmd = &cobra.Command{
-	Use:          "create --service=[service] --environment=[environment] --plan=[plan] --version=[version] --resource=[resource] --cloud-provider=[aws|gcp|azure|nebius] --region=[region] [--param=param] [--param-file=file-path] [--instance-id=id] [--customer-account-id=account-instance-id] [--cloud-provider-native-network-id=network-id] [--tags key=value,key2=value2] [--breakpoints id-or-key[:event[|event...]],...]",
+	Use:          "create --service=[service] --environment=[environment] --plan=[plan] --version=[version] --resource=[resource] [--cloud-provider=aws|gcp|azure|nebius] [--region=region] [--param=param] [--param-file=file-path] [--instance-id=id] [--customer-account-id=account-instance-id] [--cloud-provider-native-network-id=network-id] [--onprem-platform=platform] [--tags key=value,key2=value2] [--breakpoints id-or-key[:event[|event...]],...]",
 	Short:        "Create an instance deployment",
 	Long:         `This command helps you create an instance deployment for your service.`,
 	Example:      createExample,
@@ -87,12 +90,13 @@ func init() {
 	createCmd.Flags().String("plan", "", "Service plan name")
 	createCmd.Flags().String("version", "preferred", "Service plan version (latest|preferred|1.0 etc.)")
 	createCmd.Flags().String("resource", "", "Resource name")
-	createCmd.Flags().String("cloud-provider", "", "Cloud provider (aws|gcp|azure|nebius)")
-	createCmd.Flags().String("region", "", "Region code (e.g. us-east-2, us-central1)")
+	createCmd.Flags().String("cloud-provider", "", "Cloud provider (aws|gcp|azure|nebius). Required unless --onprem-platform is provided; do not use with --onprem-platform.")
+	createCmd.Flags().String("region", "", "Region code (e.g. us-east-2, us-central1). Required unless --onprem-platform is provided; do not use with --onprem-platform.")
 	createCmd.Flags().String("param", "", "Parameters for the instance deployment")
 	createCmd.Flags().String("param-file", "", "Json file containing parameters for the instance deployment")
 	createCmd.Flags().String("customer-account-id", "", "Customer BYOA account onboarding instance ID to inject as the cloud account. Use 'omnistrate-ctl account customer list' or 'omnistrate-ctl account customer describe <instance-id>' to find it.")
 	createCmd.Flags().String("cloud-provider-native-network-id", "", fmt.Sprintf("Cloud provider native network ID to inject as %s in instance deployment parameters", cloudProviderNativeNetworkIDParamKey))
+	createCmd.Flags().String("onprem-platform", "", "On-prem platform for installer-backed deployments (for example EKS, GKE, AKS, OpenShift, Generic)")
 	createCmd.Flags().String("tags", "", "Custom tags to add to the instance deployment (format: key=value,key2=value2)")
 	createCmd.Flags().String("breakpoints", "", "Workflow breakpoint resource IDs or resource keys, optionally scoped to events as id-or-key:event or id-or-key:event|event")
 	createCmd.Flags().StringP("subscription-id", "", "", "Subscription ID to use for the instance deployment. If not provided, instance deployment will be created in your own subscription.")
@@ -109,12 +113,6 @@ func init() {
 		return
 	}
 	if err := createCmd.MarkFlagRequired("resource"); err != nil {
-		return
-	}
-	if err := createCmd.MarkFlagRequired("cloud-provider"); err != nil {
-		return
-	}
-	if err := createCmd.MarkFlagRequired("region"); err != nil {
 		return
 	}
 	if err := createCmd.MarkFlagFilename("param-file"); err != nil {
@@ -184,6 +182,11 @@ func runCreate(cmd *cobra.Command, args []string) error {
 		utils.PrintError(err)
 		return err
 	}
+	onpremPlatform, err := cmd.Flags().GetString("onprem-platform")
+	if err != nil {
+		utils.PrintError(err)
+		return err
+	}
 	subscriptionID, err := cmd.Flags().GetString("subscription-id")
 	if err != nil {
 		utils.PrintError(err)
@@ -216,6 +219,10 @@ func runCreate(cmd *cobra.Command, args []string) error {
 	}
 	workflowBreakpoints, err := parseWorkflowBreakpoints(breakpointsRaw)
 	if err != nil {
+		utils.PrintError(err)
+		return err
+	}
+	if err = validateCreateCloudTarget(cloudProvider, region, onpremPlatform); err != nil {
 		utils.PrintError(err)
 		return err
 	}
@@ -284,7 +291,7 @@ func runCreate(cmd *cobra.Command, args []string) error {
 		utils.HandleSpinnerError(spinner, sm, err)
 		return err
 	}
-	formattedParams, err = applyCustomerAccountIDParam(formattedParams, &offering, customerAccountID)
+	formattedParams, err = applyCustomerAccountIDParam(formattedParams, &offering, customerAccountID, onpremPlatform)
 	if err != nil {
 		utils.HandleSpinnerError(spinner, sm, err)
 		return err
@@ -308,11 +315,12 @@ func runCreate(cmd *cobra.Command, args []string) error {
 
 	request := openapiclientfleet.FleetCreateResourceInstanceRequest2{
 		ProductTierVersion: &version,
-		CloudProvider:      &cloudProvider,
-		Region:             &region,
 		RequestParams:      formattedParams,
 		NetworkType:        nil,
 	}
+	applyCloudProviderToCreateRequest(&request, cloudProvider)
+	applyRegionToCreateRequest(&request, region)
+	applyOnpremPlatformToCreateRequest(&request, onpremPlatform)
 	if tagsProvided {
 		request.CustomTags = customTags
 	}
@@ -737,8 +745,10 @@ func applyCustomerAccountIDParam(
 	params map[string]any,
 	offering *openapiclientfleet.ServiceOffering,
 	customerAccountID string,
+	onpremPlatform string,
 ) (map[string]any, error) {
 	customerAccountID = strings.TrimSpace(customerAccountID)
+	onpremPlatform = strings.TrimSpace(onpremPlatform)
 	if offering == nil {
 		return nil, fmt.Errorf("service offering is required to validate customer account inputs")
 	}
@@ -746,9 +756,10 @@ func applyCustomerAccountIDParam(
 	existingCustomerAccountID := customerAccountParamValue(params)
 	if strings.EqualFold(offering.ServiceModelType, serviceModelTypeBYOA) &&
 		customerAccountID == "" &&
-		existingCustomerAccountID == "" {
+		existingCustomerAccountID == "" &&
+		onpremPlatform == "" {
 		return nil, fmt.Errorf(
-			"selected service plan is BYOA and requires a customer cloud account. Provide --customer-account-id or set %s in --param/--param-file. Use 'omnistrate-ctl account customer list' to find the onboarding instance ID",
+			"selected service plan is BYOA and requires a customer cloud account or on-prem platform. Provide --customer-account-id, set %s in --param/--param-file, or use --onprem-platform for installer-backed on-prem/air-gapped deployments. Use 'omnistrate-ctl account customer list' to find the onboarding instance ID",
 			customerAccountConfigIDParamKey,
 		)
 	}
@@ -791,6 +802,54 @@ func applyCloudProviderNativeNetworkIDParam(
 	}
 	params[cloudProviderNativeNetworkIDParamKey] = cloudProviderNativeNetworkID
 	return params
+}
+
+func validateCreateCloudTarget(cloudProvider, region, onpremPlatform string) error {
+	cloudProvider = strings.TrimSpace(cloudProvider)
+	region = strings.TrimSpace(region)
+	onpremPlatform = strings.TrimSpace(onpremPlatform)
+
+	if onpremPlatform != "" {
+		if cloudProvider != "" {
+			return fmt.Errorf("--cloud-provider is not supported with --onprem-platform; omit --cloud-provider for installer-backed on-prem/air-gapped deployments")
+		}
+		if region != "" {
+			return fmt.Errorf("--region is not supported with --onprem-platform; omit --region for installer-backed on-prem/air-gapped deployments")
+		}
+		return nil
+	}
+
+	if cloudProvider == "" {
+		return fmt.Errorf("--cloud-provider is required unless --onprem-platform is provided")
+	}
+	if region == "" {
+		return fmt.Errorf("--region is required unless --onprem-platform is provided")
+	}
+	return nil
+}
+
+func applyCloudProviderToCreateRequest(request *openapiclientfleet.FleetCreateResourceInstanceRequest2, cloudProvider string) {
+	cloudProvider = strings.TrimSpace(cloudProvider)
+	if request == nil || cloudProvider == "" {
+		return
+	}
+	request.CloudProvider = utils.ToPtr(cloudProvider)
+}
+
+func applyRegionToCreateRequest(request *openapiclientfleet.FleetCreateResourceInstanceRequest2, region string) {
+	region = strings.TrimSpace(region)
+	if request == nil || region == "" {
+		return
+	}
+	request.Region = utils.ToPtr(region)
+}
+
+func applyOnpremPlatformToCreateRequest(request *openapiclientfleet.FleetCreateResourceInstanceRequest2, onpremPlatform string) {
+	onpremPlatform = strings.TrimSpace(onpremPlatform)
+	if request == nil || onpremPlatform == "" {
+		return
+	}
+	request.OnpremPlatform = utils.ToPtr(onpremPlatform)
 }
 
 func customerAccountParamValue(params map[string]any) string {
