@@ -1,6 +1,7 @@
 package instance
 
 import (
+	"encoding/json"
 	"testing"
 
 	openapiclientfleet "github.com/omnistrate-oss/omnistrate-sdk-go/fleet"
@@ -20,6 +21,10 @@ func TestCreateCommandFlags(t *testing.T) {
 	require.NotNil(t, flag)
 	assert.Contains(t, flag.Usage, cloudProviderNativeNetworkIDParamKey)
 
+	flag = createCmd.Flags().Lookup("onprem-platform")
+	require.NotNil(t, flag)
+	assert.Contains(t, flag.Usage, "installer-backed")
+
 	flag = createCmd.Flags().Lookup("breakpoints")
 	require.NotNil(t, flag)
 	assert.Contains(t, flag.Usage, "id-or-key:event")
@@ -36,7 +41,7 @@ func TestCreateCommandFlags_AllExpectedFlags(t *testing.T) {
 	expectedFlags := []string{
 		"service", "environment", "plan", "version", "resource",
 		"cloud-provider", "region", "param", "param-file",
-		"customer-account-id", "cloud-provider-native-network-id", "tags", "breakpoints",
+		"customer-account-id", "cloud-provider-native-network-id", "onprem-platform", "tags", "breakpoints",
 		"subscription-id", "instance-id", "wait",
 	}
 	for _, flagName := range expectedFlags {
@@ -52,7 +57,7 @@ func TestCreateCommandUse_IncludesInstanceID(t *testing.T) {
 func TestApplyCustomerAccountIDParam_NoCustomerAccountID(t *testing.T) {
 	params := map[string]any{"existing": "value"}
 
-	updated, err := applyCustomerAccountIDParam(params, &openapiclientfleet.ServiceOffering{}, "")
+	updated, err := applyCustomerAccountIDParam(params, &openapiclientfleet.ServiceOffering{}, "", "")
 	require.NoError(t, err)
 	assert.Equal(t, params, updated)
 }
@@ -62,10 +67,25 @@ func TestApplyCustomerAccountIDParam_BYOARequiresCustomerAccount(t *testing.T) {
 		nil,
 		&openapiclientfleet.ServiceOffering{ServiceModelType: serviceModelTypeBYOA},
 		"",
+		"",
 	)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "--customer-account-id")
+	assert.Contains(t, err.Error(), "--onprem-platform")
 	assert.Contains(t, err.Error(), "account customer list")
+}
+
+func TestApplyCustomerAccountIDParam_BYOAWithOnpremPlatformDoesNotRequireCustomerAccount(t *testing.T) {
+	updated, err := applyCustomerAccountIDParam(
+		map[string]any{"existing": "value"},
+		&openapiclientfleet.ServiceOffering{ServiceModelType: serviceModelTypeBYOA},
+		"",
+		"Generic",
+	)
+
+	require.NoError(t, err)
+	assert.Equal(t, "value", updated["existing"])
+	assert.NotContains(t, updated, customerAccountConfigIDParamKey)
 }
 
 func TestApplyCustomerAccountIDParam_BYOAAllowsMagicParam(t *testing.T) {
@@ -74,6 +94,7 @@ func TestApplyCustomerAccountIDParam_BYOAAllowsMagicParam(t *testing.T) {
 	updated, err := applyCustomerAccountIDParam(
 		params,
 		&openapiclientfleet.ServiceOffering{ServiceModelType: serviceModelTypeBYOA},
+		"",
 		"",
 	)
 	require.NoError(t, err)
@@ -85,6 +106,7 @@ func TestApplyCustomerAccountIDParam_RequiresBYOAPlan(t *testing.T) {
 		nil,
 		&openapiclientfleet.ServiceOffering{ServiceModelType: "OMNISTRATE_HOSTED"},
 		"instance-abcd1234",
+		"",
 	)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "only supported for BYOA service plans")
@@ -95,6 +117,7 @@ func TestApplyCustomerAccountIDParam_RejectsDuplicateMagicParam(t *testing.T) {
 		map[string]any{customerAccountConfigIDParamKey: "instance-existing"},
 		&openapiclientfleet.ServiceOffering{ServiceModelType: serviceModelTypeBYOA},
 		"instance-abcd1234",
+		"",
 	)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), customerAccountConfigIDParamKey)
@@ -105,6 +128,7 @@ func TestApplyCustomerAccountIDParam_AddsCustomerAccountID(t *testing.T) {
 		map[string]any{"existing": "value"},
 		&openapiclientfleet.ServiceOffering{ServiceModelType: "byoa"},
 		"instance-abcd1234",
+		"",
 	)
 	require.NoError(t, err)
 	assert.Equal(t, "value", updated["existing"])
@@ -145,6 +169,111 @@ func TestApplyCloudProviderNativeNetworkIDParam_AddsNativeNetworkID(t *testing.T
 
 	assert.Equal(t, "value", updated["existing"])
 	assert.Equal(t, "vpc-abcd1234", updated[cloudProviderNativeNetworkIDParamKey])
+}
+
+func TestValidateCreateCloudTargetRequiresCloudProviderWithoutOnpremPlatform(t *testing.T) {
+	err := validateCreateCloudTarget("", "us-east-2", "")
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "--cloud-provider")
+	assert.Contains(t, err.Error(), "--onprem-platform")
+}
+
+func TestValidateCreateCloudTargetRequiresRegionWithoutOnpremPlatform(t *testing.T) {
+	err := validateCreateCloudTarget("aws", "", "")
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "--region")
+	assert.Contains(t, err.Error(), "--onprem-platform")
+}
+
+func TestValidateCreateCloudTargetAllowsMissingCloudProviderAndRegionWithOnpremPlatform(t *testing.T) {
+	err := validateCreateCloudTarget("", "", "Generic")
+
+	require.NoError(t, err)
+}
+
+func TestValidateCreateCloudTargetRejectsCloudProviderWithOnpremPlatform(t *testing.T) {
+	err := validateCreateCloudTarget("byoc-onprem", "", "Generic")
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "--cloud-provider")
+	assert.Contains(t, err.Error(), "--onprem-platform")
+}
+
+func TestValidateCreateCloudTargetRejectsRegionWithOnpremPlatform(t *testing.T) {
+	err := validateCreateCloudTarget("", "us-east-2", "Generic")
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "--region")
+	assert.Contains(t, err.Error(), "--onprem-platform")
+}
+
+func TestApplyCloudProviderToCreateRequest(t *testing.T) {
+	request := openapiclientfleet.FleetCreateResourceInstanceRequest2{}
+
+	applyCloudProviderToCreateRequest(&request, " aws ")
+
+	require.NotNil(t, request.CloudProvider)
+	assert.Equal(t, "aws", *request.CloudProvider)
+}
+
+func TestApplyCloudProviderToCreateRequestIgnoresEmptyValue(t *testing.T) {
+	request := openapiclientfleet.FleetCreateResourceInstanceRequest2{}
+
+	applyCloudProviderToCreateRequest(&request, " ")
+
+	assert.Nil(t, request.CloudProvider)
+}
+
+func TestApplyRegionToCreateRequest(t *testing.T) {
+	request := openapiclientfleet.FleetCreateResourceInstanceRequest2{}
+
+	applyRegionToCreateRequest(&request, " us-east-2 ")
+
+	require.NotNil(t, request.Region)
+	assert.Equal(t, "us-east-2", *request.Region)
+}
+
+func TestApplyRegionToCreateRequestIgnoresEmptyValue(t *testing.T) {
+	request := openapiclientfleet.FleetCreateResourceInstanceRequest2{}
+
+	applyRegionToCreateRequest(&request, " ")
+
+	assert.Nil(t, request.Region)
+}
+
+func TestApplyOnpremPlatformToCreateRequest(t *testing.T) {
+	request := openapiclientfleet.FleetCreateResourceInstanceRequest2{}
+
+	applyOnpremPlatformToCreateRequest(&request, " Generic ")
+
+	require.NotNil(t, request.OnpremPlatform)
+	assert.Equal(t, "Generic", *request.OnpremPlatform)
+}
+
+func TestApplyOnpremPlatformToCreateRequestIgnoresEmptyValue(t *testing.T) {
+	request := openapiclientfleet.FleetCreateResourceInstanceRequest2{}
+
+	applyOnpremPlatformToCreateRequest(&request, " ")
+
+	assert.Nil(t, request.OnpremPlatform)
+}
+
+func TestCreateRequestOmitsCloudProviderAndRegionWhenOnlyOnpremPlatformIsSet(t *testing.T) {
+	request := openapiclientfleet.FleetCreateResourceInstanceRequest2{}
+	applyCloudProviderToCreateRequest(&request, "")
+	applyRegionToCreateRequest(&request, "")
+	applyOnpremPlatformToCreateRequest(&request, "Generic")
+
+	raw, err := json.Marshal(request)
+	require.NoError(t, err)
+
+	var payload map[string]any
+	require.NoError(t, json.Unmarshal(raw, &payload))
+	assert.Equal(t, "Generic", payload["onprem_platform"])
+	assert.NotContains(t, payload, "cloud_provider")
+	assert.NotContains(t, payload, "region")
 }
 
 func TestResolveServicePlanCandidates_ScopesToRequestedService(t *testing.T) {

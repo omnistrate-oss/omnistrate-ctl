@@ -7,7 +7,7 @@ Create an instance deployment
 This command helps you create an instance deployment for your service.
 
 ```
-omnistrate-ctl instance create --service=[service] --environment=[environment] --plan=[plan] --version=[version] --resource=[resource] --cloud-provider=[aws|gcp|azure|nebius] --region=[region] [--param=param] [--param-file=file-path] [--instance-id=id] [--customer-account-id=account-instance-id] [--cloud-provider-native-network-id=network-id] [--tags key=value,key2=value2] [--breakpoints id-or-key[:event[|event...]],...] [flags]
+omnistrate-ctl instance create --service=[service] --environment=[environment] --plan=[plan] --version=[version] --resource=[resource] [--cloud-provider=aws|gcp|azure|nebius] [--region=region] [--param=param] [--param-file=file-path] [--instance-id=id] [--customer-account-id=account-instance-id] [--cloud-provider-native-network-id=network-id] [--onprem-platform=platform] [--tags key=value,key2=value2] [--breakpoints id-or-key[:event[|event...]],...] [flags]
 ```
 
 ### Examples
@@ -36,22 +36,26 @@ omnistrate-ctl instance create --service=Nebius --environment=dev --plan='Nebius
 
 # Create a BYOA instance deployment using a customer account onboarding instance with imported network
 omnistrate-ctl instance create --service=MyService --environment=dev --plan='AWS BYOA' --resource=myResource --cloud-provider=aws --region=us-east-2 --customer-account-id instance-cg1tthkj0 --cloud-provider-native-network-id vpc-0123456789abcdef0
+
+# Create an air-gapped/on-prem installer-backed instance. Do not pass --cloud-provider or --region with --onprem-platform.
+omnistrate-ctl instance create --service=MyService --environment=dev --plan='Airgap' --resource=myResource --onprem-platform=Generic --param-file /path/to/params.json
 ```
 
 ### Options
 
 ```
       --breakpoints string                        Workflow breakpoint resource IDs or resource keys, optionally scoped to events as id-or-key:event or id-or-key:event|event
-      --cloud-provider string                     Cloud provider (aws|gcp|azure|nebius)
+      --cloud-provider string                     Cloud provider (aws|gcp|azure|nebius). Required unless --onprem-platform is provided; do not use with --onprem-platform.
       --cloud-provider-native-network-id string   Cloud provider native network ID to inject as cloud_provider_native_network_id in instance deployment parameters
       --customer-account-id string                Customer BYOA account onboarding instance ID to inject as the cloud account. Use 'omnistrate-ctl account customer list' or 'omnistrate-ctl account customer describe <instance-id>' to find it.
       --environment string                        Environment name
   -h, --help                                      help for create
       --instance-id string                        ID of a previously deleted instance to restore
+      --onprem-platform string                    On-prem platform for installer-backed deployments (for example EKS, GKE, AKS, OpenShift, Generic)
       --param string                              Parameters for the instance deployment
       --param-file string                         Json file containing parameters for the instance deployment
       --plan string                               Service plan name
-      --region string                             Region code (e.g. us-east-2, us-central1)
+      --region string                             Region code (e.g. us-east-2, us-central1). Required unless --onprem-platform is provided; do not use with --onprem-platform.
       --resource string                           Resource name
       --service string                            Service name
       --subscription-id string                    Subscription ID to use for the instance deployment. If not provided, instance deployment will be created in your own subscription.
