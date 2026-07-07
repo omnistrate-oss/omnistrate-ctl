@@ -646,7 +646,9 @@ func (m helmDetailModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 			}
 		case "right", "l":
-			if m.activeTab == helmTabValues && len(m.valuesTree) > 0 {
+			if m.activeTab == helmTabAppLogs {
+				return m, m.appLogs.selectNextPod()
+			} else if m.activeTab == helmTabValues && len(m.valuesTree) > 0 {
 				visibleNodes := flattenOutputTree(m.valuesTree)
 				if m.valuesCursor >= 0 && m.valuesCursor < len(visibleNodes) {
 					node := visibleNodes[m.valuesCursor]
@@ -693,7 +695,9 @@ func (m helmDetailModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 			}
 		case "left", "h":
-			if m.activeTab == helmTabValues && len(m.valuesTree) > 0 {
+			if m.activeTab == helmTabAppLogs {
+				return m, m.appLogs.selectPreviousPod()
+			} else if m.activeTab == helmTabValues && len(m.valuesTree) > 0 {
 				visibleNodes := flattenOutputTree(m.valuesTree)
 				if m.valuesCursor >= 0 && m.valuesCursor < len(visibleNodes) {
 					node := visibleNodes[m.valuesCursor]
@@ -1130,11 +1134,7 @@ func (m helmDetailModel) renderHelmFooter() string {
 		}
 		text = fmt.Sprintf("↑↓/pgup/pgdn: scroll  %s  y: copy  tab/shift+tab: switch tabs  esc: back  q: quit", followHint)
 	} else if m.activeTab == helmTabAppLogs {
-		followHint := "f: follow"
-		if m.appLogs != nil && m.appLogs.follow {
-			followHint = "f: unfollow"
-		}
-		text = fmt.Sprintf("↑↓/pgup/pgdn: scroll  %s  y: copy  tab/shift+tab: switch tabs  esc: back  q: quit", followHint)
+		text = appLogsFooterHelp(m.appLogs, true)
 	} else if m.activeTab == helmTabValues && len(m.valuesTree) > 0 {
 		text = "↑↓: navigate  ←→/enter: expand/collapse  y: copy  tab/shift+tab: switch tabs  esc: back  q: quit"
 	} else if m.activeTab == helmTabInputVars && len(m.inputTree) > 0 {

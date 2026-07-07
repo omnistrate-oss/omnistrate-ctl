@@ -872,6 +872,14 @@ func (m terraformDetailModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.scrollY = m.progressMaxScroll()
 				}
 			}
+		case "right", "l":
+			if m.activeTab == tabAppLogs {
+				return m, m.appLogs.selectNextPod()
+			}
+		case "left", "h":
+			if m.activeTab == tabAppLogs {
+				return m, m.appLogs.selectPreviousPod()
+			}
 		case "f":
 			if m.activeTab == tabLogs {
 				m.logFollow = !m.logFollow
@@ -1702,7 +1710,7 @@ func (m terraformDetailModel) renderFooter() string {
 	} else if m.activeTab == tabLogs {
 		text = "↑↓/pgup/pgdn: scroll  f: toggle follow  y: copy  tab/shift+tab: switch tabs  esc: back  q: quit"
 	} else if m.activeTab == tabAppLogs {
-		text = "↑↓/pgup/pgdn: scroll  f: toggle follow  y: copy  tab/shift+tab: switch tabs  esc: back  q: quit"
+		text = appLogsFooterHelp(m.appLogs, true)
 	} else if m.activeTab == tabOpHistory && len(m.historyDates) > 0 {
 		text = "↑↓: navigate  enter: expand/collapse  tab/shift+tab: switch tabs  esc: back  q: quit"
 	} else if m.activeTab == tabWfErrors {

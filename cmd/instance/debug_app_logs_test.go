@@ -1,6 +1,7 @@
 package instance
 
 import (
+	"errors"
 	"strings"
 	"testing"
 
@@ -85,9 +86,71 @@ func TestRenderAppLogsTabShowsLinesAndStatus(t *testing.T) {
 
 	rendered := renderAppLogsTab(state, "", "", 20, 80)
 
-	require.Contains(t, rendered, "App Logs (2 lines)")
+	require.Contains(t, rendered, "App Logs: api-0 (2 lines)")
 	require.Contains(t, rendered, "[api-0] started")
 	require.Contains(t, rendered, "live")
+}
+
+func TestAppLogPodStreamsForStreamsGroupsContainersByPod(t *testing.T) {
+	pods := appLogPodStreamsForStreams([]dataaccess.LogsStream{
+		{PodName: "api-1", ContainerName: "sidecar"},
+		{PodName: "api-0", ContainerName: "worker"},
+		{PodName: "api-0", ContainerName: "app"},
+	})
+
+	require.Len(t, pods, 2)
+	require.Equal(t, "api-0", pods[0].name)
+	require.Len(t, pods[0].streams, 2)
+	require.Equal(t, "app", pods[0].streams[0].ContainerName)
+	require.Equal(t, "worker", pods[0].streams[1].ContainerName)
+	require.Equal(t, "api-1", pods[1].name)
+}
+
+func TestRenderAppLogsTabShowsPodSelector(t *testing.T) {
+	state := newAppLogsState([]dataaccess.LogsStream{
+		{PodName: "api-0"},
+		{PodName: "api-1"},
+	})
+	state.streaming = true
+	state.lines = []string{"[api-0] ready"}
+
+	rendered := renderAppLogsTab(state, "", "", 20, 100)
+
+	require.Contains(t, rendered, "Pods: use")
+	require.Contains(t, rendered, "api-0")
+	require.Contains(t, rendered, "api-1")
+	require.Contains(t, rendered, "App Logs: api-0")
+}
+
+func TestAppLogsStateSwitchesSelectedPodAndResetsLines(t *testing.T) {
+	state := newAppLogsState([]dataaccess.LogsStream{
+		{PodName: "api-0"},
+		{PodName: "api-1"},
+	})
+	state.lines = []string{"[api-0] ready"}
+	state.streaming = true
+	state.started = true
+
+	cmd := state.selectNextPod()
+
+	require.NotNil(t, cmd)
+	require.Equal(t, 1, state.selectedPod)
+	require.Equal(t, "api-1", state.pods[state.selectedPod].name)
+	require.Empty(t, state.lines)
+	require.True(t, state.follow)
+}
+
+func TestAppLogsStateIgnoresStaleStreamMessages(t *testing.T) {
+	state := newAppLogsState([]dataaccess.LogsStream{{PodName: "api-0"}})
+	state.generation = 2
+
+	cmd := state.handleLine(appLogLineMsg{lines: []string{"stale"}, generation: 1}, 20, 80)
+	state.handleDone(appLogStreamDoneMsg{generation: 1, err: errors.New("stale")})
+
+	require.Nil(t, cmd)
+	require.Empty(t, state.lines)
+	require.False(t, state.done)
+	require.NoError(t, state.err)
 }
 
 func TestComposeAppLogsTabReceivesLinesAndCopies(t *testing.T) {

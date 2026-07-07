@@ -66,6 +66,10 @@ func (m appLogsDetailModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.appLogs.scrollUp()
 		case "down", "j":
 			m.appLogs.scrollDown(resourceDetailBodyHeight(m.height), resourceDetailContentWidth(m.width))
+		case "right", "l":
+			return m, m.appLogs.selectNextPod()
+		case "left", "h":
+			return m, m.appLogs.selectPreviousPod()
 		case "pgup":
 			m.appLogs.pageUp(resourceDetailBodyHeight(m.height))
 		case "pgdown":
@@ -96,6 +100,6 @@ func (m appLogsDetailModel) View() string {
 		0,
 		renderAppLogsTab(m.appLogs, appLogsUnavailableMessage(m.debugData, m.node), m.spinner.View(), resourceDetailBodyHeight(m.height), resourceDetailContentWidth(m.width)),
 	)
-	footer := renderResourceDetailFooter(m.width, m.clipboardMsg, "↑↓/pgup/pgdn: scroll  f: toggle follow  y: copy  esc: back  q: quit")
+	footer := renderResourceDetailFooter(m.width, m.clipboardMsg, appLogsFooterHelp(m.appLogs, false))
 	return header + "\n" + body + "\n" + footer
 }

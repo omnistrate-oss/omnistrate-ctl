@@ -245,6 +245,8 @@ func (m composeDetailModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		case "right", "l":
 			switch m.activeTab {
+			case composeTabAppLogs:
+				return m, m.appLogs.selectNextPod()
 			case composeTabInputVars:
 				expandResourceDetailTreeNode(m.inputTree, m.inputCursor)
 			case composeTabOutputVars:
@@ -252,6 +254,8 @@ func (m composeDetailModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		case "left", "h":
 			switch m.activeTab {
+			case composeTabAppLogs:
+				return m, m.appLogs.selectPreviousPod()
 			case composeTabInputVars:
 				collapseResourceDetailTreeNode(m.inputTree, m.inputCursor)
 			case composeTabOutputVars:
@@ -367,7 +371,7 @@ func (m composeDetailModel) renderComposeFooter() string {
 	var text string
 	switch m.activeTab {
 	case composeTabAppLogs:
-		text = "↑↓/pgup/pgdn: scroll  f: toggle follow  y: copy  tab/shift+tab: switch tabs  esc: back  q: quit"
+		text = appLogsFooterHelp(m.appLogs, true)
 	case composeTabInputVars, composeTabOutputVars:
 		if (m.activeTab == composeTabInputVars && len(m.inputTree) > 0) ||
 			(m.activeTab == composeTabOutputVars && len(m.outputTree) > 0) {

@@ -15,33 +15,78 @@ import (
 )
 
 type appLogLineMsg struct {
-	lines []string
+	lines      []string
+	generation int
 }
 
 type appLogStreamDoneMsg struct {
-	err error
+	err        error
+	generation int
+}
+
+type appLogPodStreams struct {
+	name    string
+	streams []dataaccess.LogsStream
 }
 
 type appLogsState struct {
-	streams []dataaccess.LogsStream
-	lines   []string
-	ch      chan appLogLineMsg
-	cancel  context.CancelFunc
+	streams     []dataaccess.LogsStream
+	pods        []appLogPodStreams
+	selectedPod int
+	lines       []string
+	ch          chan appLogLineMsg
+	cancel      context.CancelFunc
 
-	scroll    int
-	follow    bool
-	streaming bool
-	done      bool
-	err       error
-	started   bool
+	scroll     int
+	follow     bool
+	streaming  bool
+	done       bool
+	err        error
+	started    bool
+	generation int
 }
 
 func newAppLogsState(streams []dataaccess.LogsStream) *appLogsState {
 	return &appLogsState{
 		streams: append([]dataaccess.LogsStream(nil), streams...),
+		pods:    appLogPodStreamsForStreams(streams),
 		ch:      make(chan appLogLineMsg, 100),
 		follow:  true,
 	}
+}
+
+func appLogPodStreamsForStreams(streams []dataaccess.LogsStream) []appLogPodStreams {
+	if len(streams) == 0 {
+		return nil
+	}
+
+	byPod := make(map[string][]dataaccess.LogsStream)
+	for _, stream := range streams {
+		podName := strings.TrimSpace(stream.PodName)
+		if podName == "" {
+			continue
+		}
+		byPod[podName] = append(byPod[podName], stream)
+	}
+	if len(byPod) == 0 {
+		return nil
+	}
+
+	podNames := make([]string, 0, len(byPod))
+	for podName := range byPod {
+		podNames = append(podNames, podName)
+	}
+	sort.Strings(podNames)
+
+	pods := make([]appLogPodStreams, 0, len(podNames))
+	for _, podName := range podNames {
+		podStreams := append([]dataaccess.LogsStream(nil), byPod[podName]...)
+		sort.Slice(podStreams, func(i, j int) bool {
+			return podStreams[i].ContainerName < podStreams[j].ContainerName
+		})
+		pods = append(pods, appLogPodStreams{name: podName, streams: podStreams})
+	}
+	return pods
 }
 
 func appLogStreamsForResource(data DebugData, node PlanDAGNode) []dataaccess.LogsStream {
@@ -144,7 +189,8 @@ func (s *appLogsState) start() tea.Cmd {
 		return nil
 	}
 	s.started = true
-	if len(s.streams) == 0 {
+	streams := s.selectedStreams()
+	if len(streams) == 0 {
 		return nil
 	}
 
@@ -155,7 +201,7 @@ func (s *appLogsState) start() tea.Cmd {
 	s.err = nil
 	s.ch = make(chan appLogLineMsg, 100)
 
-	return tea.Batch(watchAppLogs(ctx, s.streams, s.ch), waitForAppLogLines(s.ch))
+	return tea.Batch(watchAppLogs(ctx, streams, s.ch, s.generation), waitForAppLogLines(s.ch, s.generation))
 }
 
 func (s *appLogsState) stop() {
@@ -164,19 +210,76 @@ func (s *appLogsState) stop() {
 	}
 }
 
+func (s *appLogsState) selectedStreams() []dataaccess.LogsStream {
+	if s == nil {
+		return nil
+	}
+	if len(s.pods) == 0 {
+		return s.streams
+	}
+	if s.selectedPod < 0 || s.selectedPod >= len(s.pods) {
+		s.selectedPod = 0
+	}
+	return s.pods[s.selectedPod].streams
+}
+
+func (s *appLogsState) hasMultiplePods() bool {
+	return s != nil && len(s.pods) > 1
+}
+
+func (s *appLogsState) selectPreviousPod() tea.Cmd {
+	if !s.hasMultiplePods() {
+		return nil
+	}
+	s.selectedPod = (s.selectedPod - 1 + len(s.pods)) % len(s.pods)
+	return s.restartSelectedPod()
+}
+
+func (s *appLogsState) selectNextPod() tea.Cmd {
+	if !s.hasMultiplePods() {
+		return nil
+	}
+	s.selectedPod = (s.selectedPod + 1) % len(s.pods)
+	return s.restartSelectedPod()
+}
+
+func (s *appLogsState) restartSelectedPod() tea.Cmd {
+	if s == nil {
+		return nil
+	}
+	s.stop()
+	s.generation++
+	s.lines = nil
+	s.scroll = 0
+	s.follow = true
+	s.streaming = false
+	s.done = false
+	s.err = nil
+	s.started = false
+	s.cancel = nil
+	s.ch = make(chan appLogLineMsg, 100)
+	return s.start()
+}
+
 func (s *appLogsState) handleLine(msg appLogLineMsg, bodyHeight, contentWidth int) tea.Cmd {
 	if s == nil {
 		return nil
 	}
+	if msg.generation != s.generation {
+		return nil
+	}
 	s.lines = append(s.lines, msg.lines...)
 	if s.follow {
-		s.scroll = appLogMaxScroll(s.lines, bodyHeight, contentWidth)
+		s.scroll = appLogMaxScroll(s.lines, bodyHeight, contentWidth, s.selectorRows())
 	}
-	return waitForAppLogLines(s.ch)
+	return waitForAppLogLines(s.ch, s.generation)
 }
 
 func (s *appLogsState) handleDone(msg appLogStreamDoneMsg) {
 	if s == nil {
+		return
+	}
+	if msg.generation != s.generation {
 		return
 	}
 	s.streaming = false
@@ -202,7 +305,7 @@ func (s *appLogsState) scrollDown(bodyHeight, contentWidth int) {
 	}
 	s.follow = false
 	s.scroll++
-	if maxScroll := appLogMaxScroll(s.lines, bodyHeight, contentWidth); s.scroll > maxScroll {
+	if maxScroll := appLogMaxScroll(s.lines, bodyHeight, contentWidth, s.selectorRows()); s.scroll > maxScroll {
 		s.scroll = maxScroll
 	}
 }
@@ -224,7 +327,7 @@ func (s *appLogsState) pageDown(bodyHeight, contentWidth int) {
 	}
 	s.follow = false
 	s.scroll += bodyHeight
-	if maxScroll := appLogMaxScroll(s.lines, bodyHeight, contentWidth); s.scroll > maxScroll {
+	if maxScroll := appLogMaxScroll(s.lines, bodyHeight, contentWidth, s.selectorRows()); s.scroll > maxScroll {
 		s.scroll = maxScroll
 	}
 }
@@ -235,7 +338,7 @@ func (s *appLogsState) toggleFollow(bodyHeight, contentWidth int) {
 	}
 	s.follow = !s.follow
 	if s.follow {
-		s.scroll = appLogMaxScroll(s.lines, bodyHeight, contentWidth)
+		s.scroll = appLogMaxScroll(s.lines, bodyHeight, contentWidth, s.selectorRows())
 	}
 }
 
@@ -246,11 +349,32 @@ func (s *appLogsState) copyText() string {
 	return strings.Join(s.lines, "\n")
 }
 
-func watchAppLogs(ctx context.Context, streams []dataaccess.LogsStream, ch chan appLogLineMsg) tea.Cmd {
+func (s *appLogsState) selectorRows() int {
+	if !s.hasMultiplePods() {
+		return 0
+	}
+	return 2
+}
+
+func appLogsFooterHelp(state *appLogsState, includeTabSwitch bool) string {
+	parts := []string{"↑↓/pgup/pgdn: scroll"}
+	if state != nil && state.hasMultiplePods() {
+		parts = append(parts, "←→: switch pods")
+	}
+	parts = append(parts, "f: toggle follow", "y: copy")
+	if includeTabSwitch {
+		parts = append(parts, "tab/shift+tab: switch tabs")
+	}
+	parts = append(parts, "esc: back", "q: quit")
+	return strings.Join(parts, "  ")
+}
+
+func watchAppLogs(ctx context.Context, streams []dataaccess.LogsStream, ch chan appLogLineMsg, generation int) tea.Cmd {
 	return func() tea.Msg {
 		var wg sync.WaitGroup
 		var mu sync.Mutex
 		var errs []string
+		streamCount := 0
 
 		logsService := dataaccess.NewLogsService()
 		for _, stream := range streams {
@@ -259,6 +383,7 @@ func watchAppLogs(ctx context.Context, streams []dataaccess.LogsStream, ch chan 
 				continue
 			}
 
+			streamCount++
 			wg.Add(1)
 			go func() {
 				defer wg.Done()
@@ -287,7 +412,7 @@ func watchAppLogs(ctx context.Context, streams []dataaccess.LogsStream, ch chan 
 					}
 
 					select {
-					case ch <- appLogLineMsg{lines: lines}:
+					case ch <- appLogLineMsg{lines: lines, generation: generation}:
 					case <-ctx.Done():
 						return
 					}
@@ -303,20 +428,20 @@ func watchAppLogs(ctx context.Context, streams []dataaccess.LogsStream, ch chan 
 		wg.Wait()
 		close(ch)
 		if ctx.Err() != nil {
-			return appLogStreamDoneMsg{}
+			return appLogStreamDoneMsg{generation: generation}
 		}
-		if len(errs) > 0 && len(errs) >= len(streams) {
-			return appLogStreamDoneMsg{err: errors.New(strings.Join(errs, "; "))}
+		if len(errs) > 0 && len(errs) >= streamCount {
+			return appLogStreamDoneMsg{err: errors.New(strings.Join(errs, "; ")), generation: generation}
 		}
-		return appLogStreamDoneMsg{}
+		return appLogStreamDoneMsg{generation: generation}
 	}
 }
 
-func waitForAppLogLines(ch chan appLogLineMsg) tea.Cmd {
+func waitForAppLogLines(ch chan appLogLineMsg, generation int) tea.Cmd {
 	return func() tea.Msg {
 		msg, ok := <-ch
 		if !ok {
-			return appLogStreamDoneMsg{}
+			return appLogStreamDoneMsg{generation: generation}
 		}
 		return msg
 	}
@@ -350,21 +475,60 @@ func formatAppLogPayload(source, payload string) []string {
 	return lines
 }
 
-func appLogMaxScroll(lines []string, bodyHeight, contentWidth int) int {
-	bodyH := bodyHeight - 4
-	if bodyH < 1 {
-		bodyH = 1
-	}
-	maxCodeWidth := contentWidth - 9
-	if maxCodeWidth < 20 {
-		maxCodeWidth = 20
-	}
+func appLogMaxScroll(lines []string, bodyHeight, contentWidth, selectorRows int) int {
+	bodyH := appLogViewportHeight(bodyHeight, selectorRows)
+	maxCodeWidth := appLogMaxCodeWidth(contentWidth)
 	vlines := expandLinesToVisual(lines, maxCodeWidth)
 	maxScroll := len(vlines) - bodyH
 	if maxScroll < 0 {
 		maxScroll = 0
 	}
 	return maxScroll
+}
+
+func appLogViewportHeight(bodyHeight, selectorRows int) int {
+	bodyH := bodyHeight - 4 - selectorRows
+	if bodyH < 1 {
+		bodyH = 1
+	}
+	return bodyH
+}
+
+func appLogMaxCodeWidth(contentWidth int) int {
+	maxCodeWidth := contentWidth - 9
+	if maxCodeWidth < 20 {
+		maxCodeWidth = 20
+	}
+	return maxCodeWidth
+}
+
+func renderAppLogPodSelector(state *appLogsState, contentWidth int) string {
+	if state == nil || !state.hasMultiplePods() {
+		return ""
+	}
+
+	var b strings.Builder
+	dimStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("245"))
+	activeStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("230")).Background(lipgloss.Color("63")).Padding(0, 1)
+	inactiveStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("252")).Background(lipgloss.Color("238")).Padding(0, 1)
+
+	fmt.Fprintf(&b, "  %s\n", dimStyle.Render("Pods: use ←/→ or h/l to switch"))
+
+	var rendered []string
+	for i, pod := range state.pods {
+		label := pod.name
+		if len(pod.streams) > 1 {
+			label = fmt.Sprintf("%s (%d)", pod.name, len(pod.streams))
+		}
+		if i == state.selectedPod {
+			rendered = append(rendered, activeStyle.Render(label))
+			continue
+		}
+		rendered = append(rendered, inactiveStyle.Render(label))
+	}
+
+	fmt.Fprintf(&b, "  %s\n", strings.Join(rendered, " "))
+	return b.String()
 }
 
 func renderAppLogsTab(state *appLogsState, logsFeatureError, spinnerView string, bodyHeight, contentWidth int) string {
@@ -378,14 +542,14 @@ func renderAppLogsTab(state *appLogsState, logsFeatureError, spinnerView string,
 	}
 	if state.err != nil && len(state.lines) == 0 {
 		errStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("203"))
-		return fmt.Sprintf("\n  %s\n", errStyle.Render(fmt.Sprintf("Error streaming app logs: %v", state.err)))
+		return renderAppLogPodSelector(state, contentWidth) + fmt.Sprintf("\n  %s\n", errStyle.Render(fmt.Sprintf("Error streaming app logs: %v", state.err)))
 	}
 	if !state.streaming && !state.done && len(state.lines) == 0 {
-		return fmt.Sprintf("\n  %s Connecting to app logs...", spinnerView)
+		return renderAppLogPodSelector(state, contentWidth) + fmt.Sprintf("\n  %s Connecting to app logs...", spinnerView)
 	}
 	if len(state.lines) == 0 {
 		subtleStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("245"))
-		return fmt.Sprintf("\n  %s\n", subtleStyle.Render("Connected. Waiting for app logs..."))
+		return renderAppLogPodSelector(state, contentWidth) + fmt.Sprintf("\n  %s\n", subtleStyle.Render("Connected. Waiting for app logs..."))
 	}
 
 	var b strings.Builder
@@ -400,17 +564,20 @@ func renderAppLogsTab(state *appLogsState, logsFeatureError, spinnerView string,
 	if state.follow {
 		followText = " " + lipgloss.NewStyle().Foreground(lipgloss.Color("82")).Render("[follow]")
 	}
-	fmt.Fprintf(&b, "  %s%s%s\n\n", headerStyle.Render(fmt.Sprintf("App Logs (%d lines)", len(state.lines))), statusText, followText)
+	title := fmt.Sprintf("App Logs (%d lines)", len(state.lines))
+	if len(state.pods) > 0 {
+		title = fmt.Sprintf("App Logs: %s (%d lines)", state.pods[state.selectedPod].name, len(state.lines))
+	}
+	fmt.Fprintf(&b, "  %s%s%s\n", headerStyle.Render(title), statusText, followText)
+	if selector := renderAppLogPodSelector(state, contentWidth); selector != "" {
+		b.WriteString(selector)
+	} else {
+		b.WriteString("\n")
+	}
 
-	bodyH := bodyHeight - 4
-	if bodyH < 1 {
-		bodyH = 1
-	}
+	bodyH := appLogViewportHeight(bodyHeight, state.selectorRows())
 	lineNumStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("241"))
-	maxCodeWidth := contentWidth - 9
-	if maxCodeWidth < 20 {
-		maxCodeWidth = 20
-	}
+	maxCodeWidth := appLogMaxCodeWidth(contentWidth)
 
 	vlines := expandLinesToVisual(state.lines, maxCodeWidth)
 	totalLines := len(vlines)

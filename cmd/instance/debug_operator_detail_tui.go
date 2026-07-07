@@ -284,6 +284,8 @@ func (m operatorDetailModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		case "right", "l":
 			switch m.activeTab {
+			case opTabAppLogs:
+				return m, m.appLogs.selectNextPod()
 			case opTabInputVars:
 				expandResourceDetailTreeNode(m.inputTree, m.inputCursor)
 			case opTabOutputVars:
@@ -293,6 +295,8 @@ func (m operatorDetailModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		case "left", "h":
 			switch m.activeTab {
+			case opTabAppLogs:
+				return m, m.appLogs.selectPreviousPod()
 			case opTabInputVars:
 				collapseResourceDetailTreeNode(m.inputTree, m.inputCursor)
 			case opTabOutputVars:
@@ -416,7 +420,7 @@ func (m operatorDetailModel) renderOpFooter() string {
 	var text string
 	switch m.activeTab {
 	case opTabAppLogs:
-		text = "↑↓/pgup/pgdn: scroll  f: toggle follow  y: copy  tab/shift+tab: switch tabs  esc: back  q: quit"
+		text = appLogsFooterHelp(m.appLogs, true)
 	case opTabInputVars, opTabOutputVars, opTabCRDOutputVars:
 		if (m.activeTab == opTabInputVars && len(m.inputTree) > 0) ||
 			(m.activeTab == opTabOutputVars && len(m.outputTree) > 0) ||
