@@ -881,7 +881,8 @@ func (m terraformDetailModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, m.appLogs.selectPreviousPod()
 			}
 		case "f":
-			if m.activeTab == tabLogs {
+			switch m.activeTab {
+			case tabLogs:
 				m.logFollow = !m.logFollow
 				if m.logFollow {
 					// Snap to bottom
@@ -895,7 +896,7 @@ func (m terraformDetailModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					}
 					m.logScroll = maxSc
 				}
-			} else if m.activeTab == tabAppLogs {
+			case tabAppLogs:
 				m.appLogs.toggleFollow(m.bodyHeight(), m.contentWidth())
 			}
 		case "y":

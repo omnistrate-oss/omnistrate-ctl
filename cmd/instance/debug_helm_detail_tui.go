@@ -581,7 +581,8 @@ func (m helmDetailModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 			}
 		case "f":
-			if m.activeTab == helmTabLogs {
+			switch m.activeTab {
+			case helmTabLogs:
 				m.logFollow = !m.logFollow
 				if m.logFollow {
 					bodyH := m.helmBodyHeight() - 4
@@ -594,7 +595,7 @@ func (m helmDetailModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					}
 					m.logScroll = maxSc
 				}
-			} else if m.activeTab == helmTabAppLogs {
+			case helmTabAppLogs:
 				m.appLogs.toggleFollow(m.helmBodyHeight(), m.helmContentWidth())
 			}
 		case "enter":

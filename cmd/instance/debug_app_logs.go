@@ -502,7 +502,7 @@ func appLogMaxCodeWidth(contentWidth int) int {
 	return maxCodeWidth
 }
 
-func renderAppLogPodSelector(state *appLogsState, contentWidth int) string {
+func renderAppLogPodSelector(state *appLogsState) string {
 	if state == nil || !state.hasMultiplePods() {
 		return ""
 	}
@@ -542,14 +542,14 @@ func renderAppLogsTab(state *appLogsState, logsFeatureError, spinnerView string,
 	}
 	if state.err != nil && len(state.lines) == 0 {
 		errStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("203"))
-		return renderAppLogPodSelector(state, contentWidth) + fmt.Sprintf("\n  %s\n", errStyle.Render(fmt.Sprintf("Error streaming app logs: %v", state.err)))
+		return renderAppLogPodSelector(state) + fmt.Sprintf("\n  %s\n", errStyle.Render(fmt.Sprintf("Error streaming app logs: %v", state.err)))
 	}
 	if !state.streaming && !state.done && len(state.lines) == 0 {
-		return renderAppLogPodSelector(state, contentWidth) + fmt.Sprintf("\n  %s Connecting to app logs...", spinnerView)
+		return renderAppLogPodSelector(state) + fmt.Sprintf("\n  %s Connecting to app logs...", spinnerView)
 	}
 	if len(state.lines) == 0 {
 		subtleStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("245"))
-		return renderAppLogPodSelector(state, contentWidth) + fmt.Sprintf("\n  %s\n", subtleStyle.Render("Connected. Waiting for app logs..."))
+		return renderAppLogPodSelector(state) + fmt.Sprintf("\n  %s\n", subtleStyle.Render("Connected. Waiting for app logs..."))
 	}
 
 	var b strings.Builder
@@ -569,7 +569,7 @@ func renderAppLogsTab(state *appLogsState, logsFeatureError, spinnerView string,
 		title = fmt.Sprintf("App Logs: %s (%d lines)", state.pods[state.selectedPod].name, len(state.lines))
 	}
 	fmt.Fprintf(&b, "  %s%s%s\n", headerStyle.Render(title), statusText, followText)
-	if selector := renderAppLogPodSelector(state, contentWidth); selector != "" {
+	if selector := renderAppLogPodSelector(state); selector != "" {
 		b.WriteString(selector)
 	} else {
 		b.WriteString("\n")
