@@ -145,6 +145,9 @@ func TestComputePlanLevelsCycle(t *testing.T) {
 }
 
 func TestAttachBreakpointStatuses(t *testing.T) {
+	startTerraformPlan := "StartTerraformPlan"
+	completeTerraformPlan := "CompleteTerraformPlan"
+
 	plan := &PlanDAG{
 		Nodes: map[string]PlanDAGNode{
 			"res-writer": {ID: "res-writer", Key: "writer", Name: "Writer"},
@@ -154,7 +157,8 @@ func TestAttachBreakpointStatuses(t *testing.T) {
 
 	instanceData := &openapiclientfleet.ResourceInstance{
 		ActiveBreakpoints: []openapiclientfleet.WorkflowBreakpointWithStatus{
-			{Id: "writer", Status: "HIT"},
+			{Id: "writer", Event: &startTerraformPlan, Status: "HIT"},
+			{Id: "writer", Event: &completeTerraformPlan, Status: "pending"},
 			{Id: "res-reader", Status: "pending"},
 		},
 	}

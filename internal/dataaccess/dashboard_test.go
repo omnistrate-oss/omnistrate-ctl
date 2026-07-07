@@ -95,7 +95,7 @@ func TestDashboardServiceGetDashboardInfoPrefersCustomerMetrics(t *testing.T) {
 		ConsumptionResourceInstanceResult: openapiclientfleet.DescribeResourceInstanceResult{
 			Id: &instanceID,
 			ProductTierFeatures: map[string]interface{}{
-				customerMetricsFeatureKey: map[string]interface{}{
+				customerMetricsFeatureKey: map[string]interface{}{ // #nosec G101 -- test data
 					"enabled":                    true,
 					"grafanaEndpoint":            "https://grafana.example.com",
 					"instanceOrgId":              "customer-org",

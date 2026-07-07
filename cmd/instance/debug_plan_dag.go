@@ -278,12 +278,12 @@ func attachBreakpointStatuses(plan *PlanDAG, instanceData *openapiclientfleet.Re
 				continue
 			}
 
-			byID[node.ID] = status
+			mergeBreakpointStatus(byID, node.ID, status)
 			if node.Key != "" {
-				byKey[node.Key] = status
+				mergeBreakpointStatus(byKey, node.Key, status)
 			}
 			if node.Name != "" {
-				byName[node.Name] = status
+				mergeBreakpointStatus(byName, node.Name, status)
 			}
 		}
 	}
@@ -317,6 +317,28 @@ func breakpointStatusForNode(plan *PlanDAG, node PlanDAGNode) (string, bool) {
 	}
 
 	return "", false
+}
+
+func mergeBreakpointStatus(statuses map[string]string, key, status string) {
+	if statuses == nil || key == "" {
+		return
+	}
+
+	current, exists := statuses[key]
+	if !exists || breakpointStatusPriority(status) > breakpointStatusPriority(current) {
+		statuses[key] = normalizeBreakpointStatus(status)
+	}
+}
+
+func breakpointStatusPriority(status string) int {
+	switch normalizeBreakpointStatus(status) {
+	case "hit":
+		return 3
+	case "pending":
+		return 1
+	default:
+		return 2
+	}
 }
 
 func normalizeBreakpointStatus(status string) string {

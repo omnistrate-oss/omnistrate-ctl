@@ -179,7 +179,7 @@ func summarizeBreakpointForResume(
 	hitIDs := make([]string, 0)
 	pendingIDs := make([]string, 0)
 	for _, breakpoint := range activeBreakpoints {
-		id := formatRef(breakpoint.GetId())
+		id := formatBreakpointRefWithEvent(formatRef(breakpoint.GetId()), breakpoint.GetEvent())
 		status := breakpoint.GetStatus()
 		if strings.EqualFold(status, "hit") {
 			hitIDs = append(hitIDs, id)
@@ -205,9 +205,17 @@ func summarizeBreakpointForResume(
 
 	ids := make([]string, 0, len(activeBreakpoints))
 	for _, breakpoint := range activeBreakpoints {
-		ids = append(ids, formatRef(breakpoint.GetId()))
+		ids = append(ids, formatBreakpointRefWithEvent(formatRef(breakpoint.GetId()), breakpoint.GetEvent()))
 	}
 	return strings.Join(ids, ", ")
+}
+
+func formatBreakpointRefWithEvent(resourceRef, event string) string {
+	event = strings.TrimSpace(event)
+	if event == "" {
+		return resourceRef
+	}
+	return fmt.Sprintf("%s @ %s", resourceRef, event)
 }
 
 func buildResourceLookupMaps(resourceSummaries []openapiclientfleet.ResourceVersionSummary) (map[string]string, map[string]string) {

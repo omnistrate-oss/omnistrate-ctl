@@ -84,7 +84,7 @@ type metricsFeatureConfig struct {
 
 type metricsFeatureAuth struct {
 	Username string `json:"username,omitempty"`
-	Password string `json:"password,omitempty"`
+	Password string `json:"password,omitempty"` // #nosec G117 -- field mirrors the metrics feature auth JSON schema.
 }
 
 type metricsFeatureDashboard struct {

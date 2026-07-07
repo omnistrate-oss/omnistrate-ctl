@@ -9,12 +9,14 @@ import (
 	"github.com/omnistrate-oss/omnistrate-ctl/internal/config"
 	"github.com/omnistrate-oss/omnistrate-ctl/internal/dataaccess"
 	"github.com/omnistrate-oss/omnistrate-ctl/internal/utils"
+	openapiclientfleet "github.com/omnistrate-oss/omnistrate-sdk-go/fleet"
 	"github.com/spf13/cobra"
 )
 
 type BreakpointListItem struct {
 	Key        string `json:"key" table:"Key"`
 	ID         string `json:"id" table:"ID"`
+	Event      string `json:"event,omitempty" table:"Event"`
 	Status     string `json:"status" table:"Status"`
 	Conditions string `json:"conditions,omitempty" table:"Conditions"`
 }
@@ -53,13 +55,23 @@ func runBreakpointList(cmd *cobra.Command, args []string) error {
 	}
 
 	activeBreakpoints := instance.GetActiveBreakpoints()
-	keyByID, idByKey := buildResourceLookupMaps(instance.GetResourceVersionSummaries())
+	formatted := formatBreakpointListItems(activeBreakpoints, instance.GetResourceVersionSummaries())
+
+	return utils.PrintTextTableJsonArrayOutput(output, formatted)
+}
+
+func formatBreakpointListItems(
+	activeBreakpoints []openapiclientfleet.WorkflowBreakpointWithStatus,
+	resourceSummaries []openapiclientfleet.ResourceVersionSummary,
+) []BreakpointListItem {
+	keyByID, idByKey := buildResourceLookupMaps(resourceSummaries)
 	formatted := make([]BreakpointListItem, 0, len(activeBreakpoints))
 	for _, breakpoint := range activeBreakpoints {
 		resourceID, resourceKey := resolveBreakpointResourceIDAndKey(breakpoint.GetId(), keyByID, idByKey)
 		item := BreakpointListItem{
 			Key:    resourceKey,
 			ID:     resourceID,
+			Event:  breakpoint.GetEvent(),
 			Status: breakpoint.GetStatus(),
 		}
 		if conditions, ok := breakpoint.GetConditionsOk(); ok && len(conditions) > 0 {
@@ -73,7 +85,7 @@ func runBreakpointList(cmd *cobra.Command, args []string) error {
 		formatted = append(formatted, item)
 	}
 
-	return utils.PrintTextTableJsonArrayOutput(output, formatted)
+	return formatted
 }
 
 func resolveBreakpointResourceIDAndKey(idOrKey string, keyByID map[string]string, idByKey map[string]string) (string, string) {

@@ -58,6 +58,19 @@ func TestSummarizeBreakpointForResumeFormatsResourceKeyAndID(t *testing.T) {
 		summary := summarizeBreakpointForResume(activeBreakpoints, resourceSummaries)
 		require.Equal(t, "writer [res-writer], reader [res-reader] (multiple hit breakpoints)", summary)
 	})
+
+	t.Run("hit breakpoint with resource event", func(t *testing.T) {
+		activeBreakpoints := []openapiclientfleet.WorkflowBreakpointWithStatus{
+			{
+				Id:     "writer",
+				Event:  ptr("StartTerraformPlan"),
+				Status: "hit",
+			},
+		}
+
+		summary := summarizeBreakpointForResume(activeBreakpoints, resourceSummaries)
+		require.Equal(t, "writer [res-writer] @ StartTerraformPlan", summary)
+	})
 }
 
 func ptr(value string) *string {

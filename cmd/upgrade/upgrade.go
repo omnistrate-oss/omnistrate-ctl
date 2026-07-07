@@ -49,6 +49,7 @@ func init() {
 	Cmd.AddCommand(createCmd)
 	Cmd.AddCommand(listCmd)
 	Cmd.AddCommand(describeCmd)
+	Cmd.AddCommand(changeTargetVersionCmd)
 	Cmd.AddCommand(status.Cmd)
 	Cmd.AddCommand(manageupgradelifecycle.CancelCmd)
 	Cmd.AddCommand(manageupgradelifecycle.ResumeCmd)
