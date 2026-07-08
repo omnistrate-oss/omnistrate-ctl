@@ -28,17 +28,19 @@ var debugCmd = &cobra.Command{
 }
 
 type DebugData struct {
-	InstanceID        string                        `json:"instanceId"`
-	PlanDAG           *PlanDAG                      `json:"planDag,omitempty"`
-	ServiceID         string                        `json:"serviceId,omitempty"`
-	EnvironmentID     string                        `json:"environmentId,omitempty"`
-	ProductTierID     string                        `json:"productTierId,omitempty"`
-	TierVersion       string                        `json:"tierVersion,omitempty"`
-	DashboardCatalog  *dataaccess.DashboardCatalog  `json:"-"`
-	Token             string                        `json:"-"`
-	ResultParams      map[string]interface{}        `json:"-"`
-	InputParams       map[string]interface{}        `json:"-"`
-	ResourceDebugInfo map[string]*ResourceDebugInfo `json:"resourceDebugInfo,omitempty"`
+	InstanceID        string                             `json:"instanceId"`
+	PlanDAG           *PlanDAG                           `json:"planDag,omitempty"`
+	ServiceID         string                             `json:"serviceId,omitempty"`
+	EnvironmentID     string                             `json:"environmentId,omitempty"`
+	ProductTierID     string                             `json:"productTierId,omitempty"`
+	TierVersion       string                             `json:"tierVersion,omitempty"`
+	DashboardCatalog  *dataaccess.DashboardCatalog       `json:"-"`
+	AppLogStreams     map[string][]dataaccess.LogsStream `json:"-"`
+	AppLogsError      string                             `json:"-"`
+	Token             string                             `json:"-"`
+	ResultParams      map[string]interface{}             `json:"-"`
+	InputParams       map[string]interface{}             `json:"-"`
+	ResourceDebugInfo map[string]*ResourceDebugInfo      `json:"resourceDebugInfo,omitempty"`
 }
 
 // Messages for the loading spinner model
@@ -109,6 +111,11 @@ func fetchDebugData(instanceID, token string) tea.Cmd {
 		if dashboardCatalog != nil && dashboardCatalog.InstanceID == "" {
 			dashboardCatalog.InstanceID = instanceID
 		}
+		appLogStreams, appLogsErr := dataaccess.NewLogsService().GetAllLogStreamsForInstance(ctx, token, instanceData, instanceID)
+		appLogsError := ""
+		if appLogsErr != nil {
+			appLogsError = appLogsErr.Error()
+		}
 
 		planDAG, err := buildPlanDAG(ctx, token, serviceID, instanceData)
 		if err != nil {
@@ -142,6 +149,8 @@ func fetchDebugData(instanceID, token string) tea.Cmd {
 				ProductTierID:    instanceData.ProductTierId,
 				TierVersion:      instanceData.TierVersion,
 				DashboardCatalog: dashboardCatalog,
+				AppLogStreams:    appLogStreams,
+				AppLogsError:     appLogsError,
 				Token:            token,
 				ResultParams:     resultParams,
 				InputParams:      inputParams,

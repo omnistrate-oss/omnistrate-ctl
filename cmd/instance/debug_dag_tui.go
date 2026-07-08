@@ -890,6 +890,15 @@ func (m dagModel) openNodeDetail() (tea.Model, tea.Cmd) {
 		return m, detail.Init()
 	}
 
+	if len(appLogStreamsForResource(m.debugData, node)) > 0 {
+		detail := newAppLogsDetailModel(node, m.debugData)
+		detail.width = m.width
+		detail.height = m.height
+		m.detailModel = detail
+		m.inDetail = true
+		return m, detail.Init()
+	}
+
 	return m, nil
 }
 

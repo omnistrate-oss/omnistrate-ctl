@@ -11,6 +11,7 @@ import (
 
 func TestComposeTabNames(t *testing.T) {
 	require.Equal(t, composeNumTabs, len(composeTabNames), "composeTabNames length must match composeNumTabs")
+	require.Equal(t, "App Logs", composeTabNames[composeTabAppLogs])
 	require.Equal(t, "Deployment API parameters", composeTabNames[composeTabInputVars])
 	require.Equal(t, "Deployment Output Parameters", composeTabNames[composeTabOutputVars])
 	require.Equal(t, "Workflow Events", composeTabNames[composeTabWfErrors])
@@ -22,7 +23,7 @@ func TestNewComposeDetailModel(t *testing.T) {
 
 	m := newComposeDetailModel(node, data)
 
-	require.Equal(t, composeTabInputVars, m.activeTab)
+	require.Equal(t, composeTabAppLogs, m.activeTab)
 	require.True(t, m.loading)
 	require.NotNil(t, m.wfErrors)
 	require.Equal(t, "my-compose", m.node.Key)
@@ -30,7 +31,7 @@ func TestNewComposeDetailModel(t *testing.T) {
 
 func TestComposeTabCyclesAllTabs(t *testing.T) {
 	model := composeDetailModel{
-		activeTab: composeTabInputVars,
+		activeTab: composeTabAppLogs,
 		wfErrors:  &workflowErrorsState{},
 	}
 
@@ -40,12 +41,12 @@ func TestComposeTabCyclesAllTabs(t *testing.T) {
 		model = updatedAny.(composeDetailModel)
 	}
 	// Should wrap to 0
-	require.Equal(t, composeTabInputVars, model.activeTab)
+	require.Equal(t, composeTabAppLogs, model.activeTab)
 }
 
 func TestComposeShiftTabReverses(t *testing.T) {
 	model := composeDetailModel{
-		activeTab: composeTabInputVars,
+		activeTab: composeTabAppLogs,
 		wfErrors:  &workflowErrorsState{},
 	}
 

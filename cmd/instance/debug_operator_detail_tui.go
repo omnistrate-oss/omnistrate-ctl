@@ -14,14 +14,15 @@ import (
 )
 
 const (
-	opTabInputVars     = 0
-	opTabOutputVars    = 1
-	opTabCRDOutputVars = 2
-	opTabWfErrors      = 3
-	opNumTabs          = 4
+	opTabAppLogs       = 0
+	opTabInputVars     = 1
+	opTabOutputVars    = 2
+	opTabCRDOutputVars = 3
+	opTabWfErrors      = 4
+	opNumTabs          = 5
 )
 
-var opTabNames = []string{"Deployment API parameters", "Deployment Output Parameters", "Operator CRD Outputs", "Workflow Events"}
+var opTabNames = []string{"App Logs", "Deployment API parameters", "Deployment Output Parameters", "Operator CRD Outputs", "Workflow Events"}
 
 func init() {
 	if len(opTabNames) != opNumTabs {
@@ -48,6 +49,8 @@ type operatorDetailModel struct {
 
 	operatorData *OperatorData
 
+	appLogs *appLogsState
+
 	// Input variables tree
 	inputTree   []outputNode
 	inputCursor int
@@ -73,15 +76,16 @@ func newOperatorDetailModel(node PlanDAGNode, data DebugData) operatorDetailMode
 	return operatorDetailModel{
 		node:      node,
 		debugData: data,
-		activeTab: opTabInputVars,
+		activeTab: opTabAppLogs,
 		loading:   true,
 		spinner:   newResourceDetailSpinner(),
+		appLogs:   newAppLogsState(appLogStreamsForResource(data, node)),
 		wfErrors:  &workflowErrorsState{},
 	}
 }
 
 func (m operatorDetailModel) Init() tea.Cmd {
-	return tea.Batch(m.spinner.Tick, m.fetchOperatorData())
+	return tea.Batch(m.spinner.Tick, m.fetchOperatorData(), m.appLogs.start())
 }
 
 func (m operatorDetailModel) fetchOperatorData() tea.Cmd {
@@ -153,7 +157,7 @@ func (m operatorDetailModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case spinner.TickMsg:
-		if m.loading || m.wfErrors.refreshing || isWorkflowInProgress(m.getWfEvents()) {
+		if m.loading || m.wfErrors.refreshing || isWorkflowInProgress(m.getWfEvents()) || (m.appLogs != nil && m.appLogs.streaming) {
 			var cmd tea.Cmd
 			m.spinner, cmd = m.spinner.Update(msg)
 			return m, cmd
@@ -180,10 +184,15 @@ func (m operatorDetailModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, handleResourceWorkflowRefresh(m.debugData, m.node, m.wfErrors, msg)
 	case wfCountdownTickMsg:
 		return m, handleResourceWorkflowCountdown(m.debugData, m.node)
+	case appLogLineMsg:
+		return m, m.appLogs.handleLine(msg, m.opBodyHeight(), m.opContentWidth())
+	case appLogStreamDoneMsg:
+		m.appLogs.handleDone(msg)
 
 	case tea.KeyMsg:
 		switch msg.String() {
 		case "ctrl+c", "q":
+			m.appLogs.stop()
 			return m, tea.Quit
 		case "esc":
 			if m.wfErrors.modalText != "" {
@@ -192,6 +201,7 @@ func (m operatorDetailModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.wfErrors.modalScroll = 0
 				return m, nil
 			}
+			m.appLogs.stop()
 			return m, func() tea.Msg { return backToDagMsg{} }
 		case "tab":
 			if m.wfErrors.modalText != "" {
@@ -213,6 +223,8 @@ func (m operatorDetailModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, nil
 			}
 			switch m.activeTab {
+			case opTabAppLogs:
+				m.appLogs.scrollUp()
 			case opTabInputVars:
 				m.inputCursor, m.inputScroll = moveResourceDetailTreeUp(m.inputTree, m.inputCursor, m.inputScroll, m.opVisibleRows())
 			case opTabOutputVars:
@@ -236,6 +248,8 @@ func (m operatorDetailModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, nil
 			}
 			switch m.activeTab {
+			case opTabAppLogs:
+				m.appLogs.scrollDown(m.opBodyHeight(), m.opContentWidth())
 			case opTabInputVars:
 				m.inputCursor, m.inputScroll = moveResourceDetailTreeDown(m.inputTree, m.inputCursor, m.inputScroll, m.opVisibleRows())
 			case opTabOutputVars:
@@ -270,6 +284,8 @@ func (m operatorDetailModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		case "right", "l":
 			switch m.activeTab {
+			case opTabAppLogs:
+				return m, m.appLogs.selectNextPod()
 			case opTabInputVars:
 				expandResourceDetailTreeNode(m.inputTree, m.inputCursor)
 			case opTabOutputVars:
@@ -279,6 +295,8 @@ func (m operatorDetailModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		case "left", "h":
 			switch m.activeTab {
+			case opTabAppLogs:
+				return m, m.appLogs.selectPreviousPod()
 			case opTabInputVars:
 				collapseResourceDetailTreeNode(m.inputTree, m.inputCursor)
 			case opTabOutputVars:
@@ -288,6 +306,8 @@ func (m operatorDetailModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		case "pgup":
 			switch m.activeTab {
+			case opTabAppLogs:
+				m.appLogs.pageUp(m.opBodyHeight())
 			case opTabWfErrors:
 				m.wfErrors.cursor -= m.opVisibleRows()
 				if m.wfErrors.cursor < 0 {
@@ -296,6 +316,8 @@ func (m operatorDetailModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		case "pgdown":
 			switch m.activeTab {
+			case opTabAppLogs:
+				m.appLogs.pageDown(m.opBodyHeight(), m.opContentWidth())
 			case opTabWfErrors:
 				items := flattenWfEventItems(m.getWfEvents())
 				m.wfErrors.cursor += m.opVisibleRows()
@@ -305,6 +327,10 @@ func (m operatorDetailModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				if m.wfErrors.cursor < 0 {
 					m.wfErrors.cursor = 0
 				}
+			}
+		case "f":
+			if m.activeTab == opTabAppLogs {
+				m.appLogs.toggleFollow(m.opBodyHeight(), m.opContentWidth())
 			}
 		case "y":
 			content := m.opCopyableContent()
@@ -352,6 +378,8 @@ func (m operatorDetailModel) renderOpTabsWithBody() string {
 
 func (m operatorDetailModel) getOpTabContent() string {
 	switch m.activeTab {
+	case opTabAppLogs:
+		return m.renderOpAppLogsTab()
 	case opTabInputVars:
 		return m.renderInputVarsTab()
 	case opTabOutputVars:
@@ -362,6 +390,10 @@ func (m operatorDetailModel) getOpTabContent() string {
 		return m.renderOpWfErrorsTab()
 	}
 	return ""
+}
+
+func (m operatorDetailModel) renderOpAppLogsTab() string {
+	return renderAppLogsTab(m.appLogs, appLogsUnavailableMessage(m.debugData, m.node), m.spinner.View(), m.opBodyHeight(), m.opContentWidth())
 }
 
 func (m operatorDetailModel) renderInputVarsTab() string {
@@ -387,6 +419,8 @@ func (m operatorDetailModel) renderOpWfErrorsTab() string {
 func (m operatorDetailModel) renderOpFooter() string {
 	var text string
 	switch m.activeTab {
+	case opTabAppLogs:
+		text = appLogsFooterHelp(m.appLogs, true)
 	case opTabInputVars, opTabOutputVars, opTabCRDOutputVars:
 		if (m.activeTab == opTabInputVars && len(m.inputTree) > 0) ||
 			(m.activeTab == opTabOutputVars && len(m.outputTree) > 0) ||
@@ -405,6 +439,8 @@ func (m operatorDetailModel) renderOpFooter() string {
 
 func (m operatorDetailModel) opCopyableContent() string {
 	switch m.activeTab {
+	case opTabAppLogs:
+		return m.appLogs.copyText()
 	case opTabInputVars:
 		if m.operatorData != nil && len(m.operatorData.InputParams) > 0 {
 			raw, err := json.Marshal(m.operatorData.InputParams)

@@ -8,6 +8,7 @@ import (
 
 func TestOperatorTabNames(t *testing.T) {
 	require.Equal(t, opNumTabs, len(opTabNames), "opTabNames length must match opNumTabs")
+	require.Equal(t, "App Logs", opTabNames[opTabAppLogs])
 	require.Equal(t, "Deployment API parameters", opTabNames[opTabInputVars])
 	require.Equal(t, "Deployment Output Parameters", opTabNames[opTabOutputVars])
 	require.Equal(t, "Operator CRD Outputs", opTabNames[opTabCRDOutputVars])
@@ -20,7 +21,7 @@ func TestNewOperatorDetailModel(t *testing.T) {
 
 	m := newOperatorDetailModel(node, data)
 
-	require.Equal(t, opTabInputVars, m.activeTab)
+	require.Equal(t, opTabAppLogs, m.activeTab)
 	require.True(t, m.loading)
 	require.NotNil(t, m.wfErrors)
 	require.Equal(t, "my-op", m.node.Key)
