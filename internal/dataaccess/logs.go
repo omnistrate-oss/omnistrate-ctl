@@ -76,12 +76,6 @@ func logsFeatureEnabled(raw interface{}) (bool, error) {
 	switch feature := raw.(type) {
 	case bool:
 		return feature, nil
-	case map[string]interface{}:
-		enabled, ok := feature["enabled"].(bool)
-		if ok {
-			return enabled, nil
-		}
-		return true, nil
 	case logsFeatureConfig:
 		if feature.Enabled != nil {
 			return *feature.Enabled, nil
@@ -116,6 +110,9 @@ func (ls *LogsService) BuildLogStreams(ctx context.Context, token string, instan
 	if instance == nil {
 		return nil, fmt.Errorf("instance is nil")
 	}
+	if !ls.IsLogsEnabled(instance) {
+		return nil, fmt.Errorf("logs are not enabled for this instance")
+	}
 
 	topology := instance.ConsumptionResourceInstanceResult.DetailedNetworkTopology
 	if topology == nil {
@@ -149,6 +146,9 @@ func (ls *LogsService) BuildLogStreams(ctx context.Context, token string, instan
 func (ls *LogsService) GetAllLogStreamsForInstance(ctx context.Context, token string, instance *openapiclientfleet.ResourceInstance, instanceID string) (map[string][]LogsStream, error) {
 	if instance == nil {
 		return nil, fmt.Errorf("instance is nil")
+	}
+	if !ls.IsLogsEnabled(instance) {
+		return nil, fmt.Errorf("logs are not enabled for this instance")
 	}
 
 	topology := instance.ConsumptionResourceInstanceResult.DetailedNetworkTopology
