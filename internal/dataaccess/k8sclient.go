@@ -56,8 +56,7 @@ func NewK8sClientFromHostClusterKubeConfig(kubeConfig *openapiclientfleet.KubeCo
 		},
 	}
 
-	// Fallback to token auth only when client certificate auth is incomplete.
-	if kubeConfig.GetServiceAccountToken() != "" && (len(certData) == 0 || len(keyData) == 0) {
+	if kubeConfig.GetServiceAccountToken() != "" {
 		cfg.BearerToken = kubeConfig.GetServiceAccountToken()
 	}
 
