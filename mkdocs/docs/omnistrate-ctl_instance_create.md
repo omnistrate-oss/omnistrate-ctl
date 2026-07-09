@@ -60,7 +60,7 @@ omnistrate-ctl instance create --service=MyService --environment=dev --plan='Air
       --service string                            Service name
       --subscription-id string                    Subscription ID to use for the instance deployment. If not provided, instance deployment will be created in your own subscription.
       --tags string                               Custom tags to add to the instance deployment (format: key=value,key2=value2)
-      --version string                            Service plan version (latest|preferred|1.0 etc.) (default "preferred")
+      --version string                            Service plan version (latest|preferred|1.0 etc.). With 'preferred', no version is sent and the platform picks the preferred version automatically. (default "preferred")
       --wait                                      Wait for deployment to complete and show progress
 ```
 

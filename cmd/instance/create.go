@@ -88,7 +88,7 @@ func init() {
 	createCmd.Flags().String("service", "", "Service name")
 	createCmd.Flags().String("environment", "", "Environment name")
 	createCmd.Flags().String("plan", "", "Service plan name")
-	createCmd.Flags().String("version", "preferred", "Service plan version (latest|preferred|1.0 etc.)")
+	createCmd.Flags().String("version", "preferred", "Service plan version (latest|preferred|1.0 etc.). With 'preferred', no version is sent and the platform picks the preferred version automatically.")
 	createCmd.Flags().String("resource", "", "Resource name")
 	createCmd.Flags().String("cloud-provider", "", "Cloud provider (aws|gcp|azure|nebius). Required unless --onprem-platform is provided; do not use with --onprem-platform.")
 	createCmd.Flags().String("region", "", "Region code (e.g. us-east-2, us-central1). Required unless --onprem-platform is provided; do not use with --onprem-platform.")
@@ -251,16 +251,13 @@ func runCreate(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	// Get the version
-	switch version {
-	case "latest":
+	// Get the version. When "preferred" is requested, leave the version empty so
+	// the request omits it and the platform picks the preferred version automatically.
+	usePlatformPreferredVersion := version == "preferred"
+	if usePlatformPreferredVersion {
+		version = ""
+	} else if version == "latest" {
 		version, err = dataaccess.FindLatestVersion(cmd.Context(), token, serviceID, productTierID)
-		if err != nil {
-			utils.HandleSpinnerError(spinner, sm, err)
-			return err
-		}
-	case "preferred":
-		version, err = dataaccess.FindPreferredVersion(cmd.Context(), token, serviceID, productTierID)
 		if err != nil {
 			utils.HandleSpinnerError(spinner, sm, err)
 			return err
@@ -268,13 +265,15 @@ func runCreate(cmd *cobra.Command, args []string) error {
 	}
 
 	// Check if the version exists
-	_, err = dataaccess.DescribeVersionSet(cmd.Context(), token, serviceID, productTierID, version)
-	if err != nil {
-		if strings.Contains(err.Error(), "Version set not found") {
-			err = errors.New(fmt.Sprintf("version %s not found", version))
+	if !usePlatformPreferredVersion {
+		_, err = dataaccess.DescribeVersionSet(cmd.Context(), token, serviceID, productTierID, version)
+		if err != nil {
+			if strings.Contains(err.Error(), "Version set not found") {
+				err = errors.New(fmt.Sprintf("version %s not found", version))
+			}
+			utils.HandleSpinnerError(spinner, sm, err)
+			return err
 		}
-		utils.HandleSpinnerError(spinner, sm, err)
-		return err
 	}
 
 	// Describe service offering
@@ -314,9 +313,11 @@ func runCreate(cmd *cobra.Command, args []string) error {
 	}
 
 	request := openapiclientfleet.FleetCreateResourceInstanceRequest2{
-		ProductTierVersion: &version,
-		RequestParams:      formattedParams,
-		NetworkType:        nil,
+		RequestParams: formattedParams,
+		NetworkType:   nil,
+	}
+	if !usePlatformPreferredVersion {
+		request.ProductTierVersion = &version
 	}
 	applyCloudProviderToCreateRequest(&request, cloudProvider)
 	applyRegionToCreateRequest(&request, region)
