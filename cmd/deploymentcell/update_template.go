@@ -354,11 +354,15 @@ func updateDeploymentCellFromFile(ctx context.Context, token string, deploymentC
 	}
 
 	// Show what we're doing
-	if len(pendingChanges) == 0 {
+	totalAmenities := len(templateConfig.ManagedAmenities) + len(templateConfig.CustomAmenities) + len(templateConfig.ManagedIdentities)
+	if totalAmenities == 0 {
 		fmt.Printf("Removing all amenities from deployment cell\n")
 	} else {
-		fmt.Printf("Updating with %d amenities (%d managed, %d custom)\n",
-			len(pendingChanges), len(templateConfig.ManagedAmenities), len(templateConfig.CustomAmenities))
+		fmt.Print(formatDeploymentCellUpdateSummary(
+			len(templateConfig.ManagedAmenities),
+			len(templateConfig.CustomAmenities),
+			len(templateConfig.ManagedIdentities),
+		))
 	}
 
 	err = dataaccess.UpdateHostCluster(ctx, token, deploymentCellID, pendingChanges, nil)
@@ -382,6 +386,28 @@ func updateDeploymentCellFromFile(ctx context.Context, token string, deploymentC
 	fmt.Printf("ID: %s\n", hc.GetId())
 
 	return nil
+}
+
+func formatDeploymentCellUpdateSummary(managedAmenitiesCount int, customAmenitiesCount int, managedIdentitiesCount int) string {
+	managedIdentityLabel := "managed identities"
+	if managedIdentitiesCount == 1 {
+		managedIdentityLabel = "managed identity"
+	}
+
+	totalAmenitiesCount := managedAmenitiesCount + customAmenitiesCount + managedIdentitiesCount
+	amenityLabel := "amenities"
+	if totalAmenitiesCount == 1 {
+		amenityLabel = "amenity"
+	}
+	return fmt.Sprintf(
+		"Updating with %d %s (%d managed, %d custom, %d %s)\n",
+		totalAmenitiesCount,
+		amenityLabel,
+		managedAmenitiesCount,
+		customAmenitiesCount,
+		managedIdentitiesCount,
+		managedIdentityLabel,
+	)
 }
 
 // processManifestAmenitiesInTemplate processes manifest amenities in a deployment cell template,
