@@ -28,6 +28,7 @@ omnistrate-ctl account update [account-name or account-id] --nebius-bindings-fil
       --name string                   Updated account name
       --nebius-bindings-file string   Path to a YAML file describing the full replacement Nebius bindings
       --skip-wait                     Skip waiting for account to become READY after replacing Nebius bindings
+      --tags string                   Full replacement set of custom tags for the account in key=value format, separated by commas (e.g. env=prod,team=platform)
 ```
 
 ### Options inherited from parent commands

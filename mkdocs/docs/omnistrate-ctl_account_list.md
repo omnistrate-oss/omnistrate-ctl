@@ -21,7 +21,7 @@ omnistrate-ctl account list
 ### Options
 
 ```
-  -f, --filter stringArray   Filter to apply to the list of accounts. E.g.: key1:value1,key2:value2, which filters accounts where key1 equals value1 and key2 equals value2. Allow use of multiple filters to form the logical OR operation. Supported keys: id,name,status,cloud_provider,target_account_id. Check the examples for more details.
+  -f, --filter stringArray   Filter to apply to the list of accounts. E.g.: key1:value1,key2:value2, which filters accounts where key1 equals value1 and key2 equals value2. Allow use of multiple filters to form the logical OR operation. Supported keys: id,name,status,cloud_provider,target_account_id,custom_tags. Check the examples for more details.
   -h, --help                 help for list
 ```
 
