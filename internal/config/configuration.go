@@ -239,6 +239,9 @@ func CleanupArgsAndFlags(cmd *cobra.Command, args *[]string) {
 			} else {
 				_ = cmd.Flags().Set(f.Name, f.DefValue)
 			}
+			// pflag's Set marks the flag as Changed; clear it so subsequent
+			// in-process executions see a pristine flag set
+			f.Changed = false
 		})
 
 	// Clean up arguments by resetting the slice to nil or an empty slice
