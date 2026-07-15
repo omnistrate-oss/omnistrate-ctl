@@ -38,6 +38,7 @@ omnistrate-ctl account create [account-name] --nebius-tenant-id=[tenant-id] --ne
       --nebius-bindings-file string    Path to a YAML file describing Nebius bindings
       --nebius-tenant-id string        Nebius tenant ID
       --skip-wait                      Skip waiting for account onboarding to become READY
+      --tags string                    Custom tags for the account in key=value format, separated by commas (e.g. env=prod,team=platform)
 ```
 
 ### Options inherited from parent commands

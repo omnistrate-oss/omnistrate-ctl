@@ -19,6 +19,7 @@ const (
 	privateLinkFlag         = "private-link"
 	allowCreateNewFlag      = "allow-create-new-cloud-native-network"
 	cloudNativeNetworksFlag = "cloud-native-networks"
+	tagsFlag                = "tags"
 )
 
 func addCloudAccountProviderFlags(cmd *cobra.Command) {
@@ -39,6 +40,7 @@ func addBaseCloudAccountProviderFlags(cmd *cobra.Command) {
 	cmd.Flags().String(azureTenantIDFlag, "", "Azure tenant ID")
 	cmd.Flags().String(nebiusTenantIDFlag, "", "Nebius tenant ID")
 	cmd.Flags().String(nebiusBindingsFileFlag, "", "Path to a YAML file describing Nebius bindings")
+	cmd.Flags().String(tagsFlag, "", "Custom tags for the account in key=value format, separated by commas (e.g. env=prod,team=platform)")
 	cmd.Flags().Bool(skipWaitFlag, false, "Skip waiting for account onboarding to become READY")
 
 	cmd.MarkFlagsRequiredTogether(gcpProjectIDFlag, gcpProjectNumberFlag)
@@ -117,6 +119,12 @@ func cloudAccountParamsFromFlags(cmd *cobra.Command, name string) (CloudAccountP
 		}
 		params.NebiusBindings = bindings
 	}
+
+	customTags, _, err := parseAccountTags(cmd)
+	if err != nil {
+		return CloudAccountParams{}, err
+	}
+	params.CustomTags = customTags
 
 	supportsCluster := cmd.Flags().Lookup(clusterNameFlag) != nil
 	if err := validateCloudAccountParamsForFlags(params, supportsCluster); err != nil {

@@ -36,6 +36,7 @@ func init() {
 	updateCmd.Flags().String("name", "", "Updated account name")
 	updateCmd.Flags().String("description", "", "Updated account description")
 	updateCmd.Flags().String("nebius-bindings-file", "", "Path to a YAML file describing the full replacement Nebius bindings")
+	updateCmd.Flags().String(tagsFlag, "", "Full replacement set of custom tags for the account in key=value format, separated by commas (e.g. env=prod,team=platform)")
 	updateCmd.Flags().Bool("skip-wait", false, "Skip waiting for account to become READY after replacing Nebius bindings")
 	_ = updateCmd.MarkFlagFilename("nebius-bindings-file")
 }
@@ -45,6 +46,7 @@ type UpdateCloudAccountParams struct {
 	Name           *string
 	Description    *string
 	NebiusBindings []openapiclient.NebiusAccountBindingInput
+	CustomTags     []openapiclient.CustomTag
 }
 
 func runUpdate(cmd *cobra.Command, args []string) error {
@@ -117,6 +119,7 @@ func runUpdate(cmd *cobra.Command, args []string) error {
 		Name:            params.Name,
 		Description:     params.Description,
 		NebiusBindings:  params.NebiusBindings,
+		CustomTags:      params.CustomTags,
 	})
 	if err != nil {
 		utils.HandleSpinnerError(spinner, sm, err)
@@ -189,6 +192,12 @@ func buildUpdateAccountParams(
 		params.NebiusBindings = bindings
 	}
 
+	customTags, _, err := parseAccountTags(cmd)
+	if err != nil {
+		return UpdateCloudAccountParams{}, err
+	}
+	params.CustomTags = customTags
+
 	if err := validateUpdateAccountParams(params); err != nil {
 		return UpdateCloudAccountParams{}, err
 	}
@@ -209,8 +218,8 @@ func validateUpdateAccountParams(params UpdateCloudAccountParams) error {
 		return errors.New("description cannot be empty")
 	}
 
-	if params.Name == nil && params.Description == nil && len(params.NebiusBindings) == 0 {
-		return errors.New("at least one of --name, --description, or --nebius-bindings-file must be provided")
+	if params.Name == nil && params.Description == nil && len(params.NebiusBindings) == 0 && len(params.CustomTags) == 0 {
+		return errors.New("at least one of --name, --description, --nebius-bindings-file, or --tags must be provided")
 	}
 
 	return nil

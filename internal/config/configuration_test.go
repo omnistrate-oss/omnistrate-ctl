@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/spf13/cobra"
+	"github.com/spf13/pflag"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -236,4 +237,23 @@ func TestCleanupArgsAndFlags_EmptyStringArray(t *testing.T) {
 
 	val, _ = cmd.Flags().GetStringArray("tags")
 	assert.Equal(t, []string{}, val)
+}
+
+func TestCleanupArgsAndFlags_ResetsChanged(t *testing.T) {
+	cmd := &cobra.Command{Use: "test", RunE: func(cmd *cobra.Command, args []string) error { return nil }}
+	cmd.Flags().String("tags", "", "tags")
+	cmd.Flags().StringArray("platforms", []string{}, "platforms")
+
+	// Simulate first execution setting a flag
+	_ = cmd.Flags().Set("tags", "env=prod")
+	assert.True(t, cmd.Flags().Changed("tags"))
+
+	args := []string{}
+	CleanupArgsAndFlags(cmd, &args)
+
+	// Subsequent in-process executions must see a pristine flag set: flags that
+	// were never passed must not read as Changed just because cleanup reset them
+	cmd.Flags().VisitAll(func(f *pflag.Flag) {
+		assert.False(t, f.Changed, "flag %s should not be marked Changed after cleanup", f.Name)
+	})
 }

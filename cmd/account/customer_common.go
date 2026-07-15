@@ -42,6 +42,7 @@ type customerAccountSummary struct {
 	AccountStatus      string `json:"account_status,omitempty"`
 	AccountStatusMsg   string `json:"account_status_message,omitempty"`
 	SubscriptionID     string `json:"subscription_id"`
+	CustomTags         string `json:"custom_tags,omitempty"`
 }
 
 type customerAccountDescribeResult struct {
@@ -227,6 +228,7 @@ func buildCustomerAccountSummary(
 	summary.AccountDescription = account.Description
 	summary.AccountStatus = account.Status
 	summary.AccountStatusMsg = account.StatusMessage
+	summary.CustomTags = formatAccountTags(account.CustomTags)
 
 	formattedAccount, err := formatAccount(account)
 	if err == nil {
