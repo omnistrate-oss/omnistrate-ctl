@@ -39,11 +39,18 @@ func TestValidateUpdateAccountParams(t *testing.T) {
 			},
 		},
 		{
+			name: "custom tags replacement is allowed",
+			params: UpdateCloudAccountParams{
+				ID:         "ac-123",
+				CustomTags: []openapiclient.CustomTag{{Key: "env", Value: "prod"}},
+			},
+		},
+		{
 			name: "requires mutable fields",
 			params: UpdateCloudAccountParams{
 				ID: "ac-123",
 			},
-			wantErr: "at least one of --name, --description, or --nebius-bindings-file must be provided",
+			wantErr: "at least one of --name, --description, --nebius-bindings-file, or --tags must be provided",
 		},
 		{
 			name: "rejects empty name",

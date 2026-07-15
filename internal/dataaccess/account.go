@@ -87,6 +87,7 @@ type UpdateAccountParams struct {
 	Name            *string
 	Description     *string
 	NebiusBindings  []openapiclient.NebiusAccountBindingInput
+	CustomTags      []openapiclient.CustomTag
 }
 
 func UpdateAccount(ctx context.Context, token string, params UpdateAccountParams) (string, error) {
@@ -98,6 +99,9 @@ func UpdateAccount(ctx context.Context, token string, params UpdateAccountParams
 	}
 	if len(params.NebiusBindings) > 0 {
 		request.NebiusBindings = params.NebiusBindings
+	}
+	if len(params.CustomTags) > 0 {
+		request.CustomTags = params.CustomTags
 	}
 
 	apiClient := getV1Client()

@@ -153,5 +153,6 @@ func formatAccount(account *openapiclient.DescribeAccountConfigResult) (model.Ac
 		Status:          account.Status,
 		CloudProvider:   cloudProvider,
 		TargetAccountID: targetAccountID,
+		CustomTags:      formatAccountTags(account.CustomTags),
 	}, nil
 }

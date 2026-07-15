@@ -226,6 +226,14 @@ func runCustomerCreate(cmd *cobra.Command, args []string) error {
 	if target.SubscriptionID != "" {
 		request.SubscriptionId = &target.SubscriptionID
 	}
+	if len(params.CustomTags) > 0 {
+		// The tags flow through the onboarding instance to the customer's backing account config
+		fleetTags := make([]openapiclientfleet.CustomTag, 0, len(params.CustomTags))
+		for _, tag := range params.CustomTags {
+			fleetTags = append(fleetTags, openapiclientfleet.CustomTag{Key: tag.Key, Value: tag.Value})
+		}
+		request.CustomTags = fleetTags
+	}
 
 	createResult, err := dataaccess.CreateResourceInstance(
 		cmd.Context(),

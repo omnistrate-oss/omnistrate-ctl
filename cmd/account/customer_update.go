@@ -32,6 +32,7 @@ func init() {
 	customerUpdateCmd.Flags().String("name", "", "Updated backing account name")
 	customerUpdateCmd.Flags().String("description", "", "Updated backing account description")
 	customerUpdateCmd.Flags().String("nebius-bindings-file", "", "Path to a YAML file describing the full replacement Nebius bindings")
+	customerUpdateCmd.Flags().String(tagsFlag, "", "Full replacement set of custom tags for the backing account in key=value format, separated by commas (e.g. env=prod,team=platform)")
 	customerUpdateCmd.Flags().Bool("skip-wait", false, "Skip waiting for the backing account to become READY after replacing Nebius bindings")
 	_ = customerUpdateCmd.MarkFlagFilename("nebius-bindings-file")
 }
@@ -108,6 +109,7 @@ func runCustomerUpdate(cmd *cobra.Command, args []string) error {
 		Name:            params.Name,
 		Description:     params.Description,
 		NebiusBindings:  params.NebiusBindings,
+		CustomTags:      params.CustomTags,
 	})
 	if err != nil {
 		utils.HandleSpinnerError(spinner, sm, err)

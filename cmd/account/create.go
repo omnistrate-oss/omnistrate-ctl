@@ -141,6 +141,7 @@ type CloudAccountParams struct {
 	PrivateLink         bool
 	AllowCreateNew      bool
 	CloudNativeNetworks []string
+	CustomTags          []openapiclient.CustomTag
 }
 
 // CreateCloudAccount creates a cloud provider account and returns the account config ID and account details
@@ -208,6 +209,10 @@ func CreateCloudAccount(ctx context.Context, token string, params CloudAccountPa
 		request.Description = "Nebius Account " + params.NebiusTenantID
 	} else {
 		return nil, fmt.Errorf("no cloud provider credentials provided")
+	}
+
+	if len(params.CustomTags) > 0 {
+		request.CustomTags = params.CustomTags
 	}
 
 	// Create account
