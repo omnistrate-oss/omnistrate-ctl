@@ -1,8 +1,11 @@
 package cloudnativenetwork
 
 import (
+	"io"
+	"os"
 	"testing"
 
+	openapiclientfleet "github.com/omnistrate-oss/omnistrate-sdk-go/fleet"
 	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -137,6 +140,94 @@ func TestSyncTargetsFromFlagsRejectsMalformedNetwork(t *testing.T) {
 	_, err := syncTargetsFromFlags(nil, nil, []string{"vpc-abc123"})
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "expected region:network-id")
+}
+
+func TestFormatHostClusters(t *testing.T) {
+	reason := "cluster is already managed"
+	hostClusters := []openapiclientfleet.FleetAccountConfigCloudNativeNetworkHostClusterResult{
+		{Name: "eligible-cluster", EligibleToImport: true},
+		{Name: "ineligible-cluster", EligibleToImport: false, IneligibilityReason: &reason},
+	}
+
+	assert.Equal(t,
+		"eligible-cluster - eligible for import\nineligible-cluster - not eligible for import - cluster is already managed",
+		formatHostClusters(hostClusters),
+	)
+}
+
+func TestFormatHostClustersUsesPlaceholderForMissingReason(t *testing.T) {
+	hostClusters := []openapiclientfleet.FleetAccountConfigCloudNativeNetworkHostClusterResult{
+		{Name: "ineligible-cluster", EligibleToImport: false},
+	}
+
+	assert.Equal(t, "ineligible-cluster - not eligible for import", formatHostClusters(hostClusters))
+}
+
+func TestPrintCloudNativeNetworkTableIncludesHostClustersOnePerLine(t *testing.T) {
+	reason := "unsupported cluster version"
+	result := &openapiclientfleet.FleetListAccountConfigCloudNativeNetworksResult{
+		CloudNativeNetworks: []openapiclientfleet.FleetAccountConfigCloudNativeNetworkResult{
+			{
+				CloudNativeNetworkId: "vpc-123",
+				Region:               "us-east-1",
+				Status:               "AVAILABLE",
+				HostClusters: []openapiclientfleet.FleetAccountConfigCloudNativeNetworkHostClusterResult{
+					{Name: "eligible-cluster", EligibleToImport: true},
+					{Name: "ineligible-cluster", EligibleToImport: false, IneligibilityReason: &reason},
+				},
+			},
+		},
+	}
+
+	var printErr error
+	output := captureStdout(t, func() {
+		printErr = printCloudNativeNetworkTable(result)
+	})
+
+	require.NoError(t, printErr)
+	assert.Contains(t, output, "HOST CLUSTERS")
+	assert.Contains(t, output, "eligible-cluster - eligible for import\n")
+	assert.Contains(t, output, "ineligible-cluster - not eligible for import - unsupported cluster version")
+}
+
+func TestPrintCloudNativeNetworkTableOmitsHostClustersWithoutClusters(t *testing.T) {
+	result := &openapiclientfleet.FleetListAccountConfigCloudNativeNetworksResult{
+		CloudNativeNetworks: []openapiclientfleet.FleetAccountConfigCloudNativeNetworkResult{
+			{
+				CloudNativeNetworkId: "vpc-123",
+				Region:               "us-east-1",
+				Status:               "AVAILABLE",
+			},
+		},
+	}
+
+	var printErr error
+	output := captureStdout(t, func() {
+		printErr = printCloudNativeNetworkTable(result)
+	})
+
+	require.NoError(t, printErr)
+	assert.NotContains(t, output, "HOST CLUSTERS")
+}
+
+func captureStdout(t *testing.T, fn func()) string {
+	t.Helper()
+
+	oldStdout := os.Stdout
+	readPipe, writePipe, err := os.Pipe()
+	require.NoError(t, err)
+	os.Stdout = writePipe
+	defer func() {
+		os.Stdout = oldStdout
+		_ = readPipe.Close()
+	}()
+
+	fn()
+	require.NoError(t, writePipe.Close())
+
+	output, err := io.ReadAll(readPipe)
+	require.NoError(t, err)
+	return string(output)
 }
 
 func TestDeploymentCellCommandStructure(t *testing.T) {
