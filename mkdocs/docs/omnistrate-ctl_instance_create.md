@@ -7,7 +7,7 @@ Create an instance deployment
 This command helps you create an instance deployment for your service.
 
 ```
-omnistrate-ctl instance create --service=[service] --environment=[environment] --plan=[plan] --version=[version] --resource=[resource] [--cloud-provider=aws|gcp|azure|nebius] [--region=region] [--param=param] [--param-file=file-path] [--instance-id=id] [--customer-account-id=account-instance-id] [--cloud-provider-native-network-id=network-id] [--onprem-platform=platform] [--tags key=value,key2=value2] [--breakpoints id-or-key[:event[|event...]],...] [flags]
+omnistrate-ctl instance create --service=[service] --environment=[environment] --plan=[plan] --version=[version] --resource=[resource] [--cloud-provider=aws|gcp|azure|nebius] [--region=region] [--param=param] [--param-file=file-path] [--instance-id=id] [--customer-account-id=account-instance-id] [--cloud-provider-native-network-id=network-id] [--network-type=PUBLIC|INTERNAL] [--onprem-platform=platform] [--tags key=value,key2=value2] [--breakpoints id-or-key[:event[|event...]],...] [flags]
 ```
 
 ### Examples
@@ -21,6 +21,9 @@ omnistrate-ctl instance create --service=mysql --environment=dev --plan=mysql --
 
 # Create an instance deployment with custom tags
 omnistrate-ctl instance create --service=mysql --environment=dev --plan=mysql --version=latest --resource=mySQL --cloud-provider=aws --region=ca-central-1 --param-file /path/to/params.json --tags environment=dev,owner=team
+
+# Create an instance deployment with an internal network type
+omnistrate-ctl instance create --service=mysql --environment=dev --plan=mysql --version=latest --resource=mySQL --cloud-provider=aws --region=ca-central-1 --param-file /path/to/params.json --network-type INTERNAL
 
 # Create an instance deployment and wait for completion with progress tracking
 omnistrate-ctl instance create --service=mysql --environment=dev --plan=mysql --version=latest --resource=mySQL --cloud-provider=aws --region=ca-central-1 --param-file /path/to/params.json --wait
@@ -51,6 +54,7 @@ omnistrate-ctl instance create --service=MyService --environment=dev --plan='Air
       --environment string                        Environment name
   -h, --help                                      help for create
       --instance-id string                        ID of a previously deleted instance to restore
+      --network-type string                       Optional network type for the instance deployment (PUBLIC / INTERNAL)
       --onprem-platform string                    On-prem platform for installer-backed deployments (for example EKS, GKE, AKS, OpenShift, Generic)
       --param string                              Parameters for the instance deployment
       --param-file string                         Json file containing parameters for the instance deployment

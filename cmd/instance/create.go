@@ -27,6 +27,9 @@ omnistrate-ctl instance create --service=mysql --environment=dev --plan=mysql --
 # Create an instance deployment with custom tags
 omnistrate-ctl instance create --service=mysql --environment=dev --plan=mysql --version=latest --resource=mySQL --cloud-provider=aws --region=ca-central-1 --param-file /path/to/params.json --tags environment=dev,owner=team
 
+# Create an instance deployment with an internal network type
+omnistrate-ctl instance create --service=mysql --environment=dev --plan=mysql --version=latest --resource=mySQL --cloud-provider=aws --region=ca-central-1 --param-file /path/to/params.json --network-type INTERNAL
+
 # Create an instance deployment and wait for completion with progress tracking
 omnistrate-ctl instance create --service=mysql --environment=dev --plan=mysql --version=latest --resource=mySQL --cloud-provider=aws --region=ca-central-1 --param-file /path/to/params.json --wait
 
@@ -76,7 +79,7 @@ var InstanceID string
 var SubscriptionID string
 
 var createCmd = &cobra.Command{
-	Use:          "create --service=[service] --environment=[environment] --plan=[plan] --version=[version] --resource=[resource] [--cloud-provider=aws|gcp|azure|nebius] [--region=region] [--param=param] [--param-file=file-path] [--instance-id=id] [--customer-account-id=account-instance-id] [--cloud-provider-native-network-id=network-id] [--onprem-platform=platform] [--tags key=value,key2=value2] [--breakpoints id-or-key[:event[|event...]],...]",
+	Use:          "create --service=[service] --environment=[environment] --plan=[plan] --version=[version] --resource=[resource] [--cloud-provider=aws|gcp|azure|nebius] [--region=region] [--param=param] [--param-file=file-path] [--instance-id=id] [--customer-account-id=account-instance-id] [--cloud-provider-native-network-id=network-id] [--network-type=PUBLIC|INTERNAL] [--onprem-platform=platform] [--tags key=value,key2=value2] [--breakpoints id-or-key[:event[|event...]],...]",
 	Short:        "Create an instance deployment",
 	Long:         `This command helps you create an instance deployment for your service.`,
 	Example:      createExample,
@@ -96,6 +99,7 @@ func init() {
 	createCmd.Flags().String("param-file", "", "Json file containing parameters for the instance deployment")
 	createCmd.Flags().String("customer-account-id", "", "Customer BYOA account onboarding instance ID to inject as the cloud account. Use 'omnistrate-ctl account customer list' or 'omnistrate-ctl account customer describe <instance-id>' to find it.")
 	createCmd.Flags().String("cloud-provider-native-network-id", "", fmt.Sprintf("Cloud provider native network ID to inject as %s in instance deployment parameters", cloudProviderNativeNetworkIDParamKey))
+	createCmd.Flags().String("network-type", "", "Optional network type for the instance deployment (PUBLIC / INTERNAL)")
 	createCmd.Flags().String("onprem-platform", "", "On-prem platform for installer-backed deployments (for example EKS, GKE, AKS, OpenShift, Generic)")
 	createCmd.Flags().String("tags", "", "Custom tags to add to the instance deployment (format: key=value,key2=value2)")
 	createCmd.Flags().String("breakpoints", "", "Workflow breakpoint resource IDs or resource keys, optionally scoped to events as id-or-key:event or id-or-key:event|event")
@@ -178,6 +182,11 @@ func runCreate(cmd *cobra.Command, args []string) error {
 		return err
 	}
 	cloudProviderNativeNetworkID, err := cmd.Flags().GetString("cloud-provider-native-network-id")
+	if err != nil {
+		utils.PrintError(err)
+		return err
+	}
+	networkType, err := cmd.Flags().GetString("network-type")
 	if err != nil {
 		utils.PrintError(err)
 		return err
@@ -322,6 +331,7 @@ func runCreate(cmd *cobra.Command, args []string) error {
 	applyCloudProviderToCreateRequest(&request, cloudProvider)
 	applyRegionToCreateRequest(&request, region)
 	applyOnpremPlatformToCreateRequest(&request, onpremPlatform)
+	applyNetworkTypeToCreateRequest(&request, networkType)
 	if tagsProvided {
 		request.CustomTags = customTags
 	}
@@ -851,6 +861,14 @@ func applyOnpremPlatformToCreateRequest(request *openapiclientfleet.FleetCreateR
 		return
 	}
 	request.OnpremPlatform = utils.ToPtr(onpremPlatform)
+}
+
+func applyNetworkTypeToCreateRequest(request *openapiclientfleet.FleetCreateResourceInstanceRequest2, networkType string) {
+	networkType = strings.TrimSpace(networkType)
+	if request == nil || networkType == "" {
+		return
+	}
+	request.NetworkType = utils.ToPtr(networkType)
 }
 
 func customerAccountParamValue(params map[string]any) string {
