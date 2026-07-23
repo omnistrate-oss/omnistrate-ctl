@@ -28,6 +28,11 @@ func TestCreateCommandFlags(t *testing.T) {
 	flag = createCmd.Flags().Lookup("breakpoints")
 	require.NotNil(t, flag)
 	assert.Contains(t, flag.Usage, "id-or-key:event")
+
+	flag = createCmd.Flags().Lookup("network-type")
+	require.NotNil(t, flag)
+	assert.Contains(t, flag.Usage, "PUBLIC")
+	assert.Contains(t, flag.Usage, "INTERNAL")
 }
 
 func TestCreateCommandFlags_InstanceID(t *testing.T) {
@@ -42,7 +47,7 @@ func TestCreateCommandFlags_AllExpectedFlags(t *testing.T) {
 		"service", "environment", "plan", "version", "resource",
 		"cloud-provider", "region", "param", "param-file",
 		"customer-account-id", "cloud-provider-native-network-id", "onprem-platform", "tags", "breakpoints",
-		"subscription-id", "instance-id", "wait",
+		"subscription-id", "instance-id", "wait", "network-type",
 	}
 	for _, flagName := range expectedFlags {
 		flag := createCmd.Flags().Lookup(flagName)
@@ -258,6 +263,27 @@ func TestApplyOnpremPlatformToCreateRequestIgnoresEmptyValue(t *testing.T) {
 	applyOnpremPlatformToCreateRequest(&request, " ")
 
 	assert.Nil(t, request.OnpremPlatform)
+}
+
+func TestApplyNetworkTypeToCreateRequest(t *testing.T) {
+	request := openapiclientfleet.FleetCreateResourceInstanceRequest2{}
+
+	applyNetworkTypeToCreateRequest(&request, " INTERNAL ")
+
+	require.NotNil(t, request.NetworkType)
+	assert.Equal(t, "INTERNAL", *request.NetworkType)
+}
+
+func TestApplyNetworkTypeToCreateRequestIgnoresEmptyValue(t *testing.T) {
+	request := openapiclientfleet.FleetCreateResourceInstanceRequest2{}
+
+	applyNetworkTypeToCreateRequest(&request, " ")
+
+	assert.Nil(t, request.NetworkType)
+}
+
+func TestCreateCommandUse_IncludesNetworkType(t *testing.T) {
+	assert.Contains(t, createCmd.Use, "--network-type")
 }
 
 func TestCreateRequestOmitsCloudProviderAndRegionWhenOnlyOnpremPlatformIsSet(t *testing.T) {
