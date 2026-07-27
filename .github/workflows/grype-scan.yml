@@ -1,0 +1,214 @@
+name: Grype Image Scan
+
+on:
+  pull_request:
+    branches: ["main"]
+  merge_group:
+    branches: ["main"]
+  workflow_dispatch:
+
+env:
+  SCAN_IMAGE_NAME: localbuild/omnistrate-ctl
+  SCAN_PLATFORM: linux/amd64
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
+  cancel-in-progress: true
+
+jobs:
+  grype-scan:
+    name: Scan Docker image
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@d7f5e7f509e45cec5c76c4d5afdd7de93d0b3df5 # v4.1.0
+
+      - name: Build image for scan
+        timeout-minutes: 30
+        uses: docker/build-push-action@f9f3042f7e2789586610d6e8b85c8f03e5195baf # v7.2.0
+        with:
+          context: .
+          file: ./build/Dockerfile
+          platforms: ${{ env.SCAN_PLATFORM }}
+          push: false
+          load: true
+          tags: ${{ env.SCAN_IMAGE_NAME }}:${{ github.sha }}
+          cache-from: type=gha,scope=grype-scan-amd64
+          cache-to: type=gha,mode=max,scope=grype-scan-amd64
+          build-args: |
+            GIT_COMMIT=${{ github.sha }}
+            GIT_VERSION=${{ github.ref_name }}
+            GOPROXY=https://proxy.golang.org,direct
+            GOSUMDB=sum.golang.org
+
+      - name: Scan image for vulnerabilities
+        id: grype
+        uses: anchore/scan-action@e1165082ffb1fe366ebaf02d8526e7c4989ea9d2 # v7.4.0
+        with:
+          image: ${{ env.SCAN_IMAGE_NAME }}:${{ github.sha }}
+          fail-build: false
+          severity-cutoff: high
+          output-format: json
+          output-file: grype-results.json
+
+      - name: Generate HTML vulnerability report
+        if: always()
+        run: |
+          node <<'NODE'
+          const fs = require("fs");
+
+          const inputPath = "grype-results.json";
+          const outputPath = "grype-results.html";
+
+          const escapeHtml = (value) => String(value ?? "")
+            .replaceAll("&", "&amp;")
+            .replaceAll("<", "&lt;")
+            .replaceAll(">", "&gt;")
+            .replaceAll('"', "&quot;")
+            .replaceAll("'", "&#39;");
+
+          const severityRank = {
+            critical: 5,
+            high: 4,
+            medium: 3,
+            low: 2,
+            negligible: 1,
+            unknown: 0,
+          };
+
+          const report = fs.existsSync(inputPath)
+            ? JSON.parse(fs.readFileSync(inputPath, "utf8"))
+            : { matches: [] };
+
+          const matches = Array.isArray(report.matches) ? report.matches : [];
+          const counts = matches.reduce((acc, match) => {
+            const severity = String(match?.vulnerability?.severity || "unknown").toLowerCase();
+            acc[severity] = (acc[severity] || 0) + 1;
+            return acc;
+          }, {});
+
+          const rows = matches
+            .sort((left, right) => {
+              const leftSeverity = String(left?.vulnerability?.severity || "unknown").toLowerCase();
+              const rightSeverity = String(right?.vulnerability?.severity || "unknown").toLowerCase();
+              return (severityRank[rightSeverity] || 0) - (severityRank[leftSeverity] || 0);
+            })
+            .map((match) => {
+              const vulnerability = match.vulnerability || {};
+              const artifact = match.artifact || {};
+              const fixVersions = Array.isArray(match?.vulnerability?.fix?.versions)
+                ? match.vulnerability.fix.versions.join(", ")
+                : "";
+              const vulnerabilityUrl = Array.isArray(vulnerability.urls) && vulnerability.urls.length > 0
+                ? vulnerability.urls[0]
+                : vulnerability.dataSource || "";
+              const vulnerabilityId = escapeHtml(vulnerability.id || "");
+              const linkedId = vulnerabilityUrl
+                ? `<a href="${escapeHtml(vulnerabilityUrl)}">${vulnerabilityId}</a>`
+                : vulnerabilityId;
+
+              return `<tr>
+                <td class="severity ${escapeHtml(String(vulnerability.severity || "unknown").toLowerCase())}">${escapeHtml(vulnerability.severity || "unknown")}</td>
+                <td>${linkedId}</td>
+                <td>${escapeHtml(artifact.name || "")}</td>
+                <td>${escapeHtml(artifact.version || "")}</td>
+                <td>${escapeHtml(artifact.type || "")}</td>
+                <td>${escapeHtml(fixVersions || "No fix reported")}</td>
+              </tr>`;
+            })
+            .join("\n");
+
+          const summaryCards = ["critical", "high", "medium", "low", "negligible", "unknown"]
+            .map((severity) => `<div class="card ${severity}">
+              <span>${severity}</span>
+              <strong>${counts[severity] || 0}</strong>
+            </div>`)
+            .join("\n");
+
+          const html = `<!doctype html>
+          <html lang="en">
+          <head>
+            <meta charset="utf-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1">
+            <title>Grype Vulnerability Report</title>
+            <style>
+              body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; margin: 32px; color: #17202a; background: #f7f9fb; }
+              main { max-width: 1200px; margin: 0 auto; }
+              h1 { margin-bottom: 4px; font-size: 28px; }
+              .meta { color: #52616f; margin-bottom: 24px; }
+              .summary { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px; margin-bottom: 24px; }
+              .card { background: #fff; border: 1px solid #d9e2ec; border-radius: 8px; padding: 14px; text-transform: capitalize; }
+              .card span { display: block; color: #52616f; font-size: 13px; }
+              .card strong { display: block; font-size: 26px; margin-top: 4px; }
+              table { width: 100%; border-collapse: collapse; background: #fff; border: 1px solid #d9e2ec; }
+              th, td { padding: 10px 12px; border-bottom: 1px solid #e6edf3; text-align: left; vertical-align: top; }
+              th { background: #eef3f8; font-size: 13px; text-transform: uppercase; color: #425466; }
+              a { color: #0b5cad; }
+              .severity { font-weight: 700; text-transform: capitalize; }
+              .critical { color: #a40000; }
+              .high { color: #c2410c; }
+              .medium { color: #a16207; }
+              .low { color: #2563eb; }
+              .negligible, .unknown { color: #52616f; }
+              .empty { background: #fff; border: 1px solid #d9e2ec; padding: 18px; border-radius: 8px; }
+            </style>
+          </head>
+          <body>
+            <main>
+              <h1>Grype Vulnerability Report</h1>
+              <div class="meta">Image: ${escapeHtml(process.env.SCAN_IMAGE_NAME)}:${escapeHtml(process.env.GITHUB_SHA)}</div>
+              <section class="summary">${summaryCards}</section>
+              ${matches.length === 0
+                ? '<div class="empty">No vulnerabilities reported.</div>'
+                : `<table>
+                  <thead>
+                    <tr>
+                      <th>Severity</th>
+                      <th>Vulnerability</th>
+                      <th>Package</th>
+                      <th>Version</th>
+                      <th>Type</th>
+                      <th>Fix</th>
+                    </tr>
+                  </thead>
+                  <tbody>${rows}</tbody>
+                </table>`}
+            </main>
+          </body>
+          </html>`;
+
+          fs.writeFileSync(outputPath, html);
+          NODE
+
+      - name: Upload Grype vulnerability report
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: grype-vulnerability-report
+          path: |
+            grype-results.html
+            grype-results.json
+          if-no-files-found: ignore
+
+      - name: Enforce vulnerability threshold
+        run: |
+          node <<'NODE'
+          const fs = require("fs");
+          const report = JSON.parse(fs.readFileSync("grype-results.json", "utf8"));
+          const matches = Array.isArray(report.matches) ? report.matches : [];
+          const failingMatches = matches.filter((match) => {
+            const severity = String(match?.vulnerability?.severity || "").toLowerCase();
+            return severity === "critical" || severity === "high";
+          });
+
+          if (failingMatches.length > 0) {
+            console.error(`Found ${failingMatches.length} vulnerabilities with severity high or critical.`);
+            process.exit(1);
+          }
+          NODE
