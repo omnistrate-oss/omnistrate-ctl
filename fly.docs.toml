@@ -10,8 +10,6 @@ kill_timeout = '5s'
 
 [build]
   dockerfile = "build/Dockerfile.docs"
-  [build.args]
-    GO_VERSION = '1.25.1'
 
 [env]
   PORT = '8080'
