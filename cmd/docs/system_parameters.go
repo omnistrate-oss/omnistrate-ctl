@@ -25,7 +25,7 @@ var systemParametersCmd = &cobra.Command{
 }
 
 func init() {
-	systemParametersCmd.Flags().StringP("output", "o", "table", "Output format (table|json)")
+	systemParametersCmd.Flags().StringP("output", "o", outputJSON, schemaOutputUsage)
 }
 
 func runSystemParameters(cmd *cobra.Command, args []string) error {
@@ -44,7 +44,7 @@ func runSystemParameters(cmd *cobra.Command, args []string) error {
 	}
 
 	// Print the schema
-	err = utils.PrintTextTableJsonOutput(output, schema)
+	err = utils.PrintTextTableJsonOutput(schemaOutput(output), schema)
 	if err != nil {
 		utils.PrintError(err)
 		return err

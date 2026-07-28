@@ -124,6 +124,33 @@ func TestGetLlmsTxtURLCustom(t *testing.T) {
 	assert.Equal(t, "https://custom.example.com/llms.txt", url)
 }
 
+func TestGetComposeSpecUrls(t *testing.T) {
+	urls := GetComposeSpecUrls()
+	// The reference lives under build-guides; spec-guides is the previous location
+	// kept as a fallback.
+	assert.Equal(t, []string{
+		"https://docs.omnistrate.com/build-guides/compose-spec/index.md",
+		"https://docs.omnistrate.com/spec-guides/compose-spec/index.md",
+	}, urls)
+	assert.Equal(t, urls[0], GetComposeSpecUrl())
+}
+
+func TestGetPlanSpecUrls(t *testing.T) {
+	urls := GetPlanSpecUrls()
+	assert.Equal(t, []string{
+		"https://docs.omnistrate.com/spec-guides/plan-spec/index.md",
+		"https://docs.omnistrate.com/build-guides/plan-spec/index.md",
+	}, urls)
+	assert.Equal(t, urls[0], GetPlanSpecUrl())
+}
+
+func TestSpecUrlsHonourCustomDocsDomain(t *testing.T) {
+	t.Setenv(omnistrateDocsDomain, "custom.example.com")
+	for _, url := range append(GetComposeSpecUrls(), GetPlanSpecUrls()...) {
+		assert.Contains(t, url, "https://custom.example.com/")
+	}
+}
+
 func makeJWT(exp int64) string {
 	header := base64.RawURLEncoding.EncodeToString([]byte(`{"alg":"RS256","typ":"JWT"}`))
 	payload, _ := json.Marshal(map[string]interface{}{"exp": exp})
