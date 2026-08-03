@@ -29,7 +29,7 @@ omnistrate-ctl docs search "service plan deployment" --limit 5 --output json
 ```
   -h, --help            help for search
   -l, --limit int       Maximum number of results to return (default 10)
-  -o, --output string   Output format (table|json) (default "table")
+  -o, --output string   Output format (markdown|json|table|text). markdown preserves the full section text; table truncates it to one line per row (default "markdown")
 ```
 
 ### Options inherited from parent commands
