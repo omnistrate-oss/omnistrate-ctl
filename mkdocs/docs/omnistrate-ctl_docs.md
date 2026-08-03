@@ -32,4 +32,5 @@ omnistrate-ctl docs [operation] [flags]
 * [omnistrate-ctl docs plan-spec](omnistrate-ctl_docs_plan-spec.md)	 - Plan spec documentation
 * [omnistrate-ctl docs search](omnistrate-ctl_docs_search.md)	 - Search through Omnistrate documentation
 * [omnistrate-ctl docs system-parameters](omnistrate-ctl_docs_system-parameters.md)	 - Get the JSON schema for system parameters
+* [omnistrate-ctl docs validate](omnistrate-ctl_docs_validate.md)	 - Validate a spec file against the authoritative JSON schema
 

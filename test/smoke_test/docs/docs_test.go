@@ -2,6 +2,8 @@ package docs
 
 import (
 	"context"
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/omnistrate-oss/omnistrate-ctl/cmd"
@@ -111,6 +113,58 @@ func Test_docs_json_schema(t *testing.T) {
 
 	// FAIL: unknown schema type
 	cmd.RootCmd.SetArgs([]string{"docs", "json-schema", "not-a-schema-type", "--output", "json"})
+	err = cmd.RootCmd.ExecuteContext(ctx)
+	require.Error(err)
+}
+
+func Test_docs_validate(t *testing.T) {
+	testutils.SmokeTest(t)
+
+	ctx := context.TODO()
+	require := require.New(t)
+	defer testutils.Cleanup()
+
+	dir := t.TempDir()
+
+	validCompose := filepath.Join(dir, "valid-compose.yaml")
+	require.NoError(os.WriteFile(validCompose, []byte(`version: "3.9"
+services:
+  api:
+    image: nginx:latest
+    x-omnistrate-mode-internal: false
+`), 0o600))
+
+	// PASS: a minimal compose spec validates, with the type detected from the file
+	cmd.RootCmd.SetArgs([]string{"docs", "validate", "--file", validCompose})
+	err := cmd.RootCmd.ExecuteContext(ctx)
+	require.NoError(err)
+
+	// PASS: JSON output for scripting
+	cmd.RootCmd.SetArgs([]string{"docs", "validate", "--file", validCompose, "--output", "json"})
+	err = cmd.RootCmd.ExecuteContext(ctx)
+	require.NoError(err)
+
+	// FAIL: an unknown field is reported and exits non-zero
+	invalidPlan := filepath.Join(dir, "invalid-plan.yaml")
+	require.NoError(os.WriteFile(invalidPlan, []byte(`name: My Plan
+notARealTopLevelField: true
+services:
+  - name: db
+`), 0o600))
+
+	cmd.RootCmd.SetArgs([]string{"docs", "validate", "--file", invalidPlan})
+	err = cmd.RootCmd.ExecuteContext(ctx)
+	require.Error(err)
+
+	// FAIL: a missing file is an error, not a silent pass
+	cmd.RootCmd.SetArgs([]string{"docs", "validate", "--file", filepath.Join(dir, "does-not-exist.yaml")})
+	err = cmd.RootCmd.ExecuteContext(ctx)
+	require.Error(err)
+
+	// FAIL: an ambiguous spec asks for --spec-type instead of guessing
+	ambiguous := filepath.Join(dir, "ambiguous.yaml")
+	require.NoError(os.WriteFile(ambiguous, []byte("name: just a name\n"), 0o600))
+	cmd.RootCmd.SetArgs([]string{"docs", "validate", "--file", ambiguous})
 	err = cmd.RootCmd.ExecuteContext(ctx)
 	require.Error(err)
 }

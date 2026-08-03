@@ -120,6 +120,31 @@ func renderSearchResultsMarkdown(w io.Writer, results []dataaccess.Documentation
 	writeRendered(w, b.String())
 }
 
+// renderValidationResultMarkdown writes the validation outcome as a readable report:
+// one line per violation, each naming the spec path so it can be found and fixed.
+func renderValidationResultMarkdown(w io.Writer, result *dataaccess.SpecValidationResult) {
+	var b strings.Builder
+
+	if result.Valid {
+		fmt.Fprintf(&b, "%s is valid against the %s schema.\n", result.File, result.SpecType)
+		writeRendered(w, b.String())
+		return
+	}
+
+	fmt.Fprintf(&b, "%s has %d violation(s) of the %s schema:\n\n",
+		result.File, len(result.Violations), result.SpecType)
+	for _, v := range result.Violations {
+		fmt.Fprintf(&b, "  %s\n      %s\n", v.Path, v.Message)
+	}
+	b.WriteString("\nPaths are JSON pointers into the spec — `/services/0/apiParameters/2/type`\n" +
+		"means the `type` of the third API parameter of the first service.\n" +
+		"\nNote: a violation here is a structural problem. Invalid *values* (a wrong\n" +
+		"tenancyType, cloudProvider, or parameter type) are not detectable from the\n" +
+		"schema — check those against `docs compose-spec` / `docs plan-spec`.\n")
+
+	writeRendered(w, b.String())
+}
+
 // writeRendered emits rendered markdown and mirrors it into LastPrintedString so it
 // stays consistent with the shared print helpers.
 func writeRendered(w io.Writer, rendered string) {
