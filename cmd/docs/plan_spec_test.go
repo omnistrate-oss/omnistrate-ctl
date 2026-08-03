@@ -21,7 +21,9 @@ func TestPlanSpecCommandFlags(t *testing.T) {
 	outputFlag := cmd.Flags().Lookup("output")
 	require.NotNil(t, outputFlag, "Expected flag 'output' not found")
 	require.Equal(t, "o", outputFlag.Shorthand)
-	require.Equal(t, "table", outputFlag.DefValue)
+	// Documentation sections are prose and markdown tables; a terminal table
+	// truncates them to one line per row, so markdown is the default.
+	require.Equal(t, "markdown", outputFlag.DefValue)
 
 	// Check that json-schema-only flag exists
 	jsonSchemaOnlyFlag := cmd.Flags().Lookup("json-schema-only")

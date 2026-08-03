@@ -18,6 +18,8 @@ func init() {
 	Cmd.AddCommand(composeSpecCmd)
 	Cmd.AddCommand(planSpecCmd)
 	Cmd.AddCommand(systemParametersCmd)
+	Cmd.AddCommand(jsonSchemaCmd)
+	Cmd.AddCommand(validateCmd)
 }
 
 func run(cmd *cobra.Command, args []string) {

@@ -32,7 +32,7 @@ var searchCmd = &cobra.Command{
 
 func init() {
 	searchCmd.Args = cobra.MinimumNArgs(1) // Require at least one argument (the search query)
-	searchCmd.Flags().StringP("output", "o", "table", "Output format (table|json)")
+	searchCmd.Flags().StringP("output", "o", outputMarkdown, docsOutputUsage)
 	searchCmd.Flags().IntP("limit", "l", 10, "Maximum number of results to return")
 }
 
@@ -63,6 +63,11 @@ func runSearch(cmd *cobra.Command, args []string) error {
 	// Print results
 	if len(results) == 0 {
 		fmt.Printf("No documentation found for query: %s\n", query)
+		return nil
+	}
+
+	if output == outputMarkdown {
+		renderSearchResultsMarkdown(stdout(), results)
 		return nil
 	}
 

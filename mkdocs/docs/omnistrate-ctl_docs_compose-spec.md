@@ -13,14 +13,17 @@ omnistrate-ctl docs compose-spec [tag] [flags]
 ### Examples
 
 ```
-# List all H3 headers in the compose spec documentation with JSON output
-omnistrate-ctl docs compose-spec --output json
+# List every tag and extension in the compose spec documentation
+omnistrate-ctl docs compose-spec
 
-# Search for a specific tag with JSON output
+# Read one tag (full text, examples and markdown tables preserved)
+omnistrate-ctl docs compose-spec "x-omnistrate-compute"
+
+# Read a tag as JSON, for scripting
 omnistrate-ctl docs compose-spec "networks" --output json
 
-# Search for specific custom tags with JSON output
-omnistrate-ctl docs compose-spec "x-omnistrate-compute" --output json
+# Get the JSON schema covering a tag, including nested tags
+omnistrate-ctl docs compose-spec "x-omnistrate-capabilities.sidecars" --json-schema-only
 
 ```
 
@@ -28,8 +31,8 @@ omnistrate-ctl docs compose-spec "x-omnistrate-compute" --output json
 
 ```
   -h, --help               help for compose-spec
-      --json-schema-only   Return only the JSON schema for the specified tag
-  -o, --output string      Output format (table|json) (default "table")
+      --json-schema-only   Return only the JSON schema for the specified tag. Nested tags resolve to their root extension; use 'docs json-schema' to list every schema type or request one directly
+  -o, --output string      Output format (markdown|json|table|text). markdown preserves the full section text; table truncates it to one line per row (default "markdown")
 ```
 
 ### Options inherited from parent commands

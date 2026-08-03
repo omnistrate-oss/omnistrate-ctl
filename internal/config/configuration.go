@@ -48,12 +48,34 @@ func GetAPIKey() string {
 	return os.Getenv(OmnistrateAPIKeyEnv)
 }
 
+// GetComposeSpecUrls returns the documentation URLs that have hosted the Compose
+// specification, most current first. The docs site relocates these pages from time
+// to time and leaves a short stub behind, so callers fall back through the list
+// until they find one that still carries the tag reference.
+func GetComposeSpecUrls() []string {
+	domain := GetOmnistrateDocsDomain()
+	return []string{
+		fmt.Sprintf("https://%s/build-guides/compose-spec/index.md", domain),
+		fmt.Sprintf("https://%s/spec-guides/compose-spec/index.md", domain),
+	}
+}
+
 func GetComposeSpecUrl() string {
-	return fmt.Sprintf("https://%s/spec-guides/compose-spec/index.md", GetOmnistrateDocsDomain())
+	return GetComposeSpecUrls()[0]
+}
+
+// GetPlanSpecUrls returns the documentation URLs that have hosted the Plan
+// specification, most current first. See GetComposeSpecUrls for why this is a list.
+func GetPlanSpecUrls() []string {
+	domain := GetOmnistrateDocsDomain()
+	return []string{
+		fmt.Sprintf("https://%s/spec-guides/plan-spec/index.md", domain),
+		fmt.Sprintf("https://%s/build-guides/plan-spec/index.md", domain),
+	}
 }
 
 func GetPlanSpecUrl() string {
-	return fmt.Sprintf("https://%s/spec-guides/plan-spec/index.md", GetOmnistrateDocsDomain())
+	return GetPlanSpecUrls()[0]
 }
 
 func GetLlmsTxtURL() string {
