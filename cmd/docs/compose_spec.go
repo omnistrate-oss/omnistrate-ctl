@@ -10,14 +10,17 @@ import (
 )
 
 const (
-	composeSpecExample = `# List all H3 headers in the compose spec documentation with JSON output
-omnistrate-ctl docs compose-spec --output json
+	composeSpecExample = `# List every tag and extension in the compose spec documentation
+omnistrate-ctl docs compose-spec
 
-# Search for a specific tag with JSON output
+# Read one tag (full text, examples and markdown tables preserved)
+omnistrate-ctl docs compose-spec "x-omnistrate-compute"
+
+# Read a tag as JSON, for scripting
 omnistrate-ctl docs compose-spec "networks" --output json
 
-# Search for specific custom tags with JSON output
-omnistrate-ctl docs compose-spec "x-omnistrate-compute" --output json
+# Get the JSON schema covering a tag, including nested tags
+omnistrate-ctl docs compose-spec "x-omnistrate-capabilities.sidecars" --json-schema-only
 `
 )
 
@@ -31,8 +34,8 @@ var composeSpecCmd = &cobra.Command{
 }
 
 func init() {
-	composeSpecCmd.Flags().StringP("output", "o", "table", "Output format (table|json)")
-	composeSpecCmd.Flags().Bool("json-schema-only", false, "Return only the JSON schema for the specified tag")
+	composeSpecCmd.Flags().StringP("output", "o", outputMarkdown, docsOutputUsage)
+	composeSpecCmd.Flags().Bool("json-schema-only", false, "Return only the JSON schema for the specified tag. Nested tags resolve to their root extension; use 'docs json-schema' to list every schema type or request one directly")
 }
 
 func runComposeSpec(cmd *cobra.Command, args []string) error {
@@ -63,15 +66,23 @@ func runComposeSpec(cmd *cobra.Command, args []string) error {
 			return err
 		}
 
+		// Documentation headings are not schema type names, so map the tag onto the
+		// type the schema API serves before asking for it
+		schemaType, err := dataaccess.ResolveComposeSpecJSONSchemaType(tag)
+		if err != nil {
+			utils.PrintError(err)
+			return err
+		}
+
 		// Fetch JSON schema
-		schema, schemaErr := dataaccess.GetJSONSchema(cmd.Context(), tag)
+		schema, schemaErr := dataaccess.GetJSONSchema(cmd.Context(), schemaType)
 		if schemaErr != nil {
 			utils.PrintError(schemaErr)
 			return schemaErr
 		}
 
-		// Print the schema
-		err = utils.PrintTextTableJsonOutput(output, schema)
+		// A JSON schema has no table representation, so markdown falls back to JSON
+		err = utils.PrintTextTableJsonOutput(schemaOutput(output), schema)
 		if err != nil {
 			utils.PrintError(err)
 			return err
@@ -92,6 +103,16 @@ func runComposeSpec(cmd *cobra.Command, args []string) error {
 			utils.PrintError(err)
 			return err
 		}
+		warnNoTagMatch("compose spec", tag, len(availableTags))
+		if output == outputMarkdown {
+			tags := make([]string, 0, len(availableTags))
+			for _, t := range availableTags {
+				tags = append(tags, t.AvailableTag)
+			}
+			renderAvailableTagsMarkdown(stdout(), "Available compose spec tags", tags,
+				`omnistrate-ctl docs compose-spec "%s"`)
+			return nil
+		}
 		err = utils.PrintTextTableJsonArrayOutput(output, availableTags)
 		if err != nil {
 			utils.PrintError(err)
@@ -99,6 +120,10 @@ func runComposeSpec(cmd *cobra.Command, args []string) error {
 		}
 	} else {
 		// Print results
+		if output == outputMarkdown {
+			renderSpecSectionsMarkdown(stdout(), composeSectionsToSpecSections(results))
+			return nil
+		}
 		err = utils.PrintTextTableJsonArrayOutput(output, results)
 		if err != nil {
 			utils.PrintError(err)

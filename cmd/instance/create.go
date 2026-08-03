@@ -291,7 +291,24 @@ func runCreate(cmd *cobra.Command, args []string) error {
 		utils.HandleSpinnerError(spinner, sm, err)
 		return err
 	}
-	offering := res.ConsumptionDescribeServiceOfferingResult.Offerings[0]
+	if res == nil || res.ConsumptionDescribeServiceOfferingResult == nil {
+		err = errors.New("no service offerings found for the target service plan")
+		utils.HandleSpinnerError(spinner, sm, err)
+		return err
+	}
+
+	// Select the offering for the requested environment. The response can contain one
+	// offering per environment the product tier is promoted to.
+	selectedOffering, err := selectOfferingForEnvironment(
+		res.ConsumptionDescribeServiceOfferingResult.Offerings,
+		environmentID,
+		productTierID,
+	)
+	if err != nil {
+		utils.HandleSpinnerError(spinner, sm, err)
+		return err
+	}
+	offering := *selectedOffering
 
 	// Format parameters
 	formattedParams, err := common.FormatParams(param, paramFile)
@@ -565,6 +582,44 @@ func resolveResourceFromServiceOffering(offerings *openapiclientv1.DescribeServi
 
 func matchesIDOrName(id, name, arg string) bool {
 	return strings.EqualFold(id, arg) || strings.EqualFold(name, arg)
+}
+
+// selectOfferingForEnvironment picks the offering that belongs to the requested service
+// environment and product tier. The fleet DescribeServiceOffering API only filters by
+// product tier and version, so a product tier promoted to several environments comes back
+// as one offering per environment. Picking the first offering blindly would deploy the
+// instance into whichever environment the platform happened to list first.
+func selectOfferingForEnvironment(
+	offerings []openapiclientfleet.ServiceOffering,
+	environmentID string,
+	productTierID string,
+) (*openapiclientfleet.ServiceOffering, error) {
+	if len(offerings) == 0 {
+		return nil, errors.New("no service offerings found for the target service plan")
+	}
+
+	for i := range offerings {
+		offering := &offerings[i]
+		if !strings.EqualFold(offering.ServiceEnvironmentID, environmentID) {
+			continue
+		}
+		if productTierID != "" && !strings.EqualFold(offering.ProductTierID, productTierID) {
+			continue
+		}
+		return offering, nil
+	}
+
+	available := make([]string, 0, len(offerings))
+	for _, offering := range offerings {
+		available = append(available, fmt.Sprintf("%s (%s)", offering.ServiceEnvironmentName, offering.ServiceEnvironmentID))
+	}
+
+	return nil, fmt.Errorf(
+		"service plan %s is not available in environment %s. The requested version may not be promoted to that environment. Available environments for this version: %s",
+		productTierID,
+		environmentID,
+		strings.Join(available, ", "),
+	)
 }
 
 func formatInstance(instance *openapiclientfleet.ResourceInstanceSearchRecord, truncateNames bool) model.Instance {

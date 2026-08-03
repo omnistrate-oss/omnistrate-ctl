@@ -3,11 +3,11 @@ package dataaccess
 import (
 	"bufio"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
 	"net/http/httputil"
-	"net/url"
 	"os"
 	stdregexp "regexp"
 	"strings"
@@ -82,6 +82,11 @@ var (
 	// Use regex to find H headings
 	h2Regex *stdregexp.Regexp
 	h3Regex *stdregexp.Regexp
+	// Anchor slug generation, mirroring the MkDocs table-of-contents slugifier
+	slugStripRegex     *stdregexp.Regexp
+	slugSeparatorRegex *stdregexp.Regexp
+	// Inline markdown emphasis that headings carry but tag names should not
+	headerMarkupRegex *stdregexp.Regexp
 
 	fetchDocumentationContent = fetchContentFromURL
 )
@@ -89,6 +94,90 @@ var (
 func init() {
 	h2Regex = stdregexp.MustCompile(`(?m)^## (.+)$`)
 	h3Regex = stdregexp.MustCompile(`(?m)^### (.+)$`)
+	slugStripRegex = stdregexp.MustCompile(`[^\p{L}\p{N}_\s-]`)
+	slugSeparatorRegex = stdregexp.MustCompile(`[-\s]+`)
+	headerMarkupRegex = stdregexp.MustCompile("[`*]")
+}
+
+// cleanHeaderText strips the inline markdown emphasis that documentation headings
+// use for code spans, so a tag reads as "Compute schema" rather than "`Compute schema`".
+// Underscores are left alone because tag names such as cap_add and
+// features.CUSTOM_NETWORKS depend on them.
+func cleanHeaderText(header string) string {
+	return strings.TrimSpace(headerMarkupRegex.ReplaceAllString(header, ""))
+}
+
+// slugifyHeader converts a markdown heading into the anchor MkDocs generates for it,
+// so the URLs returned alongside each tag actually resolve. This mirrors
+// Python-Markdown's slugify: drop every character that is not a letter, number,
+// underscore, whitespace or hyphen, lowercase the result, then collapse runs of
+// whitespace and hyphens into a single hyphen.
+func slugifyHeader(header string) string {
+	slug := slugStripRegex.ReplaceAllString(header, "")
+	slug = strings.ToLower(strings.TrimSpace(slug))
+	return slugSeparatorRegex.ReplaceAllString(slug, "-")
+}
+
+// sectionURL builds the deep link to a documentation section from the page URL that
+// the section was parsed out of.
+func sectionURL(pageURL, header string) string {
+	return strings.TrimSuffix(pageURL, "index.md") + "#" + slugifyHeader(header)
+}
+
+// matchesTag reports whether a section heading satisfies the user-supplied tag.
+// Headings are matched on their cleaned text so that a tag copied from the tag
+// listing works, on their anchor slug so that a tag copied from a docs URL works
+// too, and finally through docHeadingAliases so that the spelling used in an actual
+// spec finds a heading that spells it differently.
+func matchesTag(header, tag string) bool {
+	if matchesTagLiteral(header, tag) {
+		return true
+	}
+	if alias, ok := docHeadingAliases[strings.ToLower(cleanHeaderText(tag))]; ok {
+		return matchesTagLiteral(header, alias)
+	}
+	return false
+}
+
+func matchesTagLiteral(header, tag string) bool {
+	if strings.Contains(strings.ToLower(cleanHeaderText(header)), strings.ToLower(cleanHeaderText(tag))) {
+		return true
+	}
+	slug := slugifyHeader(tag)
+	return slug != "" && strings.Contains(slugifyHeader(header), slug)
+}
+
+// fetchSpecSections fetches the first candidate URL that still carries an H3 tag
+// reference and returns that URL along with its parsed sections. Candidates are
+// tried in order so a relocated docs page degrades to the next known location
+// instead of failing outright.
+func fetchSpecSections(specName string, candidateURLs []string) (string, []MarkupSection, error) {
+	var errs []error
+
+	for _, candidate := range candidateURLs {
+		content, err := fetchDocumentationContent(candidate)
+		if err != nil {
+			errs = append(errs, fmt.Errorf("%s: %w", candidate, err))
+			continue
+		}
+
+		sections, err := ParseH3Sections(content)
+		if err != nil {
+			errs = append(errs, fmt.Errorf("%s: %w", candidate, err))
+			continue
+		}
+
+		if len(sections) == 0 {
+			// A stub page left behind after the reference moved elsewhere.
+			log.Debug().Str("url", candidate).Msgf("No %s tag information at this location, trying next", specName)
+			errs = append(errs, fmt.Errorf("%s: no tag information found", candidate))
+			continue
+		}
+
+		return candidate, sections, nil
+	}
+
+	return "", nil, fmt.Errorf("no tag information found in the %s documentation: %w", specName, errors.Join(errs...))
 }
 
 func PerformDocumentationSearch(query string, limit int) ([]DocumentationResult, error) {
@@ -340,7 +429,7 @@ func parseDocumentationContentForIndexing(body string) ([]Document, error) {
 								Section:     currentSection,
 								Title:       title,
 								Description: description,
-								URL:         strings.TrimSuffix(docUrl, "index.md") + "#" + url.QueryEscape(strings.ReplaceAll(strings.ToLower(h2section.Header), " ", "-")),
+								URL:         sectionURL(docUrl, h2section.Header),
 								Subtitle:    h2section.Header,
 								Content:     h2section.Content,
 							}
@@ -636,35 +725,20 @@ func SearchComposeSpecSections(tag string) ([]ComposeSpecResult, error) {
 		return []ComposeSpecResult{}, nil
 	}
 
-	// Get the compose spec URL from config
-	composeSpecURL := config.GetComposeSpecUrl()
-
-	// Fetch content from the compose spec documentation
-	content, err := fetchDocumentationContent(composeSpecURL)
+	composeSpecURL, h3Sections, err := fetchSpecSections(composeSpecName, config.GetComposeSpecUrls())
 	if err != nil {
-		return nil, fmt.Errorf("failed to fetch compose spec documentation: %w", err)
-	}
-
-	// Parse H3 headers and their content
-	h3Sections, err := ParseH3Sections(content)
-	if err != nil {
-		return nil, fmt.Errorf("failed to parse tag information: %w", err)
-	}
-
-	if len(h3Sections) == 0 {
-		return nil, fmt.Errorf("no tag information found in the compose spec documentation")
+		return nil, err
 	}
 
 	var results []ComposeSpecResult
 
 	// Tag provided, filter results
-	lowerTag := strings.ToLower(tag)
 	for _, section := range h3Sections {
-		if strings.Contains(strings.ToLower(section.Header), lowerTag) {
+		if matchesTag(section.Header, tag) {
 			results = append(results, ComposeSpecResult{
-				Tag:     section.Header,
+				Tag:     cleanHeaderText(section.Header),
 				Content: section.Content,
-				URL:     strings.TrimSuffix(composeSpecURL, "index.md") + "#" + url.QueryEscape(strings.ReplaceAll(strings.ToLower(section.Header), " ", "-")),
+				URL:     sectionURL(composeSpecURL, section.Header),
 			})
 		}
 	}
@@ -693,29 +767,15 @@ func GetJSONSchema(ctx context.Context, schemaType string) (interface{}, error) 
 
 // ListComposeSpecSections retrieves all compose spec tag sections
 func ListComposeSpecSections() ([]ComposeSpecAvailableTag, error) {
-	// Get the compose spec URL from config
-	composeSpecURL := config.GetComposeSpecUrl()
-
-	// Fetch content from the compose spec documentation
-	content, err := fetchDocumentationContent(composeSpecURL)
+	_, h3Sections, err := fetchSpecSections(composeSpecName, config.GetComposeSpecUrls())
 	if err != nil {
-		return nil, fmt.Errorf("failed to fetch compose spec documentation: %w", err)
-	}
-
-	// Parse H3 headers and their content
-	h3Sections, err := ParseH3Sections(content)
-	if err != nil {
-		return nil, fmt.Errorf("failed to parse tag information: %w", err)
-	}
-
-	if len(h3Sections) == 0 {
-		return nil, fmt.Errorf("no tag information found in the compose spec documentation")
+		return nil, err
 	}
 
 	var results []ComposeSpecAvailableTag
 	for _, section := range h3Sections {
 		results = append(results, ComposeSpecAvailableTag{
-			AvailableTag: section.Header,
+			AvailableTag: cleanHeaderText(section.Header),
 		})
 	}
 	return results, nil
@@ -761,30 +821,18 @@ func SearchPlanSpecSections(tag string) ([]PlanSpecResult, error) {
 		return []PlanSpecResult{}, nil
 	}
 
-	planSpecURL := config.GetPlanSpecUrl()
-
-	content, err := fetchDocumentationContent(planSpecURL)
+	planSpecURL, h3Sections, err := fetchSpecSections(planSpecName, config.GetPlanSpecUrls())
 	if err != nil {
-		return nil, fmt.Errorf("failed to fetch plan spec documentation: %w", err)
-	}
-
-	h3Sections, err := ParseH3Sections(content)
-	if err != nil {
-		return nil, fmt.Errorf("failed to parse tag information: %w", err)
-	}
-
-	if len(h3Sections) == 0 {
-		return nil, fmt.Errorf("no tag information found in the plan spec documentation")
+		return nil, err
 	}
 
 	var results []PlanSpecResult
-	lowerTag := strings.ToLower(tag)
 	for _, section := range h3Sections {
-		if strings.Contains(strings.ToLower(section.Header), lowerTag) {
+		if matchesTag(section.Header, tag) {
 			results = append(results, PlanSpecResult{
-				Tag:     section.Header,
+				Tag:     cleanHeaderText(section.Header),
 				Content: section.Content,
-				URL:     strings.TrimSuffix(planSpecURL, "index.md") + "#" + url.QueryEscape(strings.ReplaceAll(strings.ToLower(section.Header), " ", "-")),
+				URL:     sectionURL(planSpecURL, section.Header),
 			})
 		}
 	}
@@ -793,26 +841,15 @@ func SearchPlanSpecSections(tag string) ([]PlanSpecResult, error) {
 
 // ListPlanSpecSections retrieves all plan spec tag sections
 func ListPlanSpecSections() ([]PlanSpecAvailableTag, error) {
-	planSpecURL := config.GetPlanSpecUrl()
-
-	content, err := fetchDocumentationContent(planSpecURL)
+	_, h3Sections, err := fetchSpecSections(planSpecName, config.GetPlanSpecUrls())
 	if err != nil {
-		return nil, fmt.Errorf("failed to fetch plan spec documentation: %w", err)
-	}
-
-	h3Sections, err := ParseH3Sections(content)
-	if err != nil {
-		return nil, fmt.Errorf("failed to parse tag information: %w", err)
-	}
-
-	if len(h3Sections) == 0 {
-		return nil, fmt.Errorf("no tag information found in the plan spec documentation")
+		return nil, err
 	}
 
 	var results []PlanSpecAvailableTag
 	for _, section := range h3Sections {
 		results = append(results, PlanSpecAvailableTag{
-			AvailableTag: section.Header,
+			AvailableTag: cleanHeaderText(section.Header),
 		})
 	}
 	return results, nil

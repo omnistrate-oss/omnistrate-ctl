@@ -190,14 +190,6 @@ func runDescribe(cmd *cobra.Command, args []string) error {
 		instance = filteredInstance
 	}
 
-	// Replace the kubectl config instructions with the omnistrate-ctl update-kubeconfig for better MCP reference
-	if instance.DeploymentCellID != nil {
-		instance.InstanceDebugCommands = []string{
-			fmt.Sprintf("omnistrate-ctl deployment-cell update-kubeconfig %s --role cluster-admin --kubeconfig /tmp/kubeconfig", *instance.DeploymentCellID),
-			fmt.Sprintf("KUBECONFIG=/tmp/kubeconfig kubectl get pods -n instance-%s", *instance.ConsumptionResourceInstanceResult.Id),
-		}
-	}
-
 	// Print full instance output
 	err = utils.PrintTextTableJsonOutput(output, instance)
 	if err != nil {

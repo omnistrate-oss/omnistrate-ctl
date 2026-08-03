@@ -23,7 +23,8 @@ func TestSystemParametersCommandFlags(t *testing.T) {
 	outputFlag := cmd.Flags().Lookup("output")
 	require.NotNil(t, outputFlag, "Expected flag 'output' not found")
 	require.Equal(t, "o", outputFlag.Shorthand)
-	require.Equal(t, "table", outputFlag.DefValue)
+	// A JSON schema has no table representation, so json is the default.
+	require.Equal(t, "json", outputFlag.DefValue)
 }
 
 func TestSystemParametersExample(t *testing.T) {

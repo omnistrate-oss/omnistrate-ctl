@@ -13,14 +13,17 @@ omnistrate-ctl docs plan-spec [tag] [flags]
 ### Examples
 
 ```
-# List all H3 headers in the plan spec documentation with JSON output
-omnistrate-ctl docs plan-spec --output json
+# List every section of the plan spec documentation
+omnistrate-ctl docs plan-spec
 
-# Search for a specific tag with JSON output
+# Read one section (full text, markdown tables preserved)
+omnistrate-ctl docs plan-spec "Root schema"
+
+# Read a section as JSON, for scripting
 omnistrate-ctl docs plan-spec "compute" --output json
 
-# Search for specific schema tags with JSON output
-omnistrate-ctl docs plan-spec "helm chart configuration" --output json
+# Get the JSON schema that defines a section
+omnistrate-ctl docs plan-spec "helm chart configuration" --json-schema-only
 
 ```
 
@@ -28,8 +31,8 @@ omnistrate-ctl docs plan-spec "helm chart configuration" --output json
 
 ```
   -h, --help               help for plan-spec
-      --json-schema-only   Return only the JSON schema for the specified tag
-  -o, --output string      Output format (table|json) (default "table")
+      --json-schema-only   Return only the JSON schema covering the specified tag. Plan spec tags are definitions within the ServicePlanSpec schema, so this returns that schema; use 'docs json-schema' to request a schema type directly
+  -o, --output string      Output format (markdown|json|table|text). markdown preserves the full section text; table truncates it to one line per row (default "markdown")
 ```
 
 ### Options inherited from parent commands

@@ -25,7 +25,7 @@ omnistrate-ctl docs system-parameters --output json
 
 ```
   -h, --help            help for system-parameters
-  -o, --output string   Output format (table|json) (default "table")
+  -o, --output string   Output format (json|markdown|table|text). json is the default because a JSON schema cannot be represented as a table (default "json")
 ```
 
 ### Options inherited from parent commands
