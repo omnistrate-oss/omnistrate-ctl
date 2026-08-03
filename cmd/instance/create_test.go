@@ -406,6 +406,72 @@ func TestResolveResourceFromServiceOffering_DeduplicatesSameResourceAcrossOfferi
 	assert.Equal(t, "r-target-mysql", resourceID)
 }
 
+func TestSelectOfferingForEnvironment_PicksRequestedEnvironmentNotFirstOffering(t *testing.T) {
+	offerings := []openapiclientfleet.ServiceOffering{
+		{
+			ServiceEnvironmentID:     "se-dev",
+			ServiceEnvironmentName:   "Dev",
+			ServiceEnvironmentURLKey: "dev",
+			ProductTierID:            "pt-byoa",
+		},
+		{
+			ServiceEnvironmentID:     "se-prod",
+			ServiceEnvironmentName:   "Production",
+			ServiceEnvironmentURLKey: "prod",
+			ProductTierID:            "pt-byoa",
+		},
+	}
+
+	offering, err := selectOfferingForEnvironment(offerings, "se-prod", "pt-byoa")
+
+	require.NoError(t, err)
+	assert.Equal(t, "prod", offering.ServiceEnvironmentURLKey)
+}
+
+func TestSelectOfferingForEnvironment_MatchesProductTierWithinEnvironment(t *testing.T) {
+	offerings := []openapiclientfleet.ServiceOffering{
+		{
+			ServiceEnvironmentID:     "se-prod",
+			ServiceEnvironmentURLKey: "prod",
+			ProductTierID:            "pt-hosted",
+			ProductTierURLKey:        "hosted",
+		},
+		{
+			ServiceEnvironmentID:     "se-prod",
+			ServiceEnvironmentURLKey: "prod",
+			ProductTierID:            "pt-byoa",
+			ProductTierURLKey:        "byoa",
+		},
+	}
+
+	offering, err := selectOfferingForEnvironment(offerings, "se-prod", "pt-byoa")
+
+	require.NoError(t, err)
+	assert.Equal(t, "byoa", offering.ProductTierURLKey)
+}
+
+func TestSelectOfferingForEnvironment_ErrorsWhenEnvironmentMissing(t *testing.T) {
+	offerings := []openapiclientfleet.ServiceOffering{
+		{
+			ServiceEnvironmentID:     "se-dev",
+			ServiceEnvironmentURLKey: "dev",
+			ProductTierID:            "pt-byoa",
+		},
+	}
+
+	_, err := selectOfferingForEnvironment(offerings, "se-prod", "pt-byoa")
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "se-prod")
+}
+
+func TestSelectOfferingForEnvironment_ErrorsOnEmptyOfferings(t *testing.T) {
+	_, err := selectOfferingForEnvironment(nil, "se-prod", "pt-byoa")
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "no service offerings")
+}
+
 func servicesFixture(services ...openapiclientv1.DescribeServiceResult) *openapiclientv1.ListServiceResult {
 	return &openapiclientv1.ListServiceResult{
 		Ids:      []string{},
