@@ -97,4 +97,5 @@ omnistrate-ctl build --image docker.io/namespace/my-image:v1.2 --product-name "M
 ### SEE ALSO
 
 * [omnistrate-ctl](omnistrate-ctl.md)	 - Manage your Omnistrate SaaS from the command line
+* [omnistrate-ctl build delete-deprecated-resource](omnistrate-ctl_build_delete-deprecated-resource.md)	 - Delete a deprecated resource
 

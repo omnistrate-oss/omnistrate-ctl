@@ -63,3 +63,27 @@ func ListResources(ctx context.Context, token, serviceID string, productTierID s
 	}
 	return
 }
+
+func DeleteResource(ctx context.Context, token, serviceID, resourceID string, dryRun bool) (err error) {
+	ctxWithToken := context.WithValue(ctx, openapiclient.ContextAccessToken, token)
+	apiClient := getV1Client()
+
+	req := apiClient.ResourceApiAPI.ResourceApiDeleteResource(
+		ctxWithToken,
+		serviceID,
+		resourceID,
+	).DryRun(dryRun)
+
+	var r *http.Response
+	defer func() {
+		if r != nil {
+			_ = r.Body.Close()
+		}
+	}()
+
+	r, err = req.Execute()
+	if err != nil {
+		return handleV1Error(err)
+	}
+	return nil
+}
