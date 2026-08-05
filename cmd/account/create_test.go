@@ -230,19 +230,25 @@ func TestPrivateLinkFlagParsing(t *testing.T) {
 	cmd := &cobra.Command{}
 	addCloudAccountProviderFlags(cmd)
 	cmd.Flags().Bool(privateLinkFlag, false, "")
-	cmd.Flags().Bool(allowCreateNewFlag, false, "")
+	cmd.Flags().Bool(allowCreateNewFlag, true, "")
 
-	// Default is false
 	require.NoError(t, cmd.Flags().Set(awsAccountIDFlag, "123456789012"))
 	params, err := cloudAccountParamsFromFlags(cmd, "test-account")
 	require.NoError(t, err)
 	assert.False(t, params.PrivateLink)
+	assert.True(t, params.AllowCreateNew)
 
-	// Set to true
 	require.NoError(t, cmd.Flags().Set(privateLinkFlag, "true"))
+	require.NoError(t, cmd.Flags().Set(allowCreateNewFlag, "true"))
 	params, err = cloudAccountParamsFromFlags(cmd, "test-account")
 	require.NoError(t, err)
 	assert.True(t, params.PrivateLink)
+	assert.True(t, params.AllowCreateNew)
+
+	require.NoError(t, cmd.Flags().Set(allowCreateNewFlag, "false"))
+	params, err = cloudAccountParamsFromFlags(cmd, "test-account")
+	require.NoError(t, err)
+	assert.False(t, params.AllowCreateNew)
 }
 
 func TestPrivateLinkFlagRegistered(t *testing.T) {
