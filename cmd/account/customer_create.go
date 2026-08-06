@@ -122,7 +122,7 @@ func init() {
 
 	addCustomerAccountProviderFlags(customerCreateCmd)
 	customerCreateCmd.Flags().Bool(privateLinkFlag, false, "Enable AWS PrivateLink connectivity for services deployed in this account")
-	customerCreateCmd.Flags().Bool(allowCreateNewFlag, false, "Allow the platform to create new cloud-native networks in this account on demand")
+	customerCreateCmd.Flags().Bool(allowCreateNewFlag, true, "Allow Omnistrate to create cloud-native networks in this account")
 	customerCreateCmd.Flags().StringSlice(cloudNativeNetworksFlag, nil, "Cloud-native networks to sync and import after account creation (format: region:network-id, e.g. us-east-1:vpc-abc123)")
 
 	customerCreateCmd.Flags().String("service", "", "Service name or ID")
@@ -699,7 +699,8 @@ func buildCustomerAccountRequestParamsWithDerivedValues(
 		return nil
 	}
 
-	switch requestedCloudProvider(params) {
+	cloudProvider := requestedCloudProvider(params)
+	switch cloudProvider {
 	case "aws":
 		if err := setParam(customerAccountIacToolName, "CloudFormation"); err != nil {
 			return nil, err
@@ -772,13 +773,14 @@ func buildCustomerAccountRequestParamsWithDerivedValues(
 		return nil
 	}
 
-	if params.PrivateLink {
-		if err := setOptionalParam(customerAccountPrivateLinkName, true); err != nil {
+	if cloudProvider == "aws" {
+		if err := setOptionalParam(customerAccountPrivateLinkName, params.PrivateLink); err != nil {
 			return nil, err
 		}
 	}
-	if params.AllowCreateNew {
-		if err := setOptionalParam(customerAccountAllowCreateNewName, true); err != nil {
+
+	if cloudProvider != "byoc-onprem" {
+		if err := setOptionalParam(customerAccountAllowCreateNewName, params.AllowCreateNew); err != nil {
 			return nil, err
 		}
 	}
