@@ -19,7 +19,11 @@ func TestResourceDeleteNestedCommandRegistered(t *testing.T) {
 	require.NotNil(t, serviceIDFlag)
 	require.Equal(t, "", serviceIDFlag.DefValue)
 
-	resourceIDFlag := resourceDeleteCmd.Flags().Lookup("id")
+	serviceNameFlag := resourceDeleteCmd.Flags().Lookup("service-name")
+	require.NotNil(t, serviceNameFlag)
+	require.Equal(t, "", serviceNameFlag.DefValue)
+
+	resourceIDFlag := resourceDeleteCmd.Flags().Lookup("resource-id")
 	require.NotNil(t, resourceIDFlag)
 	require.Equal(t, "", resourceIDFlag.DefValue)
 
@@ -36,15 +40,15 @@ func TestNormalizeServiceResourceDeleteArgs(t *testing.T) {
 		wantRewrote bool
 	}{
 		{
-			name:        "rewrites positional service ID resource delete",
-			args:        []string{"service-id", "resource", "delete", "--id", "resource-id"},
-			wantArgs:    []string{"resource", "delete", "--service-id", "service-id", "--id", "resource-id"},
+			name:        "rewrites positional service name or ID resource delete",
+			args:        []string{"service-selector", "resource", "delete", "--resource-id", "resource-id"},
+			wantArgs:    []string{"resource", "delete", "--service-name", "service-selector", "--resource-id", "resource-id"},
 			wantRewrote: true,
 		},
 		{
 			name:        "preserves canonical resource delete",
-			args:        []string{"resource", "delete", "--service-id", "service-id", "--id", "resource-id"},
-			wantArgs:    []string{"resource", "delete", "--service-id", "service-id", "--id", "resource-id"},
+			args:        []string{"resource", "delete", "--service-id", "service-id", "--resource-id", "resource-id"},
+			wantArgs:    []string{"resource", "delete", "--service-id", "service-id", "--resource-id", "resource-id"},
 			wantRewrote: false,
 		},
 		{
@@ -68,19 +72,32 @@ func TestNormalizeServiceResourceDeleteArgs(t *testing.T) {
 func TestValidateResourceDeleteArguments(t *testing.T) {
 	tests := []struct {
 		name        string
+		serviceName string
 		serviceID   string
 		resourceID  string
 		expectedErr string
 	}{
 		{
-			name:       "valid",
+			name:       "valid with service ID",
 			serviceID:  "service-id",
 			resourceID: "resource-id",
 		},
 		{
-			name:        "missing service ID",
+			name:        "valid with service name",
+			serviceName: "service-name",
 			resourceID:  "resource-id",
-			expectedErr: "service ID must be provided",
+		},
+		{
+			name:        "missing service name or ID",
+			resourceID:  "resource-id",
+			expectedErr: "service name or ID must be provided",
+		},
+		{
+			name:        "both service name and ID",
+			serviceName: "service-name",
+			serviceID:   "service-id",
+			resourceID:  "resource-id",
+			expectedErr: "only one of service name or ID can be provided",
 		},
 		{
 			name:        "missing resource ID",
@@ -91,7 +108,7 @@ func TestValidateResourceDeleteArguments(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			err := validateResourceDeleteArguments(tt.serviceID, tt.resourceID)
+			err := validateResourceDeleteArguments(tt.serviceName, tt.serviceID, tt.resourceID)
 			if tt.expectedErr == "" {
 				require.NoError(t, err)
 				return
@@ -102,12 +119,12 @@ func TestValidateResourceDeleteArguments(t *testing.T) {
 }
 
 func TestParseServiceResourceDeletePath(t *testing.T) {
-	serviceID, resourceID, dryRun, output, err := parseServiceResourceDeletePath([]string{
+	serviceName, serviceID, resourceID, dryRun, output, err := parseServiceResourceDeletePath([]string{
 		"resource",
 		"delete",
-		"--service-id",
-		"service-id",
-		"--id",
+		"--service-name",
+		"service-selector",
+		"--resource-id",
 		"resource-id",
 		"--dry-run",
 		"--output",
@@ -115,7 +132,8 @@ func TestParseServiceResourceDeletePath(t *testing.T) {
 	})
 
 	require.NoError(t, err)
-	require.Equal(t, "service-id", serviceID)
+	require.Equal(t, "service-selector", serviceName)
+	require.Empty(t, serviceID)
 	require.Equal(t, "resource-id", resourceID)
 	require.True(t, dryRun)
 	require.Equal(t, "json", output)
@@ -123,7 +141,7 @@ func TestParseServiceResourceDeletePath(t *testing.T) {
 
 func TestRunServiceResourceDeletePathHelp(t *testing.T) {
 	handled, err := runServiceResourceDeletePath(Cmd, []string{
-		"service-id",
+		"service-name",
 		"resource",
 		"delete",
 		"--help",
