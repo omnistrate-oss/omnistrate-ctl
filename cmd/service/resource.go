@@ -1,8 +1,6 @@
 package service
 
 import (
-	"context"
-
 	"github.com/omnistrate-oss/omnistrate-ctl/cmd/common"
 	"github.com/omnistrate-oss/omnistrate-ctl/internal/config"
 	"github.com/omnistrate-oss/omnistrate-ctl/internal/dataaccess"
@@ -90,7 +88,7 @@ func runResourceDelete(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	return deleteResource(cmd.Context(), serviceName, serviceID, resourceID, dryRun, output)
+	return runResourceDeleteWithOptions(cmd, serviceName, serviceID, resourceID, dryRun, output)
 }
 
 func runServiceResourceDeletePath(cmd *cobra.Command, args []string) (bool, error) {
@@ -113,7 +111,7 @@ func runServiceResourceDeletePath(cmd *cobra.Command, args []string) (bool, erro
 		output, _ = cmd.Flags().GetString("output")
 	}
 
-	return true, deleteResource(cmd.Context(), serviceName, serviceID, resourceID, dryRun, output)
+	return true, runResourceDeleteWithOptions(cmd, serviceName, serviceID, resourceID, dryRun, output)
 }
 
 func hasHelpFlag(args []string) bool {
@@ -202,25 +200,21 @@ func validateResourceDeleteArguments(serviceName, serviceID, resourceID string) 
 	return nil
 }
 
-func deleteResource(ctx context.Context, serviceName, serviceID, resourceID string, dryRun bool, output string) error {
+func runResourceDeleteWithOptions(cmd *cobra.Command, serviceName, serviceID, resourceID string, dryRun bool, output string) error {
 	err := validateResourceDeleteArguments(serviceName, serviceID, resourceID)
 	if err != nil {
 		utils.PrintError(err)
 		return err
 	}
 
+	// Validate user login
 	token, err := common.GetTokenWithLogin()
 	if err != nil {
 		utils.PrintError(err)
 		return err
 	}
 
-	serviceID, err = getService(ctx, token, serviceName, serviceID)
-	if err != nil {
-		utils.PrintError(err)
-		return err
-	}
-
+	// Initialize spinner if output is not JSON
 	var sm utils.SpinnerManager
 	var spinner *utils.Spinner
 	if output != "json" {
@@ -229,7 +223,15 @@ func deleteResource(ctx context.Context, serviceName, serviceID, resourceID stri
 		sm.Start()
 	}
 
-	err = dataaccess.DeleteResource(ctx, token, serviceID, resourceID, dryRun)
+	// Check if service exists
+	serviceID, err = getService(cmd.Context(), token, serviceName, serviceID)
+	if err != nil {
+		utils.HandleSpinnerError(spinner, sm, err)
+		return err
+	}
+
+	// Delete resource
+	err = dataaccess.DeleteResource(cmd.Context(), token, serviceID, resourceID, dryRun)
 	if err != nil {
 		utils.HandleSpinnerError(spinner, sm, err)
 		return err
