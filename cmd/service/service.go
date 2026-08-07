@@ -10,20 +10,22 @@ var Cmd = &cobra.Command{
 	Short: "Manage Services for your account",
 	Long: `This command helps you manage the services for your account.
 You can delete, describe, and get services.`,
-	Run:          run,
-	SilenceUsage: true,
+	RunE:               run,
+	DisableFlagParsing: true,
+	SilenceUsage:       true,
 }
 
 func init() {
 	Cmd.AddCommand(describeCmd)
 	Cmd.AddCommand(deleteCmd)
 	Cmd.AddCommand(listCmd)
+	Cmd.AddCommand(newResourceCmd())
 	Cmd.AddCommand(serviceplan.NewNestedCommand())
 }
 
-func run(cmd *cobra.Command, args []string) {
-	err := cmd.Help()
-	if err != nil {
-		return
+func run(cmd *cobra.Command, args []string) error {
+	if handled, err := runServiceResourceDeletePath(cmd, args); handled || err != nil {
+		return err
 	}
+	return cmd.Help()
 }
