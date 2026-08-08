@@ -35,7 +35,7 @@ func Test_service_resource_delete_removed_resource(t *testing.T) {
 	cmd.RootCmd.SetArgs([]string{
 		"build",
 		"-f",
-		"../composefiles/variations/mysqlcluster_original.yaml",
+		"../composefiles/mysqlcluster.yaml",
 		"--name",
 		serviceName,
 		"--description",
