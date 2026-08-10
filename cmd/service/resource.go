@@ -103,7 +103,7 @@ func runResourceDeleteWithOptions(cmd *cobra.Command, serviceID, resourceID, out
 	}
 
 	// Check if service exists
-	serviceID, err = getService(cmd.Context(), token, "", serviceID)
+	_, err = dataaccess.DescribeService(cmd.Context(), token, serviceID)
 	if err != nil {
 		utils.HandleSpinnerError(spinner, sm, err)
 		return err
