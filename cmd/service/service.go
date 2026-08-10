@@ -10,7 +10,8 @@ var Cmd = &cobra.Command{
 	Short: "Manage Services for your account",
 	Long: `This command helps you manage the services for your account.
 You can delete, describe, and get services.`,
-	Run: run,
+	RunE:         run,
+	SilenceUsage: true,
 }
 
 func init() {
@@ -21,6 +22,6 @@ func init() {
 	Cmd.AddCommand(serviceplan.NewNestedCommand())
 }
 
-func run(cmd *cobra.Command, args []string) {
-	_ = cmd.Help()
+func run(cmd *cobra.Command, args []string) error {
+	return cmd.Help()
 }
