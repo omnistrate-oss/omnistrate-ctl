@@ -72,9 +72,10 @@ func Test_service_resource_delete_removed_resource(t *testing.T) {
 
 	cmd.RootCmd.SetArgs([]string{
 		"service",
-		serviceName,
 		"resource",
 		"delete",
+		"--service-id",
+		serviceID,
 		"--resource-id",
 		removedResourceID,
 		"--output",
