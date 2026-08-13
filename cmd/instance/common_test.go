@@ -142,6 +142,17 @@ func TestParseCustomTags(t *testing.T) {
 			expectedSet: true,
 			expectError: false,
 		},
+		{
+			name:     "tag value can contain escaped commas",
+			tagsFlag: `allowed_source_ranges=137.83.246.111/32\,1.2.3.4/32,env=prod`,
+			flagSet:  true,
+			expectedTags: []openapiclientfleet.CustomTag{
+				{Key: "allowed_source_ranges", Value: "137.83.246.111/32,1.2.3.4/32"},
+				{Key: "env", Value: "prod"},
+			},
+			expectedSet: true,
+			expectError: false,
+		},
 	}
 
 	for _, tt := range tests {

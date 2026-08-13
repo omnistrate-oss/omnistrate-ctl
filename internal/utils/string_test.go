@@ -227,3 +227,50 @@ func TestCutString(t *testing.T) {
 		})
 	}
 }
+
+func TestSplitEscapedCommaSeparatedList(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name  string
+		input string
+		want  []string
+	}{
+		{
+			name:  "multiple values",
+			input: "env=prod,team=platform",
+			want:  []string{"env=prod", "team=platform"},
+		},
+		{
+			name:  "escaped comma stays in value",
+			input: `allowed_source_ranges=137.83.246.111/32\,1.2.3.4/32,env=prod`,
+			want:  []string{"allowed_source_ranges=137.83.246.111/32,1.2.3.4/32", "env=prod"},
+		},
+		{
+			name:  "empty segment preserved",
+			input: "env=prod,,team=platform",
+			want:  []string{"env=prod", "", "team=platform"},
+		},
+		{
+			name:  "backslash before non special character is preserved",
+			input: `path=C:\tmp,env=prod`,
+			want:  []string{`path=C:\tmp`, "env=prod"},
+		},
+		{
+			name:  "escaped backslash",
+			input: `path=C:\\tmp,env=prod`,
+			want:  []string{`path=C:\tmp`, "env=prod"},
+		},
+		{
+			name:  "trailing backslash is preserved",
+			input: `path=C:\`,
+			want:  []string{`path=C:\`},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			require.Equal(t, tt.want, SplitEscapedCommaSeparatedList(tt.input))
+		})
+	}
+}

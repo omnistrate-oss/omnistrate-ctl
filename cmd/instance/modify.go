@@ -39,7 +39,7 @@ func init() {
 	modifyCmd.Flags().String("network-type", "", "Optional network type change for the instance deployment (PUBLIC / INTERNAL)")
 	modifyCmd.Flags().String("param", "", "Parameters for the instance deployment")
 	modifyCmd.Flags().String("param-file", "", "Json file containing parameters for the instance deployment")
-	modifyCmd.Flags().String("tags", "", "Custom tags to set on the instance deployment (format: key=value,key2=value2)")
+	modifyCmd.Flags().String("tags", "", `Custom tags to set on the instance deployment (format: key=value,key2=value2). Escape commas inside values with \,`)
 	modifyCmd.Flags().Bool("wait", false, "Wait for modification to complete and show progress")
 
 	if err := modifyCmd.MarkFlagFilename("param-file"); err != nil {

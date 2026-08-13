@@ -32,7 +32,7 @@ func init() {
 	customerUpdateCmd.Flags().String("name", "", "Updated backing account name")
 	customerUpdateCmd.Flags().String("description", "", "Updated backing account description")
 	customerUpdateCmd.Flags().String("nebius-bindings-file", "", "Path to a YAML file describing the full replacement Nebius bindings")
-	customerUpdateCmd.Flags().String(tagsFlag, "", "Full replacement set of custom tags for the backing account in key=value format, separated by commas (e.g. env=prod,team=platform)")
+	customerUpdateCmd.Flags().String(tagsFlag, "", `Full replacement set of custom tags for the backing account in key=value format, separated by commas (e.g. env=prod,team=platform). Escape commas inside values with \,`)
 	customerUpdateCmd.Flags().Bool("skip-wait", false, "Skip waiting for the backing account to become READY after replacing Nebius bindings")
 	_ = customerUpdateCmd.MarkFlagFilename("nebius-bindings-file")
 }

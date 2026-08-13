@@ -36,7 +36,7 @@ func init() {
 	updateCmd.Flags().String("name", "", "Updated account name")
 	updateCmd.Flags().String("description", "", "Updated account description")
 	updateCmd.Flags().String("nebius-bindings-file", "", "Path to a YAML file describing the full replacement Nebius bindings")
-	updateCmd.Flags().String(tagsFlag, "", "Full replacement set of custom tags for the account in key=value format, separated by commas (e.g. env=prod,team=platform)")
+	updateCmd.Flags().String(tagsFlag, "", `Full replacement set of custom tags for the account in key=value format, separated by commas (e.g. env=prod,team=platform). Escape commas inside values with \,`)
 	updateCmd.Flags().Bool("skip-wait", false, "Skip waiting for account to become READY after replacing Nebius bindings")
 	_ = updateCmd.MarkFlagFilename("nebius-bindings-file")
 }

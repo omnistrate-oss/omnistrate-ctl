@@ -5,6 +5,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/omnistrate-oss/omnistrate-ctl/internal/utils"
 	openapiclientfleet "github.com/omnistrate-oss/omnistrate-sdk-go/fleet"
 	"github.com/spf13/cobra"
 )
@@ -35,7 +36,7 @@ func parseCustomTags(cmd *cobra.Command) ([]openapiclientfleet.CustomTag, bool, 
 		return []openapiclientfleet.CustomTag{}, true, nil
 	}
 
-	rawPairs := strings.Split(trimmed, ",")
+	rawPairs := utils.SplitEscapedCommaSeparatedList(trimmed)
 	tags := make([]openapiclientfleet.CustomTag, 0, len(rawPairs))
 	for _, rawPair := range rawPairs {
 		pair := strings.TrimSpace(rawPair)
