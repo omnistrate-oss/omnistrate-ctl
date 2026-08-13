@@ -31,4 +31,5 @@ omnistrate-ctl service [operation] [flags]
 * [omnistrate-ctl service describe](omnistrate-ctl_service_describe.md)	 - Describe a service
 * [omnistrate-ctl service list](omnistrate-ctl_service_list.md)	 - List services for your account
 * [omnistrate-ctl service plan](omnistrate-ctl_service_plan.md)	 - Manage Service Plans for your service
+* [omnistrate-ctl service resource](omnistrate-ctl_service_resource.md)	 - Manage service resources
 
