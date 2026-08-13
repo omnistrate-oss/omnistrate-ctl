@@ -62,7 +62,7 @@ omnistrate-ctl account customer create --service=[service] --environment=[enviro
       --service string                          Service name or ID
       --skip-wait                               Skip waiting for account onboarding to become READY
       --subscription-id string                  Subscription ID to use for the onboarding instance
-      --tags string                             Custom tags for the account in key=value format, separated by commas (e.g. env=prod,team=platform)
+      --tags string                             Custom tags for the account in key=value format, separated by commas (e.g. env=prod,team=platform). Escape commas inside values with \,
 ```
 
 ### Options inherited from parent commands
