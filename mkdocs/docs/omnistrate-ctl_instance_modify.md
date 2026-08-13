@@ -33,7 +33,7 @@ omnistrate-ctl instance modify instance-abcd1234 --param-file /path/to/param.jso
       --network-type string   Optional network type change for the instance deployment (PUBLIC / INTERNAL)
       --param string          Parameters for the instance deployment
       --param-file string     Json file containing parameters for the instance deployment
-      --tags string           Custom tags to set on the instance deployment (format: key=value,key2=value2)
+      --tags string           Custom tags to set on the instance deployment (format: key=value,key2=value2). Escape commas inside values with \,
       --wait                  Wait for modification to complete and show progress
 ```
 

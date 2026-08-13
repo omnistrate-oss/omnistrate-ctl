@@ -5,6 +5,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/omnistrate-oss/omnistrate-ctl/internal/utils"
 	openapiclient "github.com/omnistrate-oss/omnistrate-sdk-go/v1"
 	"github.com/spf13/cobra"
 )
@@ -25,7 +26,7 @@ func parseAccountTags(cmd *cobra.Command) ([]openapiclient.CustomTag, bool, erro
 		return nil, false, fmt.Errorf("at least one tag must be provided in key=value format when using --%s", tagsFlag)
 	}
 
-	rawPairs := strings.Split(trimmed, ",")
+	rawPairs := utils.SplitEscapedCommaSeparatedList(trimmed)
 	tags := make([]openapiclient.CustomTag, 0, len(rawPairs))
 	seen := make(map[string]struct{}, len(rawPairs))
 	for _, rawPair := range rawPairs {

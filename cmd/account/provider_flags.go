@@ -40,7 +40,7 @@ func addBaseCloudAccountProviderFlags(cmd *cobra.Command) {
 	cmd.Flags().String(azureTenantIDFlag, "", "Azure tenant ID")
 	cmd.Flags().String(nebiusTenantIDFlag, "", "Nebius tenant ID")
 	cmd.Flags().String(nebiusBindingsFileFlag, "", "Path to a YAML file describing Nebius bindings")
-	cmd.Flags().String(tagsFlag, "", "Custom tags for the account in key=value format, separated by commas (e.g. env=prod,team=platform)")
+	cmd.Flags().String(tagsFlag, "", `Custom tags for the account in key=value format, separated by commas (e.g. env=prod,team=platform). Escape commas inside values with \,`)
 	cmd.Flags().Bool(skipWaitFlag, false, "Skip waiting for account onboarding to become READY")
 
 	cmd.MarkFlagsRequiredTogether(gcpProjectIDFlag, gcpProjectNumberFlag)

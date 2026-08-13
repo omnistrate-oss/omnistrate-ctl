@@ -68,6 +68,43 @@ func ParseCommaSeparatedList(input string) []string {
 	return result
 }
 
+// SplitEscapedCommaSeparatedList splits input on commas unless the comma is
+// escaped as \,. A backslash only escapes comma and backslash; before any other
+// character it is preserved.
+func SplitEscapedCommaSeparatedList(input string) []string {
+	result := make([]string, 0)
+	var current strings.Builder
+	escaping := false
+
+	for _, r := range input {
+		if escaping {
+			if r != ',' && r != '\\' {
+				current.WriteRune('\\')
+			}
+			current.WriteRune(r)
+			escaping = false
+			continue
+		}
+
+		switch r {
+		case '\\':
+			escaping = true
+		case ',':
+			result = append(result, current.String())
+			current = strings.Builder{}
+		default:
+			current.WriteRune(r)
+		}
+	}
+
+	if escaping {
+		current.WriteRune('\\')
+	}
+	result = append(result, current.String())
+
+	return result
+}
+
 // ReadFile reads the contents of a file
 func ReadFile(filePath string) ([]byte, error) {
 	data, err := os.ReadFile(filePath)

@@ -53,6 +53,15 @@ func TestParseAccountTags(t *testing.T) {
 			provided: true,
 		},
 		{
+			name:  "tag value can contain escaped commas",
+			value: ptr(`allowed_source_ranges=137.83.246.111/32\,1.2.3.4/32,env=prod`),
+			want: []openapiclient.CustomTag{
+				{Key: "allowed_source_ranges", Value: "137.83.246.111/32,1.2.3.4/32"},
+				{Key: "env", Value: "prod"},
+			},
+			provided: true,
+		},
+		{
 			name:    "rejects empty value",
 			value:   ptr(""),
 			wantErr: "at least one tag must be provided in key=value format when using --tags",
