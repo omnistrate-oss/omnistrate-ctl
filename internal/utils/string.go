@@ -91,7 +91,7 @@ func SplitEscapedCommaSeparatedList(input string) []string {
 			escaping = true
 		case ',':
 			result = append(result, current.String())
-			current.Reset()
+			current = strings.Builder{}
 		default:
 			current.WriteRune(r)
 		}

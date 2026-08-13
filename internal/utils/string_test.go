@@ -242,6 +242,11 @@ func TestSplitEscapedCommaSeparatedList(t *testing.T) {
 			want:  []string{"env=prod", "team=platform"},
 		},
 		{
+			name:  "longer segment before shorter segment",
+			input: "team=platform,env=prod",
+			want:  []string{"team=platform", "env=prod"},
+		},
+		{
 			name:  "escaped comma stays in value",
 			input: `allowed_source_ranges=137.83.246.111/32\,1.2.3.4/32,env=prod`,
 			want:  []string{"allowed_source_ranges=137.83.246.111/32,1.2.3.4/32", "env=prod"},
