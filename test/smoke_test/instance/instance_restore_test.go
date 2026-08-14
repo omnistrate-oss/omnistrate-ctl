@@ -84,20 +84,23 @@ func TestInstanceUndeleteWithInstanceID(t *testing.T) {
 	// Wait for the instance to be fully deleted
 	waitForInstanceDeletion(t, ctx, originalInstanceID)
 
-	// Restore (undelete) the instance using --instance-id
-	cmd.RootCmd.SetArgs([]string{"instance", "create",
-		fmt.Sprintf("--service=%s", serviceName),
-		"--environment=dev",
-		fmt.Sprintf("--plan=%s", serviceName),
-		"--version=latest",
-		"--resource=mySQL",
-		"--cloud-provider=aws",
-		"--region=ca-central-1",
-		fmt.Sprintf("--instance-id=%s", originalInstanceID),
-		fmt.Sprintf("--subscription-id=%s", originalSubscriptionID),
+	// Restore (undelete) the instance using --instance-id. Deletion can become
+	// visible before child records are fully ready for restore, so retry the
+	// restore command on that eventual-consistency state.
+	executeWithRetry(t, "instance undelete", 5*time.Minute, []string{"not found", "stale child records"}, func() error {
+		cmd.RootCmd.SetArgs([]string{"instance", "create",
+			fmt.Sprintf("--service=%s", serviceName),
+			"--environment=dev",
+			fmt.Sprintf("--plan=%s", serviceName),
+			"--version=latest",
+			"--resource=mySQL",
+			"--cloud-provider=aws",
+			"--region=ca-central-1",
+			fmt.Sprintf("--instance-id=%s", originalInstanceID),
+			fmt.Sprintf("--subscription-id=%s", originalSubscriptionID),
+		})
+		return cmd.RootCmd.ExecuteContext(ctx)
 	})
-	err = cmd.RootCmd.ExecuteContext(ctx)
-	require.NoError(t, err)
 	restoredInstanceID := instance.InstanceID
 	require.Equal(t, originalInstanceID, restoredInstanceID, "undeleted instance should have the same ID")
 
@@ -288,7 +291,7 @@ func waitForSnapshotCompletion(t *testing.T, ctx context.Context, token, service
 // which may briefly return no resource immediately after a new service build.
 func createInstanceWithRetry(t *testing.T, ctx context.Context, args []string) {
 	t.Helper()
-	executeWithNotFoundRetry(t, "instance create", 3*time.Minute, func() error {
+	executeWithRetry(t, "instance create", 3*time.Minute, []string{"not found"}, func() error {
 		cmd.RootCmd.SetArgs(args)
 		return cmd.RootCmd.ExecuteContext(ctx)
 	})
@@ -298,10 +301,10 @@ func createInstanceWithRetry(t *testing.T, ctx context.Context, args []string) {
 // where a snapshot may not be immediately queryable after instance deletion.
 func restoreWithRetry(t *testing.T, restoreFn func() error) {
 	t.Helper()
-	executeWithNotFoundRetry(t, "snapshot restore", 3*time.Minute, restoreFn)
+	executeWithRetry(t, "snapshot restore", 3*time.Minute, []string{"not found"}, restoreFn)
 }
 
-func executeWithNotFoundRetry(t *testing.T, operation string, timeout time.Duration, operationFn func() error) {
+func executeWithRetry(t *testing.T, operation string, timeout time.Duration, retryableErrors []string, operationFn func() error) {
 	t.Helper()
 	b := &backoff.ExponentialBackOff{
 		InitialInterval:     10 * time.Second,
@@ -314,17 +317,23 @@ func executeWithNotFoundRetry(t *testing.T, operation string, timeout time.Durat
 	}
 	b.Reset()
 	ticker := backoff.NewTicker(b)
+	defer ticker.Stop()
 
 	var lastErr error
 	for range ticker.C {
 		lastErr = operationFn()
 		if lastErr == nil {
-			ticker.Stop()
 			return
 		}
-		// Only retry on "not found" errors caused by eventual consistency.
-		if !strings.Contains(strings.ToLower(lastErr.Error()), "not found") {
-			ticker.Stop()
+		lowerErr := strings.ToLower(lastErr.Error())
+		retryable := false
+		for _, retryableError := range retryableErrors {
+			if strings.Contains(lowerErr, strings.ToLower(retryableError)) {
+				retryable = true
+				break
+			}
+		}
+		if !retryable {
 			break
 		}
 	}
