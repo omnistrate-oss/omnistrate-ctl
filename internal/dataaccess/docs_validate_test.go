@@ -1,8 +1,10 @@
 package dataaccess
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -176,4 +178,166 @@ func TestValidateSpecWithSchemaFileRejectsMalformedYAML(t *testing.T) {
 	_, err := ValidateSpecWithSchemaFile("plan.yaml", []byte("name: [unclosed\n"), "service-plan", writeSchema(t))
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "plan.yaml")
+}
+
+// servicePlanSchemaFixture is a snapshot of the authoritative ServicePlanSpec schema
+// the platform serves at /schema/service-spec-schema.json. It is generated, never
+// hand-edited; regenerate it after any change to the Go models the schema is
+// reflected from, or to the schema normalization that runs before publication:
+//
+//	cd <workspace>/ows-orchestration
+//	SERVICE_PLAN_SCHEMA_FIXTURE=<workspace>/ctl/internal/dataaccess/testdata/service-plan-schema.json \
+//	  go test ./v1/pkg/registration/service/servicebuild/serviceplan/ \
+//	    -run TestWriteServicePlanSchemaFixture -count=1
+//
+// That generator reads extension.GetSchemaJSON("service-plan"), the same accessor the
+// schema endpoint returns, so the fixture cannot drift from what a user downloads.
+const servicePlanSchemaFixture = "testdata/service-plan-schema.json"
+
+// helmPlanSpec renders a minimal valid plan whose single service is a Helm chart with
+// the given source block, so a verdict can only come from the source rules.
+func helmPlanSpec(sourceBlock string) []byte {
+	lines := strings.Split(strings.TrimRight(sourceBlock, "\n"), "\n")
+	for i, line := range lines {
+		if line != "" {
+			lines[i] = "      " + line
+		}
+	}
+
+	return []byte(`name: Helm Source Plan
+tenancyType: OMNISTRATE_DEDICATED_TENANCY
+services:
+  - name: Chart
+    helmChartConfiguration:
+` + strings.Join(lines, "\n") + "\n")
+}
+
+// TestValidateSpec_HelmArtifactSource is the CLI half of the Helm source alignment:
+// `omnistrate-ctl docs validate` has to accept exactly the specs the platform builds.
+// It is structural validation, so no artifact needs to exist or have been uploaded.
+func TestValidateSpec_HelmArtifactSource(t *testing.T) {
+	tests := []struct {
+		name       string
+		sourceYAML string
+		valid      bool
+	}{
+		{
+			name: "repository backed chart",
+			sourceYAML: `chartName: nginx
+chartVersion: 1.0.0
+chartRepoName: bitnami
+chartRepoURL: https://charts.bitnami.com/bitnami`,
+			valid: true,
+		},
+		{
+			name:       "artifact backed chart with a relative path",
+			sourceYAML: `artifactRelativePath: charts/my-chart.tgz`,
+			valid:      true,
+		},
+		{
+			name:       "artifact backed chart with the legacy alias",
+			sourceYAML: `artifactsLocalPath: ./charts/my-chart.tgz`,
+			valid:      true,
+		},
+		{
+			name: "artifact backed chart may still name the chart",
+			sourceYAML: `artifactRelativePath: charts/my-chart.tgz
+chartName: my-chart
+chartVersion: 0.1.0`,
+			valid: true,
+		},
+		{
+			name: "artifact backed chart with blank repository fields",
+			sourceYAML: `artifactRelativePath: charts/my-chart.tgz
+chartRepoName: ""
+chartRepoURL: "  "`,
+			valid: true,
+		},
+		{
+			name: "repository backed chart missing its repository url",
+			sourceYAML: `chartName: nginx
+chartVersion: 1.0.0
+chartRepoName: bitnami`,
+		},
+		{
+			name: "repository backed chart with a whitespace-only repository name",
+			sourceYAML: `chartName: nginx
+chartVersion: 1.0.0
+chartRepoName: "   "
+chartRepoURL: https://charts.bitnami.com/bitnami`,
+		},
+		{
+			name: "mixed repository and artifact source",
+			sourceYAML: `artifactRelativePath: charts/my-chart.tgz
+chartName: nginx
+chartVersion: 1.0.0
+chartRepoName: bitnami
+chartRepoURL: https://charts.bitnami.com/bitnami`,
+		},
+		{
+			name: "artifact source with a repository name only",
+			sourceYAML: `artifactRelativePath: charts/my-chart.tgz
+chartRepoName: bitnami`,
+		},
+		{
+			name: "both artifact aliases set",
+			sourceYAML: `artifactRelativePath: charts/my-chart.tgz
+artifactsLocalPath: /local/charts/my-chart.tgz`,
+		},
+		{
+			name: "both artifact aliases set to the same path",
+			sourceYAML: `artifactRelativePath: charts/my-chart.tgz
+artifactsLocalPath: charts/my-chart.tgz`,
+		},
+		{
+			name: "artifact source with repository credentials",
+			sourceYAML: `artifactRelativePath: charts/my-chart.tgz
+authProvider:
+  username: user
+  password: secret`,
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			result, err := ValidateSpecWithSchemaFile("plan.yaml", helmPlanSpec(test.sourceYAML),
+				"service-plan", servicePlanSchemaFixture)
+			require.NoError(t, err)
+			assert.Equal(t, test.valid, result.Valid, "violations: %+v", result.Violations)
+		})
+	}
+}
+
+// TestValidateSpec_HelmArtifactSourceFixtureIsUsable compiles the generated fixture
+// and checks it is the corrected schema, so a stale or partially regenerated snapshot
+// fails loudly instead of quietly passing every case above.
+func TestValidateSpec_HelmArtifactSourceFixtureIsUsable(t *testing.T) {
+	raw, err := os.ReadFile(servicePlanSchemaFixture)
+	require.NoError(t, err)
+
+	var document map[string]any
+	require.NoError(t, json.Unmarshal(raw, &document))
+
+	definitions, ok := document["$defs"].(map[string]any)
+	require.True(t, ok, "expected $defs in the generated fixture")
+
+	helmChart, ok := definitions["HelmChartConfiguration"].(map[string]any)
+	require.True(t, ok, "expected a HelmChartConfiguration definition")
+	assert.NotContains(t, helmChart, "required",
+		"the repository coordinates must not be unconditionally required")
+
+	alternatives, ok := helmChart["allOf"].([]any)
+	require.True(t, ok, "expected the source rule under allOf")
+	require.Len(t, alternatives, 1)
+	branches, ok := alternatives[0].(map[string]any)["oneOf"].([]any)
+	require.True(t, ok)
+	assert.Len(t, branches, 3, "repository, artifactRelativePath and artifactsLocalPath")
+
+	// An escaped backslash-u would match the letter "u" rather than whitespace.
+	assert.NotContains(t, string(raw), `\\u`)
+
+	// Operator Helm dependencies must not have been relaxed along with the chart.
+	operator, ok := definitions["OperatorHelmChartDependency"].(map[string]any)
+	require.True(t, ok)
+	assert.Len(t, operator["required"], 4)
 }

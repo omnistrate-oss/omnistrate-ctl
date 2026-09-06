@@ -44,6 +44,9 @@ omnistrate-ctl build --file omnistrate-compose.yaml --product-name "My Service" 
 # Build service with compose spec interactively
 omnistrate-ctl build --file omnistrate-compose.yaml --product-name "My Service" --interactive
 
+# Validate a spec without changing anything (read-only; exits nonzero unless the result is VALID)
+omnistrate-ctl build --file omnistrate-compose.yaml --product-name "My Service" --dry-run
+
 # Build service with compose spec with service description and service logo
 omnistrate-ctl build --file omnistrate-compose.yaml --product-name "My Service" --description "My Service Description" --service-logo-url "https://example.com/logo.png"
 
@@ -71,7 +74,7 @@ omnistrate-ctl build --image docker.io/namespace/my-image:v1.2 --product-name "M
 
 ```
       --description string                  A short description for the whole service. A service can have multiple service plans.
-  -d, --dry-run                             Simulate building the service without actually creating resources
+  -d, --dry-run                             Validate the specification without changing anything. Sends it to the server's read-only build validation endpoint: nothing is created, updated, released, promoted or uploaded. Local Terraform, Helm, Kustomize and operator content declared by the specification is sent for validation only, bounded at 16 MiB compressed and 64 MiB uncompressed in total across all artifacts. Exits zero only when the result is VALID; INVALID and INCOMPLETE (a check that could not be completed) both exit nonzero
       --environment string                  Name of the environment to build the service in (default "Dev")
       --environment-type string             Type of environment. Valid options include: 'dev', 'prod', 'qa', 'canary', 'staging', 'private') (default "dev")
   -f, --file string                         Path to the docker compose file (defaults to omnistrate-compose.yaml, docker-compose.yaml or spec.yaml in that order).If docker-compose.yaml is found, it is detected but not supported; please convert it to omnistrate-compose.yaml

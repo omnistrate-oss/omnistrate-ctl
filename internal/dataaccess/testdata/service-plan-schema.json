@@ -1,0 +1,2587 @@
+{
+  "$defs": {
+    "APIParameterConfiguration": {
+      "additionalProperties": false,
+      "properties": {
+        "defaultValue": {
+          "type": "string"
+        },
+        "dependentResourceKey": {
+          "type": "string"
+        },
+        "description": {
+          "type": "string"
+        },
+        "export": {
+          "type": "boolean"
+        },
+        "key": {
+          "type": "string"
+        },
+        "labeledOptions": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "type": "object"
+        },
+        "limits": {
+          "$ref": "#/$defs/Limits"
+        },
+        "modifiable": {
+          "type": "boolean"
+        },
+        "name": {
+          "type": "string"
+        },
+        "options": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "parameterDependencyMap": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "type": "object"
+        },
+        "regex": {
+          "type": "string"
+        },
+        "required": {
+          "type": "boolean"
+        },
+        "scope": {
+          "$ref": "#/$defs/InputParameterScope"
+        },
+        "type": {
+          "enum": [
+            "boolean",
+            "Boolean",
+            "int",
+            "Int",
+            "int32",
+            "Int32",
+            "int64",
+            "Int64",
+            "uint",
+            "Uint",
+            "uint32",
+            "Uint32",
+            "uint64",
+            "Uint64",
+            "float32",
+            "Float32",
+            "float64",
+            "Float64",
+            "string",
+            "String",
+            "bytes",
+            "Bytes",
+            "json",
+            "Json",
+            "any",
+            "Any",
+            "resource",
+            "Resource",
+            "password",
+            "Password",
+            "secret",
+            "Secret"
+          ],
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "AcceleratorConfiguration": {
+      "additionalProperties": false,
+      "properties": {
+        "count": {
+          "type": "integer"
+        },
+        "type": {
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "ActionHook": {
+      "additionalProperties": false,
+      "properties": {
+        "command": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "commandTemplate": {
+          "type": "string"
+        },
+        "image": {
+          "type": "string"
+        },
+        "inPod": {
+          "type": "boolean"
+        },
+        "scope": {
+          "enum": [
+            "CLUSTER",
+            "NODE"
+          ],
+          "type": "string"
+        },
+        "type": {
+          "enum": [
+            "INIT",
+            "ADD",
+            "REMOVE",
+            "PROMOTE",
+            "DEMOTE",
+            "POST_START",
+            "PRE_START",
+            "POST_UPGRADE",
+            "PRE_UPGRADE",
+            "PRE_STOP",
+            "POST_STOP",
+            "HEALTH_CHECK",
+            "READINESS_CHECK",
+            "STARTUP_CHECK",
+            "VALIDATE",
+            "PRE_INSTALL",
+            "POST_INSTALL",
+            "BACKUP"
+          ],
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "AddCapacityWorkflowConfiguration": {
+      "additionalProperties": false,
+      "properties": {
+        "outputParameters": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "type": "object"
+        },
+        "workflow": {
+          "$ref": "#/$defs/WorkflowSpec"
+        },
+        "workflowFile": {
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "AgentCodeInterpreterConfiguration": {
+      "additionalProperties": false,
+      "properties": {
+        "allowedPackages": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "enabled": {
+          "type": "boolean"
+        },
+        "provider": {
+          "type": "string"
+        },
+        "timeout": {
+          "type": "integer"
+        }
+      },
+      "type": "object"
+    },
+    "AgentConfiguration": {
+      "additionalProperties": false,
+      "properties": {
+        "codeInterpreter": {
+          "$ref": "#/$defs/AgentCodeInterpreterConfiguration"
+        },
+        "dockerfile": {
+          "type": "string"
+        },
+        "evaluations": {
+          "items": {
+            "$ref": "#/$defs/AgentEvaluation"
+          },
+          "type": "array"
+        },
+        "memory": {
+          "$ref": "#/$defs/AgentMemoryConfiguration"
+        },
+        "monitoring": {
+          "$ref": "#/$defs/AgentMonitoringConfiguration"
+        },
+        "vectorStore": {
+          "$ref": "#/$defs/AgentVectorStoreConfiguration"
+        }
+      },
+      "type": "object"
+    },
+    "AgentEvaluation": {
+      "additionalProperties": false,
+      "properties": {
+        "metrics": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "name": {
+          "type": "string"
+        },
+        "schedule": {
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "AgentMemoryConfiguration": {
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        }
+      },
+      "type": "object"
+    },
+    "AgentMonitoringConfiguration": {
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        }
+      },
+      "type": "object"
+    },
+    "AgentVectorStoreConfiguration": {
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        }
+      },
+      "type": "object"
+    },
+    "Arguments": {
+      "additionalProperties": false,
+      "properties": {
+        "parameters": {
+          "items": {
+            "$ref": "#/$defs/Parameter"
+          },
+          "type": "array"
+        }
+      },
+      "type": "object"
+    },
+    "AutoscalingConfiguration": {
+      "additionalProperties": false,
+      "properties": {
+        "idleMinutesBeforeScalingDown": {
+          "type": "integer"
+        },
+        "idleThreshold": {
+          "type": "integer"
+        },
+        "maxReplicas": {
+          "$ref": "#/$defs/IntOrString"
+        },
+        "minReplicas": {
+          "$ref": "#/$defs/IntOrString"
+        },
+        "overUtilizedMinutesBeforeScalingUp": {
+          "type": "integer"
+        },
+        "overUtilizedThreshold": {
+          "type": "integer"
+        },
+        "policyType": {
+          "type": "string"
+        },
+        "scalingMetric": {
+          "$ref": "#/$defs/ScalingMetric"
+        }
+      },
+      "type": "object"
+    },
+    "AzureFileShareConfig": {
+      "additionalProperties": false,
+      "properties": {
+        "redundancy": {
+          "type": "string"
+        },
+        "shareQuota": {
+          "type": "integer"
+        },
+        "tier": {
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "BackupConfiguration": {
+      "additionalProperties": false,
+      "properties": {
+        "backupPeriodInHours": {
+          "type": "integer"
+        },
+        "backupRetentionInDays": {
+          "type": "integer"
+        },
+        "snapshotBeforeDeletion": {
+          "type": "boolean"
+        }
+      },
+      "type": "object"
+    },
+    "BackupWorkflowConfiguration": {
+      "additionalProperties": false,
+      "properties": {
+        "outputParameters": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "type": "object"
+        },
+        "workflow": {
+          "$ref": "#/$defs/WorkflowSpec"
+        },
+        "workflowFile": {
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "BillingProvider": {
+      "additionalProperties": false,
+      "properties": {
+        "disableInvoiceGeneration": {
+          "type": "boolean"
+        },
+        "enablePaywall": {
+          "type": "boolean"
+        },
+        "externalProductID": {
+          "type": "string"
+        },
+        "isDefault": {
+          "type": "boolean"
+        },
+        "name": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "type": "object"
+    },
+    "Capabilities": {
+      "additionalProperties": false,
+      "properties": {
+        "autoscaling": {
+          "$ref": "#/$defs/AutoscalingConfiguration"
+        },
+        "backupConfiguration": {
+          "$ref": "#/$defs/BackupConfiguration"
+        },
+        "customDNS": {
+          "$ref": "#/$defs/CustomDNSConfig"
+        },
+        "enableClusterLoadBalancer": {
+          "type": "boolean"
+        },
+        "enableCustomZone": {
+          "type": "boolean"
+        },
+        "enableEndpointPerReplica": {
+          "type": "boolean"
+        },
+        "enableMultiZone": {
+          "type": "boolean"
+        },
+        "enableNodeLoadBalancer": {
+          "type": "boolean"
+        },
+        "enableStableEgressIP": {
+          "type": "boolean"
+        },
+        "httpReverseProxy": {
+          "$ref": "#/$defs/HTTPReverseProxyConfiguration"
+        },
+        "networkType": {
+          "type": "string"
+        },
+        "nodeWarmPool": {
+          "$ref": "#/$defs/NodeWarmPoolConfiguration"
+        },
+        "serverlessConfiguration": {
+          "type": "object"
+        },
+        "serviceAccountPolicies": {
+          "type": "object"
+        },
+        "sidecars": {
+          "type": "object"
+        }
+      },
+      "type": "object"
+    },
+    "ChartAffinityControl": {
+      "additionalProperties": false,
+      "properties": {
+        "enableInjection": {
+          "type": "boolean"
+        },
+        "enableSharedHost": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "enableInjection",
+        "enableSharedHost"
+      ],
+      "type": "object"
+    },
+    "Compute": {
+      "additionalProperties": false,
+      "properties": {
+        "autoscalingMaxReplicasAPIParam": {
+          "type": "string"
+        },
+        "autoscalingMinReplicasAPIParam": {
+          "type": "string"
+        },
+        "cpuArchitecture": {
+          "type": "string"
+        },
+        "instanceTypes": {
+          "items": {
+            "$ref": "#/$defs/InstanceTypeConfiguration"
+          },
+          "type": "array"
+        },
+        "limits": {
+          "$ref": "#/$defs/ComputeUnit"
+        },
+        "replicaCount": {
+          "type": "integer"
+        },
+        "replicaCountAPIParam": {
+          "type": "string"
+        },
+        "reservations": {
+          "$ref": "#/$defs/ComputeUnit"
+        },
+        "resourceLimitCPUAPIParam": {
+          "type": "string"
+        },
+        "resourceLimitMemoryAPIParam": {
+          "type": "string"
+        },
+        "resourceRequestCPUAPIParam": {
+          "type": "string"
+        },
+        "resourceRequestMemoryAPIParam": {
+          "type": "string"
+        },
+        "rootVolumeSizeGi": {
+          "type": "integer"
+        }
+      },
+      "type": "object"
+    },
+    "ComputeUnit": {
+      "additionalProperties": false,
+      "properties": {
+        "cpu": {
+          "$ref": "#/$defs/Quantity"
+        },
+        "memory": {
+          "$ref": "#/$defs/Quantity"
+        }
+      },
+      "type": "object"
+    },
+    "ConfigurationOverride": {
+      "additionalProperties": false,
+      "properties": {
+        "EphemeralStorageLocalSsdConfig": {
+          "$ref": "#/$defs/EphemeralStorageLocalSsdConfig"
+        },
+        "GpuClusterID": {
+          "type": "string"
+        },
+        "InstanceLifecycleType": {
+          "type": "string"
+        },
+        "LocalNvmeSsdBlockConfig": {
+          "$ref": "#/$defs/LocalNvmeSsdBlockConfig"
+        },
+        "OsFamily": {
+          "type": "string"
+        },
+        "RootVolumeSizeGi": {
+          "type": "integer"
+        },
+        "RootVolumeSizeGiAPIParam": {
+          "type": "string"
+        },
+        "WarmPoolConfiguration": {
+          "$ref": "#/$defs/WarmPoolConfiguration"
+        },
+        "acceleratorConfiguration": {
+          "$ref": "#/$defs/AcceleratorConfiguration"
+        },
+        "labels": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "type": "object"
+        },
+        "migProfile": {
+          "type": "string"
+        },
+        "taints": {
+          "items": {
+            "$ref": "#/$defs/TaintConfiguration"
+          },
+          "type": "array"
+        },
+        "timeSlicingReplicas": {
+          "type": "integer"
+        }
+      },
+      "type": "object"
+    },
+    "ContainerImage": {
+      "additionalProperties": false,
+      "properties": {
+        "imageName": {
+          "type": "string"
+        },
+        "imageTag": {
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "ContainerImagesRegistry": {
+      "additionalProperties": false,
+      "properties": {
+        "credentials": {
+          "$ref": "#/$defs/ContainerImagesRegistryCredentials"
+        },
+        "registryUrl": {
+          "type": "string"
+        },
+        "repositoryName": {
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "ContainerImagesRegistryCopyConfiguration": {
+      "additionalProperties": false,
+      "properties": {
+        "images": {
+          "items": {
+            "$ref": "#/$defs/ContainerImage"
+          },
+          "type": "array"
+        },
+        "pullMode": {
+          "type": "string"
+        },
+        "pullSource": {
+          "$ref": "#/$defs/ContainerImagesRegistry"
+        },
+        "pushTarget": {
+          "$ref": "#/$defs/ContainerImagesRegistry"
+        }
+      },
+      "type": "object"
+    },
+    "ContainerImagesRegistryCredentials": {
+      "additionalProperties": false,
+      "properties": {
+        "password": {
+          "type": "string"
+        },
+        "username": {
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "CreateWorkflowConfiguration": {
+      "additionalProperties": false,
+      "properties": {
+        "outputParameters": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "type": "object"
+        },
+        "workflow": {
+          "$ref": "#/$defs/WorkflowSpec"
+        },
+        "workflowFile": {
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "CustomDNSConfig": {
+      "additionalProperties": false,
+      "properties": {
+        "Name": {
+          "type": "string"
+        },
+        "TargetKubernetesService": {
+          "$ref": "#/$defs/KubernetesServiceConfig"
+        },
+        "TargetPort": {
+          "type": "integer"
+        }
+      },
+      "type": "object"
+    },
+    "CustomMeteringConfiguration": {
+      "additionalProperties": false,
+      "properties": {
+        "metrics": {
+          "items": {
+            "$ref": "#/$defs/CustomMeteringMetric"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "metrics"
+      ],
+      "type": "object"
+    },
+    "CustomMeteringMetric": {
+      "additionalProperties": false,
+      "properties": {
+        "aggregationFunction": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "aggregationFunction"
+      ],
+      "type": "object"
+    },
+    "CustomServicePlanSpec": {
+      "additionalProperties": false,
+      "properties": {
+        "billingProductID": {
+          "type": "string"
+        },
+        "billingProviders": {
+          "items": {
+            "$ref": "#/$defs/BillingProvider"
+          },
+          "type": "array"
+        },
+        "customMetering": {
+          "$ref": "#/$defs/CustomMeteringConfiguration"
+        },
+        "customWorkflows": {
+          "items": {
+            "$ref": "#/$defs/CustomWorkflowConfiguration"
+          },
+          "type": "array"
+        },
+        "deployment": {
+          "additionalProperties": false,
+          "properties": {
+            "byoaDeployment": {
+              "$ref": "#/$defs/Deployment"
+            },
+            "hostedDeployment": {
+              "$ref": "#/$defs/Deployment"
+            },
+            "onPremCopilotDeployment": {
+              "$ref": "#/$defs/Deployment"
+            },
+            "onPremDeployment": {
+              "$ref": "#/$defs/OnPremDeployment"
+            }
+          },
+          "type": "object"
+        },
+        "enableDeletionProtection": {
+          "type": "boolean"
+        },
+        "features": {
+          "additionalProperties": {
+            "type": "object"
+          },
+          "type": "object"
+        },
+        "loadBalancers": {
+          "$ref": "#/$defs/OmnistrateLoadBalancer"
+        },
+        "maxNumberOfInstancesAllowed": {
+          "type": "integer"
+        },
+        "metering": {
+          "$ref": "#/$defs/MeteringConfiguration"
+        },
+        "name": {
+          "type": "string"
+        },
+        "pricing": {
+          "items": {
+            "$ref": "#/$defs/DimensionPricing"
+          },
+          "type": "array"
+        },
+        "services": {
+          "items": {
+            "$ref": "#/$defs/ResourceConfiguration"
+          },
+          "type": "array"
+        },
+        "sharedFileSystems": {
+          "items": {
+            "$ref": "#/$defs/SharedFileSystemConfiguration"
+          },
+          "type": "array"
+        },
+        "systemWorkflows": {
+          "$ref": "#/$defs/SystemWorkflowsConfiguration"
+        },
+        "tenancyType": {
+          "type": "string"
+        },
+        "validPaymentMethodRequired": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "services"
+      ],
+      "type": "object"
+    },
+    "CustomWorkflowConfiguration": {
+      "additionalProperties": false,
+      "properties": {
+        "apiParameters": {
+          "items": {
+            "$ref": "#/$defs/WorkflowParameter"
+          },
+          "type": "array"
+        },
+        "description": {
+          "type": "string"
+        },
+        "displayName": {
+          "type": "string"
+        },
+        "outputParameterSpecs": {
+          "items": {
+            "$ref": "#/$defs/WorkflowOutputParameterSpec"
+          },
+          "type": "array"
+        },
+        "outputParameters": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "type": "object"
+        },
+        "readOnly": {
+          "type": "boolean"
+        },
+        "scope": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "verb": {
+          "type": "string"
+        },
+        "workflow": {
+          "$ref": "#/$defs/WorkflowSpec"
+        },
+        "workflowFile": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "verb",
+        "displayName"
+      ],
+      "type": "object"
+    },
+    "DAGTask": {
+      "additionalProperties": false,
+      "properties": {
+        "arguments": {
+          "$ref": "#/$defs/Arguments"
+        },
+        "dependencies": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "name": {
+          "type": "string"
+        },
+        "template": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "template"
+      ],
+      "type": "object"
+    },
+    "DAGTemplate": {
+      "additionalProperties": false,
+      "properties": {
+        "failFast": {
+          "type": "boolean"
+        },
+        "tasks": {
+          "items": {
+            "$ref": "#/$defs/DAGTask"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "tasks"
+      ],
+      "type": "object"
+    },
+    "DeleteBackupWorkflowConfiguration": {
+      "additionalProperties": false,
+      "properties": {
+        "outputParameters": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "type": "object"
+        },
+        "workflow": {
+          "$ref": "#/$defs/WorkflowSpec"
+        },
+        "workflowFile": {
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "DeleteWorkflowConfiguration": {
+      "additionalProperties": false,
+      "properties": {
+        "outputParameters": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "type": "object"
+        },
+        "workflow": {
+          "$ref": "#/$defs/WorkflowSpec"
+        },
+        "workflowFile": {
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "Deployment": {
+      "additionalProperties": false,
+      "properties": {
+        "awsAccountId": {
+          "type": "string"
+        },
+        "awsBootstrapRoleAccountArn": {
+          "type": "string"
+        },
+        "azureSubscriptionId": {
+          "type": "string"
+        },
+        "azureTenantId": {
+          "type": "string"
+        },
+        "cluster_name": {
+          "type": "string"
+        },
+        "description": {
+          "type": "string"
+        },
+        "gcpProjectId": {
+          "type": "string"
+        },
+        "gcpProjectNumber": {
+          "type": "string"
+        },
+        "gcpServiceAccountEmail": {
+          "type": "string"
+        },
+        "nebiusTenantId": {
+          "type": "string"
+        },
+        "ociDomainId": {
+          "type": "string"
+        },
+        "ociTenancyId": {
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "DeploymentRequirements": {
+      "additionalProperties": false,
+      "properties": {
+        "minimumK8sVersion": {
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "DeploymentTarget": {
+      "additionalProperties": false,
+      "properties": {
+        "account": {
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "DimensionPricing": {
+      "additionalProperties": false,
+      "properties": {
+        "dimension": {
+          "type": "string"
+        },
+        "price": {
+          "type": "number"
+        },
+        "timeUnit": {
+          "type": "string"
+        },
+        "unit": {
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "EFSFileSystemConfig": {
+      "additionalProperties": false,
+      "properties": {
+        "performanceMode": {
+          "type": "string"
+        },
+        "provisionedThroughputInMibps": {
+          "type": "number"
+        },
+        "throughputMode": {
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "EndpointConfiguration": {
+      "additionalProperties": false,
+      "properties": {
+        "disableMonitoring": {
+          "type": "boolean"
+        },
+        "host": {
+          "type": "string"
+        },
+        "networkingType": {
+          "type": "string"
+        },
+        "portExpressions": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "ports": {
+          "$ref": "#/$defs/PortList"
+        },
+        "primary": {
+          "type": "boolean"
+        }
+      },
+      "type": "object"
+    },
+    "EphemeralStorageLocalSsdConfig": {
+      "additionalProperties": false,
+      "properties": {
+        "dataCacheCount": {
+          "type": "integer"
+        },
+        "localSsdCount": {
+          "type": "integer"
+        }
+      },
+      "type": "object"
+    },
+    "FailoverWorkflowConfiguration": {
+      "additionalProperties": false,
+      "properties": {
+        "outputParameters": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "type": "object"
+        },
+        "workflow": {
+          "$ref": "#/$defs/WorkflowSpec"
+        },
+        "workflowFile": {
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "FileSystemConfig": {
+      "additionalProperties": false,
+      "properties": {
+        "azureFileShareConfig": {
+          "$ref": "#/$defs/AzureFileShareConfig"
+        },
+        "efsFileSystemConfig": {
+          "$ref": "#/$defs/EFSFileSystemConfig"
+        },
+        "gcpFilestoreConfig": {
+          "$ref": "#/$defs/GCPFilestoreConfig"
+        },
+        "nebiusFileSystemConfig": {
+          "$ref": "#/$defs/NebiusFileSystemConfig"
+        }
+      },
+      "type": "object"
+    },
+    "Files": {
+      "additionalProperties": false,
+      "properties": {
+        "content": {
+          "contentEncoding": "base64",
+          "type": "string"
+        },
+        "mountPath": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "mountPath",
+        "content"
+      ],
+      "type": "object"
+    },
+    "GCPFilestoreConfig": {
+      "additionalProperties": false,
+      "properties": {
+        "capacity": {
+          "type": "string"
+        },
+        "max_iops_per_tb": {
+          "type": "integer"
+        },
+        "tier": {
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "GenericMap": {
+      "type": "object"
+    },
+    "GitConfiguration": {
+      "additionalProperties": false,
+      "properties": {
+        "accessToken": {
+          "type": "string"
+        },
+        "commitSHA": {
+          "type": "string"
+        },
+        "reference": {
+          "type": "string"
+        },
+        "repositoryUrl": {
+          "type": "string"
+        },
+        "userName": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "repositoryUrl"
+      ],
+      "type": "object"
+    },
+    "HTTPReverseProxyConfiguration": {
+      "additionalProperties": false,
+      "properties": {
+        "targetPort": {
+          "type": "integer"
+        }
+      },
+      "type": "object"
+    },
+    "HelmChartConfiguration": {
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "$comment": "omnistrate: helm chart source alternatives",
+          "oneOf": [
+            {
+              "description": "The chart is pulled from a Helm repository, so its name, version, repository name and repository URL are all required and neither local artifact path may be set.",
+              "properties": {
+                "artifactRelativePath": {
+                  "const": ""
+                },
+                "artifactsLocalPath": {
+                  "const": ""
+                },
+                "chartName": {
+                  "pattern": "[^\t-\r    - \u2028\u2029  　]",
+                  "type": "string"
+                },
+                "chartRepoName": {
+                  "pattern": "[^\t-\r    - \u2028\u2029  　]",
+                  "type": "string"
+                },
+                "chartRepoURL": {
+                  "pattern": "[^\t-\r    - \u2028\u2029  　]",
+                  "type": "string"
+                },
+                "chartVersion": {
+                  "pattern": "[^\t-\r    - \u2028\u2029  　]",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "chartName",
+                "chartVersion",
+                "chartRepoName",
+                "chartRepoURL"
+              ],
+              "title": "Helm repository source"
+            },
+            {
+              "description": "The chart is packaged as a deployment artifact, so repository coordinates and repository credentials do not apply and the chart name and version are read from the chart itself. Only one of artifactRelativePath and artifactsLocalPath may be set.",
+              "properties": {
+                "artifactRelativePath": {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "artifactsLocalPath": {
+                  "const": ""
+                },
+                "authProvider": {
+                  "properties": {
+                    "password": {
+                      "pattern": "^[\t-\r    - \u2028\u2029  　]*$",
+                      "type": "string"
+                    },
+                    "username": {
+                      "pattern": "^[\t-\r    - \u2028\u2029  　]*$",
+                      "type": "string"
+                    }
+                  }
+                },
+                "chartRepoName": {
+                  "pattern": "^[\t-\r    - \u2028\u2029  　]*$",
+                  "type": "string"
+                },
+                "chartRepoURL": {
+                  "pattern": "^[\t-\r    - \u2028\u2029  　]*$",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "artifactRelativePath"
+              ],
+              "title": "Helm deployment artifact source (artifactRelativePath)"
+            },
+            {
+              "description": "The chart is packaged as a deployment artifact, so repository coordinates and repository credentials do not apply and the chart name and version are read from the chart itself. Only one of artifactRelativePath and artifactsLocalPath may be set.",
+              "properties": {
+                "artifactRelativePath": {
+                  "const": ""
+                },
+                "artifactsLocalPath": {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "authProvider": {
+                  "properties": {
+                    "password": {
+                      "pattern": "^[\t-\r    - \u2028\u2029  　]*$",
+                      "type": "string"
+                    },
+                    "username": {
+                      "pattern": "^[\t-\r    - \u2028\u2029  　]*$",
+                      "type": "string"
+                    }
+                  }
+                },
+                "chartRepoName": {
+                  "pattern": "^[\t-\r    - \u2028\u2029  　]*$",
+                  "type": "string"
+                },
+                "chartRepoURL": {
+                  "pattern": "^[\t-\r    - \u2028\u2029  　]*$",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "artifactsLocalPath"
+              ],
+              "title": "Helm deployment artifact source (artifactsLocalPath)"
+            }
+          ]
+        }
+      ],
+      "properties": {
+        "artifactRelativePath": {
+          "type": "string"
+        },
+        "artifactsLocalPath": {
+          "type": "string"
+        },
+        "authProvider": {
+          "$ref": "#/$defs/HelmRepoAuthProvider"
+        },
+        "autoDiscoverImagesTag": {
+          "type": "string"
+        },
+        "chartAffinityControl": {
+          "$ref": "#/$defs/ChartAffinityControl"
+        },
+        "chartName": {
+          "type": "string"
+        },
+        "chartRepoName": {
+          "type": "string"
+        },
+        "chartRepoURL": {
+          "type": "string"
+        },
+        "chartValues": {
+          "$ref": "#/$defs/GenericMap"
+        },
+        "chartVersion": {
+          "type": "string"
+        },
+        "disableReconciliation": {
+          "type": "boolean"
+        },
+        "layeredChartValues": {
+          "items": {
+            "$ref": "#/$defs/LayeredChartValuesRef"
+          },
+          "type": "array"
+        },
+        "namespace": {
+          "type": "string"
+        },
+        "releaseName": {
+          "type": "string"
+        },
+        "runtimeConfiguration": {
+          "$ref": "#/$defs/HelmRuntimeConfiguration"
+        }
+      },
+      "type": "object"
+    },
+    "HelmRepoAuthProvider": {
+      "additionalProperties": false,
+      "properties": {
+        "password": {
+          "type": "string"
+        },
+        "username": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "username",
+        "password"
+      ],
+      "type": "object"
+    },
+    "HelmRuntimeConfiguration": {
+      "additionalProperties": false,
+      "properties": {
+        "disableHooks": {
+          "type": "boolean"
+        },
+        "disableReconciliation": {
+          "type": "boolean"
+        },
+        "recreate": {
+          "type": "boolean"
+        },
+        "resetThenReuseValues": {
+          "type": "boolean"
+        },
+        "resetValues": {
+          "type": "boolean"
+        },
+        "reuseValues": {
+          "type": "boolean"
+        },
+        "skipCRDs": {
+          "type": "boolean"
+        },
+        "timeoutNanos": {
+          "type": "integer"
+        },
+        "upgradeCRDs": {
+          "type": "boolean"
+        },
+        "wait": {
+          "type": "boolean"
+        },
+        "waitForJobs": {
+          "type": "boolean"
+        }
+      },
+      "type": "object"
+    },
+    "InputParameterScope": {
+      "additionalProperties": false,
+      "properties": {
+        "cloudProviders": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "type": "object"
+    },
+    "Inputs": {
+      "additionalProperties": false,
+      "properties": {
+        "parameters": {
+          "items": {
+            "$ref": "#/$defs/Parameter"
+          },
+          "type": "array"
+        }
+      },
+      "type": "object"
+    },
+    "InstanceTypeConfiguration": {
+      "additionalProperties": false,
+      "properties": {
+        "apiParam": {
+          "type": "string"
+        },
+        "cloudProvider": {
+          "enum": [
+            "aws",
+            "azure",
+            "gcp",
+            "oci",
+            "nebius",
+            "generic",
+            "private",
+            "byoc-onprem",
+            "all"
+          ],
+          "type": "string"
+        },
+        "configurationOverrides": {
+          "$ref": "#/$defs/ConfigurationOverride"
+        },
+        "name": {
+          "type": "string"
+        },
+        "platform": {
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "IntOrString": {
+      "additionalProperties": false,
+      "properties": {
+        "IntVal": {
+          "type": "integer"
+        },
+        "StrVal": {
+          "type": "string"
+        },
+        "Type": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "Type",
+        "IntVal",
+        "StrVal"
+      ],
+      "type": "object"
+    },
+    "JobResourceConfiguration": {
+      "additionalProperties": false,
+      "properties": {
+        "activeDeadlineSeconds": {
+          "type": "integer"
+        },
+        "backoffLimit": {
+          "type": "integer"
+        },
+        "scheduleConfig": {
+          "$ref": "#/$defs/ScheduleConfig"
+        }
+      },
+      "type": "object"
+    },
+    "KubernetesServiceConfig": {
+      "additionalProperties": false,
+      "properties": {
+        "TargetName": {
+          "type": "string"
+        },
+        "TargetPort": {
+          "type": "integer"
+        }
+      },
+      "type": "object"
+    },
+    "KustomizeConfiguration": {
+      "additionalProperties": false,
+      "properties": {
+        "artifactsLocalPath": {
+          "type": "string"
+        },
+        "disableReconciliation": {
+          "type": "boolean"
+        },
+        "gitConfiguration": {
+          "$ref": "#/$defs/GitConfiguration"
+        },
+        "kustomizePath": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "kustomizePath"
+      ],
+      "type": "object"
+    },
+    "L4LoadBalancerConfiguration": {
+      "additionalProperties": false,
+      "properties": {
+        "description": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "ports": {
+          "items": {
+            "$ref": "#/$defs/L4LoadBalancerPortConfiguration"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "name",
+        "ports"
+      ],
+      "type": "object"
+    },
+    "L4LoadBalancerPortConfiguration": {
+      "additionalProperties": false,
+      "properties": {
+        "associatedResourceKeys": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "backendPort": {
+          "type": "integer"
+        },
+        "ingressPort": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "associatedResourceKeys",
+        "backendPort",
+        "ingressPort"
+      ],
+      "type": "object"
+    },
+    "L7LoadBalancerConfiguration": {
+      "additionalProperties": false,
+      "properties": {
+        "description": {
+          "type": "string"
+        },
+        "enableCustomDNS": {
+          "type": "boolean"
+        },
+        "name": {
+          "type": "string"
+        },
+        "paths": {
+          "items": {
+            "$ref": "#/$defs/L7LoadBalancerPathConfiguration"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "name",
+        "paths"
+      ],
+      "type": "object"
+    },
+    "L7LoadBalancerPathConfiguration": {
+      "additionalProperties": false,
+      "properties": {
+        "associatedResourceKey": {
+          "type": "string"
+        },
+        "backendPort": {
+          "type": "integer"
+        },
+        "path": {
+          "type": "string"
+        },
+        "targetKubernetesServiceName": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "associatedResourceKey",
+        "path",
+        "backendPort"
+      ],
+      "type": "object"
+    },
+    "LayeredChartValuesRef": {
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "scope": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "type": "object"
+        },
+        "values": true,
+        "valuesFile": {
+          "$ref": "#/$defs/ValuesFile"
+        }
+      },
+      "type": "object"
+    },
+    "Limits": {
+      "additionalProperties": false,
+      "properties": {
+        "max": {
+          "type": "integer"
+        },
+        "maxLength": {
+          "type": "integer"
+        },
+        "min": {
+          "type": "integer"
+        },
+        "minLength": {
+          "type": "integer"
+        }
+      },
+      "type": "object"
+    },
+    "LocalNvmeSsdBlockConfig": {
+      "additionalProperties": false,
+      "properties": {
+        "localSsdCount": {
+          "type": "integer"
+        }
+      },
+      "type": "object"
+    },
+    "MeteringConfiguration": {
+      "additionalProperties": false,
+      "properties": {
+        "gcsBucketName": {
+          "type": "string"
+        },
+        "s3BucketArn": {
+          "type": "string"
+        },
+        "s3BucketRegion": {
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "ModifyWorkflowConfiguration": {
+      "additionalProperties": false,
+      "properties": {
+        "outputParameters": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "type": "object"
+        },
+        "workflow": {
+          "$ref": "#/$defs/WorkflowSpec"
+        },
+        "workflowFile": {
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "NebiusFileSystemConfig": {
+      "additionalProperties": false,
+      "properties": {
+        "filesystemType": {
+          "type": "string"
+        },
+        "sizeGibibytes": {
+          "type": "integer"
+        }
+      },
+      "type": "object"
+    },
+    "Network": {
+      "additionalProperties": false,
+      "properties": {
+        "namedPorts": {
+          "type": "object"
+        },
+        "ports": {
+          "items": true,
+          "type": "array"
+        }
+      },
+      "type": "object"
+    },
+    "NodeWarmPoolConfiguration": {
+      "additionalProperties": false,
+      "properties": {
+        "minFreeNodes": {
+          "type": "integer"
+        }
+      },
+      "type": "object"
+    },
+    "OmnistrateLoadBalancer": {
+      "additionalProperties": false,
+      "properties": {
+        "https": {
+          "items": {
+            "$ref": "#/$defs/L7LoadBalancerConfiguration"
+          },
+          "type": "array"
+        },
+        "tcp": {
+          "items": {
+            "$ref": "#/$defs/L4LoadBalancerConfiguration"
+          },
+          "type": "array"
+        }
+      },
+      "type": "object"
+    },
+    "OnPremDeployment": {
+      "additionalProperties": false,
+      "properties": {
+        "awsAccountId": {
+          "type": "string"
+        },
+        "awsBootstrapRoleAccountArn": {
+          "type": "string"
+        },
+        "azureSubscriptionId": {
+          "type": "string"
+        },
+        "azureTenantId": {
+          "type": "string"
+        },
+        "cluster_name": {
+          "type": "string"
+        },
+        "description": {
+          "type": "string"
+        },
+        "gcpProjectId": {
+          "type": "string"
+        },
+        "gcpProjectNumber": {
+          "type": "string"
+        },
+        "gcpServiceAccountEmail": {
+          "type": "string"
+        },
+        "nebiusTenantId": {
+          "type": "string"
+        },
+        "ociDomainId": {
+          "type": "string"
+        },
+        "ociTenancyId": {
+          "type": "string"
+        },
+        "onPremInstallerTools": {
+          "$ref": "#/$defs/OnPremInstallerTools"
+        },
+        "requirements": {
+          "$ref": "#/$defs/DeploymentRequirements"
+        }
+      },
+      "type": "object"
+    },
+    "OnPremInstallerTools": {
+      "additionalProperties": false,
+      "properties": {
+        "helperUserScript": {
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "OperatorCRDConfiguration": {
+      "additionalProperties": false,
+      "properties": {
+        "artifactsLocalPath": {
+          "type": "string"
+        },
+        "disableReconciliation": {
+          "type": "boolean"
+        },
+        "helmChartDependencies": {
+          "items": {
+            "$ref": "#/$defs/OperatorHelmChartDependency"
+          },
+          "type": "array"
+        },
+        "outputParameters": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "type": "object"
+        },
+        "readinessConditions": {
+          "type": "object"
+        },
+        "supplementalFiles": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "template": {
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "OperatorHelmChartDependency": {
+      "additionalProperties": false,
+      "properties": {
+        "authProvider": {
+          "$ref": "#/$defs/HelmRepoAuthProvider"
+        },
+        "chartName": {
+          "type": "string"
+        },
+        "chartRepoName": {
+          "type": "string"
+        },
+        "chartRepoURL": {
+          "type": "string"
+        },
+        "chartValues": {
+          "$ref": "#/$defs/GenericMap"
+        },
+        "chartVersion": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "chartName",
+        "chartVersion",
+        "chartRepoName",
+        "chartRepoURL"
+      ],
+      "type": "object"
+    },
+    "Parameter": {
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "value": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "type": "object"
+    },
+    "PortList": {
+      "items": {
+        "type": "integer"
+      },
+      "type": "array"
+    },
+    "Quantity": {
+      "additionalProperties": false,
+      "properties": {
+        "Format": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "Format"
+      ],
+      "type": "object"
+    },
+    "RemoveCapacityWorkflowConfiguration": {
+      "additionalProperties": false,
+      "properties": {
+        "outputParameters": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "type": "object"
+        },
+        "workflow": {
+          "$ref": "#/$defs/WorkflowSpec"
+        },
+        "workflowFile": {
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "ResourceConfiguration": {
+      "additionalProperties": false,
+      "properties": {
+        "actionHooks": {
+          "items": {
+            "$ref": "#/$defs/ActionHook"
+          },
+          "type": "array"
+        },
+        "addSecurityCapabilities": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "agentConfiguration": {
+          "$ref": "#/$defs/AgentConfiguration"
+        },
+        "apiParameters": {
+          "items": {
+            "$ref": "#/$defs/APIParameterConfiguration"
+          },
+          "type": "array"
+        },
+        "args": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "capabilities": {
+          "$ref": "#/$defs/Capabilities"
+        },
+        "command": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "compute": {
+          "$ref": "#/$defs/Compute"
+        },
+        "configs": {
+          "items": {
+            "$ref": "#/$defs/Files"
+          },
+          "type": "array"
+        },
+        "containerImagesRegistryCopyConfiguration": {
+          "$ref": "#/$defs/ContainerImagesRegistryCopyConfiguration"
+        },
+        "customWorkflows": {
+          "items": {
+            "$ref": "#/$defs/CustomWorkflowConfiguration"
+          },
+          "type": "array"
+        },
+        "dependsOn": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "deploymentTarget": {
+          "$ref": "#/$defs/DeploymentTarget"
+        },
+        "description": {
+          "type": "string"
+        },
+        "disable": {
+          "type": "string"
+        },
+        "dropSecurityCapabilities": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "endpointConfiguration": {
+          "additionalProperties": {
+            "$ref": "#/$defs/EndpointConfiguration"
+          },
+          "type": "object"
+        },
+        "environmentVariables": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "type": "object"
+        },
+        "groupIDs": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "helmChartConfiguration": {
+          "$ref": "#/$defs/HelmChartConfiguration"
+        },
+        "image": {
+          "type": "string"
+        },
+        "internal": {
+          "type": "boolean"
+        },
+        "jobResourceConfiguration": {
+          "$ref": "#/$defs/JobResourceConfiguration"
+        },
+        "kustomizeConfiguration": {
+          "$ref": "#/$defs/KustomizeConfiguration"
+        },
+        "labels": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "type": "object"
+        },
+        "name": {
+          "type": "string"
+        },
+        "network": {
+          "$ref": "#/$defs/Network"
+        },
+        "operatorCRDConfiguration": {
+          "$ref": "#/$defs/OperatorCRDConfiguration"
+        },
+        "passive": {
+          "type": "boolean"
+        },
+        "privileged": {
+          "type": "boolean"
+        },
+        "proxyType": {
+          "type": "string"
+        },
+        "secrets": {
+          "items": {
+            "$ref": "#/$defs/Files"
+          },
+          "type": "array"
+        },
+        "storage": {
+          "additionalProperties": {
+            "items": {
+              "$ref": "#/$defs/StorageVolumeParameters"
+            },
+            "type": "array"
+          },
+          "type": "object"
+        },
+        "sysctls": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "type": "object"
+        },
+        "systemWorkflows": {
+          "$ref": "#/$defs/SystemWorkflowsConfiguration"
+        },
+        "terraformConfigurations": {
+          "$ref": "#/$defs/TerraformConfigurations"
+        },
+        "ulimits": {
+          "additionalProperties": {
+            "$ref": "#/$defs/ULimitValue"
+          },
+          "type": "object"
+        },
+        "userID": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "type": "object"
+    },
+    "ResourceTemplate": {
+      "additionalProperties": false,
+      "properties": {
+        "action": {
+          "type": "string"
+        },
+        "failureCondition": {
+          "type": "string"
+        },
+        "flags": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "manifest": {
+          "type": "string"
+        },
+        "mergeStrategy": {
+          "type": "string"
+        },
+        "successCondition": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "action",
+        "manifest"
+      ],
+      "type": "object"
+    },
+    "RestartWorkflowConfiguration": {
+      "additionalProperties": false,
+      "properties": {
+        "outputParameters": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "type": "object"
+        },
+        "workflow": {
+          "$ref": "#/$defs/WorkflowSpec"
+        },
+        "workflowFile": {
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "RestoreWorkflowConfiguration": {
+      "additionalProperties": false,
+      "properties": {
+        "outputParameters": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "type": "object"
+        },
+        "workflow": {
+          "$ref": "#/$defs/WorkflowSpec"
+        },
+        "workflowFile": {
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "ScalingMetric": {
+      "additionalProperties": false,
+      "properties": {
+        "metricEndpoint": {
+          "type": "string"
+        },
+        "metricLabelName": {
+          "type": "string"
+        },
+        "metricLabelValue": {
+          "type": "string"
+        },
+        "metricName": {
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "ScheduleConfig": {
+      "additionalProperties": false,
+      "properties": {
+        "CronExpression": {
+          "type": "string"
+        },
+        "SimpleInterval": {
+          "type": "string"
+        },
+        "Timezone": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "CronExpression",
+        "SimpleInterval",
+        "Timezone"
+      ],
+      "type": "object"
+    },
+    "SharedFileSystemConfiguration": {
+      "additionalProperties": false,
+      "properties": {
+        "description": {
+          "type": "string"
+        },
+        "fileSystemConfig": {
+          "$ref": "#/$defs/FileSystemConfig"
+        },
+        "name": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "type": "object"
+    },
+    "StartWorkflowConfiguration": {
+      "additionalProperties": false,
+      "properties": {
+        "outputParameters": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "type": "object"
+        },
+        "workflow": {
+          "$ref": "#/$defs/WorkflowSpec"
+        },
+        "workflowFile": {
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "StopWorkflowConfiguration": {
+      "additionalProperties": false,
+      "properties": {
+        "outputParameters": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "type": "object"
+        },
+        "workflow": {
+          "$ref": "#/$defs/WorkflowSpec"
+        },
+        "workflowFile": {
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "StorageVolumeParameters": {
+      "additionalProperties": false,
+      "properties": {
+        "clusterStorageType": {
+          "type": "string"
+        },
+        "clusterStorageTypeAPIParam": {
+          "type": "string"
+        },
+        "instanceStorageIOPS": {
+          "type": "number"
+        },
+        "instanceStorageIOPSAPIParam": {
+          "type": "string"
+        },
+        "instanceStorageSizeGi": {
+          "type": "number"
+        },
+        "instanceStorageSizeGiAPIParam": {
+          "type": "string"
+        },
+        "instanceStorageThroughputAPIParam": {
+          "type": "string"
+        },
+        "instanceStorageThroughputMiBps": {
+          "type": "number"
+        },
+        "instanceStorageType": {
+          "type": "string"
+        },
+        "instanceStorageTypeAPIParam": {
+          "type": "string"
+        },
+        "storageResourceName": {
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "SystemWorkflowsConfiguration": {
+      "additionalProperties": false,
+      "properties": {
+        "addCapacity": {
+          "$ref": "#/$defs/AddCapacityWorkflowConfiguration"
+        },
+        "backup": {
+          "$ref": "#/$defs/BackupWorkflowConfiguration"
+        },
+        "create": {
+          "$ref": "#/$defs/CreateWorkflowConfiguration"
+        },
+        "delete": {
+          "$ref": "#/$defs/DeleteWorkflowConfiguration"
+        },
+        "deleteBackup": {
+          "$ref": "#/$defs/DeleteBackupWorkflowConfiguration"
+        },
+        "failover": {
+          "$ref": "#/$defs/FailoverWorkflowConfiguration"
+        },
+        "modify": {
+          "$ref": "#/$defs/ModifyWorkflowConfiguration"
+        },
+        "removeCapacity": {
+          "$ref": "#/$defs/RemoveCapacityWorkflowConfiguration"
+        },
+        "restart": {
+          "$ref": "#/$defs/RestartWorkflowConfiguration"
+        },
+        "restore": {
+          "$ref": "#/$defs/RestoreWorkflowConfiguration"
+        },
+        "start": {
+          "$ref": "#/$defs/StartWorkflowConfiguration"
+        },
+        "stop": {
+          "$ref": "#/$defs/StopWorkflowConfiguration"
+        },
+        "update": {
+          "$ref": "#/$defs/UpdateWorkflowConfiguration"
+        }
+      },
+      "type": "object"
+    },
+    "TaintConfiguration": {
+      "additionalProperties": false,
+      "properties": {
+        "effect": {
+          "type": "string"
+        },
+        "key": {
+          "type": "string"
+        },
+        "value": {
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "Template": {
+      "additionalProperties": false,
+      "properties": {
+        "activeDeadlineSeconds": {
+          "type": "integer"
+        },
+        "dag": {
+          "$ref": "#/$defs/DAGTemplate"
+        },
+        "inputs": {
+          "$ref": "#/$defs/Inputs"
+        },
+        "name": {
+          "type": "string"
+        },
+        "resource": {
+          "$ref": "#/$defs/ResourceTemplate"
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "type": "object"
+    },
+    "TerraformConfiguration": {
+      "additionalProperties": false,
+      "properties": {
+        "artifactRelativePath": {
+          "type": "string"
+        },
+        "artifactsLocalPath": {
+          "type": "string"
+        },
+        "cliConfigFileOverride": {
+          "type": "string"
+        },
+        "gitConfiguration": {
+          "$ref": "#/$defs/GitConfiguration"
+        },
+        "privateKeyPEM": {
+          "type": "string"
+        },
+        "publicKeyID": {
+          "type": "string"
+        },
+        "requiredOutputKeys": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "requiredOutputs": {
+          "items": {
+            "$ref": "#/$defs/TerraformOutput"
+          },
+          "type": "array"
+        },
+        "serviceAccountID": {
+          "type": "string"
+        },
+        "terraformExecutionIdentity": {
+          "type": "string"
+        },
+        "terraformPath": {
+          "type": "string"
+        },
+        "variablesValuesFileOverride": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "terraformPath"
+      ],
+      "type": "object"
+    },
+    "TerraformConfigurations": {
+      "additionalProperties": false,
+      "properties": {
+        "configurationPerCloudProvider": {
+          "additionalProperties": {
+            "$ref": "#/$defs/TerraformConfiguration"
+          },
+          "type": "object"
+        },
+        "configurationPerOnPremPlatform": {
+          "additionalProperties": {
+            "$ref": "#/$defs/TerraformConfiguration"
+          },
+          "type": "object"
+        }
+      },
+      "type": "object"
+    },
+    "TerraformOutput": {
+      "additionalProperties": false,
+      "properties": {
+        "exported": {
+          "type": "boolean"
+        },
+        "key": {
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "ULimitValue": {
+      "additionalProperties": false,
+      "properties": {
+        "hard": {
+          "type": "integer"
+        },
+        "soft": {
+          "type": "integer"
+        }
+      },
+      "type": "object"
+    },
+    "UpdateWorkflowConfiguration": {
+      "additionalProperties": false,
+      "properties": {
+        "outputParameters": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "type": "object"
+        },
+        "workflow": {
+          "$ref": "#/$defs/WorkflowSpec"
+        },
+        "workflowFile": {
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "ValuesFile": {
+      "additionalProperties": false,
+      "properties": {
+        "gitConfiguration": {
+          "$ref": "#/$defs/GitConfiguration"
+        },
+        "path": {
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "WarmPoolConfiguration": {
+      "additionalProperties": false,
+      "properties": {
+        "minimumNodesInPool": {
+          "type": "integer"
+        }
+      },
+      "type": "object"
+    },
+    "WorkflowOutputParameterSpec": {
+      "additionalProperties": false,
+      "properties": {
+        "description": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "type": {
+          "type": "string"
+        },
+        "valueRef": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "valueRef",
+        "type"
+      ],
+      "type": "object"
+    },
+    "WorkflowParameter": {
+      "additionalProperties": false,
+      "properties": {
+        "custom": {
+          "type": "boolean"
+        },
+        "defaultValue": {
+          "type": "string"
+        },
+        "dependentResourceID": {
+          "type": "string"
+        },
+        "description": {
+          "type": "string"
+        },
+        "displayName": {
+          "type": "string"
+        },
+        "isList": {
+          "type": "boolean"
+        },
+        "key": {
+          "type": "string"
+        },
+        "modifiable": {
+          "type": "boolean"
+        },
+        "options": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "regex": {
+          "type": "string"
+        },
+        "required": {
+          "type": "boolean"
+        },
+        "tabIndex": {
+          "type": "integer"
+        },
+        "type": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "key",
+        "displayName",
+        "type"
+      ],
+      "type": "object"
+    },
+    "WorkflowSpec": {
+      "additionalProperties": false,
+      "properties": {
+        "activeDeadlineSeconds": {
+          "type": "integer"
+        },
+        "arguments": {
+          "$ref": "#/$defs/Arguments"
+        },
+        "entrypoint": {
+          "type": "string"
+        },
+        "templates": {
+          "items": {
+            "$ref": "#/$defs/Template"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "entrypoint",
+        "templates"
+      ],
+      "type": "object"
+    }
+  },
+  "$id": "https://github.com/omnistrate/ows-orchestration/v1/pkg/registration/service/servicebuild/serviceplan/custom-service-plan-spec",
+  "$ref": "#/$defs/CustomServicePlanSpec",
+  "$schema": "https://json-schema.org/draft/2020-12/schema"
+}

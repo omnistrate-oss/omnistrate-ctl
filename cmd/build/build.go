@@ -49,6 +49,9 @@ omnistrate-ctl build --file omnistrate-compose.yaml --product-name "My Service" 
 # Build service with compose spec interactively
 omnistrate-ctl build --file omnistrate-compose.yaml --product-name "My Service" --interactive
 
+# Validate a spec without changing anything (read-only; exits nonzero unless the result is VALID)
+omnistrate-ctl build --file omnistrate-compose.yaml --product-name "My Service" --dry-run
+
 # Build service with compose spec with service description and service logo
 omnistrate-ctl build --file omnistrate-compose.yaml --product-name "My Service" --description "My Service Description" --service-logo-url "https://example.com/logo.png"
 
@@ -99,7 +102,7 @@ var BuildCmd = &cobra.Command{
 func init() {
 	BuildCmd.Flags().StringP("file", "f", "", "Path to the docker compose file (defaults to omnistrate-compose.yaml, docker-compose.yaml or spec.yaml in that order).If docker-compose.yaml is found, it is detected but not supported; please convert it to omnistrate-compose.yaml")
 	BuildCmd.Flags().StringP("spec-type", "s", "", "Spec type (will infer from file if not provided). Valid options include: 'DockerCompose', 'ServicePlanSpec'")
-	BuildCmd.Flags().BoolP("dry-run", "d", false, "Simulate building the service without actually creating resources")
+	BuildCmd.Flags().BoolP("dry-run", "d", false, "Validate the specification without changing anything. Sends it to the server's read-only build validation endpoint: nothing is created, updated, released, promoted or uploaded. Local Terraform, Helm, Kustomize and operator content declared by the specification is sent for validation only, bounded at 16 MiB compressed and 64 MiB uncompressed in total across all artifacts. Exits zero only when the result is VALID; INVALID and INCOMPLETE (a check that could not be completed) both exit nonzero")
 	BuildCmd.Flags().StringP("product-name", "", "", "Name of the service. A service can have multiple service plans. The build command will build a new or existing service plan inside the specified service.")
 	BuildCmd.Flags().StringP("description", "", "", "A short description for the whole service. A service can have multiple service plans.")
 	BuildCmd.Flags().StringP("service-logo-url", "", "", "URL to the service logo")
@@ -179,33 +182,72 @@ func init() {
 	BuildCmd.MarkFlagsRequiredTogether("environment", "environment-type")
 }
 
+// buildOptions holds the parsed `build` command flags. It exists purely so the
+// build route can be executed from tests without a cobra command; the fields
+// mirror the flags one-for-one.
+type buildOptions struct {
+	file                          string
+	specType                      string
+	name                          string
+	description                   string
+	serviceLogoURL                string
+	environment                   string
+	environmentType               string
+	release                       bool
+	releaseAsPreferred            bool
+	releaseName                   string
+	releaseDescription            string
+	interactive                   bool
+	imageUrl                      string
+	envVars                       []string
+	imageRegistryAuthUsername     string
+	imageRegistryAuthPassword     string
+	output                        string
+	dryRun                        bool
+	forceCreateServicePlanVersion bool
+}
+
+// tokenProvider resolves the API token used by the build route. Production
+// always passes common.GetTokenWithLogin.
+type tokenProvider func() (string, error)
+
 func runBuild(cmd *cobra.Command, args []string) error {
 	defer config.CleanupArgsAndFlags(cmd, &args)
 
+	opts, err := parseBuildOptions(cmd)
+	if err != nil {
+		return err
+	}
+
+	return runBuildWithOptions(cmd.Context(), opts, common.GetTokenWithLogin)
+}
+
+// parseBuildOptions reads the build flags in their original order.
+func parseBuildOptions(cmd *cobra.Command) (opts buildOptions, err error) {
 	// Retrieve flags
 	file, err := cmd.Flags().GetString("file")
 	if err != nil {
-		return err
+		return opts, err
 	}
 
 	specType, err := cmd.Flags().GetString("spec-type")
 	if err != nil {
-		return err
+		return opts, err
 	}
 
 	name, err := cmd.Flags().GetString("name")
 	if err != nil {
-		return err
+		return opts, err
 	}
 	productName, err := cmd.Flags().GetString("product-name")
 	if err != nil {
-		return err
+		return opts, err
 	}
 
 	if name != "" && productName != "" {
 		err = errors.New("only one of name or product-name can be provided")
 		utils.PrintError(err)
-		return err
+		return opts, err
 	}
 
 	// Use product-name if provided, otherwise use name
@@ -215,31 +257,31 @@ func runBuild(cmd *cobra.Command, args []string) error {
 	}
 	description, err := cmd.Flags().GetString("description")
 	if err != nil {
-		return err
+		return opts, err
 	}
 	serviceLogoURL, err := cmd.Flags().GetString("service-logo-url")
 	if err != nil {
-		return err
+		return opts, err
 	}
 	environment, err := cmd.Flags().GetString("environment")
 	if err != nil {
-		return err
+		return opts, err
 	}
 	environmentType, err := cmd.Flags().GetString("environment-type")
 	if err != nil {
-		return err
+		return opts, err
 	}
 	release, err := cmd.Flags().GetBool("release")
 	if err != nil {
-		return err
+		return opts, err
 	}
 	releaseAsPreferred, err := cmd.Flags().GetBool("release-as-preferred")
 	if err != nil {
-		return err
+		return opts, err
 	}
 	noReleaseAsPreferred, err := cmd.Flags().GetBool("no-release-as-preferred")
 	if err != nil {
-		return err
+		return opts, err
 	}
 	// If --no-release-as-preferred is set, it overrides --release-as-preferred
 	if noReleaseAsPreferred {
@@ -247,44 +289,91 @@ func runBuild(cmd *cobra.Command, args []string) error {
 	}
 	releaseName, err := cmd.Flags().GetString("release-name")
 	if err != nil {
-		return err
+		return opts, err
 	}
 	releaseDescription, err := cmd.Flags().GetString("release-description")
 	if err != nil {
-		return err
+		return opts, err
 	}
 	interactive, err := cmd.Flags().GetBool("interactive")
 	if err != nil {
-		return err
+		return opts, err
 	}
 	imageUrl, err := cmd.Flags().GetString("image")
 	if err != nil {
-		return err
+		return opts, err
 	}
 	envVars, err := cmd.Flags().GetStringArray("env-var")
 	if err != nil {
-		return err
+		return opts, err
 	}
 	imageRegistryAuthUsername, err := cmd.Flags().GetString("image-registry-auth-username")
 	if err != nil {
-		return err
+		return opts, err
 	}
 	imageRegistryAuthPassword, err := cmd.Flags().GetString("image-registry-auth-password")
 	if err != nil {
-		return err
+		return opts, err
 	}
 	output, err := cmd.Flags().GetString("output")
 	if err != nil {
-		return err
+		return opts, err
 	}
 	dryRun, err := cmd.Flags().GetBool("dry-run")
 	if err != nil {
-		return err
+		return opts, err
 	}
 	forceCreateServicePlanVersion, err := cmd.Flags().GetBool("force-create-service-plan-version")
 	if err != nil {
-		return err
+		return opts, err
 	}
+
+	return buildOptions{
+		file:                          file,
+		specType:                      specType,
+		name:                          name,
+		description:                   description,
+		serviceLogoURL:                serviceLogoURL,
+		environment:                   environment,
+		environmentType:               environmentType,
+		release:                       release,
+		releaseAsPreferred:            releaseAsPreferred,
+		releaseName:                   releaseName,
+		releaseDescription:            releaseDescription,
+		interactive:                   interactive,
+		imageUrl:                      imageUrl,
+		envVars:                       envVars,
+		imageRegistryAuthUsername:     imageRegistryAuthUsername,
+		imageRegistryAuthPassword:     imageRegistryAuthPassword,
+		output:                        output,
+		dryRun:                        dryRun,
+		forceCreateServicePlanVersion: forceCreateServicePlanVersion,
+	}, nil
+}
+
+// runBuildWithOptions is the build route proper. Its body is unchanged from the
+// original runBuild; only flag retrieval and token acquisition were lifted out.
+func runBuildWithOptions(ctx context.Context, opts buildOptions, getToken tokenProvider) error {
+	var err error
+	file := opts.file
+	specType := opts.specType
+	name := opts.name
+	description := opts.description
+	serviceLogoURL := opts.serviceLogoURL
+	environment := opts.environment
+	environmentType := opts.environmentType
+	release := opts.release
+	releaseAsPreferred := opts.releaseAsPreferred
+	releaseName := opts.releaseName
+	releaseDescription := opts.releaseDescription
+	interactive := opts.interactive
+	imageUrl := opts.imageUrl
+	envVars := opts.envVars
+	imageRegistryAuthUsername := opts.imageRegistryAuthUsername
+	imageRegistryAuthPassword := opts.imageRegistryAuthPassword
+	output := opts.output
+	dryRun := opts.dryRun
+	forceCreateServicePlanVersion := opts.forceCreateServicePlanVersion
 
 	// Dynamic spec type detection for file-based builds
 	if imageUrl == "" && specType == "" {
@@ -374,7 +463,11 @@ func runBuild(cmd *cobra.Command, args []string) error {
 					errMsg := fmt.Sprintf("Deployment failed: Required file missing — %s\n\n→ Found: %s\n→ Expected: %s\n\nTip: You can convert your docker-compose.yaml into Omnistrate's native format using the omnistrate-fde skill via the Omnistrate MCP Server\nYou may even invoke it through AI agents like Claude, Gemini or others.\n\nLearn more: https://docs.omnistrate.com/getting-started/mcp-server/#using-skills",
 						OmnistrateComposeFileName, DockerComposeFileName, OmnistrateComposeFileName)
 					utils.PrintError(errors.New(errMsg))
-					return err
+					// nilerr: err is the (nil) os.Stat error. Behaviour is
+					// preserved from the original runBuild; utils.PrintError
+					// exits the process before this return is reached. Left
+					// as-is deliberately so this refactor changes no behaviour.
+					return err //nolint:nilerr
 				}
 
 				// Check for spec.yaml
@@ -406,7 +499,7 @@ func runBuild(cmd *cobra.Command, args []string) error {
 	}
 
 	// Validate user is currently logged in
-	token, err := common.GetTokenWithLogin()
+	token, err := getToken()
 	if err != nil {
 		utils.PrintError(err)
 		return err
@@ -433,7 +526,7 @@ func runBuild(cmd *cobra.Command, args []string) error {
 			passwordPtr = utils.ToPtr(imageRegistryAuthPassword)
 		}
 
-		checkImageRes, err := dataaccess.CheckIfContainerImageAccessible(cmd.Context(), token, imageRegistry, image, userNamePtr, passwordPtr)
+		checkImageRes, err := dataaccess.CheckIfContainerImageAccessible(ctx, token, imageRegistry, image, userNamePtr, passwordPtr)
 		if err != nil {
 			utils.PrintError(err)
 			return err
@@ -476,7 +569,7 @@ func runBuild(cmd *cobra.Command, args []string) error {
 			Password:             passwordPtr,
 		}
 
-		generateComposeSpecRes, err := dataaccess.GenerateComposeSpecFromContainerImage(cmd.Context(), token, generateComposeSpecRequest)
+		generateComposeSpecRes, err := dataaccess.GenerateComposeSpecFromContainerImage(ctx, token, generateComposeSpecRequest)
 		if err != nil {
 			utils.PrintError(err)
 			return err
@@ -527,7 +620,9 @@ func runBuild(cmd *cobra.Command, args []string) error {
 
 	var sm1 utils.SpinnerManager
 	var spinner1 *utils.Spinner
-	if output != "json" {
+	// A dry run prints exactly one structured validation result, so it runs no
+	// spinners in any output mode.
+	if output != "json" && !dryRun {
 		sm1 = utils.NewSpinnerManager()
 		spinner1 = sm1.AddSpinner("Rendering spec file")
 		sm1.Start()
@@ -536,13 +631,28 @@ func runBuild(cmd *cobra.Command, args []string) error {
 	var cwd string
 	cwd, err = os.Getwd()
 	if err != nil {
+		if dryRun {
+			return err
+		}
 		utils.HandleSpinnerError(spinner1, sm1, err)
 		return err
 	}
 
 	// Render files
-	fileData, err = RenderFile(fileData, cwd, file, sm1, spinner1)
+	if dryRun {
+		// RenderFile writes "<rootDir>/<basename>.tmp" into the user's input
+		// root and removes it only on success. The read-only route uses an owned
+		// temporary file outside the source tree instead.
+		fileData, err = renderFileForValidation(fileData, cwd, file)
+	} else {
+		fileData, err = RenderFile(fileData, cwd, file, sm1, spinner1)
+	}
 	if err != nil {
+		if dryRun {
+			// utils.PrintError exits the process, which would stop cobra from
+			// ever seeing a nonzero result.
+			return err
+		}
 		utils.HandleSpinnerError(spinner1, sm1, err)
 		return err
 	}
@@ -551,12 +661,34 @@ func runBuild(cmd *cobra.Command, args []string) error {
 		spinner1 = nil
 	}
 
+	// Read-only validation route. This is placed after token acquisition and
+	// preprocessing and before FindOrCreateServiceHierarchy — the first business
+	// write on the legacy path — so no prepare, build, upload, release,
+	// environment-creation or promotion request is reachable from here.
+	if dryRun {
+		return runDryRunValidation(ctx, token, dryRunInput{
+			specType:                      specType,
+			name:                          name,
+			fileData:                      fileData,
+			cwd:                           cwd,
+			output:                        output,
+			description:                   descriptionPtr,
+			serviceLogoURL:                serviceLogoURLPtr,
+			environment:                   environmentPtr,
+			environmentType:               environmentTypePtr,
+			release:                       release,
+			releaseAsPreferred:            releaseAsPreferred,
+			releaseVersionName:            releaseNamePtr,
+			forceCreateServicePlanVersion: forceCreateServicePlanVersion,
+		})
+	}
+
 	var hierarchyResult *ServiceHierarchyResult
 	extendDistribution := false
 	if specType == ServicePlanSpecType {
 		var hierarchyErr error
 		hierarchyResult, hierarchyErr = FindOrCreateServiceHierarchy(
-			cmd.Context(),
+			ctx,
 			token,
 			name,
 			fileData,
@@ -578,7 +710,7 @@ func runBuild(cmd *cobra.Command, args []string) error {
 		}
 
 		if shouldCheckDistributionExtension(hierarchyResult) {
-			extendsDistribution, distributionErr := serviceHasAdditionalPlans(cmd.Context(), token, hierarchyResult.ServiceID, hierarchyResult.EnvironmentID)
+			extendsDistribution, distributionErr := serviceHasAdditionalPlans(ctx, token, hierarchyResult.ServiceID, hierarchyResult.EnvironmentID)
 			if distributionErr == nil {
 				extendDistribution = extendsDistribution
 			}
@@ -588,7 +720,7 @@ func runBuild(cmd *cobra.Command, args []string) error {
 	var buildProgress *specBuildProgress
 	if output != "json" {
 		buildProgress = addSpecBuildChecklist(sm1, fileData, specType, specChecklistOptions{extendDistribution: extendDistribution})
-		if streamErr := buildProgress.StreamFeatureChecks(cmd.Context()); streamErr != nil {
+		if streamErr := buildProgress.StreamFeatureChecks(ctx); streamErr != nil {
 			utils.HandleSpinnerError(nil, sm1, streamErr)
 			return streamErr
 		}
@@ -624,7 +756,7 @@ func runBuild(cmd *cobra.Command, args []string) error {
 				}
 
 				uploadResult, uploadErr := dataaccess.UploadArtifact(
-					cmd.Context(),
+					ctx,
 					token,
 					base64Content,
 					task.ArtifactPath,
@@ -643,7 +775,7 @@ func runBuild(cmd *cobra.Command, args []string) error {
 			}
 
 			if len(uploadedArtifactIDs) > 0 {
-				waitErr := waitForArtifactsReady(cmd.Context(), token, uploadedArtifactIDs, nil)
+				waitErr := waitForArtifactsReady(ctx, token, uploadedArtifactIDs, nil)
 				if waitErr != nil {
 					utils.HandleSpinnerError(spinner1, sm1, waitErr)
 					return waitErr
@@ -658,7 +790,7 @@ func runBuild(cmd *cobra.Command, args []string) error {
 		spinner1 = buildProgress.StartFinalizing()
 	}
 	ServiceID, EnvironmentID, ProductTierID, undefinedResources, isNewVersionCreated, err = BuildService(
-		cmd.Context(),
+		ctx,
 		fileData,
 		token,
 		name,
@@ -687,7 +819,7 @@ func runBuild(cmd *cobra.Command, args []string) error {
 	utils.HandleSpinnerSuccess(nil, sm1, header)
 
 	// Get product tier name
-	productTier, err := dataaccess.DescribeProductTier(cmd.Context(), token, ServiceID, ProductTierID)
+	productTier, err := dataaccess.DescribeProductTier(ctx, token, ServiceID, ProductTierID)
 	if err != nil {
 		utils.PrintError(err)
 		return err
@@ -704,7 +836,7 @@ func runBuild(cmd *cobra.Command, args []string) error {
 	}
 
 	if !dryRun && (release || releaseAsPreferred) {
-		versionDetails, err := dataaccess.DescribeLatestVersion(cmd.Context(), token, ServiceID, ProductTierID)
+		versionDetails, err := dataaccess.DescribeLatestVersion(ctx, token, ServiceID, ProductTierID)
 		if err != nil {
 			err = errors.Wrap(err, "failed to get the latest version")
 			return err
@@ -737,9 +869,9 @@ func runBuild(cmd *cobra.Command, args []string) error {
 	utils.PrintURL("Check the service plan result at", fmt.Sprintf("https://%s/product-tier?serviceId=%s&environmentId=%s", config.GetRootDomain(), ServiceID, EnvironmentID))
 
 	// Ask user to verify account if there are any unverified accounts
-	dataaccess.AskVerifyAccountIfAny(cmd.Context())
+	dataaccess.AskVerifyAccountIfAny(ctx)
 
-	serviceEnvironment, err := dataaccess.DescribeServiceEnvironment(cmd.Context(), token, ServiceID, EnvironmentID)
+	serviceEnvironment, err := dataaccess.DescribeServiceEnvironment(ctx, token, ServiceID, EnvironmentID)
 	if err != nil {
 		utils.PrintError(err)
 		return err
@@ -766,7 +898,7 @@ func runBuild(cmd *cobra.Command, args []string) error {
 			sm2.Start()
 
 			for {
-				serviceEnvironment, err = dataaccess.DescribeServiceEnvironment(cmd.Context(), token, ServiceID, EnvironmentID)
+				serviceEnvironment, err = dataaccess.DescribeServiceEnvironment(ctx, token, ServiceID, EnvironmentID)
 				if err != nil {
 					utils.PrintError(err)
 					return err
@@ -800,7 +932,7 @@ func runBuild(cmd *cobra.Command, args []string) error {
 				launching := sm2.AddSpinner("Launching service to production...")
 				sm2.Start()
 
-				prodEnvironment, err := dataaccess.FindEnvironment(cmd.Context(), token, ServiceID, "prod")
+				prodEnvironment, err := dataaccess.FindEnvironment(ctx, token, ServiceID, "prod")
 				if err != nil && !errors.As(err, &dataaccess.ErrEnvironmentNotFound) {
 					utils.PrintError(err)
 					return err
@@ -809,13 +941,13 @@ func runBuild(cmd *cobra.Command, args []string) error {
 				var prodEnvironmentID string
 				if errors.As(err, &dataaccess.ErrEnvironmentNotFound) {
 					// Get default deployment config ID
-					defaultDeploymentConfigID, err := dataaccess.GetDefaultDeploymentConfigID(cmd.Context(), token)
+					defaultDeploymentConfigID, err := dataaccess.GetDefaultDeploymentConfigID(ctx, token)
 					if err != nil {
 						utils.PrintError(err)
 						return err
 					}
 					prodEnvironmentID, err = dataaccess.CreateServiceEnvironment(
-						cmd.Context(),
+						ctx,
 						token,
 						"Production",
 						"Production environment",
@@ -835,7 +967,7 @@ func runBuild(cmd *cobra.Command, args []string) error {
 				}
 
 				// Promote the service to production
-				err = dataaccess.PromoteServiceEnvironment(cmd.Context(), token, ServiceID, EnvironmentID, "", "")
+				err = dataaccess.PromoteServiceEnvironment(ctx, token, ServiceID, EnvironmentID, "", "")
 				if err != nil {
 					utils.PrintError(err)
 					return err
@@ -845,7 +977,7 @@ func runBuild(cmd *cobra.Command, args []string) error {
 				sm2.Stop()
 
 				// Retrieve the prod SaaS portal URL
-				prodEnvironment, err = dataaccess.DescribeServiceEnvironment(cmd.Context(), token, ServiceID, prodEnvironmentID)
+				prodEnvironment, err = dataaccess.DescribeServiceEnvironment(ctx, token, ServiceID, prodEnvironmentID)
 				if err != nil {
 					utils.PrintError(err)
 					return err
@@ -869,7 +1001,7 @@ func runBuild(cmd *cobra.Command, args []string) error {
 						sm3.Start()
 
 						for {
-							serviceEnvironment, err = dataaccess.DescribeServiceEnvironment(cmd.Context(), token, ServiceID, prodEnvironmentID)
+							serviceEnvironment, err = dataaccess.DescribeServiceEnvironment(ctx, token, ServiceID, prodEnvironmentID)
 							if err != nil {
 								utils.PrintError(err)
 								return err
