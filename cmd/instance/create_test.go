@@ -2,13 +2,21 @@ package instance
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
+	"net/http"
+	"net/http/httptest"
+	"net/url"
 	"strings"
 	"testing"
+	"time"
 
+	"github.com/mitchellh/go-homedir"
+	"github.com/omnistrate-oss/omnistrate-ctl/internal/config"
 	"github.com/omnistrate-oss/omnistrate-ctl/internal/dataaccess"
 	openapiclientfleet "github.com/omnistrate-oss/omnistrate-sdk-go/fleet"
 	openapiclientv1 "github.com/omnistrate-oss/omnistrate-sdk-go/v1"
+	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -610,4 +618,293 @@ func TestResolveInstanceSubscriptionIDRejectsEmptyResult(t *testing.T) {
 
 func TestCreateExampleDocumentsCustomerEmail(t *testing.T) {
 	assert.Contains(t, createExample, "--customer-email")
+}
+
+// --- Regression coverage: the resolved subscription ID must reach the create-instance
+// request wire, not just the pure resolveInstanceSubscriptionID helper.
+//
+// TestResolveInstanceSubscriptionID* above prove resolveInstanceSubscriptionID itself is
+// correct, but nothing exercised runCreate's wiring: `subscriptionID, err =
+// resolveInstanceSubscriptionID(...)` at the call site in runCreate. If that were ever
+// changed from `=` to `:=`, the reassignment would silently shadow the outer subscriptionID,
+// --customer-email would stop doing anything, and every test above would still pass green.
+// This test drives runCreate end-to-end against a stub HTTP server standing in for the
+// Omnistrate API and asserts the resolved subscription ID reaches the create-instance request
+// body.
+
+// fakeJWT builds a syntactically valid, unsigned JWT whose exp claim is far enough in the
+// future for config.IsTokenExpired to treat it as fresh. GetTokenWithLogin only decodes the
+// exp claim locally to decide whether a refresh is needed; the signature itself is never
+// verified client-side (that happens server-side), so a placeholder signature segment is fine
+// for a stub server.
+func fakeJWT(t *testing.T, exp time.Time) string {
+	t.Helper()
+
+	header := base64.RawURLEncoding.EncodeToString([]byte(`{"alg":"none","typ":"JWT"}`))
+	payloadBytes, err := json.Marshal(map[string]int64{"exp": exp.Unix()})
+	require.NoError(t, err)
+	payload := base64.RawURLEncoding.EncodeToString(payloadBytes)
+
+	return header + "." + payload + ".sig"
+}
+
+// startCreateInstanceTestServer points the SDK's v1 and fleet clients at a stub server for the
+// duration of the test. Mirrors internal/dataaccess/subscription_test.go's
+// startSubscriptionTestServer; duplicated locally because that helper is unexported across the
+// package boundary.
+func startCreateInstanceTestServer(t *testing.T, handler http.HandlerFunc) {
+	t.Helper()
+
+	server := httptest.NewServer(handler)
+	t.Cleanup(server.Close)
+
+	serverURL, err := url.Parse(server.URL)
+	require.NoError(t, err)
+	t.Setenv("OMNISTRATE_HOST", serverURL.Host)
+	t.Setenv("OMNISTRATE_HOST_SCHEME", serverURL.Scheme)
+	t.Setenv("CLIENT_TIMEOUT_IN_SECONDS", "5")
+	t.Setenv("OMNISTRATE_RETRY_MAX", "0")
+}
+
+// v1ServiceOfferingFixture builds a fully populated v1 ServiceOffering, i.e. every property
+// the SDK's generated UnmarshalJSON requires. Unlike the deliberately sparse
+// serviceOfferingFixture above (which is only ever consumed in-process, never round-tripped
+// through JSON), this one must survive an actual HTTP response decode.
+func v1ServiceOfferingFixture(environmentID, productTierID, resourceID, resourceName string) openapiclientv1.ServiceOffering {
+	return openapiclientv1.ServiceOffering{
+		ProductTierDocumentation: "doc",
+		ProductTierID:            productTierID,
+		ProductTierName:          "test-plan",
+		ProductTierPricing:       map[string]interface{}{},
+		ProductTierSupport:       "community",
+		ProductTierType:          "PAID",
+		ProductTierURLKey:        "plan-key",
+		ProductTierVersion:       "1.0",
+		ResourceParameters: []openapiclientv1.ResourceEntity{
+			{Name: resourceName, ResourceId: resourceID, UrlKey: "res-v1-key"},
+		},
+		ServiceAPIID:                 "api-test",
+		ServiceAPIVersion:            "v1",
+		ServiceEnvironmentID:         environmentID,
+		ServiceEnvironmentName:       "prod",
+		ServiceEnvironmentType:       "PROD",
+		ServiceEnvironmentURLKey:     "env-key",
+		ServiceEnvironmentVisibility: "PUBLIC",
+		ServiceModelID:               "model-test",
+		ServiceModelName:             "test-model",
+		ServiceModelStatus:           "ACTIVE",
+		ServiceModelType:             "STANDARD",
+		ServiceModelURLKey:           "model-key",
+	}
+}
+
+// externalDescribeServiceOfferingFixture wraps v1ServiceOfferingFixture in the response
+// envelope ExternalDescribeServiceOffering (the v1 API resource resolution calls) expects.
+func externalDescribeServiceOfferingFixture(serviceID string, offerings ...openapiclientv1.ServiceOffering) *openapiclientv1.DescribeServiceOfferingResult {
+	return &openapiclientv1.DescribeServiceOfferingResult{
+		ServiceId:           serviceID,
+		ServiceName:         "test-service",
+		ServiceOrgId:        "org-abc123",
+		ServiceProviderId:   "sp-test",
+		ServiceProviderName: "test-provider",
+		ServiceURLKey:       "svc-url-key",
+		Offerings:           offerings,
+	}
+}
+
+// fleetServiceOfferingFixture builds a fully populated fleet ServiceOffering matching the
+// environment/plan/resource the test resolves via getResource.
+func fleetServiceOfferingFixture(environmentID, productTierID, resourceName, resourceURLKey string) openapiclientfleet.ServiceOffering {
+	return openapiclientfleet.ServiceOffering{
+		ProductTierDocumentation: "doc",
+		ProductTierID:            productTierID,
+		ProductTierName:          "test-plan",
+		ProductTierPricing:       map[string]interface{}{},
+		ProductTierSupport:       "community",
+		ProductTierType:          "PAID",
+		ProductTierURLKey:        "plan-key",
+		ProductTierVersion:       "1.0",
+		ResourceParameters: []openapiclientfleet.ResourceEntity{
+			{Name: resourceName, ResourceId: "res-fleet-test", UrlKey: resourceURLKey},
+		},
+		ServiceAPIID:                 "api-test",
+		ServiceAPIVersion:            "v1",
+		ServiceEnvironmentID:         environmentID,
+		ServiceEnvironmentName:       "prod",
+		ServiceEnvironmentType:       "PROD",
+		ServiceEnvironmentURLKey:     "env-key",
+		ServiceEnvironmentVisibility: "PUBLIC",
+		ServiceModelID:               "model-test",
+		ServiceModelName:             "test-model",
+		ServiceModelStatus:           "ACTIVE",
+		ServiceModelType:             "STANDARD",
+		ServiceModelURLKey:           "model-key",
+	}
+}
+
+// fleetDescribeServiceOfferingFixture wraps fleetServiceOfferingFixture in the response
+// envelope the fleet DescribeServiceOffering endpoint returns.
+func fleetDescribeServiceOfferingFixture(serviceID string, offerings ...openapiclientfleet.ServiceOffering) *openapiclientfleet.InventoryDescribeServiceOfferingResult {
+	return &openapiclientfleet.InventoryDescribeServiceOfferingResult{
+		ConsumptionDescribeServiceOfferingResult: &openapiclientfleet.DescribeServiceOfferingResult{
+			ServiceId:           serviceID,
+			ServiceName:         "test-service",
+			ServiceOrgId:        "org-abc123",
+			ServiceProviderId:   "sp-test",
+			ServiceProviderName: "test-provider",
+			ServiceURLKey:       "svc-url-key",
+			Offerings:           offerings,
+		},
+	}
+}
+
+// resourceInstanceFixture builds the minimal fleet ResourceInstance that satisfies the SDK's
+// required-property validation, for the DescribeResourceInstance response after creation.
+func resourceInstanceFixture(serviceID, environmentID, subscriptionID string) openapiclientfleet.ResourceInstance {
+	return openapiclientfleet.ResourceInstance{
+		CloudProvider:                     "aws",
+		ConsumptionResourceInstanceResult: openapiclientfleet.DescribeResourceInstanceResult{},
+		EnvironmentId:                     environmentID,
+		InputParams:                       map[string]interface{}{},
+		InstanceDebugCommands:             []string{},
+		IntegrationsStatus:                []openapiclientfleet.IntegrationStatus{},
+		OrganizationId:                    "org-abc123",
+		OrganizationName:                  "test-org",
+		ProductTierId:                     "pt-test",
+		ProductTierName:                   "test-plan",
+		ProductTierType:                   "PAID",
+		ResourceVersionSummaries:          []openapiclientfleet.ResourceVersionSummary{},
+		ServiceEnvName:                    "prod",
+		ServiceId:                         serviceID,
+		ServiceModelId:                    "model-test",
+		ServiceModelName:                  "test-model",
+		ServiceModelType:                  "STANDARD",
+		ServiceName:                       "test-service",
+		SubscriptionId:                    subscriptionID,
+		SubscriptionOwnerName:             "test-customer",
+		TierVersion:                       "1.0",
+		TierVersionReleasedAt:             "2026-09-07T00:00:00Z",
+		TierVersionReleasedByUserId:       "user-test",
+		TierVersionReleasedByUserName:     "test-customer",
+		TierVersionStatus:                 "ACTIVE",
+	}
+}
+
+// newTestCreateCommand builds a *cobra.Command exposing exactly the flags runCreate reads.
+// It intentionally does not reuse the package-level createCmd (avoiding shared mutable flag
+// state across tests) and does not go through the real root command tree (cmd/root.go imports
+// this package, so importing it back here would cycle); "output" in particular is normally a
+// persistent flag inherited from RootCmd, so it is registered locally here instead.
+func newTestCreateCommand() *cobra.Command {
+	cmd := &cobra.Command{Use: "create"}
+	flags := cmd.Flags()
+	flags.String("service", "", "")
+	flags.String("environment", "", "")
+	flags.String("plan", "", "")
+	flags.String("version", "preferred", "")
+	flags.String("resource", "", "")
+	flags.String("cloud-provider", "", "")
+	flags.String("region", "", "")
+	flags.String("param", "", "")
+	flags.String("param-file", "", "")
+	flags.String("customer-account-id", "", "")
+	flags.String("cloud-provider-native-network-id", "", "")
+	flags.String("network-type", "", "")
+	flags.String("onprem-platform", "", "")
+	flags.String("tags", "", "")
+	flags.String("breakpoints", "", "")
+	flags.String("subscription-id", "", "")
+	flags.String("customer-email", "", "")
+	flags.String("instance-id", "", "")
+	flags.Bool("wait", false, "")
+	flags.String("output", "table", "")
+	return cmd
+}
+
+func TestRunCreateWiresResolvedSubscriptionIDIntoCreateRequest(t *testing.T) {
+	// Isolate the config directory so GetTokenWithLogin reads/writes a throwaway auth
+	// config under a temp HOME, never the real user's ~/.omnistrate. go-homedir caches the
+	// resolved home directory process-wide, so the cache must be reset after pointing HOME
+	// at the temp dir (to pick it up) and again after HOME is restored (so later tests, and
+	// the real environment, aren't left resolving into a deleted temp dir). t.Cleanup runs
+	// LIFO, so registering the reset before t.Setenv makes it run *after* Setenv's own
+	// restore-cleanup.
+	t.Cleanup(func() { homedir.Reset() })
+	t.Setenv("HOME", t.TempDir())
+	homedir.Reset()
+
+	token := fakeJWT(t, time.Now().Add(time.Hour))
+	require.NoError(t, config.CreateOrUpdateAuthConfig(config.AuthConfig{Token: token}))
+
+	const (
+		serviceID         = "s-test"
+		environmentID     = "se-test"
+		productTierID     = "pt-test"
+		resourceName      = "myResource"
+		resourceURLKey    = "myresource-key"
+		wantSubscription  = "sub-test"
+		createdInstanceID = "instance-test"
+	)
+
+	var (
+		createRequestSeen bool
+		createRequestBody map[string]any
+	)
+
+	startCreateInstanceTestServer(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch {
+		case r.Method == http.MethodGet && r.URL.Path == "/2022-09-01-00/user":
+			require.NoError(t, json.NewEncoder(w).Encode(map[string]any{"id": "user-test"}))
+		case r.Method == http.MethodGet && r.URL.Path == "/2022-09-01-00/service":
+			require.NoError(t, json.NewEncoder(w).Encode(servicesFixture(
+				serviceFixture(serviceID, "test-service", environmentID, "prod", productTierID, "test-plan"),
+			)))
+		case r.Method == http.MethodGet && r.URL.Path == "/2022-09-01-00/service-offering/"+serviceID:
+			require.NoError(t, json.NewEncoder(w).Encode(externalDescribeServiceOfferingFixture(
+				serviceID,
+				v1ServiceOfferingFixture(environmentID, productTierID, "res-v1-test", resourceName),
+			)))
+		case r.Method == http.MethodGet && r.URL.Path == "/2022-09-01-00/fleet/service-offering/"+serviceID:
+			require.NoError(t, json.NewEncoder(w).Encode(fleetDescribeServiceOfferingFixture(
+				serviceID,
+				fleetServiceOfferingFixture(environmentID, productTierID, resourceName, resourceURLKey),
+			)))
+		case r.Method == http.MethodPost && strings.HasPrefix(r.URL.Path, "/2022-09-01-00/fleet/resource-instance/"):
+			createRequestSeen = true
+			require.NoError(t, json.NewDecoder(r.Body).Decode(&createRequestBody))
+			require.NoError(t, json.NewEncoder(w).Encode(map[string]any{"id": createdInstanceID}))
+		case r.Method == http.MethodGet && r.URL.Path == "/2022-09-01-00/fleet/service/"+serviceID+"/environment/"+environmentID+"/instance/"+createdInstanceID:
+			require.NoError(t, json.NewEncoder(w).Encode(resourceInstanceFixture(serviceID, environmentID, wantSubscription)))
+		default:
+			t.Fatalf("unexpected request: %s %s", r.Method, r.URL.Path)
+		}
+	})
+
+	// Stub only the customer-email-to-subscription lookup (already covered by
+	// TestResolveInstanceSubscriptionID* above) so this test's HTTP surface stays limited to
+	// what runCreate itself talks to.
+	original := resolveInstanceSubscriptionByEmail
+	t.Cleanup(func() { resolveInstanceSubscriptionByEmail = original })
+	resolveInstanceSubscriptionByEmail = func(context.Context, string, dataaccess.CustomerSubscriptionLookup) (*openapiclientfleet.FleetDescribeSubscriptionResult, error) {
+		return &openapiclientfleet.FleetDescribeSubscriptionResult{Id: wantSubscription}, nil
+	}
+
+	cmd := newTestCreateCommand()
+	cmd.SetContext(context.Background())
+	require.NoError(t, cmd.Flags().Set("service", serviceID))
+	require.NoError(t, cmd.Flags().Set("environment", environmentID))
+	require.NoError(t, cmd.Flags().Set("plan", productTierID))
+	require.NoError(t, cmd.Flags().Set("resource", resourceName))
+	require.NoError(t, cmd.Flags().Set("cloud-provider", "aws"))
+	require.NoError(t, cmd.Flags().Set("region", "us-east-2"))
+	require.NoError(t, cmd.Flags().Set("customer-email", "customer@example.com"))
+	require.NoError(t, cmd.Flags().Set("output", "json"))
+
+	err := runCreate(cmd, nil)
+	require.NoError(t, err)
+
+	require.True(t, createRequestSeen, "expected the create-resource-instance request to reach the stub server")
+	assert.Equal(t, wantSubscription, createRequestBody["subscriptionId"],
+		"the subscription resolved from --customer-email must reach the create-instance request body")
 }
