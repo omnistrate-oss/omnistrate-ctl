@@ -431,24 +431,15 @@ func CreateSubscriptionOnBehalf(ctx context.Context, token string, serviceID, en
 	// If email is provided instead of user ID, resolve it to user ID
 	customerUserID := opts.OnBehalfOfCustomerUserID
 	if customerUserID == "" && opts.OnBehalfOfCustomerEmail != "" {
-		listUsersRes, r, err := apiClient.InventoryApiAPI.InventoryApiListAllUsers(ctxWithToken).Execute()
-		if err != nil {
-			if r != nil {
-				_ = r.Body.Close()
-			}
-			return nil, handleFleetError(errors.Wrap(err, "failed to list users"))
-		}
+		listUsersRes, r, listErr := apiClient.InventoryApiAPI.InventoryApiListAllUsers(ctxWithToken).Execute()
 		if r != nil {
 			_ = r.Body.Close()
 		}
-
-		for _, user := range listUsersRes.Users {
-			if user.Email != nil && strings.EqualFold(*user.Email, opts.OnBehalfOfCustomerEmail) {
-				customerUserID = *user.UserId
-				break
-			}
+		if listErr != nil {
+			return nil, handleFleetError(errors.Wrap(listErr, "failed to list users"))
 		}
 
+		customerUserID = matchUserIDByEmail(listUsersRes.Users, opts.OnBehalfOfCustomerEmail)
 		if customerUserID == "" {
 			return nil, errors.Errorf("no user found with email %s", opts.OnBehalfOfCustomerEmail)
 		}
@@ -581,6 +572,21 @@ func TerminateSubscription(ctx context.Context, token string, serviceID, environ
 const subscriptionStatusActive = "ACTIVE"
 
 const subscriptionStatusSuspended = "SUSPENDED"
+
+// matchUserIDByEmail returns the ID of the user with the given address, or "" when there
+// is none. The fleet users API reports unscoped addresses, so a plain case-insensitive
+// comparison is the correct match.
+func matchUserIDByEmail(users []openapiclientfleet.AccessSideUser, email string) string {
+	for _, user := range users {
+		if user.Email == nil || user.UserId == nil {
+			continue
+		}
+		if strings.EqualFold(*user.Email, email) {
+			return *user.UserId
+		}
+	}
+	return ""
+}
 
 // matchSubscriptionsByEmail returns the subscriptions on a plan whose root user is the
 // given address. The plan filter is redundant with the server-side query parameter and is

@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/omnistrate-oss/omnistrate-ctl/internal/utils"
 	openapiclientfleet "github.com/omnistrate-oss/omnistrate-sdk-go/fleet"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -433,4 +434,68 @@ func TestGetSubscriptionByCustomerEmailPlumbsEnvironmentTypeToScopedFallback(t *
 	require.NotNil(t, subscription)
 	assert.Equal(t, "sub-1", subscription.Id)
 	assert.Equal(t, 1, describeUserCalls, "the offering's ServiceEnvironmentType must reach the lookup and trigger the scoped fallback")
+}
+
+func TestMatchUserIDByEmail(t *testing.T) {
+	users := []openapiclientfleet.AccessSideUser{
+		{UserId: utils.ToPtr("user-1"), Email: utils.ToPtr("other@example.com")},
+		{UserId: utils.ToPtr("user-2"), Email: utils.ToPtr("Customer@Example.com")},
+		{UserId: utils.ToPtr("user-3")},
+		{Email: utils.ToPtr("no-id@example.com")},
+	}
+
+	assert.Equal(t, "user-2", matchUserIDByEmail(users, "customer@example.com"))
+	assert.Equal(t, "", matchUserIDByEmail(users, "absent@example.com"))
+	assert.Equal(t, "", matchUserIDByEmail(users, "no-id@example.com"))
+	assert.Equal(t, "", matchUserIDByEmail(nil, "customer@example.com"))
+}
+
+func TestCreateSubscriptionOnBehalfResolvesUserByEmail(t *testing.T) {
+	var capturedUserID string
+	startSubscriptionTestServer(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/2022-09-01-00/fleet/users":
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"users": []map[string]any{
+					{"userId": "user-other", "email": "other@example.com"},
+					{"userId": "user-test", "email": "customer@example.com"},
+				},
+			})
+		case "/2022-09-01-00/fleet/service/s-test/environment/se-test/subscription":
+			var body map[string]any
+			require.NoError(t, json.NewDecoder(r.Body).Decode(&body))
+			capturedUserID, _ = body["onBehalfOfCustomerUserId"].(string)
+			_ = json.NewEncoder(w).Encode(map[string]any{"id": "sub-new"})
+		default:
+			t.Fatalf("unexpected path %s", r.URL.Path)
+		}
+	})
+
+	result, err := CreateSubscriptionOnBehalf(context.Background(), "test-token", "s-test", "se-test", &CreateSubscriptionOnBehalfOptions{
+		ProductTierID:           "pt-test",
+		OnBehalfOfCustomerEmail: "customer@example.com",
+	})
+
+	require.NoError(t, err)
+	assert.Equal(t, "sub-new", result.GetId())
+	assert.Equal(t, "user-test", capturedUserID)
+}
+
+func TestCreateSubscriptionOnBehalfReportsUnknownEmail(t *testing.T) {
+	startSubscriptionTestServer(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if r.URL.Path != "/2022-09-01-00/fleet/users" {
+			t.Fatalf("unexpected path %s", r.URL.Path)
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{"users": []map[string]any{}})
+	})
+
+	_, err := CreateSubscriptionOnBehalf(context.Background(), "test-token", "s-test", "se-test", &CreateSubscriptionOnBehalfOptions{
+		ProductTierID:           "pt-test",
+		OnBehalfOfCustomerEmail: "customer@example.com",
+	})
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "customer@example.com")
 }
