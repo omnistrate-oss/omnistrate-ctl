@@ -407,6 +407,7 @@ func TestResolveCustomerAccountSubscription_ProductionDefaultsToCallingUserSubsc
 		assert.Equal(t, "token", token)
 		assert.Equal(t, "svc-1", lookup.ServiceID)
 		assert.Equal(t, "env-1", lookup.EnvironmentID)
+		assert.Equal(t, "PROD", lookup.EnvironmentType)
 		assert.Equal(t, "pt-1", lookup.PlanID)
 		assert.Equal(t, "caller@example.com", lookup.CustomerEmail)
 		return &openapiclientfleet.FleetDescribeSubscriptionResult{Id: "sub-456"}, nil

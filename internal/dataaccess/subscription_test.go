@@ -193,8 +193,8 @@ func subscriptionJSON(id, email, status string) map[string]any {
 }
 
 // startSubscriptionTestServer points the SDK clients at a stub server for the duration of
-// the test and returns it.
-func startSubscriptionTestServer(t *testing.T, handler http.HandlerFunc) *httptest.Server {
+// the test.
+func startSubscriptionTestServer(t *testing.T, handler http.HandlerFunc) {
 	t.Helper()
 
 	server := httptest.NewServer(handler)
@@ -206,8 +206,6 @@ func startSubscriptionTestServer(t *testing.T, handler http.HandlerFunc) *httpte
 	t.Setenv("OMNISTRATE_HOST_SCHEME", serverURL.Scheme)
 	t.Setenv("CLIENT_TIMEOUT_IN_SECONDS", "5")
 	t.Setenv("OMNISTRATE_RETRY_MAX", "0")
-
-	return server
 }
 
 func TestGetSubscriptionByCustomerEmailInEnvironmentPaginates(t *testing.T) {
@@ -355,4 +353,84 @@ func TestGetSubscriptionByCustomerEmailInEnvironmentRequiresEmail(t *testing.T) 
 
 	require.Error(t, err)
 	assert.Contains(t, strings.ToLower(err.Error()), "customer email is required")
+}
+
+// serviceOfferingJSON builds a fleet service-offering payload with every field the SDK's
+// generated ServiceOffering.UnmarshalJSON requires present, for one offering on one plan.
+func serviceOfferingJSON(planID, environmentID, environmentType string) map[string]any {
+	return map[string]any{
+		"ConsumptionDescribeServiceOfferingResult": map[string]any{
+			"createdAt":           "2026-09-07T00:00:00Z",
+			"isDeprecated":        false,
+			"serviceDescription":  "test-service",
+			"serviceId":           "s-test",
+			"serviceName":         "test-service",
+			"serviceOrgId":        "org-abc123",
+			"serviceProviderId":   "sp-test",
+			"serviceProviderName": "test-provider",
+			"serviceURLKey":       "test-service",
+			"offerings": []map[string]any{
+				{
+					"AutoApproveSubscription":      false,
+					"productTierDocumentation":     "",
+					"productTierID":                planID,
+					"productTierName":              "test-plan",
+					"productTierPricing":           nil,
+					"productTierSupport":           "",
+					"productTierType":              "",
+					"productTierURLKey":            "",
+					"productTierVersion":           "",
+					"resourceParameters":           []any{},
+					"serviceAPIID":                 "",
+					"serviceAPIVersion":            "",
+					"serviceEnvironmentID":         environmentID,
+					"serviceEnvironmentName":       "",
+					"serviceEnvironmentType":       environmentType,
+					"serviceEnvironmentURLKey":     "",
+					"serviceEnvironmentVisibility": "",
+					"serviceLogoURL":               "",
+					"serviceModelID":               "",
+					"serviceModelName":             "",
+					"serviceModelStatus":           "",
+					"serviceModelType":             "",
+					"serviceModelURLKey":           "",
+				},
+			},
+		},
+	}
+}
+
+// TestGetSubscriptionByCustomerEmailPlumbsEnvironmentTypeToScopedFallback proves that the
+// plan-level wrapper GetSubscriptionByCustomerEmail actually threads the offering's
+// ServiceEnvironmentType into the lookup: only a customer whose subscription exists under
+// the org-scoped address is present, so the scoped fallback must fire, which only happens
+// when EnvironmentType reaches the lookup as "PROD".
+func TestGetSubscriptionByCustomerEmailPlumbsEnvironmentTypeToScopedFallback(t *testing.T) {
+	var describeUserCalls int
+	startSubscriptionTestServer(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/2022-09-01-00/fleet/service-offering/s-test":
+			_ = json.NewEncoder(w).Encode(serviceOfferingJSON("pt-test", "se-test", "PROD"))
+		case "/2022-09-01-00/user":
+			describeUserCalls++
+			_ = json.NewEncoder(w).Encode(map[string]any{"id": "user-provider", "orgId": "org-abc123"})
+		case "/2022-09-01-00/fleet/service/s-test/environment/se-test/subscription":
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"ids": []string{"sub-1"},
+				"subscriptions": []map[string]any{
+					subscriptionJSON("sub-1", "customer+org-abc123@example.com", "ACTIVE"),
+				},
+			})
+		default:
+			t.Fatalf("unexpected path %s", r.URL.Path)
+		}
+	})
+
+	subscription, err := GetSubscriptionByCustomerEmail(context.Background(), "test-token", "s-test", "pt-test", "customer@example.com")
+
+	require.NoError(t, err)
+	require.NotNil(t, subscription)
+	assert.Equal(t, "sub-1", subscription.Id)
+	assert.Equal(t, 1, describeUserCalls, "the offering's ServiceEnvironmentType must reach the lookup and trigger the scoped fallback")
 }
