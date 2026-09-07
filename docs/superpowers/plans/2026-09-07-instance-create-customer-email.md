@@ -833,7 +833,6 @@ func GetSubscriptionByCustomerEmailInEnvironment(
 	createResp, err := CreateSubscriptionOnBehalf(ctx, token, lookup.ServiceID, lookup.EnvironmentID, &CreateSubscriptionOnBehalfOptions{
 		ProductTierID:           lookup.PlanID,
 		OnBehalfOfCustomerEmail: customerEmail,
-		EnvironmentType:         lookup.EnvironmentType,
 	})
 	if err != nil {
 		return nil, errors.Wrapf(err, "failed to create subscription for user %s", customerEmail)
@@ -879,29 +878,7 @@ func scopedCustomerEmail(ctx context.Context, token, customerEmail string) (stri
 
 Add `"github.com/omnistrate-oss/omnistrate-ctl/internal/utils"` to the import block.
 
-- [ ] **Step 4: Add the `EnvironmentType` option field**
-
-In `internal/dataaccess/subscription.go`, add one field to `CreateSubscriptionOnBehalfOptions` (currently at line 370). Task 4 gives it behaviour; it is added here so this task compiles.
-
-```go
-type CreateSubscriptionOnBehalfOptions struct {
-	ProductTierID                        string
-	OnBehalfOfCustomerUserID             string
-	OnBehalfOfCustomerEmail              string
-	// EnvironmentType gates the org-scoped email fallback when resolving the customer's
-	// user ID. Leave empty outside production.
-	EnvironmentType                      string
-	AllowCreatesWhenPaymentNotConfigured *bool
-	BillingProvider                      string
-	CustomPrice                          *bool
-	CustomPricePerUnit                   map[string]interface{}
-	ExternalPayerID                      string
-	MaxNumberOfInstances                 *int64
-	PriceEffectiveDate                   string
-}
-```
-
-- [ ] **Step 5: Update the `account customer create` call site**
+- [ ] **Step 4: Update the `account customer create` call site**
 
 In `cmd/account/customer_create.go`, replace the `resolveCustomerSubscriptionByEmail` call (currently lines 626-633):
 
@@ -927,7 +904,7 @@ func isProductionEnvironmentType(environmentType string) bool {
 }
 ```
 
-- [ ] **Step 6: Update the `account customer create` test stubs**
+- [ ] **Step 5: Update the `account customer create` test stubs**
 
 In `cmd/account/customer_create_test.go`, change all three `resolveCustomerSubscriptionByEmail` stubs. The two "must not be called" stubs (lines 362 and 439) become:
 
@@ -955,12 +932,12 @@ Search the file for any remaining `resolveCustomerSubscriptionByEmail = func(` o
 
 Run: `grep -n "resolveCustomerSubscriptionByEmail = func" cmd/account/customer_create_test.go`
 
-- [ ] **Step 7: Build, then run the tests to verify they pass**
+- [ ] **Step 6: Build, then run the tests to verify they pass**
 
 Run: `go build ./... && go test ./internal/dataaccess/ ./cmd/account/ -v -run 'Subscription|Customer'`
 Expected: PASS. If the build fails, the compiler names every remaining caller of the old signature — fix each to the struct form.
 
-- [ ] **Step 8: Run the full unit suite and commit**
+- [ ] **Step 7: Run the full unit suite and commit**
 
 Run: `make unit-test`
 Expected: PASS.
@@ -979,21 +956,25 @@ returning it as usable."
 
 ---
 
-### Task 4: Org-scoped fallback for the customer user-ID lookup
+### Task 4: Extract the customer user-ID matcher
 
-Extract the email-to-user-ID search out of `CreateSubscriptionOnBehalf` and give it the same exact-then-scoped ordering. The fleet users API reports unscoped addresses, so the exact pass is what normally matches; the scoped pass costs no extra request because the user list is already in memory.
+Pull the email-to-user-ID search out of `CreateSubscriptionOnBehalf` into a named, testable
+function. Behaviour is unchanged: the fleet users API reports unscoped addresses, so a plain
+case-insensitive match is the correct and only lookup.
 
 **Files:**
 - Modify: `internal/dataaccess/subscription.go` (the `customerUserID` block inside `CreateSubscriptionOnBehalf`)
 - Test: `internal/dataaccess/subscription_test.go` (append)
 
 **Interfaces:**
-- Consumes: `utils.FormatEmailWithScopedOrg`, `utils.EmailHasScopedOrg`, `utils.IsProductionEnvironmentType` (Task 1); `CreateSubscriptionOnBehalfOptions.EnvironmentType` (Task 3).
+- Consumes: nothing from Tasks 1-3.
 - Produces: `matchUserIDByEmail(users []openapiclientfleet.AccessSideUser, email string) string` — returns `""` when no user matches.
 
 - [ ] **Step 1: Write the failing tests**
 
-Append to `internal/dataaccess/subscription_test.go`:
+Append to `internal/dataaccess/subscription_test.go`. Add
+`"github.com/omnistrate-oss/omnistrate-ctl/internal/utils"` to the test file's import block if it
+is not already there.
 
 ```go
 func TestMatchUserIDByEmail(t *testing.T) {
@@ -1001,13 +982,16 @@ func TestMatchUserIDByEmail(t *testing.T) {
 		{UserId: utils.ToPtr("user-1"), Email: utils.ToPtr("other@example.com")},
 		{UserId: utils.ToPtr("user-2"), Email: utils.ToPtr("Customer@Example.com")},
 		{UserId: utils.ToPtr("user-3")},
+		{Email: utils.ToPtr("no-id@example.com")},
 	}
 
 	assert.Equal(t, "user-2", matchUserIDByEmail(users, "customer@example.com"))
 	assert.Equal(t, "", matchUserIDByEmail(users, "absent@example.com"))
+	assert.Equal(t, "", matchUserIDByEmail(users, "no-id@example.com"))
+	assert.Equal(t, "", matchUserIDByEmail(nil, "customer@example.com"))
 }
 
-func TestCreateSubscriptionOnBehalfResolvesScopedUserInProd(t *testing.T) {
+func TestCreateSubscriptionOnBehalfResolvesUserByEmail(t *testing.T) {
 	var capturedUserID string
 	startSubscriptionTestServer(t, func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
@@ -1015,11 +999,10 @@ func TestCreateSubscriptionOnBehalfResolvesScopedUserInProd(t *testing.T) {
 		case "/2022-09-01-00/fleet/users":
 			_ = json.NewEncoder(w).Encode(map[string]any{
 				"users": []map[string]any{
-					{"userId": "user-scoped", "email": "customer+org-abc123@example.com"},
+					{"userId": "user-other", "email": "other@example.com"},
+					{"userId": "user-test", "email": "customer@example.com"},
 				},
 			})
-		case "/2022-09-01-00/user":
-			_ = json.NewEncoder(w).Encode(map[string]any{"id": "user-provider", "orgId": "org-abc123"})
 		case "/2022-09-01-00/fleet/service/s-test/environment/se-test/subscription":
 			var body map[string]any
 			require.NoError(t, json.NewDecoder(r.Body).Decode(&body))
@@ -1033,39 +1016,31 @@ func TestCreateSubscriptionOnBehalfResolvesScopedUserInProd(t *testing.T) {
 	result, err := CreateSubscriptionOnBehalf(context.Background(), "test-token", "s-test", "se-test", &CreateSubscriptionOnBehalfOptions{
 		ProductTierID:           "pt-test",
 		OnBehalfOfCustomerEmail: "customer@example.com",
-		EnvironmentType:         "PROD",
 	})
 
 	require.NoError(t, err)
 	assert.Equal(t, "sub-new", result.GetId())
-	assert.Equal(t, "user-scoped", capturedUserID)
+	assert.Equal(t, "user-test", capturedUserID)
 }
 
 func TestCreateSubscriptionOnBehalfReportsUnknownEmail(t *testing.T) {
 	startSubscriptionTestServer(t, func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		switch r.URL.Path {
-		case "/2022-09-01-00/fleet/users":
-			_ = json.NewEncoder(w).Encode(map[string]any{"users": []map[string]any{}})
-		case "/2022-09-01-00/user":
-			_ = json.NewEncoder(w).Encode(map[string]any{"id": "user-provider", "orgId": "org-abc123"})
-		default:
+		if r.URL.Path != "/2022-09-01-00/fleet/users" {
 			t.Fatalf("unexpected path %s", r.URL.Path)
 		}
+		_ = json.NewEncoder(w).Encode(map[string]any{"users": []map[string]any{}})
 	})
 
 	_, err := CreateSubscriptionOnBehalf(context.Background(), "test-token", "s-test", "se-test", &CreateSubscriptionOnBehalfOptions{
 		ProductTierID:           "pt-test",
 		OnBehalfOfCustomerEmail: "customer@example.com",
-		EnvironmentType:         "PROD",
 	})
 
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "customer@example.com")
 }
 ```
-
-Add `"github.com/omnistrate-oss/omnistrate-ctl/internal/utils"` to the test file's import block.
 
 - [ ] **Step 2: Run the tests to verify they fail**
 
@@ -1074,7 +1049,7 @@ Expected: FAIL — `undefined: matchUserIDByEmail`.
 
 - [ ] **Step 3: Write the implementation**
 
-In `internal/dataaccess/subscription.go`, replace the `if customerUserID == "" && opts.OnBehalfOfCustomerEmail != ""` block inside `CreateSubscriptionOnBehalf` (currently lines 389-411) with:
+In `internal/dataaccess/subscription.go`, replace the `if customerUserID == "" && opts.OnBehalfOfCustomerEmail != ""` block inside `CreateSubscriptionOnBehalf` with:
 
 ```go
 	if customerUserID == "" && opts.OnBehalfOfCustomerEmail != "" {
@@ -1087,29 +1062,21 @@ In `internal/dataaccess/subscription.go`, replace the `if customerUserID == "" &
 		}
 
 		customerUserID = matchUserIDByEmail(listUsersRes.Users, opts.OnBehalfOfCustomerEmail)
-
-		// In production a customer may be stored under the org-scoped identity instead.
-		if customerUserID == "" &&
-			utils.IsProductionEnvironmentType(opts.EnvironmentType) &&
-			!utils.EmailHasScopedOrg(opts.OnBehalfOfCustomerEmail) {
-			scopedEmail, scopeErr := scopedCustomerEmail(ctx, token, opts.OnBehalfOfCustomerEmail)
-			if scopeErr != nil {
-				return nil, scopeErr
-			}
-			customerUserID = matchUserIDByEmail(listUsersRes.Users, scopedEmail)
-		}
-
 		if customerUserID == "" {
 			return nil, errors.Errorf("no user found with email %s", opts.OnBehalfOfCustomerEmail)
 		}
 	}
 ```
 
+Note the response body is now closed on both the success and error paths; the original closed it
+only after the error check.
+
 Then add, next to the other helpers:
 
 ```go
 // matchUserIDByEmail returns the ID of the user with the given address, or "" when there
-// is none.
+// is none. The fleet users API reports unscoped addresses, so a plain case-insensitive
+// comparison is the correct match.
 func matchUserIDByEmail(users []openapiclientfleet.AccessSideUser, email string) string {
 	for _, user := range users {
 		if user.Email == nil || user.UserId == nil {
@@ -1135,15 +1102,15 @@ Expected: PASS.
 
 ```bash
 git add internal/dataaccess/subscription.go internal/dataaccess/subscription_test.go
-git commit -m "feat: resolve org-scoped customers when creating a subscription
+git commit -m "refactor: extract the customer user-ID matcher
 
-Extracts the email-to-user-ID search and gives it the same
-exact-then-scoped ordering as the subscription lookup, so a production
-customer stored under the org-scoped identity is found instead of
-reported as unknown."
+Pulls the email-to-user-ID search out of CreateSubscriptionOnBehalf into
+a named function so it can be tested directly, and closes the response
+body on the error path as well as the success path."
 ```
 
 ---
+
 
 ### Task 5: The `--customer-email` flag on `instance create`
 

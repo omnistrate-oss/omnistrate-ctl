@@ -134,10 +134,10 @@ The SUSPENDED error names its remedy:
 Any other non-ACTIVE status produces the generic form (`is in status <STATUS>, expected
 ACTIVE`), so a status added later cannot be silently treated as usable.
 
-`CreateSubscriptionOnBehalf`'s inline email-to-user-ID search moves into a helper and gains
-the same exact-then-scoped ordering, gated on environment type the same way. The
-scoped pass costs nothing there — the user list is already in memory — and in practice the
-exact pass is what matches, because `/fleet/users` reports unscoped addresses.
+`CreateSubscriptionOnBehalf`'s inline email-to-user-ID search moves into a named helper so
+it can be tested directly. It deliberately does **not** get the scoped fallback: the fleet
+users API un-scopes an address before returning it, so a scoped pass there would be
+unreachable code. The subscription listing is the only place the scoped form is observable.
 
 `GetSubscriptionByCustomerEmail`, the plan-level wrapper, passes the offering's
 `ServiceEnvironmentType` through to the lookup.
