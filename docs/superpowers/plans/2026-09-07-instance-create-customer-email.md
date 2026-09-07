@@ -1356,7 +1356,7 @@ Expected: PASS.
 
 - [ ] **Step 7: Regenerate the docs**
 
-Run: `make docs`
+Run: `make gen-doc` (note: there is no `docs` target — a `docs/` directory shadows that name)
 Then: `git status --short mkdocs/` — expect a modified `omnistrate-ctl_instance_create.md` containing `--customer-email`.
 
 - [ ] **Step 8: Verify no identifying data leaked**
