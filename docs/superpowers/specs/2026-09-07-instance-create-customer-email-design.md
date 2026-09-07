@@ -176,7 +176,7 @@ reporting suspended subscriptions instead of failing downstream.
 - `cmd/instance/create_test.go` — flag validation (both flags together, malformed email)
   and resolution wiring through an injectable package-level func var.
 - Update the `account customer create` test stubs for the new signature.
-- `make docs` to regenerate the generated CLI reference under `mkdocs/docs/`.
+- `make gen-doc` to regenerate the generated CLI reference under `mkdocs/docs/`.
 
 All fixtures use placeholder identities (`customer@example.com`, `org-abc123`). No real
 customer, organization, or address appears in code, tests, or documentation.

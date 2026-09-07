@@ -409,6 +409,8 @@ Append to `internal/dataaccess/subscription.go`:
 // The platform's full vocabulary is ACTIVE, SUSPENDED, CANCELLED and TERMINATED.
 const subscriptionStatusActive = "ACTIVE"
 
+const subscriptionStatusSuspended = "SUSPENDED"
+
 // matchSubscriptionsByEmail returns the subscriptions on a plan whose root user is the
 // given address. The plan filter is redundant with the server-side query parameter and is
 // kept so the matching is correct on its own terms.
@@ -477,7 +479,7 @@ func unusableSubscriptionError(
 ) error {
 	if len(candidates) == 1 {
 		candidate := candidates[0]
-		if strings.EqualFold(candidate.Status, "SUSPENDED") {
+		if strings.EqualFold(candidate.Status, subscriptionStatusSuspended) {
 			return errors.Errorf(
 				"subscription %s for customer %s on plan %s is SUSPENDED and cannot be used to create an instance. "+
 					"Resume it with 'omnistrate-ctl subscription resume %s', or pass --subscription-id to use a different subscription",
@@ -501,13 +503,29 @@ func unusableSubscriptionError(
 	for _, candidate := range candidates {
 		described = append(described, fmt.Sprintf("%s (%s)", candidate.Id, candidate.Status))
 	}
-	return errors.Errorf(
-		"customer %s has no active subscription on plan %s; found %s. "+
-			"Resume a suspended subscription with 'omnistrate-ctl subscription resume', or pass --subscription-id",
+
+	hasSuspended := false
+	for _, candidate := range candidates {
+		if strings.EqualFold(candidate.Status, subscriptionStatusSuspended) {
+			hasSuspended = true
+			break
+		}
+	}
+
+	msg := fmt.Sprintf(
+		"customer %s has no active subscription on plan %s; found %s",
 		customerEmail,
 		candidates[0].ProductTierName,
 		strings.Join(described, ", "),
 	)
+
+	if hasSuspended {
+		msg += ". Resume a suspended subscription with 'omnistrate-ctl subscription resume', or pass --subscription-id"
+	} else {
+		msg += ". Pass --subscription-id"
+	}
+
+	return errors.New(msg)
 }
 ```
 
@@ -1108,8 +1126,8 @@ git add internal/dataaccess/subscription.go internal/dataaccess/subscription_tes
 git commit -m "refactor: extract the customer user-ID matcher
 
 Pulls the email-to-user-ID search out of CreateSubscriptionOnBehalf into
-a named function so it can be tested directly, and closes the response
-body on the error path as well as the success path."
+a named function so it can be tested directly. This guards against nil
+UserId values, preventing a potential panic in the original implementation."
 ```
 
 ---
