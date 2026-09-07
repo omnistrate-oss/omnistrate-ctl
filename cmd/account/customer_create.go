@@ -627,10 +627,13 @@ func resolveCustomerAccountSubscription(
 	subscription, err := resolveCustomerSubscriptionByEmail(
 		ctx,
 		token,
-		target.ServiceID,
-		target.EnvironmentID,
-		target.ProductTierID,
-		customerEmail,
+		dataaccess.CustomerSubscriptionLookup{
+			ServiceID:       target.ServiceID,
+			EnvironmentID:   target.EnvironmentID,
+			EnvironmentType: target.EnvironmentType,
+			PlanID:          target.ProductTierID,
+			CustomerEmail:   customerEmail,
+		},
 	)
 	if err != nil {
 		return "", fmt.Errorf(
@@ -649,12 +652,7 @@ func resolveCustomerAccountSubscription(
 }
 
 func isProductionEnvironmentType(environmentType string) bool {
-	switch strings.ToUpper(strings.TrimSpace(environmentType)) {
-	case "PROD", "PRODUCTION":
-		return true
-	default:
-		return false
-	}
+	return utils.IsProductionEnvironmentType(environmentType)
 }
 
 func buildCustomerAccountRequestParams(

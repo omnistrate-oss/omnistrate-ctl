@@ -1,6 +1,12 @@
 package dataaccess
 
 import (
+	"context"
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
+	"net/url"
+	"strings"
 	"testing"
 
 	openapiclientfleet "github.com/omnistrate-oss/omnistrate-sdk-go/fleet"
@@ -164,4 +170,189 @@ func TestSelectCustomerSubscriptionReportsNonSuspendedMultipleCandidates(t *test
 	assert.Contains(t, err.Error(), "sub-2 (TERMINATED)")
 	assert.Contains(t, err.Error(), "--subscription-id")
 	assert.NotContains(t, err.Error(), "resume")
+}
+
+// subscriptionJSON builds a fleet subscription payload with every field the SDK requires.
+func subscriptionJSON(id, email, status string) map[string]any {
+	return map[string]any{
+		"createdAt":         "2026-09-07T00:00:00Z",
+		"id":                id,
+		"instanceCount":     0,
+		"productTierId":     "pt-test",
+		"productTierName":   "test-plan",
+		"rootUserEmail":     email,
+		"rootUserId":        "user-test",
+		"rootUserName":      "test-customer",
+		"serviceId":         "s-test",
+		"serviceName":       "test-service",
+		"status":            status,
+		"updatedAt":         "2026-09-07T00:00:00Z",
+		"updatedByUserId":   "user-test",
+		"updatedByUserName": "test-customer",
+	}
+}
+
+// startSubscriptionTestServer points the SDK clients at a stub server for the duration of
+// the test and returns it.
+func startSubscriptionTestServer(t *testing.T, handler http.HandlerFunc) *httptest.Server {
+	t.Helper()
+
+	server := httptest.NewServer(handler)
+	t.Cleanup(server.Close)
+
+	serverURL, err := url.Parse(server.URL)
+	require.NoError(t, err)
+	t.Setenv("OMNISTRATE_HOST", serverURL.Host)
+	t.Setenv("OMNISTRATE_HOST_SCHEME", serverURL.Scheme)
+	t.Setenv("CLIENT_TIMEOUT_IN_SECONDS", "5")
+	t.Setenv("OMNISTRATE_RETRY_MAX", "0")
+
+	return server
+}
+
+func TestGetSubscriptionByCustomerEmailInEnvironmentPaginates(t *testing.T) {
+	var listCalls int
+	startSubscriptionTestServer(t, func(w http.ResponseWriter, r *http.Request) {
+		require.Equal(t, "/2022-09-01-00/fleet/service/s-test/environment/se-test/subscription", r.URL.Path)
+		require.Equal(t, "pt-test", r.URL.Query().Get("productTierId"))
+		listCalls++
+
+		w.Header().Set("Content-Type", "application/json")
+		if r.URL.Query().Get("nextPageToken") == "" {
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"ids":           []string{"sub-1"},
+				"subscriptions": []map[string]any{subscriptionJSON("sub-1", "other@example.com", "ACTIVE")},
+				"nextPageToken": "page-2",
+			})
+			return
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"ids":           []string{"sub-2"},
+			"subscriptions": []map[string]any{subscriptionJSON("sub-2", "customer@example.com", "ACTIVE")},
+		})
+	})
+
+	subscription, err := GetSubscriptionByCustomerEmailInEnvironment(context.Background(), "test-token", CustomerSubscriptionLookup{
+		ServiceID:       "s-test",
+		EnvironmentID:   "se-test",
+		EnvironmentType: "DEV",
+		PlanID:          "pt-test",
+		CustomerEmail:   "customer@example.com",
+	})
+
+	require.NoError(t, err)
+	require.NotNil(t, subscription)
+	assert.Equal(t, "sub-2", subscription.Id)
+	assert.Equal(t, 2, listCalls, "the lookup must follow nextPageToken")
+}
+
+func TestGetSubscriptionByCustomerEmailInEnvironmentFallsBackToScopedEmailInProd(t *testing.T) {
+	var describeUserCalls int
+	startSubscriptionTestServer(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/2022-09-01-00/user":
+			describeUserCalls++
+			_ = json.NewEncoder(w).Encode(map[string]any{"id": "user-provider", "orgId": "org-abc123"})
+		case "/2022-09-01-00/fleet/service/s-test/environment/se-test/subscription":
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"ids": []string{"sub-1"},
+				"subscriptions": []map[string]any{
+					subscriptionJSON("sub-1", "customer+org-abc123@example.com", "ACTIVE"),
+				},
+			})
+		default:
+			t.Fatalf("unexpected path %s", r.URL.Path)
+		}
+	})
+
+	subscription, err := GetSubscriptionByCustomerEmailInEnvironment(context.Background(), "test-token", CustomerSubscriptionLookup{
+		ServiceID:       "s-test",
+		EnvironmentID:   "se-test",
+		EnvironmentType: "PROD",
+		PlanID:          "pt-test",
+		CustomerEmail:   "customer@example.com",
+	})
+
+	require.NoError(t, err)
+	require.NotNil(t, subscription)
+	assert.Equal(t, "sub-1", subscription.Id)
+	assert.Equal(t, 1, describeUserCalls)
+}
+
+func TestGetSubscriptionByCustomerEmailInEnvironmentSkipsScopedFallbackOutsideProd(t *testing.T) {
+	var createCalls int
+	startSubscriptionTestServer(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch {
+		case r.URL.Path == "/2022-09-01-00/user":
+			t.Fatal("describe user must not be called outside production")
+		case r.URL.Path == "/2022-09-01-00/fleet/users":
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"users": []map[string]any{{"userId": "user-test", "email": "customer@example.com"}},
+			})
+		case r.URL.Path == "/2022-09-01-00/fleet/service/s-test/environment/se-test/subscription" && r.Method == http.MethodPost:
+			createCalls++
+			_ = json.NewEncoder(w).Encode(map[string]any{"id": "sub-new"})
+		case r.URL.Path == "/2022-09-01-00/fleet/service/s-test/environment/se-test/subscription":
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"ids":           []string{"sub-1"},
+				"subscriptions": []map[string]any{subscriptionJSON("sub-1", "customer+org-abc123@example.com", "ACTIVE")},
+			})
+		case r.URL.Path == "/2022-09-01-00/fleet/service/s-test/environment/se-test/subscription/sub-new":
+			_ = json.NewEncoder(w).Encode(subscriptionJSON("sub-new", "customer@example.com", "ACTIVE"))
+		default:
+			t.Fatalf("unexpected path %s", r.URL.Path)
+		}
+	})
+
+	subscription, err := GetSubscriptionByCustomerEmailInEnvironment(context.Background(), "test-token", CustomerSubscriptionLookup{
+		ServiceID:       "s-test",
+		EnvironmentID:   "se-test",
+		EnvironmentType: "DEV",
+		PlanID:          "pt-test",
+		CustomerEmail:   "customer@example.com",
+	})
+
+	require.NoError(t, err)
+	require.NotNil(t, subscription)
+	assert.Equal(t, "sub-new", subscription.Id)
+	assert.Equal(t, 1, createCalls)
+}
+
+func TestGetSubscriptionByCustomerEmailInEnvironmentReportsSuspended(t *testing.T) {
+	startSubscriptionTestServer(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPost {
+			t.Fatal("a suspended subscription must not trigger a create")
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"ids":           []string{"sub-1"},
+			"subscriptions": []map[string]any{subscriptionJSON("sub-1", "customer@example.com", "SUSPENDED")},
+		})
+	})
+
+	_, err := GetSubscriptionByCustomerEmailInEnvironment(context.Background(), "test-token", CustomerSubscriptionLookup{
+		ServiceID:       "s-test",
+		EnvironmentID:   "se-test",
+		EnvironmentType: "DEV",
+		PlanID:          "pt-test",
+		CustomerEmail:   "customer@example.com",
+	})
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "SUSPENDED")
+	assert.Contains(t, err.Error(), "omnistrate-ctl subscription resume sub-1")
+}
+
+func TestGetSubscriptionByCustomerEmailInEnvironmentRequiresEmail(t *testing.T) {
+	_, err := GetSubscriptionByCustomerEmailInEnvironment(context.Background(), "test-token", CustomerSubscriptionLookup{
+		ServiceID:     "s-test",
+		EnvironmentID: "se-test",
+		PlanID:        "pt-test",
+		CustomerEmail: "   ",
+	})
+
+	require.Error(t, err)
+	assert.Contains(t, strings.ToLower(err.Error()), "customer email is required")
 }

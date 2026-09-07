@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/omnistrate-oss/omnistrate-ctl/internal/utils"
 	openapiclientfleet "github.com/omnistrate-oss/omnistrate-sdk-go/fleet"
 	"github.com/pkg/errors"
 )
@@ -35,6 +36,17 @@ func DescribeSubscription(ctx context.Context, token string, serviceID, environm
 	return
 }
 
+// CustomerSubscriptionLookup identifies the customer and the plan a subscription is being
+// resolved for. EnvironmentType decides whether the org-scoped email fallback applies,
+// because org-scoped customer identities only exist in production environments.
+type CustomerSubscriptionLookup struct {
+	ServiceID       string
+	EnvironmentID   string
+	EnvironmentType string
+	PlanID          string
+	CustomerEmail   string
+}
+
 func GetSubscriptionByCustomerEmail(ctx context.Context, token string, serviceID string, planID string, customerEmail string) (resp *openapiclientfleet.FleetDescribeSubscriptionResult, err error) {
 	// Describe the service offering for this service and plan (product tier) ID to get the environment ID
 	serviceOfferingResult, err := DescribeServiceOffering(ctx, token, serviceID, planID, "")
@@ -44,14 +56,13 @@ func GetSubscriptionByCustomerEmail(ctx context.Context, token string, serviceID
 
 	for _, offering := range serviceOfferingResult.ConsumptionDescribeServiceOfferingResult.Offerings {
 		if offering.ProductTierID == planID {
-			return GetSubscriptionByCustomerEmailInEnvironment(
-				ctx,
-				token,
-				serviceID,
-				offering.ServiceEnvironmentID,
-				planID,
-				customerEmail,
-			)
+			return GetSubscriptionByCustomerEmailInEnvironment(ctx, token, CustomerSubscriptionLookup{
+				ServiceID:       serviceID,
+				EnvironmentID:   offering.ServiceEnvironmentID,
+				EnvironmentType: offering.ServiceEnvironmentType,
+				PlanID:          planID,
+				CustomerEmail:   customerEmail,
+			})
 		}
 	}
 
@@ -59,47 +70,55 @@ func GetSubscriptionByCustomerEmail(ctx context.Context, token string, serviceID
 	return
 }
 
+// GetSubscriptionByCustomerEmailInEnvironment resolves the subscription a customer owns for
+// a plan, creating one when the customer has none.
+//
+// The listing deliberately leaves IncludeInactive off. Terminating a subscription
+// soft-deletes its row, and only the inactive listing returns soft-deleted rows, so a
+// terminated subscription is correctly invisible here and the customer can be resubscribed.
+// A suspended subscription stays live and is reported rather than silently duplicated.
 func GetSubscriptionByCustomerEmailInEnvironment(
 	ctx context.Context,
 	token string,
-	serviceID string,
-	environmentID string,
-	planID string,
-	customerEmail string,
+	lookup CustomerSubscriptionLookup,
 ) (resp *openapiclientfleet.FleetDescribeSubscriptionResult, err error) {
-	ctxWithToken := context.WithValue(ctx, openapiclientfleet.ContextAccessToken, token)
-	apiClient := getFleetClient()
+	customerEmail := strings.TrimSpace(lookup.CustomerEmail)
+	if customerEmail == "" {
+		return nil, errors.New("customer email is required to look up a subscription")
+	}
 
-	req := apiClient.InventoryApiAPI.InventoryApiListSubscription(
-		ctxWithToken,
-		serviceID,
-		environmentID,
-	).ProductTierId(planID)
-
-	var r *http.Response
-	defer func() {
-		if r != nil {
-			_ = r.Body.Close()
-		}
-	}()
-
-	listSubscriptionResult, r, err := req.Execute()
+	subscriptions, err := ListAllSubscriptions(ctx, token, lookup.ServiceID, lookup.EnvironmentID, &ListSubscriptionsOptions{
+		ProductTierId: &lookup.PlanID,
+	})
 	if err != nil {
-		return nil, handleFleetError(err)
-	}
-	if r != nil {
-		_ = r.Body.Close()
-		r = nil
+		return nil, err
 	}
 
-	for _, subscription := range listSubscriptionResult.Subscriptions {
-		if strings.EqualFold(subscription.RootUserEmail, customerEmail) {
-			return &subscription, nil
+	candidates := matchSubscriptionsByEmail(subscriptions, lookup.PlanID, customerEmail)
+
+	// In production the platform stores an end customer's identity scoped to the service
+	// provider's organization, so a customer with no match under the plain address may still
+	// own a subscription under <local>+<orgID>@<domain>.
+	if len(candidates) == 0 &&
+		utils.IsProductionEnvironmentType(lookup.EnvironmentType) &&
+		!utils.EmailHasScopedOrg(customerEmail) {
+		var scopedEmail string
+		if scopedEmail, err = scopedCustomerEmail(ctx, token, customerEmail); err != nil {
+			return nil, err
 		}
+		candidates = matchSubscriptionsByEmail(subscriptions, lookup.PlanID, scopedEmail)
 	}
 
-	createResp, err := CreateSubscriptionOnBehalf(ctx, token, serviceID, environmentID, &CreateSubscriptionOnBehalfOptions{
-		ProductTierID:           planID,
+	selected, err := selectCustomerSubscription(candidates, customerEmail)
+	if err != nil {
+		return nil, err
+	}
+	if selected != nil {
+		return selected, nil
+	}
+
+	createResp, err := CreateSubscriptionOnBehalf(ctx, token, lookup.ServiceID, lookup.EnvironmentID, &CreateSubscriptionOnBehalfOptions{
+		ProductTierID:           lookup.PlanID,
 		OnBehalfOfCustomerEmail: customerEmail,
 	})
 	if err != nil {
@@ -111,12 +130,36 @@ func GetSubscriptionByCustomerEmailInEnvironment(
 		return nil, errors.Errorf("subscription creation for user %s returned an empty subscription ID", customerEmail)
 	}
 
-	resp, err = DescribeSubscription(ctx, token, serviceID, environmentID, subscriptionID)
+	resp, err = DescribeSubscription(ctx, token, lookup.ServiceID, lookup.EnvironmentID, subscriptionID)
 	if err != nil {
 		return nil, errors.Wrapf(err, "failed to describe newly created subscription for user %s", customerEmail)
 	}
 
+	// A newly created subscription goes through the same status gate, so every "unusable
+	// subscription" message in this command comes from one place.
+	if _, err = selectCustomerSubscription([]openapiclientfleet.FleetDescribeSubscriptionResult{*resp}, customerEmail); err != nil {
+		return nil, err
+	}
+
 	return resp, nil
+}
+
+// scopedCustomerEmail builds the org-scoped form of a customer address using the calling
+// service provider's organization ID.
+func scopedCustomerEmail(ctx context.Context, token, customerEmail string) (string, error) {
+	user, err := DescribeUser(ctx, token)
+	if err != nil {
+		return "", errors.Wrap(err, "failed to describe the current user to resolve the provider organization ID")
+	}
+	if user == nil || user.OrgId == nil || strings.TrimSpace(*user.OrgId) == "" {
+		return "", errors.New("describe user returned an empty organization ID; cannot check for an org-scoped customer subscription")
+	}
+
+	scopedEmail, err := utils.FormatEmailWithScopedOrg(customerEmail, strings.TrimSpace(*user.OrgId))
+	if err != nil {
+		return "", errors.Wrapf(err, "failed to build the org-scoped form of %s", customerEmail)
+	}
+	return scopedEmail, nil
 }
 
 type ListSubscriptionsOptions struct {
