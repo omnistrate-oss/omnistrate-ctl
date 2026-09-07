@@ -1068,8 +1068,11 @@ In `internal/dataaccess/subscription.go`, replace the `if customerUserID == "" &
 	}
 ```
 
-Note the response body is now closed on both the success and error paths; the original closed it
-only after the error check.
+The original already closed the response body on both paths, via two identical close sites; this
+collapses them into one before the error check, which is behaviour-neutral. The one real
+behaviour change is in the extracted matcher: the original dereferenced `*user.UserId`
+unconditionally once the email matched, so a user with a nil `UserId` would panic.
+`matchUserIDByEmail` guards it and skips the entry.
 
 Then add, next to the other helpers:
 
