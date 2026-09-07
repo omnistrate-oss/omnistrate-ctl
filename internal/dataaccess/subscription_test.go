@@ -49,6 +49,22 @@ func TestMatchSubscriptionsByEmailDoesNotMatchScopedFormImplicitly(t *testing.T)
 	assert.Empty(t, matches, "the scoped form must only match when the caller asks for it explicitly")
 }
 
+func TestMatchSubscriptionsByEmailWithoutPlanFilter(t *testing.T) {
+	onOtherPlan := testSubscription("sub-2", "customer@example.com", "ACTIVE")
+	onOtherPlan.ProductTierId = "pt-other"
+	subscriptions := []openapiclientfleet.FleetDescribeSubscriptionResult{
+		testSubscription("sub-1", "customer@example.com", "ACTIVE"),
+		onOtherPlan,
+		testSubscription("sub-3", "other@example.com", "ACTIVE"),
+	}
+
+	matches := matchSubscriptionsByEmail(subscriptions, "", "customer@example.com")
+
+	require.Len(t, matches, 2)
+	assert.Equal(t, "sub-1", matches[0].Id)
+	assert.Equal(t, "sub-2", matches[1].Id)
+}
+
 func TestSelectCustomerSubscriptionNoCandidatesSignalsCreate(t *testing.T) {
 	subscription, err := selectCustomerSubscription(nil, "customer@example.com")
 
@@ -132,4 +148,20 @@ func TestSelectCustomerSubscriptionReportsEveryNonActiveCandidate(t *testing.T) 
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "sub-1 (SUSPENDED)")
 	assert.Contains(t, err.Error(), "sub-2 (CANCELLED)")
+	assert.Contains(t, err.Error(), "resume")
+}
+
+func TestSelectCustomerSubscriptionReportsNonSuspendedMultipleCandidates(t *testing.T) {
+	candidates := []openapiclientfleet.FleetDescribeSubscriptionResult{
+		testSubscription("sub-1", "customer@example.com", "CANCELLED"),
+		testSubscription("sub-2", "customer@example.com", "TERMINATED"),
+	}
+
+	_, err := selectCustomerSubscription(candidates, "customer@example.com")
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "sub-1 (CANCELLED)")
+	assert.Contains(t, err.Error(), "sub-2 (TERMINATED)")
+	assert.Contains(t, err.Error(), "--subscription-id")
+	assert.NotContains(t, err.Error(), "resume")
 }
