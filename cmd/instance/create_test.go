@@ -1,9 +1,12 @@
 package instance
 
 import (
+	"context"
 	"encoding/json"
+	"strings"
 	"testing"
 
+	"github.com/omnistrate-oss/omnistrate-ctl/internal/dataaccess"
 	openapiclientfleet "github.com/omnistrate-oss/omnistrate-sdk-go/fleet"
 	openapiclientv1 "github.com/omnistrate-oss/omnistrate-sdk-go/v1"
 	"github.com/stretchr/testify/assert"
@@ -47,7 +50,7 @@ func TestCreateCommandFlags_AllExpectedFlags(t *testing.T) {
 		"service", "environment", "plan", "version", "resource",
 		"cloud-provider", "region", "param", "param-file",
 		"customer-account-id", "cloud-provider-native-network-id", "onprem-platform", "tags", "breakpoints",
-		"subscription-id", "instance-id", "wait", "network-type",
+		"subscription-id", "instance-id", "wait", "network-type", "customer-email",
 	}
 	for _, flagName := range expectedFlags {
 		flag := createCmd.Flags().Lookup(flagName)
@@ -511,4 +514,100 @@ func serviceOfferingFixture(resourceID, resourceName string) *openapiclientv1.De
 			},
 		},
 	}
+}
+
+func TestCreateCommandFlags_CustomerEmail(t *testing.T) {
+	flag := createCmd.Flags().Lookup("customer-email")
+	require.NotNil(t, flag, "Expected flag 'customer-email' to be registered")
+	assert.Contains(t, flag.Usage, "subscription")
+	assert.Equal(t, "", flag.DefValue)
+}
+
+func TestValidateCustomerEmailFlags(t *testing.T) {
+	require.NoError(t, validateCustomerEmailFlags("", ""))
+	require.NoError(t, validateCustomerEmailFlags("", "sub-test"))
+	require.NoError(t, validateCustomerEmailFlags("customer@example.com", ""))
+
+	err := validateCustomerEmailFlags("customer@example.com", "sub-test")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "--customer-email")
+	assert.Contains(t, err.Error(), "--subscription-id")
+
+	err = validateCustomerEmailFlags("not-an-email", "")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "--customer-email")
+}
+
+func TestResolveInstanceSubscriptionIDWithoutEmailPassesThrough(t *testing.T) {
+	original := resolveInstanceSubscriptionByEmail
+	t.Cleanup(func() { resolveInstanceSubscriptionByEmail = original })
+
+	resolveInstanceSubscriptionByEmail = func(context.Context, string, dataaccess.CustomerSubscriptionLookup) (*openapiclientfleet.FleetDescribeSubscriptionResult, error) {
+		t.Fatal("subscription lookup should not be called without --customer-email")
+		return nil, nil
+	}
+
+	subscriptionID, err := resolveInstanceSubscriptionID(
+		context.Background(),
+		"token",
+		dataaccess.CustomerSubscriptionLookup{ServiceID: "s-test"},
+		"sub-test",
+	)
+
+	require.NoError(t, err)
+	assert.Equal(t, "sub-test", subscriptionID)
+}
+
+func TestResolveInstanceSubscriptionIDResolvesEmail(t *testing.T) {
+	original := resolveInstanceSubscriptionByEmail
+	t.Cleanup(func() { resolveInstanceSubscriptionByEmail = original })
+
+	resolveInstanceSubscriptionByEmail = func(ctx context.Context, token string, lookup dataaccess.CustomerSubscriptionLookup) (*openapiclientfleet.FleetDescribeSubscriptionResult, error) {
+		assert.Equal(t, "token", token)
+		assert.Equal(t, "s-test", lookup.ServiceID)
+		assert.Equal(t, "se-test", lookup.EnvironmentID)
+		assert.Equal(t, "PROD", lookup.EnvironmentType)
+		assert.Equal(t, "pt-test", lookup.PlanID)
+		assert.Equal(t, "customer@example.com", lookup.CustomerEmail)
+		return &openapiclientfleet.FleetDescribeSubscriptionResult{Id: "sub-test"}, nil
+	}
+
+	subscriptionID, err := resolveInstanceSubscriptionID(
+		context.Background(),
+		"token",
+		dataaccess.CustomerSubscriptionLookup{
+			ServiceID:       "s-test",
+			EnvironmentID:   "se-test",
+			EnvironmentType: "PROD",
+			PlanID:          "pt-test",
+			CustomerEmail:   "customer@example.com",
+		},
+		"",
+	)
+
+	require.NoError(t, err)
+	assert.Equal(t, "sub-test", subscriptionID)
+}
+
+func TestResolveInstanceSubscriptionIDRejectsEmptyResult(t *testing.T) {
+	original := resolveInstanceSubscriptionByEmail
+	t.Cleanup(func() { resolveInstanceSubscriptionByEmail = original })
+
+	resolveInstanceSubscriptionByEmail = func(context.Context, string, dataaccess.CustomerSubscriptionLookup) (*openapiclientfleet.FleetDescribeSubscriptionResult, error) {
+		return &openapiclientfleet.FleetDescribeSubscriptionResult{}, nil
+	}
+
+	_, err := resolveInstanceSubscriptionID(
+		context.Background(),
+		"token",
+		dataaccess.CustomerSubscriptionLookup{CustomerEmail: "customer@example.com"},
+		"",
+	)
+
+	require.Error(t, err)
+	assert.Contains(t, strings.ToLower(err.Error()), "empty subscription id")
+}
+
+func TestCreateExampleDocumentsCustomerEmail(t *testing.T) {
+	assert.Contains(t, createExample, "--customer-email")
 }

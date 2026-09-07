@@ -46,7 +46,10 @@ omnistrate-ctl instance create --service=Nebius --environment=dev --plan='Nebius
 omnistrate-ctl instance create --service=MyService --environment=dev --plan='AWS BYOA' --resource=myResource --cloud-provider=aws --region=us-east-2 --customer-account-id instance-cg1tthkj0 --cloud-provider-native-network-id vpc-0123456789abcdef0
 
 # Create an air-gapped/on-prem installer-backed instance. Do not pass --cloud-provider or --region with --onprem-platform.
-omnistrate-ctl instance create --service=MyService --environment=dev --plan='Airgap' --resource=myResource --onprem-platform=Generic --param-file /path/to/params.json`
+omnistrate-ctl instance create --service=MyService --environment=dev --plan='Airgap' --resource=myResource --onprem-platform=Generic --param-file /path/to/params.json
+
+# Create an instance deployment on behalf of an end customer, resolved from their email
+omnistrate-ctl instance create --service=mysql --environment=prod --plan=mysql --resource=mySQL --cloud-provider=aws --region=us-east-2 --param-file /path/to/params.json --customer-email customer@example.com`
 
 	customerAccountConfigIDParamKey      = "cloud_provider_account_config_id"
 	cloudProviderNativeNetworkIDParamKey = "cloud_provider_native_network_id"
@@ -79,7 +82,7 @@ var InstanceID string
 var SubscriptionID string
 
 var createCmd = &cobra.Command{
-	Use:          "create --service=[service] --environment=[environment] --plan=[plan] --version=[version] --resource=[resource] [--cloud-provider=aws|gcp|azure|nebius] [--region=region] [--param=param] [--param-file=file-path] [--instance-id=id] [--customer-account-id=account-instance-id] [--cloud-provider-native-network-id=network-id] [--network-type=PUBLIC|INTERNAL] [--onprem-platform=platform] [--tags key=value,key2=value2] [--breakpoints id-or-key[:event[|event...]],...]",
+	Use:          "create --service=[service] --environment=[environment] --plan=[plan] --version=[version] --resource=[resource] [--cloud-provider=aws|gcp|azure|nebius] [--region=region] [--param=param] [--param-file=file-path] [--instance-id=id] [--customer-email=email] [--customer-account-id=account-instance-id] [--cloud-provider-native-network-id=network-id] [--network-type=PUBLIC|INTERNAL] [--onprem-platform=platform] [--tags key=value,key2=value2] [--breakpoints id-or-key[:event[|event...]],...]",
 	Short:        "Create an instance deployment",
 	Long:         `This command helps you create an instance deployment for your service.`,
 	Example:      createExample,
@@ -104,6 +107,7 @@ func init() {
 	createCmd.Flags().String("tags", "", `Custom tags to add to the instance deployment (format: key=value,key2=value2). Escape commas inside values with \,`)
 	createCmd.Flags().String("breakpoints", "", "Workflow breakpoint resource IDs or resource keys, optionally scoped to events as id-or-key:event or id-or-key:event|event")
 	createCmd.Flags().StringP("subscription-id", "", "", "Subscription ID to use for the instance deployment. If not provided, instance deployment will be created in your own subscription.")
+	createCmd.Flags().String("customer-email", "", "Customer email to create the instance deployment on behalf of. Resolves the customer's subscription for this service plan, creating one if they have none. Cannot be combined with --subscription-id.")
 	createCmd.Flags().String("instance-id", "", "ID of a previously deleted instance to restore")
 	createCmd.Flags().Bool("wait", false, "Wait for deployment to complete and show progress")
 
@@ -201,6 +205,11 @@ func runCreate(cmd *cobra.Command, args []string) error {
 		utils.PrintError(err)
 		return err
 	}
+	customerEmail, err := cmd.Flags().GetString("customer-email")
+	if err != nil {
+		utils.PrintError(err)
+		return err
+	}
 	instanceID, err := cmd.Flags().GetString("instance-id")
 	if err != nil {
 		utils.PrintError(err)
@@ -232,6 +241,10 @@ func runCreate(cmd *cobra.Command, args []string) error {
 		return err
 	}
 	if err = validateCreateCloudTarget(cloudProvider, region, onpremPlatform); err != nil {
+		utils.PrintError(err)
+		return err
+	}
+	if err = validateCustomerEmailFlags(customerEmail, subscriptionID); err != nil {
 		utils.PrintError(err)
 		return err
 	}
@@ -309,6 +322,18 @@ func runCreate(cmd *cobra.Command, args []string) error {
 		return err
 	}
 	offering := *selectedOffering
+
+	subscriptionID, err = resolveInstanceSubscriptionID(cmd.Context(), token, dataaccess.CustomerSubscriptionLookup{
+		ServiceID:       serviceID,
+		EnvironmentID:   environmentID,
+		EnvironmentType: offering.ServiceEnvironmentType,
+		PlanID:          productTierID,
+		CustomerEmail:   customerEmail,
+	}, subscriptionID)
+	if err != nil {
+		utils.HandleSpinnerError(spinner, sm, err)
+		return err
+	}
 
 	// Format parameters
 	formattedParams, err := common.FormatParams(param, paramFile)
@@ -868,6 +893,49 @@ func applyCloudProviderNativeNetworkIDParam(
 	}
 	params[cloudProviderNativeNetworkIDParamKey] = cloudProviderNativeNetworkID
 	return params
+}
+
+// resolveInstanceSubscriptionByEmail is a package variable so tests can exercise the
+// resolution wiring without a live API.
+var resolveInstanceSubscriptionByEmail = dataaccess.GetSubscriptionByCustomerEmailInEnvironment
+
+// validateCustomerEmailFlags checks the flag combination before any API call is made.
+func validateCustomerEmailFlags(customerEmail, subscriptionID string) error {
+	customerEmail = strings.TrimSpace(customerEmail)
+	if customerEmail == "" {
+		return nil
+	}
+	if strings.TrimSpace(subscriptionID) != "" {
+		return fmt.Errorf("cannot specify both --customer-email and --subscription-id")
+	}
+	if err := utils.ValidateEmail(customerEmail); err != nil {
+		return fmt.Errorf("invalid --customer-email value: %w", err)
+	}
+	return nil
+}
+
+// resolveInstanceSubscriptionID returns the subscription the instance should be created
+// under. Without --customer-email the requested subscription ID passes through unchanged,
+// which keeps the existing behaviour of letting the platform choose.
+func resolveInstanceSubscriptionID(
+	ctx context.Context,
+	token string,
+	lookup dataaccess.CustomerSubscriptionLookup,
+	requestedSubscriptionID string,
+) (string, error) {
+	if strings.TrimSpace(lookup.CustomerEmail) == "" {
+		return requestedSubscriptionID, nil
+	}
+
+	subscription, err := resolveInstanceSubscriptionByEmail(ctx, token, lookup)
+	if err != nil {
+		return "", fmt.Errorf("failed to resolve subscription for customer %s: %w", lookup.CustomerEmail, err)
+	}
+	if subscription == nil || strings.TrimSpace(subscription.Id) == "" {
+		return "", fmt.Errorf("subscription lookup for customer %s returned an empty subscription ID", lookup.CustomerEmail)
+	}
+
+	return strings.TrimSpace(subscription.Id), nil
 }
 
 func validateCreateCloudTarget(cloudProvider, region, onpremPlatform string) error {
