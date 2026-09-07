@@ -929,7 +929,7 @@ func resolveInstanceSubscriptionID(
 
 	subscription, err := resolveInstanceSubscriptionByEmail(ctx, token, lookup)
 	if err != nil {
-		return "", fmt.Errorf("failed to resolve subscription for customer %s: %w", lookup.CustomerEmail, err)
+		return "", fmt.Errorf("failed to resolve --customer-email to a subscription: %w", err)
 	}
 	if subscription == nil || strings.TrimSpace(subscription.Id) == "" {
 		return "", fmt.Errorf("subscription lookup for customer %s returned an empty subscription ID", lookup.CustomerEmail)

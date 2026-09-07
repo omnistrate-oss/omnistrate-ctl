@@ -45,6 +45,15 @@ func TestEmailHasScopedOrg(t *testing.T) {
 	assert.False(t, EmailHasScopedOrg("customer@example.com"))
 	assert.False(t, EmailHasScopedOrg("customer+team@example.com"))
 	assert.False(t, EmailHasScopedOrg("not-an-email"))
+
+	// The local part is only the org segment: splitting on "+" yields a single, empty
+	// segment ("") before the org ID, which is still >= 2 segments, so this is currently
+	// reported as scoped even though there is no real local part in front of it.
+	assert.True(t, EmailHasScopedOrg("+org-abc123@example.com"))
+
+	// A trailing "+" with nothing after it: the last segment is empty and does not match
+	// the org ID shape, so this is correctly reported as not scoped.
+	assert.False(t, EmailHasScopedOrg("customer+@example.com"))
 }
 
 func TestIsProductionEnvironmentType(t *testing.T) {

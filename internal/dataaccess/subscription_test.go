@@ -3,6 +3,7 @@ package dataaccess
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -209,6 +210,34 @@ func startSubscriptionTestServer(t *testing.T, handler http.HandlerFunc) {
 	t.Setenv("OMNISTRATE_RETRY_MAX", "0")
 }
 
+// TestListAllSubscriptionsStopsOnRepeatedNextPageToken reproduces a server that always hands
+// back the same nextPageToken value, regardless of which page was requested. Each page
+// returns its own distinct subscription, so a correctly bounded call collects exactly one
+// page beyond the first before the repeated token is caught; without the seen-token guard,
+// this would loop forever, calling the server and accumulating a fresh "duplicate token"
+// page indefinitely.
+func TestListAllSubscriptionsStopsOnRepeatedNextPageToken(t *testing.T) {
+	var listCalls int
+	startSubscriptionTestServer(t, func(w http.ResponseWriter, r *http.Request) {
+		listCalls++
+		w.Header().Set("Content-Type", "application/json")
+		id := fmt.Sprintf("sub-%d", listCalls)
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"ids":           []string{id},
+			"subscriptions": []map[string]any{subscriptionJSON(id, "customer@example.com", "ACTIVE")},
+			"nextPageToken": "page-repeats",
+		})
+	})
+
+	subscriptions, err := ListAllSubscriptions(context.Background(), "test-token", "s-test", "se-test", nil)
+
+	require.NoError(t, err)
+	assert.Equal(t, 2, listCalls, "the call must stop the first time the token repeats, not loop forever")
+	require.Len(t, subscriptions, 2)
+	assert.Equal(t, "sub-1", subscriptions[0].Id)
+	assert.Equal(t, "sub-2", subscriptions[1].Id, "the page fetched with the not-yet-seen token must still be collected")
+}
+
 func TestGetSubscriptionByCustomerEmailInEnvironmentPaginates(t *testing.T) {
 	var listCalls int
 	startSubscriptionTestServer(t, func(w http.ResponseWriter, r *http.Request) {
@@ -279,6 +308,42 @@ func TestGetSubscriptionByCustomerEmailInEnvironmentFallsBackToScopedEmailInProd
 	assert.Equal(t, 1, describeUserCalls)
 }
 
+// TestGetSubscriptionByCustomerEmailInEnvironmentPrefersExactMatchOverScoped proves the exact
+// address wins when both an exact-match and an org-scoped-match subscription exist for the
+// same customer and plan simultaneously. The scoped fallback must never even be consulted in
+// that case: describe-user is never called, and the org-scoped subscription is never chosen.
+func TestGetSubscriptionByCustomerEmailInEnvironmentPrefersExactMatchOverScoped(t *testing.T) {
+	startSubscriptionTestServer(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/2022-09-01-00/user":
+			t.Fatal("the scoped fallback must not be consulted when an exact match already exists")
+		case "/2022-09-01-00/fleet/service/s-test/environment/se-test/subscription":
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"ids": []string{"sub-exact", "sub-scoped"},
+				"subscriptions": []map[string]any{
+					subscriptionJSON("sub-exact", "customer@example.com", "ACTIVE"),
+					subscriptionJSON("sub-scoped", "customer+org-abc123@example.com", "ACTIVE"),
+				},
+			})
+		default:
+			t.Fatalf("unexpected path %s", r.URL.Path)
+		}
+	})
+
+	subscription, err := GetSubscriptionByCustomerEmailInEnvironment(context.Background(), "test-token", CustomerSubscriptionLookup{
+		ServiceID:       "s-test",
+		EnvironmentID:   "se-test",
+		EnvironmentType: "PROD",
+		PlanID:          "pt-test",
+		CustomerEmail:   "customer@example.com",
+	})
+
+	require.NoError(t, err)
+	require.NotNil(t, subscription)
+	assert.Equal(t, "sub-exact", subscription.Id, "the exact-address match must win over the org-scoped match")
+}
+
 func TestGetSubscriptionByCustomerEmailInEnvironmentSkipsScopedFallbackOutsideProd(t *testing.T) {
 	var createCalls int
 	startSubscriptionTestServer(t, func(w http.ResponseWriter, r *http.Request) {
@@ -317,6 +382,45 @@ func TestGetSubscriptionByCustomerEmailInEnvironmentSkipsScopedFallbackOutsidePr
 	require.NotNil(t, subscription)
 	assert.Equal(t, "sub-new", subscription.Id)
 	assert.Equal(t, 1, createCalls)
+}
+
+// TestGetSubscriptionByCustomerEmailInEnvironmentHandlesNullDescribeAfterCreate reproduces a
+// server that answers the post-create describe call with HTTP 200 and a literal `null` body.
+// The generated SDK client decodes that into a nil result with no error, so the lookup must
+// treat it as an error rather than dereferencing the nil pointer.
+func TestGetSubscriptionByCustomerEmailInEnvironmentHandlesNullDescribeAfterCreate(t *testing.T) {
+	startSubscriptionTestServer(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch {
+		case r.URL.Path == "/2022-09-01-00/fleet/users":
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"users": []map[string]any{{"userId": "user-test", "email": "customer@example.com"}},
+			})
+		case r.URL.Path == "/2022-09-01-00/fleet/service/s-test/environment/se-test/subscription" && r.Method == http.MethodPost:
+			_ = json.NewEncoder(w).Encode(map[string]any{"id": "sub-new"})
+		case r.URL.Path == "/2022-09-01-00/fleet/service/s-test/environment/se-test/subscription":
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"ids":           []string{},
+				"subscriptions": []map[string]any{},
+			})
+		case r.URL.Path == "/2022-09-01-00/fleet/service/s-test/environment/se-test/subscription/sub-new":
+			_, _ = w.Write([]byte("null"))
+		default:
+			t.Fatalf("unexpected path %s", r.URL.Path)
+		}
+	})
+
+	subscription, err := GetSubscriptionByCustomerEmailInEnvironment(context.Background(), "test-token", CustomerSubscriptionLookup{
+		ServiceID:       "s-test",
+		EnvironmentID:   "se-test",
+		EnvironmentType: "DEV",
+		PlanID:          "pt-test",
+		CustomerEmail:   "customer@example.com",
+	})
+
+	require.Error(t, err)
+	assert.Nil(t, subscription)
+	assert.Contains(t, err.Error(), "customer@example.com")
 }
 
 func TestGetSubscriptionByCustomerEmailInEnvironmentReportsSuspended(t *testing.T) {

@@ -886,7 +886,11 @@ func TestRunCreateWiresResolvedSubscriptionIDIntoCreateRequest(t *testing.T) {
 	// what runCreate itself talks to.
 	original := resolveInstanceSubscriptionByEmail
 	t.Cleanup(func() { resolveInstanceSubscriptionByEmail = original })
-	resolveInstanceSubscriptionByEmail = func(context.Context, string, dataaccess.CustomerSubscriptionLookup) (*openapiclientfleet.FleetDescribeSubscriptionResult, error) {
+	resolveInstanceSubscriptionByEmail = func(_ context.Context, _ string, lookup dataaccess.CustomerSubscriptionLookup) (*openapiclientfleet.FleetDescribeSubscriptionResult, error) {
+		// The fixture's offering carries ServiceEnvironmentType "PROD"; this must reach the
+		// lookup unchanged so the production org-scoped fallback stays wired in. Dropping
+		// this field on the caller side silently reinstates the duplicate-subscription bug.
+		assert.Equal(t, "PROD", lookup.EnvironmentType)
 		return &openapiclientfleet.FleetDescribeSubscriptionResult{Id: wantSubscription}, nil
 	}
 

@@ -134,6 +134,9 @@ func GetSubscriptionByCustomerEmailInEnvironment(
 	if err != nil {
 		return nil, errors.Wrapf(err, "failed to describe newly created subscription for user %s", customerEmail)
 	}
+	if resp == nil {
+		return nil, errors.Errorf("describing newly created subscription for user %s returned an empty response", customerEmail)
+	}
 
 	// A newly created subscription goes through the same status gate, so every "unusable
 	// subscription" message in this command comes from one place.
@@ -222,6 +225,7 @@ func ListSubscriptionsWithOptions(ctx context.Context, token string, serviceID, 
 
 func ListAllSubscriptions(ctx context.Context, token string, serviceID, environmentID string, opts *ListSubscriptionsOptions) (subscriptions []openapiclientfleet.FleetDescribeSubscriptionResult, err error) {
 	var nextPageToken string
+	seen := map[string]struct{}{}
 
 	for {
 		pageOptions := ListSubscriptionsOptions{}
@@ -240,6 +244,12 @@ func ListAllSubscriptions(ctx context.Context, token string, serviceID, environm
 		if nextPageToken == "" {
 			return subscriptions, nil
 		}
+		// A server that echoes back a page token it already handed out would otherwise send
+		// this into an infinite loop, re-accumulating the same page forever.
+		if _, alreadySeen := seen[nextPageToken]; alreadySeen {
+			return subscriptions, nil
+		}
+		seen[nextPageToken] = struct{}{}
 	}
 }
 
