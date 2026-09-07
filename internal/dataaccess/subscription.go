@@ -2,6 +2,7 @@ package dataaccess
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"strings"
 
@@ -530,4 +531,109 @@ func TerminateSubscription(ctx context.Context, token string, serviceID, environ
 		return handleFleetError(err)
 	}
 	return
+}
+
+// subscriptionStatusActive is the only subscription status that may back a new instance.
+// The platform's full vocabulary is ACTIVE, SUSPENDED, CANCELLED and TERMINATED.
+const subscriptionStatusActive = "ACTIVE"
+
+// matchSubscriptionsByEmail returns the subscriptions on a plan whose root user is the
+// given address. The plan filter is redundant with the server-side query parameter and is
+// kept so the matching is correct on its own terms.
+func matchSubscriptionsByEmail(
+	subscriptions []openapiclientfleet.FleetDescribeSubscriptionResult,
+	planID string,
+	email string,
+) []openapiclientfleet.FleetDescribeSubscriptionResult {
+	matches := make([]openapiclientfleet.FleetDescribeSubscriptionResult, 0, 1)
+	for _, subscription := range subscriptions {
+		if planID != "" && !strings.EqualFold(subscription.ProductTierId, planID) {
+			continue
+		}
+		if !strings.EqualFold(subscription.RootUserEmail, email) {
+			continue
+		}
+		matches = append(matches, subscription)
+	}
+	return matches
+}
+
+// selectCustomerSubscription picks the one subscription that may back a new instance.
+// It returns (nil, nil) when there is nothing to choose from, which tells the caller to
+// create a subscription instead.
+func selectCustomerSubscription(
+	candidates []openapiclientfleet.FleetDescribeSubscriptionResult,
+	customerEmail string,
+) (*openapiclientfleet.FleetDescribeSubscriptionResult, error) {
+	if len(candidates) == 0 {
+		return nil, nil
+	}
+
+	active := make([]openapiclientfleet.FleetDescribeSubscriptionResult, 0, len(candidates))
+	for _, candidate := range candidates {
+		if strings.EqualFold(candidate.Status, subscriptionStatusActive) {
+			active = append(active, candidate)
+		}
+	}
+
+	switch len(active) {
+	case 1:
+		selected := active[0]
+		return &selected, nil
+	case 0:
+		return nil, unusableSubscriptionError(candidates, customerEmail)
+	default:
+		ids := make([]string, 0, len(active))
+		for _, candidate := range active {
+			ids = append(ids, candidate.Id)
+		}
+		return nil, errors.Errorf(
+			"found %d active subscriptions for customer %s on plan %s (%s). Pass --subscription-id to choose one",
+			len(active),
+			customerEmail,
+			active[0].ProductTierName,
+			strings.Join(ids, ", "),
+		)
+	}
+}
+
+// unusableSubscriptionError explains why the subscriptions a customer does own cannot back
+// a new instance, and names the remedy when there is one.
+func unusableSubscriptionError(
+	candidates []openapiclientfleet.FleetDescribeSubscriptionResult,
+	customerEmail string,
+) error {
+	if len(candidates) == 1 {
+		candidate := candidates[0]
+		if strings.EqualFold(candidate.Status, "SUSPENDED") {
+			return errors.Errorf(
+				"subscription %s for customer %s on plan %s is SUSPENDED and cannot be used to create an instance. "+
+					"Resume it with 'omnistrate-ctl subscription resume %s', or pass --subscription-id to use a different subscription",
+				candidate.Id,
+				customerEmail,
+				candidate.ProductTierName,
+				candidate.Id,
+			)
+		}
+		return errors.Errorf(
+			"subscription %s for customer %s on plan %s is in status %s, expected ACTIVE, so it cannot be used to create an instance. "+
+				"Pass --subscription-id to use a different subscription",
+			candidate.Id,
+			customerEmail,
+			candidate.ProductTierName,
+			candidate.Status,
+		)
+	}
+
+	described := make([]string, 0, len(candidates))
+	for _, candidate := range candidates {
+		described = append(described, fmt.Sprintf("%s (%s)", candidate.Id, candidate.Status))
+	}
+	return errors.Errorf(
+		"customer %s has no active subscription on plan %s; found %s. "+
+			"Resume a suspended subscription with 'omnistrate-ctl subscription resume', or pass --subscription-id",
+		customerEmail,
+		candidates[0].ProductTierName,
+		strings.Join(described, ", "),
+	)
 }
