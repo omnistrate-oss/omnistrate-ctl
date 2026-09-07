@@ -66,6 +66,10 @@ func FormatEmailWithScopedOrg(email, orgID string) (string, error)
 
 // EmailHasScopedOrg reports whether the local part already ends in an org ID segment.
 func EmailHasScopedOrg(email string) bool
+
+// IsProductionEnvironmentType gates where org scoping applies. It replaces the private
+// copy in cmd/account so the production rule has one definition.
+func IsProductionEnvironmentType(environmentType string) bool
 ```
 
 `FormatEmailWithScopedOrg` errors on a malformed address, a malformed org ID, or an
@@ -130,8 +134,8 @@ The SUSPENDED error names its remedy:
 Any other non-ACTIVE status produces the generic form (`is in status <STATUS>, expected
 ACTIVE`), so a status added later cannot be silently treated as usable.
 
-`CreateSubscriptionOnBehalf`'s inline email-to-user-ID search moves into
-`resolveCustomerUserIDByEmail`, which applies the same exact-then-scoped ordering. The
+`CreateSubscriptionOnBehalf`'s inline email-to-user-ID search moves into a helper and gains
+the same exact-then-scoped ordering, gated on environment type the same way. The
 scoped pass costs nothing there — the user list is already in memory — and in practice the
 exact pass is what matches, because `/fleet/users` reports unscoped addresses.
 
