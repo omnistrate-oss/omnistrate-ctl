@@ -24,7 +24,18 @@ COPY ./mkdocs .
 RUN mkdocs build --strict 
 
 # Production stage - Serve the built site
-FROM nginx:alpine
+#
+# alpine-slim rather than alpine: the full nginx:alpine image ships the optional dynamic
+# modules, which pull in libgd and therefore tiff. This site serves static files with gzip
+# and loads no dynamic modules, so none of that is reachable — but tiff was contributing two
+# high-severity advisories with no fixed version available upstream, so they could not be
+# patched away. Dropping to the slim variant removes the dependency instead.
+FROM nginx:alpine-slim
+
+# The published base image is rebuilt less often than the Alpine package repository is
+# updated, so preinstalled packages can carry already-fixed CVEs. Upgrade so the served
+# image picks up current patches as advisories land.
+RUN apk --no-cache upgrade
 
 # Copy the built site from the builder stage
 COPY --from=builder /app/site /usr/share/nginx/html

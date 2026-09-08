@@ -8,7 +8,6 @@ on:
   workflow_dispatch:
 
 env:
-  SCAN_IMAGE_NAME: localbuild/omnistrate-ctl
   SCAN_PLATFORM: linux/amd64
 
 concurrency:
@@ -17,10 +16,37 @@ concurrency:
 
 jobs:
   grype-scan:
-    name: Scan Docker image
+    name: Scan ${{ matrix.image.label }} image
     runs-on: ubuntu-latest
     permissions:
       contents: read
+
+    strategy:
+      # Scan every image even when one of them fails, so a single regression does not hide
+      # the state of the others.
+      fail-fast: false
+      matrix:
+        image:
+          - label: CLI
+            slug: cli
+            dockerfile: ./build/Dockerfile
+            # Empty means "use the repository default .dockerignore".
+            dockerignore: ""
+            build-args: |
+              GIT_COMMIT=${{ github.sha }}
+              GIT_VERSION=${{ github.ref_name }}
+              GOPROXY=https://proxy.golang.org,direct
+              GOSUMDB=sum.golang.org
+          - label: docs
+            slug: docs
+            dockerfile: ./build/Dockerfile.docs
+            # Mirrors docs-deploy.yml, which swaps in a docs-specific ignore file so the
+            # mkdocs/ directory reaches the build context.
+            dockerignore: build/Dockerfile.docs.dockerignore
+            build-args: ""
+
+    env:
+      SCAN_IMAGE_NAME: localbuild/omnistrate-ctl-${{ matrix.image.slug }}
 
     steps:
       - name: Checkout repository
@@ -29,23 +55,23 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4.2.0
 
+      - name: Use image-specific dockerignore
+        if: matrix.image.dockerignore != ''
+        run: cp "${{ matrix.image.dockerignore }}" .dockerignore
+
       - name: Build image for scan
         timeout-minutes: 30
         uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
         with:
           context: .
-          file: ./build/Dockerfile
+          file: ${{ matrix.image.dockerfile }}
           platforms: ${{ env.SCAN_PLATFORM }}
           push: false
           load: true
           tags: ${{ env.SCAN_IMAGE_NAME }}:${{ github.sha }}
-          cache-from: type=gha,scope=grype-scan-amd64
-          cache-to: type=gha,mode=max,scope=grype-scan-amd64
-          build-args: |
-            GIT_COMMIT=${{ github.sha }}
-            GIT_VERSION=${{ github.ref_name }}
-            GOPROXY=https://proxy.golang.org,direct
-            GOSUMDB=sum.golang.org
+          cache-from: type=gha,scope=grype-scan-${{ matrix.image.slug }}-amd64
+          cache-to: type=gha,mode=max,scope=grype-scan-${{ matrix.image.slug }}-amd64
+          build-args: ${{ matrix.image.build-args }}
 
       - name: Scan image for vulnerabilities
         id: grype
@@ -190,16 +216,19 @@ jobs:
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: grype-vulnerability-report
+          name: grype-vulnerability-report-${{ matrix.image.slug }}
           path: |
             grype-results.html
             grype-results.json
           if-no-files-found: ignore
 
       - name: Enforce vulnerability threshold
+        env:
+          IMAGE_LABEL: ${{ matrix.image.label }}
         run: |
           node <<'NODE'
           const fs = require("fs");
+          const label = process.env.IMAGE_LABEL || "image";
           const report = JSON.parse(fs.readFileSync("grype-results.json", "utf8"));
           const matches = Array.isArray(report.matches) ? report.matches : [];
           const failingMatches = matches.filter((match) => {
@@ -208,7 +237,18 @@ jobs:
           });
 
           if (failingMatches.length > 0) {
-            console.error(`Found ${failingMatches.length} vulnerabilities with severity high or critical.`);
+            console.error(`${label} image: found ${failingMatches.length} vulnerabilities with severity high or critical.`);
+            // Summarise inline so the offending packages and whether a fix exists are visible
+            // in the log, rather than only in the uploaded report.
+            for (const match of failingMatches) {
+              const vulnerability = match?.vulnerability ?? {};
+              const artifact = match?.artifact ?? {};
+              const fixVersions = vulnerability.fix?.versions ?? [];
+              const fix = fixVersions.length > 0 ? `fixed in ${fixVersions.join(", ")}` : "no fix available";
+              console.error(`  ${vulnerability.severity} ${artifact.name}@${artifact.version} ${vulnerability.id} (${fix})`);
+            }
             process.exit(1);
           }
+
+          console.log(`${label} image: no vulnerabilities at or above the high severity threshold.`);
           NODE
