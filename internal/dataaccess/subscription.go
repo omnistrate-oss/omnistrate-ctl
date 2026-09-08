@@ -245,9 +245,17 @@ func ListAllSubscriptions(ctx context.Context, token string, serviceID, environm
 			return subscriptions, nil
 		}
 		// A server that echoes back a page token it already handed out would otherwise send
-		// this into an infinite loop, re-accumulating the same page forever.
+		// this into an infinite loop, re-accumulating the same page forever. Returning what
+		// was collected so far would be worse than failing: a caller resolving a customer
+		// email would read the truncated list as "no subscription" and create a duplicate,
+		// which is the very bug this lookup exists to prevent.
 		if _, alreadySeen := seen[nextPageToken]; alreadySeen {
-			return subscriptions, nil
+			return nil, errors.Errorf(
+				"subscription listing for service %s environment %s repeated page token %q; refusing to return a partial list",
+				serviceID,
+				environmentID,
+				nextPageToken,
+			)
 		}
 		seen[nextPageToken] = struct{}{}
 	}

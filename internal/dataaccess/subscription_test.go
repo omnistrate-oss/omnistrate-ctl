@@ -210,13 +210,13 @@ func startSubscriptionTestServer(t *testing.T, handler http.HandlerFunc) {
 	t.Setenv("OMNISTRATE_RETRY_MAX", "0")
 }
 
-// TestListAllSubscriptionsStopsOnRepeatedNextPageToken reproduces a server that always hands
-// back the same nextPageToken value, regardless of which page was requested. Each page
-// returns its own distinct subscription, so a correctly bounded call collects exactly one
-// page beyond the first before the repeated token is caught; without the seen-token guard,
-// this would loop forever, calling the server and accumulating a fresh "duplicate token"
-// page indefinitely.
-func TestListAllSubscriptionsStopsOnRepeatedNextPageToken(t *testing.T) {
+// TestListAllSubscriptionsErrorsOnRepeatedNextPageToken reproduces a server that always hands
+// back the same nextPageToken value, regardless of which page was requested. Without the
+// seen-token guard this loops forever. With it, the call must FAIL rather than return the
+// pages it managed to collect: a truncated list is indistinguishable from a complete one, so
+// a caller resolving a customer email would read it as "no subscription" and create a
+// duplicate — the exact bug this lookup exists to prevent.
+func TestListAllSubscriptionsErrorsOnRepeatedNextPageToken(t *testing.T) {
 	var listCalls int
 	startSubscriptionTestServer(t, func(w http.ResponseWriter, r *http.Request) {
 		listCalls++
@@ -231,11 +231,38 @@ func TestListAllSubscriptionsStopsOnRepeatedNextPageToken(t *testing.T) {
 
 	subscriptions, err := ListAllSubscriptions(context.Background(), "test-token", "s-test", "se-test", nil)
 
-	require.NoError(t, err)
+	require.Error(t, err, "a repeated page token must fail rather than silently truncate")
+	assert.Contains(t, err.Error(), "repeated page token")
+	assert.Nil(t, subscriptions, "no partial list may be handed back to the caller")
 	assert.Equal(t, 2, listCalls, "the call must stop the first time the token repeats, not loop forever")
-	require.Len(t, subscriptions, 2)
-	assert.Equal(t, "sub-1", subscriptions[0].Id)
-	assert.Equal(t, "sub-2", subscriptions[1].Id, "the page fetched with the not-yet-seen token must still be collected")
+}
+
+// TestGetSubscriptionByCustomerEmailInEnvironmentDoesNotCreateOnTruncatedListing pins the
+// consequence of the guard above: when the listing cannot be completed, the lookup must
+// surface that error and must NOT fall through to creating a subscription.
+func TestGetSubscriptionByCustomerEmailInEnvironmentDoesNotCreateOnTruncatedListing(t *testing.T) {
+	startSubscriptionTestServer(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPost {
+			t.Fatal("a listing that could not be completed must never lead to creating a subscription")
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"ids":           []string{"sub-1"},
+			"subscriptions": []map[string]any{subscriptionJSON("sub-1", "other@example.com", "ACTIVE")},
+			"nextPageToken": "page-repeats",
+		})
+	})
+
+	_, err := GetSubscriptionByCustomerEmailInEnvironment(context.Background(), "test-token", CustomerSubscriptionLookup{
+		ServiceID:       "s-test",
+		EnvironmentID:   "se-test",
+		EnvironmentType: "PROD",
+		PlanID:          "pt-test",
+		CustomerEmail:   "customer@example.com",
+	})
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "repeated page token")
 }
 
 func TestGetSubscriptionByCustomerEmailInEnvironmentPaginates(t *testing.T) {
