@@ -28,7 +28,7 @@ jobs:
     steps:
       - name: Set release to pre release
         timeout-minutes: 2
-        uses: softprops/action-gh-release@3d0d9888cb7fd7b750713d6e236d1fcb99157228 # v3.0.2
+        uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3.0.3
         with:
           prerelease: true
           token: ${{ secrets.GITHUB_TOKEN }}
@@ -221,7 +221,7 @@ jobs:
     steps:
       - name: Set release to pre release
         timeout-minutes: 2
-        uses: softprops/action-gh-release@3d0d9888cb7fd7b750713d6e236d1fcb99157228 # v3.0.2
+        uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3.0.3
         with:
           prerelease: true
           token: ${{ secrets.GITHUB_TOKEN }}
@@ -236,7 +236,7 @@ jobs:
 
       - name: Upload compressed files to triggering release
         timeout-minutes: 5
-        uses: softprops/action-gh-release@3d0d9888cb7fd7b750713d6e236d1fcb99157228 # v3.0.2
+        uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3.0.3
         with:
           files: |
             omnistrate-ctl-darwin-amd64-compressed/omnistrate-ctl-darwin-amd64.tar.gz
@@ -250,7 +250,7 @@ jobs:
 
       - name: Publish release
         timeout-minutes: 2
-        uses: softprops/action-gh-release@3d0d9888cb7fd7b750713d6e236d1fcb99157228 # v3.0.2
+        uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3.0.3
         with:
           draft: false
           prerelease: false
@@ -368,7 +368,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4.2.0
+        uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4.3.0
 
       # Extract metadata (tags, labels) for Docker
       # https://github.com/docker/metadata-action
@@ -448,7 +448,7 @@ jobs:
           path: /tmp/digests
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4.2.0
+        uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4.3.0
 
       # Extract metadata (tags, labels) for Docker
       # https://github.com/docker/metadata-action
