@@ -231,9 +231,13 @@ func PromptPassword(title, placeholder string) (string, error) {
 	return value, nil
 }
 
-// ValidateEmail returns a validation function that checks for a valid email address.
+// ValidateEmail reports whether input is a valid email address, returning an error when it
+// is not. The match is case-insensitive and the TLD has no upper bound on length, so it accepts
+// capitalized addresses and modern long TLDs (for example ".cloud" or ".online") the same
+// way subscription matching elsewhere in the CLI does (matchSubscriptionsByEmail and
+// matchUserIDByEmail in internal/dataaccess both compare addresses with strings.EqualFold).
 func ValidateEmail(input string) error {
-	emailRegex := regexp.MustCompile(`^[a-z0-9._%+\-]+@[a-z0-9.\-]+\.[a-z]{2,4}$`)
+	emailRegex := regexp.MustCompile(`(?i)^[a-z0-9._%+\-]+@[a-z0-9.\-]+\.[a-z]{2,}$`)
 	if emailRegex.MatchString(input) {
 		return nil
 	}

@@ -359,7 +359,7 @@ func TestResolveCustomerAccountSubscription_NonProductionUsesProvidedSubscriptio
 		describeCurrentUserFn = originalDescribeCurrentUser
 	})
 
-	resolveCustomerSubscriptionByEmail = func(context.Context, string, string, string, string, string) (*openapiclientfleet.FleetDescribeSubscriptionResult, error) {
+	resolveCustomerSubscriptionByEmail = func(context.Context, string, dataaccess.CustomerSubscriptionLookup) (*openapiclientfleet.FleetDescribeSubscriptionResult, error) {
 		t.Fatal("subscription lookup should not be called")
 		return nil, nil
 	}
@@ -403,12 +403,13 @@ func TestResolveCustomerAccountSubscription_ProductionDefaultsToCallingUserSubsc
 			Email: strPtr("caller@example.com"),
 		}, nil
 	}
-	resolveCustomerSubscriptionByEmail = func(ctx context.Context, token, serviceID, environmentID, planID, customerEmail string) (*openapiclientfleet.FleetDescribeSubscriptionResult, error) {
+	resolveCustomerSubscriptionByEmail = func(ctx context.Context, token string, lookup dataaccess.CustomerSubscriptionLookup) (*openapiclientfleet.FleetDescribeSubscriptionResult, error) {
 		assert.Equal(t, "token", token)
-		assert.Equal(t, "svc-1", serviceID)
-		assert.Equal(t, "env-1", environmentID)
-		assert.Equal(t, "pt-1", planID)
-		assert.Equal(t, "caller@example.com", customerEmail)
+		assert.Equal(t, "svc-1", lookup.ServiceID)
+		assert.Equal(t, "env-1", lookup.EnvironmentID)
+		assert.Equal(t, "PROD", lookup.EnvironmentType)
+		assert.Equal(t, "pt-1", lookup.PlanID)
+		assert.Equal(t, "caller@example.com", lookup.CustomerEmail)
 		return &openapiclientfleet.FleetDescribeSubscriptionResult{Id: "sub-456"}, nil
 	}
 
@@ -436,7 +437,7 @@ func TestResolveCustomerAccountSubscription_ProductionFailsWhenCallingUserEmailI
 		describeCurrentUserFn = originalDescribeCurrentUser
 	})
 
-	resolveCustomerSubscriptionByEmail = func(context.Context, string, string, string, string, string) (*openapiclientfleet.FleetDescribeSubscriptionResult, error) {
+	resolveCustomerSubscriptionByEmail = func(context.Context, string, dataaccess.CustomerSubscriptionLookup) (*openapiclientfleet.FleetDescribeSubscriptionResult, error) {
 		t.Fatal("subscription lookup should not be called")
 		return nil, nil
 	}
@@ -477,7 +478,7 @@ func TestResolveCustomerAccountSubscription_ProductionAllowsSubscriptionIDOverri
 		describeCurrentUserFn = originalDescribeCurrentUser
 	})
 
-	resolveCustomerSubscriptionByEmail = func(context.Context, string, string, string, string, string) (*openapiclientfleet.FleetDescribeSubscriptionResult, error) {
+	resolveCustomerSubscriptionByEmail = func(context.Context, string, dataaccess.CustomerSubscriptionLookup) (*openapiclientfleet.FleetDescribeSubscriptionResult, error) {
 		t.Fatal("subscription lookup should not be called")
 		return nil, nil
 	}

@@ -607,7 +607,7 @@ func resolveCustomerAccountSubscription(
 		}
 	}
 
-	if isProductionEnvironmentType(target.EnvironmentType) && customerEmail == "" && subscriptionID == "" {
+	if utils.IsProductionEnvironmentType(target.EnvironmentType) && customerEmail == "" && subscriptionID == "" {
 		currentUser, err := describeCurrentUserFn(ctx, token)
 		if err != nil {
 			return "", fmt.Errorf("failed to resolve the calling user for production subscription lookup: %w", err)
@@ -627,10 +627,13 @@ func resolveCustomerAccountSubscription(
 	subscription, err := resolveCustomerSubscriptionByEmail(
 		ctx,
 		token,
-		target.ServiceID,
-		target.EnvironmentID,
-		target.ProductTierID,
-		customerEmail,
+		dataaccess.CustomerSubscriptionLookup{
+			ServiceID:       target.ServiceID,
+			EnvironmentID:   target.EnvironmentID,
+			EnvironmentType: target.EnvironmentType,
+			PlanID:          target.ProductTierID,
+			CustomerEmail:   customerEmail,
+		},
 	)
 	if err != nil {
 		return "", fmt.Errorf(
@@ -646,15 +649,6 @@ func resolveCustomerAccountSubscription(
 	}
 
 	return strings.TrimSpace(subscription.Id), nil
-}
-
-func isProductionEnvironmentType(environmentType string) bool {
-	switch strings.ToUpper(strings.TrimSpace(environmentType)) {
-	case "PROD", "PRODUCTION":
-		return true
-	default:
-		return false
-	}
 }
 
 func buildCustomerAccountRequestParams(
