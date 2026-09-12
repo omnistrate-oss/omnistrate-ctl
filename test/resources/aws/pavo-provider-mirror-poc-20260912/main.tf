@@ -52,6 +52,15 @@ terraform {
   }
 }
 
+variable "aws_region" {
+  description = "Region supplied by the Omnistrate deployment cell."
+  type        = string
+}
+
+provider "aws" {
+  region = var.aws_region
+}
+
 output "pavo_provider_mirror_validation" {
   description = "Exact Pavo provider versions exercised by this disposable mirror POC."
   value = {
