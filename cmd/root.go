@@ -26,6 +26,7 @@ import (
 	"github.com/omnistrate-oss/omnistrate-ctl/cmd/environment"
 	"github.com/omnistrate-oss/omnistrate-ctl/cmd/helm"
 	"github.com/omnistrate-oss/omnistrate-ctl/cmd/instance"
+	"github.com/omnistrate-oss/omnistrate-ctl/cmd/managedartifact"
 	"github.com/omnistrate-oss/omnistrate-ctl/cmd/mcp"
 	"github.com/omnistrate-oss/omnistrate-ctl/cmd/operations"
 	"github.com/omnistrate-oss/omnistrate-ctl/cmd/secret"
@@ -150,6 +151,7 @@ func init() {
 	RootCmd.AddCommand(operations.Cmd)
 	RootCmd.AddCommand(audit.Cmd)
 	RootCmd.AddCommand(mcp.Cmd)
+	RootCmd.AddCommand(managedartifact.Cmd)
 
 	// Hide the default completion command
 	RootCmd.Root().CompletionOptions.DisableDefaultCmd = true
