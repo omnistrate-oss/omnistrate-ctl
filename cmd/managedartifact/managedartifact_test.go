@@ -15,7 +15,7 @@ func TestManagedArtifactCommands(t *testing.T) {
 		require.Equal(t, commandName, command.Name())
 	}
 
-	for _, command := range []*struct {
+	for _, command := range []struct {
 		name string
 		cmd  string
 	}{

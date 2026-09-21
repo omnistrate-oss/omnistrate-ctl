@@ -131,7 +131,7 @@ func runSyncList(cmd *cobra.Command, args []string) error {
 		return err
 	}
 	if result.NextPageToken != "" {
-		utils.PrintInfo("More syncs are available; pass --next-page-token with the token shown by -o json.")
+		utils.PrintInfo(fmt.Sprintf("More syncs are available; pass --next-page-token %s to fetch the next page.", result.NextPageToken))
 	}
 	return nil
 }

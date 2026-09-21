@@ -23,7 +23,7 @@ omnistrate-ctl managed-artifact policy update --environment-type prod --cloud-pr
 ### Options
 
 ```
-      --auto-upgrade                      Automatically adopt the newest published managed artifact release (required) (default true)
+      --auto-upgrade                      Automatically adopt the newest published managed artifact release (required)
       --cloud-provider string             Cloud provider (aws, azure, gcp, nebius, oci, byoc-onprem, or all) (required)
       --environment-type string           Environment type (dev, qa, staging, canary, prod, private, or global) (required)
   -h, --help                              help for update

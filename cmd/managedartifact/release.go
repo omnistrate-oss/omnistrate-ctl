@@ -121,7 +121,7 @@ func runReleaseList(cmd *cobra.Command, args []string) error {
 		return err
 	}
 	if result.NextPageToken != "" {
-		utils.PrintInfo("More releases are available; pass --next-page-token with the token shown by -o json.")
+		utils.PrintInfo(fmt.Sprintf("More releases are available; pass --next-page-token %s to fetch the next page.", result.NextPageToken))
 	}
 	return nil
 }

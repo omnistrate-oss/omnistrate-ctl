@@ -47,7 +47,7 @@ func init() {
 
 	addPolicyScopeFlags(policyDescribeCmd)
 	addPolicyScopeFlags(policyUpdateCmd)
-	policyUpdateCmd.Flags().Bool("auto-upgrade", true, "Automatically adopt the newest published managed artifact release (required)")
+	policyUpdateCmd.Flags().Bool("auto-upgrade", false, "Automatically adopt the newest published managed artifact release (required)")
 	policyUpdateCmd.Flags().String("preferred-bundle-version", "", "Release to pin when auto-upgrade is disabled")
 	_ = policyUpdateCmd.MarkFlagRequired("auto-upgrade")
 }

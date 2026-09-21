@@ -105,17 +105,21 @@ func doManagedArtifactRequest(ctx context.Context, token, method, requestURL str
 // DescribeManagedArtifactReleasePolicy returns the release policy for one environment and cloud provider.
 func DescribeManagedArtifactReleasePolicy(ctx context.Context, token, environmentType, cloudProvider string) (*model.ManagedArtifactReleasePolicy, error) {
 	var result model.ManagedArtifactReleasePolicy
-	err := doManagedArtifactRequest(ctx, token, http.MethodGet,
-		managedArtifactURL("release-policy", environmentType, cloudProvider), nil, &result)
-	return &result, err
+	if err := doManagedArtifactRequest(ctx, token, http.MethodGet,
+		managedArtifactURL("release-policy", environmentType, cloudProvider), nil, &result); err != nil {
+		return nil, err
+	}
+	return &result, nil
 }
 
 // UpdateManagedArtifactReleasePolicy updates the release policy for one environment and cloud provider.
 func UpdateManagedArtifactReleasePolicy(ctx context.Context, token, environmentType, cloudProvider string, request model.UpdateManagedArtifactReleasePolicyRequest) (*model.ManagedArtifactReleasePolicy, error) {
 	var result model.ManagedArtifactReleasePolicy
-	err := doManagedArtifactRequest(ctx, token, http.MethodPut,
-		managedArtifactURL("release-policy", environmentType, cloudProvider), request, &result)
-	return &result, err
+	if err := doManagedArtifactRequest(ctx, token, http.MethodPut,
+		managedArtifactURL("release-policy", environmentType, cloudProvider), request, &result); err != nil {
+		return nil, err
+	}
+	return &result, nil
 }
 
 // ListManagedArtifactReleases lists tenant-visible managed artifact releases.
@@ -143,16 +147,20 @@ func ListManagedArtifactReleases(ctx context.Context, token string, options List
 	requestURL.RawQuery = query.Encode()
 
 	var result model.ManagedArtifactReleaseList
-	err = doManagedArtifactRequest(ctx, token, http.MethodGet, requestURL.String(), nil, &result)
-	return &result, err
+	if err := doManagedArtifactRequest(ctx, token, http.MethodGet, requestURL.String(), nil, &result); err != nil {
+		return nil, err
+	}
+	return &result, nil
 }
 
 // DescribeManagedArtifactRelease returns a release and its managed amenity artifacts.
 func DescribeManagedArtifactRelease(ctx context.Context, token, bundleVersion string) (*model.ManagedArtifactRelease, error) {
 	var result model.ManagedArtifactRelease
-	err := doManagedArtifactRequest(ctx, token, http.MethodGet,
-		managedArtifactURL("releases", bundleVersion), nil, &result)
-	return &result, err
+	if err := doManagedArtifactRequest(ctx, token, http.MethodGet,
+		managedArtifactURL("releases", bundleVersion), nil, &result); err != nil {
+		return nil, err
+	}
+	return &result, nil
 }
 
 // ListManagedArtifactSyncs lists synchronization records for provisioner targets.
@@ -186,14 +194,18 @@ func ListManagedArtifactSyncs(ctx context.Context, token string, options ListMan
 	requestURL.RawQuery = query.Encode()
 
 	var result model.ManagedArtifactSyncList
-	err = doManagedArtifactRequest(ctx, token, http.MethodGet, requestURL.String(), nil, &result)
-	return &result, err
+	if err := doManagedArtifactRequest(ctx, token, http.MethodGet, requestURL.String(), nil, &result); err != nil {
+		return nil, err
+	}
+	return &result, nil
 }
 
 // DescribeManagedArtifactSync returns one synchronization and its artifact results.
 func DescribeManagedArtifactSync(ctx context.Context, token, syncID string) (*model.ManagedArtifactSync, error) {
 	var result model.ManagedArtifactSync
-	err := doManagedArtifactRequest(ctx, token, http.MethodGet,
-		managedArtifactURL("syncs", syncID), nil, &result)
-	return &result, err
+	if err := doManagedArtifactRequest(ctx, token, http.MethodGet,
+		managedArtifactURL("syncs", syncID), nil, &result); err != nil {
+		return nil, err
+	}
+	return &result, nil
 }

@@ -100,6 +100,81 @@ func TestUpdateManagedArtifactReleasePolicySendsRequest(t *testing.T) {
 	assert.Equal(t, "r0000020", result.EffectiveBundleVersion)
 }
 
+func TestListManagedArtifactSyncsSendsFilters(t *testing.T) {
+	var capturedQuery url.Values
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, http.MethodGet, r.Method)
+		assert.Equal(t, "/2022-09-01-00/managed-artifact/syncs", r.URL.Path)
+		assert.Equal(t, "Bearer test-token", r.Header.Get("Authorization"))
+		capturedQuery = r.URL.Query()
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"syncs": []map[string]any{{
+				"id":            "spabs-123",
+				"bundleVersion": "r0000020",
+				"status":        "FAILED",
+				"target":        map[string]any{"id": "hc-123"},
+			}},
+			"nextPageToken": "next-token",
+		})
+	}))
+	defer server.Close()
+	setManagedArtifactTestHost(t, server.URL)
+
+	result, err := ListManagedArtifactSyncs(context.Background(), "test-token", ListManagedArtifactSyncsOptions{
+		BundleVersion: "r0000020",
+		Status:        "FAILED",
+		TargetID:      "hc-123",
+		UpdatedAfter:  "2026-09-01T00:00:00Z",
+		UpdatedBefore: "2026-10-01T00:00:00Z",
+		Limit:         25,
+		NextPageToken: "page-token",
+	})
+	require.NoError(t, err)
+	require.Len(t, result.Syncs, 1)
+	assert.Equal(t, "spabs-123", result.Syncs[0].ID)
+	assert.Equal(t, "hc-123", result.Syncs[0].Target.ID)
+	assert.Equal(t, "next-token", result.NextPageToken)
+	assert.Equal(t, "r0000020", capturedQuery.Get("bundleVersion"))
+	assert.Equal(t, "FAILED", capturedQuery.Get("status"))
+	assert.Equal(t, "hc-123", capturedQuery.Get("targetId"))
+	assert.Equal(t, "2026-09-01T00:00:00Z", capturedQuery.Get("updatedAfter"))
+	assert.Equal(t, "2026-10-01T00:00:00Z", capturedQuery.Get("updatedBefore"))
+	assert.Equal(t, "25", capturedQuery.Get("limit"))
+	assert.Equal(t, "page-token", capturedQuery.Get("nextPageToken"))
+}
+
+func TestDescribeManagedArtifactSync(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, http.MethodGet, r.Method)
+		assert.Equal(t, "/2022-09-01-00/managed-artifact/syncs/spabs-123", r.URL.Path)
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"id":            "spabs-123",
+			"bundleVersion": "r0000020",
+			"status":        "READY",
+			"target":        map[string]any{"id": "hc-123", "region": "us-east-2"},
+			"artifacts": []map[string]any{{
+				"amenityName": "cert-manager",
+				"artifactKey": "chart",
+				"version":     "v1.15.0",
+				"status":      "READY",
+			}},
+		})
+	}))
+	defer server.Close()
+	setManagedArtifactTestHost(t, server.URL)
+
+	result, err := DescribeManagedArtifactSync(context.Background(), "test-token", "spabs-123")
+	require.NoError(t, err)
+	assert.Equal(t, "spabs-123", result.ID)
+	assert.Equal(t, "READY", result.Status)
+	assert.Equal(t, "us-east-2", result.Target.Region)
+	require.Len(t, result.Artifacts, 1)
+	assert.Equal(t, "cert-manager", result.Artifacts[0].AmenityName)
+}
+
 func TestManagedArtifactAPIErrorIncludesMessage(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
