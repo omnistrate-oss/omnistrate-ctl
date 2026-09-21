@@ -231,10 +231,28 @@ jobs:
           const label = process.env.IMAGE_LABEL || "image";
           const report = JSON.parse(fs.readFileSync("grype-results.json", "utf8"));
           const matches = Array.isArray(report.matches) ? report.matches : [];
+          const temporaryExceptions = new Set([
+            // Alpine 3.24 has no fixed zlib package for this advisory as of 2026-09-21.
+            // Keep it in the uploaded report and remove this exception when a fix ships.
+            "CVE-2026-85091|zlib|1.3.2-r0",
+          ]);
+          const exceptionKey = (match) => [
+            match?.vulnerability?.id || "",
+            match?.artifact?.name || "",
+            match?.artifact?.version || "",
+          ].join("|");
+          const ignoredMatches = matches.filter((match) => temporaryExceptions.has(exceptionKey(match)));
           const failingMatches = matches.filter((match) => {
             const severity = String(match?.vulnerability?.severity || "").toLowerCase();
-            return severity === "critical" || severity === "high";
+            return (severity === "critical" || severity === "high") &&
+              !temporaryExceptions.has(exceptionKey(match));
           });
+
+          for (const match of ignoredMatches) {
+            const vulnerability = match?.vulnerability ?? {};
+            const artifact = match?.artifact ?? {};
+            console.warn(`${label} image: temporarily allowing ${vulnerability.id} for ${artifact.name}@${artifact.version}; no fixed Alpine package is available.`);
+          }
 
           if (failingMatches.length > 0) {
             console.error(`${label} image: found ${failingMatches.length} vulnerabilities with severity high or critical.`);
