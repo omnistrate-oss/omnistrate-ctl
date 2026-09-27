@@ -45,7 +45,12 @@ RUN --mount=type=bind,source=.,target=/go/src/ctl,rw \
 ## Deploy
 FROM alpine:latest AS app
 
-RUN apk add --no-cache ca-certificates curl jq
+# The published alpine:latest image is rebuilt less often than the Alpine package
+# repository is updated, so its preinstalled packages can carry already-fixed CVEs — the
+# OpenSSL libraries that apk-tools links against are the usual offenders. Upgrading before
+# installing pulls those forward to whatever the repository currently ships, which keeps
+# the image clean as new advisories land rather than only at the next base-image rebuild.
+RUN apk --no-cache upgrade && apk add --no-cache ca-certificates curl jq
 
 COPY --from=builder /out/omnistrate-ctl /usr/local/bin/omnistrate-ctl
 WORKDIR /omnistrate
