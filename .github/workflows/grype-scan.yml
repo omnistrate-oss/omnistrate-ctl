@@ -225,16 +225,36 @@ jobs:
       - name: Enforce vulnerability threshold
         env:
           IMAGE_LABEL: ${{ matrix.image.label }}
+          IMAGE_SLUG: ${{ matrix.image.slug }}
         run: |
           node <<'NODE'
           const fs = require("fs");
           const label = process.env.IMAGE_LABEL || "image";
+          const image = process.env.IMAGE_SLUG || "";
           const report = JSON.parse(fs.readFileSync("grype-results.json", "utf8"));
           const matches = Array.isArray(report.matches) ? report.matches : [];
+          const exceptions = JSON.parse(fs.readFileSync(".github/grype-exceptions.json", "utf8"));
+          const today = new Date().toISOString().slice(0, 10);
+          const matchingException = (match) => exceptions.find((exception) =>
+            exception.image === image &&
+            exception.vulnerability === (match?.vulnerability?.id || "") &&
+            exception.package === (match?.artifact?.name || "") &&
+            exception.version === (match?.artifact?.version || "") &&
+            typeof exception.owner === "string" && exception.owner.length > 0 &&
+            typeof exception.expiresOn === "string" && exception.expiresOn >= today
+          );
+          const ignoredMatches = matches.filter((match) => matchingException(match));
           const failingMatches = matches.filter((match) => {
             const severity = String(match?.vulnerability?.severity || "").toLowerCase();
-            return severity === "critical" || severity === "high";
+            return (severity === "critical" || severity === "high") && !matchingException(match);
           });
+
+          for (const match of ignoredMatches) {
+            const exception = matchingException(match);
+            const vulnerability = match?.vulnerability ?? {};
+            const artifact = match?.artifact ?? {};
+            console.warn(`${label} image: temporarily allowing ${vulnerability.id} for ${artifact.name}@${artifact.version}; owner ${exception.owner}; expires ${exception.expiresOn}; ${exception.reason}`);
+          }
 
           if (failingMatches.length > 0) {
             console.error(`${label} image: found ${failingMatches.length} vulnerabilities with severity high or critical.`);
