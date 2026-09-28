@@ -6,9 +6,9 @@ Update a managed artifact release policy
 
 Update automatic managed artifact release adoption for one Base Amenities environment and cloud provider.
 
-Enabling auto-upgrade clears a stored release pin. Disabling auto-upgrade without
---preferred-bundle-version freezes the current effective release. Disabling
-auto-upgrade is currently supported only for aws.
+Enabling auto-upgrade clears a stored release pin. Disabling auto-upgrade pins the
+release set by --preferred-bundle-version, or the current effective release if the
+flag is omitted. Pinning is currently supported only for aws.
 
 Requires the root, admin, or editor role.
 
