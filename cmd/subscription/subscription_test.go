@@ -15,7 +15,7 @@ func TestSubscriptionCommands(t *testing.T) {
 	expectedCommands := []string{
 		"list", "list-for-service", "describe", "list-requests",
 		"approve-request", "deny-request", "create-on-behalf",
-		"suspend", "resume", "terminate",
+		"update", "suspend", "resume", "terminate",
 	}
 
 	for _, expectedCmd := range expectedCommands {
@@ -83,9 +83,56 @@ func TestCreateOnBehalfCommandFlags(t *testing.T) {
 	optionalFlags := []string{
 		"allow-creates-without-payment", "billing-provider", "custom-price",
 		"custom-price-per-unit", "external-payer-id", "max-instances", "price-effective-date",
+		"allowed-deployment-locations",
 	}
 	for _, flagName := range optionalFlags {
 		flag := cmd.Flags().Lookup(flagName)
 		require.NotNil(t, flag, "Expected optional flag %s not found", flagName)
 	}
+}
+
+func TestUpdateCommandFlags(t *testing.T) {
+	cmd := updateCmd
+
+	require.Equal(t, "update <subscription-id>", cmd.Use)
+	require.Equal(t, "Update a subscription", cmd.Short)
+
+	serviceIDFlag := cmd.Flags().Lookup("service-id")
+	require.NotNil(t, serviceIDFlag)
+	require.Equal(t, "s", serviceIDFlag.Shorthand)
+
+	environmentIDFlag := cmd.Flags().Lookup("environment-id")
+	require.NotNil(t, environmentIDFlag)
+	require.Equal(t, "e", environmentIDFlag.Shorthand)
+
+	locationsFlag := cmd.Flags().Lookup("allowed-deployment-locations")
+	require.NotNil(t, locationsFlag)
+	require.Equal(t, "string", locationsFlag.Value.Type())
+}
+
+func TestParseAllowedDeploymentLocations(t *testing.T) {
+	locations, err := parseAllowedDeploymentLocations(`[{"cloudProvider":"aws","regions":["us-east-1","us-west-2"]},{"cloudProvider":"gcp"}]`)
+
+	require.NoError(t, err)
+	require.Len(t, locations, 2)
+	require.Equal(t, "aws", locations[0].CloudProvider)
+	require.Equal(t, []string{"us-east-1", "us-west-2"}, locations[0].Regions)
+	require.Equal(t, "gcp", locations[1].CloudProvider)
+	require.Nil(t, locations[1].Regions)
+}
+
+func TestParseAllowedDeploymentLocationsPreservesEmptyList(t *testing.T) {
+	locations, err := parseAllowedDeploymentLocations(`[]`)
+
+	require.NoError(t, err)
+	require.NotNil(t, locations)
+	require.Empty(t, locations)
+}
+
+func TestParseAllowedDeploymentLocationsRejectsInvalidInput(t *testing.T) {
+	_, err := parseAllowedDeploymentLocations(`{"cloudProvider":"aws"}`)
+
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "--allowed-deployment-locations")
+	require.Contains(t, err.Error(), "JSON array")
 }
