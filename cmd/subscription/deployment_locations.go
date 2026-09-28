@@ -21,6 +21,9 @@ func parseAllowedDeploymentLocations(value string) ([]openapiclientfleet.Subscri
 	if err := decoder.Decode(&locations); err != nil {
 		return nil, fmt.Errorf("failed to parse --%s as a JSON array: %w", allowedDeploymentLocationsFlag, err)
 	}
+	if locations == nil {
+		return nil, fmt.Errorf("--%s must be a JSON array, use [] to inherit product tier deployment locations", allowedDeploymentLocationsFlag)
+	}
 	var extra json.RawMessage
 	if err := decoder.Decode(&extra); err == nil {
 		return nil, fmt.Errorf("failed to parse --%s as a JSON array: multiple JSON values provided", allowedDeploymentLocationsFlag)

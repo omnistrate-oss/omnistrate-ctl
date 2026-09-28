@@ -1,10 +1,10 @@
 package subscription
 
 import (
-	"context"
 	"fmt"
 
 	"github.com/omnistrate-oss/omnistrate-ctl/cmd/common"
+	"github.com/omnistrate-oss/omnistrate-ctl/internal/config"
 	"github.com/omnistrate-oss/omnistrate-ctl/internal/dataaccess"
 	"github.com/spf13/cobra"
 )
@@ -28,7 +28,7 @@ func init() {
 }
 
 func runUpdate(cmd *cobra.Command, args []string) error {
-	ctx := context.Background()
+	defer config.CleanupArgsAndFlags(cmd, &args)
 
 	subscriptionID := args[0]
 	serviceID, _ := cmd.Flags().GetString("service-id")
@@ -45,7 +45,7 @@ func runUpdate(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	err = dataaccess.UpdateSubscription(ctx, token, serviceID, environmentID, subscriptionID, &dataaccess.UpdateSubscriptionOptions{
+	err = dataaccess.UpdateSubscription(cmd.Context(), token, serviceID, environmentID, subscriptionID, &dataaccess.UpdateSubscriptionOptions{
 		AllowedDeploymentLocations: allowedDeploymentLocations,
 	})
 	if err != nil {

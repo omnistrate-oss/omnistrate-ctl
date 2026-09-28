@@ -129,6 +129,14 @@ func TestParseAllowedDeploymentLocationsPreservesEmptyList(t *testing.T) {
 	require.Empty(t, locations)
 }
 
+func TestParseAllowedDeploymentLocationsRejectsNull(t *testing.T) {
+	_, err := parseAllowedDeploymentLocations(`null`)
+
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "--allowed-deployment-locations")
+	require.Contains(t, err.Error(), "JSON array")
+}
+
 func TestParseAllowedDeploymentLocationsRejectsInvalidInput(t *testing.T) {
 	_, err := parseAllowedDeploymentLocations(`{"cloudProvider":"aws"}`)
 

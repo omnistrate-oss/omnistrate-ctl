@@ -6,6 +6,7 @@ import (
 	"fmt"
 
 	"github.com/omnistrate-oss/omnistrate-ctl/cmd/common"
+	"github.com/omnistrate-oss/omnistrate-ctl/internal/config"
 	"github.com/omnistrate-oss/omnistrate-ctl/internal/dataaccess"
 	"github.com/omnistrate-oss/omnistrate-ctl/internal/utils"
 	"github.com/spf13/cobra"
@@ -39,6 +40,8 @@ func init() {
 }
 
 func runCreateOnBehalf(cmd *cobra.Command, args []string) error {
+	defer config.CleanupArgsAndFlags(cmd, &args)
+
 	ctx := context.Background()
 
 	serviceID, _ := cmd.Flags().GetString("service-id")
