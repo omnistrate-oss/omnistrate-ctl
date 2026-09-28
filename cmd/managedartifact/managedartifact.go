@@ -14,9 +14,13 @@ var syncIDPattern = regexp.MustCompile(`^spabs-[a-zA-Z0-9-]+$`)
 
 // Cmd is the parent command for managed artifact operations.
 var Cmd = &cobra.Command{
-	Use:          "managed-artifact [operation] [flags]",
-	Short:        "Manage Base Amenities artifact releases",
-	Long:         "Inspect managed artifact releases and provisioner synchronization, and manage Base Amenities release policy.",
+	Use:   "managed-artifact [operation] [flags]",
+	Short: "Manage Base Amenities artifact releases",
+	Long: `Inspect managed artifact releases and provisioner synchronization, and manage Base Amenities release policy.
+
+Managed artifact access must be enabled for your organization. Read commands require
+the root, admin, editor, or reader role; policy updates require the root, admin, or
+editor role.`,
 	Run:          run,
 	SilenceUsage: true,
 }
@@ -44,10 +48,10 @@ func normalizeEnvironmentType(value string) (string, error) {
 func normalizeCloudProvider(value string) (string, error) {
 	normalized := strings.ToLower(strings.TrimSpace(value))
 	switch normalized {
-	case "aws", "azure", "gcp", "nebius", "oci", "byoc-onprem", "all":
+	case "aws", "azure", "gcp", "nebius", "oci", "byoc-onprem":
 		return normalized, nil
 	default:
-		return "", fmt.Errorf("invalid cloud provider %q: expected aws, azure, gcp, nebius, oci, byoc-onprem, or all", value)
+		return "", fmt.Errorf("invalid cloud provider %q: expected aws, azure, gcp, nebius, oci, or byoc-onprem", value)
 	}
 }
 

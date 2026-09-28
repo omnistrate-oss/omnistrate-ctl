@@ -33,7 +33,10 @@ var policyUpdateCmd = &cobra.Command{
 	Long: `Update automatic managed artifact release adoption for one Base Amenities environment and cloud provider.
 
 Enabling auto-upgrade clears a stored release pin. Disabling auto-upgrade without
---preferred-bundle-version freezes the current effective release.`,
+--preferred-bundle-version freezes the current effective release. Disabling
+auto-upgrade is currently supported only for aws.
+
+Requires the root, admin, or editor role.`,
 	Example: `omnistrate-ctl managed-artifact policy update --environment-type prod --cloud-provider aws --auto-upgrade=true
 omnistrate-ctl managed-artifact policy update --environment-type prod --cloud-provider aws --auto-upgrade=false --preferred-bundle-version r0000020`,
 	Args:         cobra.NoArgs,
@@ -54,7 +57,7 @@ func init() {
 
 func addPolicyScopeFlags(cmd *cobra.Command) {
 	cmd.Flags().String("environment-type", "", "Environment type (dev, qa, staging, canary, prod, private, or global) (required)")
-	cmd.Flags().String("cloud-provider", "", "Cloud provider (aws, azure, gcp, nebius, oci, byoc-onprem, or all) (required)")
+	cmd.Flags().String("cloud-provider", "", "Cloud provider (aws, azure, gcp, nebius, oci, or byoc-onprem) (required)")
 	_ = cmd.MarkFlagRequired("environment-type")
 	_ = cmd.MarkFlagRequired("cloud-provider")
 }

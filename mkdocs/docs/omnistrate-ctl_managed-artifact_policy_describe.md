@@ -15,7 +15,7 @@ omnistrate-ctl managed-artifact policy describe --environment-type prod --cloud-
 ### Options
 
 ```
-      --cloud-provider string     Cloud provider (aws, azure, gcp, nebius, oci, byoc-onprem, or all) (required)
+      --cloud-provider string     Cloud provider (aws, azure, gcp, nebius, oci, or byoc-onprem) (required)
       --environment-type string   Environment type (dev, qa, staging, canary, prod, private, or global) (required)
   -h, --help                      help for describe
 ```

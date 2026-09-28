@@ -90,6 +90,9 @@ func TestManagedArtifactNormalization(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "aws", cloudProvider)
 
+	_, err = normalizeCloudProvider("all")
+	require.Error(t, err)
+
 	status, err := normalizeSyncStatus("in_progress")
 	require.NoError(t, err)
 	require.Equal(t, "IN_PROGRESS", status)

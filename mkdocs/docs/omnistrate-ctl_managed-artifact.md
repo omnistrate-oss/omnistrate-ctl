@@ -6,6 +6,10 @@ Manage Base Amenities artifact releases
 
 Inspect managed artifact releases and provisioner synchronization, and manage Base Amenities release policy.
 
+Managed artifact access must be enabled for your organization. Read commands require
+the root, admin, editor, or reader role; policy updates require the root, admin, or
+editor role.
+
 ```
 omnistrate-ctl managed-artifact [operation] [flags]
 ```
