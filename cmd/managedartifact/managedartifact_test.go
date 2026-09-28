@@ -3,6 +3,7 @@ package managedartifact
 import (
 	"testing"
 
+	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/require"
 )
 
@@ -33,6 +34,24 @@ func TestManagedArtifactCommands(t *testing.T) {
 	require.NotNil(t, policyUpdateCmd.Flags().Lookup("preferred-bundle-version"))
 	require.NotNil(t, syncListCmd.Flags().Lookup("status"))
 	require.NotNil(t, syncDescribeCmd.Flags().Lookup("id"))
+}
+
+func TestManagedArtifactCommandsRequireParameters(t *testing.T) {
+	tests := []struct {
+		name string
+		cmd  *cobra.Command
+	}{
+		{name: "policy describe", cmd: policyDescribeCmd},
+		{name: "policy update", cmd: policyUpdateCmd},
+		{name: "release describe", cmd: releaseDescribeCmd},
+		{name: "sync describe", cmd: syncDescribeCmd},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			require.ErrorContains(t, tt.cmd.ValidateRequiredFlags(), "required flag")
+		})
+	}
 }
 
 func TestManagedArtifactValidation(t *testing.T) {

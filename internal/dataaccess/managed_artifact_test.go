@@ -13,6 +13,30 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func TestDescribeManagedArtifactReleasePolicy(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, http.MethodGet, r.Method)
+		assert.Equal(t, "/2022-09-01-00/managed-artifact/release-policy/PROD/aws", r.URL.Path)
+		assert.Equal(t, "Bearer test-token", r.Header.Get("Authorization"))
+		w.Header().Set("Content-Type", "application/json")
+		require.NoError(t, json.NewEncoder(w).Encode(map[string]any{
+			"environmentType":        "PROD",
+			"cloudProvider":          "aws",
+			"autoUpgrade":            true,
+			"effectiveBundleVersion": "r0000020",
+		}))
+	}))
+	defer server.Close()
+	setManagedArtifactTestHost(t, server.URL)
+
+	result, err := DescribeManagedArtifactReleasePolicy(context.Background(), "test-token", "PROD", "aws")
+	require.NoError(t, err)
+	assert.Equal(t, "PROD", result.EnvironmentType)
+	assert.Equal(t, "aws", result.CloudProvider)
+	assert.True(t, result.AutoUpgrade)
+	assert.Equal(t, "r0000020", result.EffectiveBundleVersion)
+}
+
 func TestListManagedArtifactReleasesSendsFilters(t *testing.T) {
 	var capturedAuthorization string
 	var capturedQuery url.Values
@@ -100,6 +124,40 @@ func TestUpdateManagedArtifactReleasePolicySendsRequest(t *testing.T) {
 	assert.Equal(t, "r0000020", result.EffectiveBundleVersion)
 }
 
+func TestDescribeManagedArtifactRelease(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, http.MethodGet, r.Method)
+		assert.Equal(t, "/2022-09-01-00/managed-artifact/releases/r0000020", r.URL.Path)
+		assert.Equal(t, "Bearer test-token", r.Header.Get("Authorization"))
+		w.Header().Set("Content-Type", "application/json")
+		require.NoError(t, json.NewEncoder(w).Encode(map[string]any{
+			"bundleVersion":   "r0000020",
+			"releaseSequence": 20,
+			"releasedAt":      "2026-09-18T12:00:00Z",
+			"amenityCount":    1,
+			"artifactCount":   1,
+			"artifacts": []map[string]any{{
+				"amenityName":  "cert-manager",
+				"artifactKey":  "chart",
+				"type":         "HELM_CHART",
+				"version":      "v1.15.0",
+				"sourceRef":    "oci://example.test/cert-manager",
+				"relativePath": "charts/cert-manager",
+			}},
+		}))
+	}))
+	defer server.Close()
+	setManagedArtifactTestHost(t, server.URL)
+
+	result, err := DescribeManagedArtifactRelease(context.Background(), "test-token", "r0000020")
+	require.NoError(t, err)
+	assert.Equal(t, "r0000020", result.BundleVersion)
+	assert.EqualValues(t, 20, result.ReleaseSequence)
+	require.Len(t, result.Artifacts, 1)
+	assert.Equal(t, "cert-manager", result.Artifacts[0].AmenityName)
+	assert.Equal(t, "oci://example.test/cert-manager", result.Artifacts[0].SourceRef)
+}
+
 func TestListManagedArtifactSyncsSendsFilters(t *testing.T) {
 	var capturedQuery url.Values
 
@@ -149,6 +207,7 @@ func TestDescribeManagedArtifactSync(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		assert.Equal(t, http.MethodGet, r.Method)
 		assert.Equal(t, "/2022-09-01-00/managed-artifact/syncs/spabs-123", r.URL.Path)
+		assert.Equal(t, "Bearer test-token", r.Header.Get("Authorization"))
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]any{
 			"id":            "spabs-123",
@@ -175,18 +234,66 @@ func TestDescribeManagedArtifactSync(t *testing.T) {
 	assert.Equal(t, "cert-manager", result.Artifacts[0].AmenityName)
 }
 
-func TestManagedArtifactAPIErrorIncludesMessage(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+func TestManagedArtifactRequiredParameters(t *testing.T) {
+	tests := []struct {
+		name string
+		call func() error
+		want string
+	}{
+		{
+			name: "missing policy environment",
+			call: func() error {
+				_, err := DescribeManagedArtifactReleasePolicy(context.Background(), "unused", "", "aws")
+				return err
+			},
+			want: "environment type is required",
+		},
+		{
+			name: "missing policy cloud provider",
+			call: func() error {
+				_, err := UpdateManagedArtifactReleasePolicy(context.Background(), "unused", "PROD", "", model.UpdateManagedArtifactReleasePolicyRequest{})
+				return err
+			},
+			want: "cloud provider is required",
+		},
+		{
+			name: "missing release bundle version",
+			call: func() error {
+				_, err := DescribeManagedArtifactRelease(context.Background(), "unused", "")
+				return err
+			},
+			want: "bundle version is required",
+		},
+		{
+			name: "missing sync ID",
+			call: func() error {
+				_, err := DescribeManagedArtifactSync(context.Background(), "unused", "")
+				return err
+			},
+			want: "sync ID is required",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.EqualError(t, tt.call(), tt.want)
+		})
+	}
+}
+
+func TestManagedArtifactAPIRejectsInvalidToken(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, "Bearer invalid-token", r.Header.Get("Authorization"))
 		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusForbidden)
-		_, _ = w.Write([]byte(`{"name":"forbidden","message":"managed artifact access is not enabled"}`))
+		w.WriteHeader(http.StatusUnauthorized)
+		_, _ = w.Write([]byte(`{"name":"unauthorized","message":"invalid bearer token"}`))
 	}))
 	defer server.Close()
 	setManagedArtifactTestHost(t, server.URL)
 
-	_, err := DescribeManagedArtifactReleasePolicy(context.Background(), "test-token", "PROD", "aws")
+	_, err := DescribeManagedArtifactReleasePolicy(context.Background(), "invalid-token", "PROD", "aws")
 	require.Error(t, err)
-	assert.Equal(t, "forbidden: managed artifact access is not enabled", err.Error())
+	assert.Equal(t, "unauthorized: invalid bearer token", err.Error())
 }
 
 func setManagedArtifactTestHost(t *testing.T, rawURL string) {

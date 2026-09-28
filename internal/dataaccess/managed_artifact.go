@@ -104,6 +104,13 @@ func doManagedArtifactRequest(ctx context.Context, token, method, requestURL str
 
 // DescribeManagedArtifactReleasePolicy returns the release policy for one environment and cloud provider.
 func DescribeManagedArtifactReleasePolicy(ctx context.Context, token, environmentType, cloudProvider string) (*model.ManagedArtifactReleasePolicy, error) {
+	if strings.TrimSpace(environmentType) == "" {
+		return nil, fmt.Errorf("environment type is required")
+	}
+	if strings.TrimSpace(cloudProvider) == "" {
+		return nil, fmt.Errorf("cloud provider is required")
+	}
+
 	var result model.ManagedArtifactReleasePolicy
 	if err := doManagedArtifactRequest(ctx, token, http.MethodGet,
 		managedArtifactURL("release-policy", environmentType, cloudProvider), nil, &result); err != nil {
@@ -114,6 +121,13 @@ func DescribeManagedArtifactReleasePolicy(ctx context.Context, token, environmen
 
 // UpdateManagedArtifactReleasePolicy updates the release policy for one environment and cloud provider.
 func UpdateManagedArtifactReleasePolicy(ctx context.Context, token, environmentType, cloudProvider string, request model.UpdateManagedArtifactReleasePolicyRequest) (*model.ManagedArtifactReleasePolicy, error) {
+	if strings.TrimSpace(environmentType) == "" {
+		return nil, fmt.Errorf("environment type is required")
+	}
+	if strings.TrimSpace(cloudProvider) == "" {
+		return nil, fmt.Errorf("cloud provider is required")
+	}
+
 	var result model.ManagedArtifactReleasePolicy
 	if err := doManagedArtifactRequest(ctx, token, http.MethodPut,
 		managedArtifactURL("release-policy", environmentType, cloudProvider), request, &result); err != nil {
@@ -155,6 +169,10 @@ func ListManagedArtifactReleases(ctx context.Context, token string, options List
 
 // DescribeManagedArtifactRelease returns a release and its managed amenity artifacts.
 func DescribeManagedArtifactRelease(ctx context.Context, token, bundleVersion string) (*model.ManagedArtifactRelease, error) {
+	if strings.TrimSpace(bundleVersion) == "" {
+		return nil, fmt.Errorf("bundle version is required")
+	}
+
 	var result model.ManagedArtifactRelease
 	if err := doManagedArtifactRequest(ctx, token, http.MethodGet,
 		managedArtifactURL("releases", bundleVersion), nil, &result); err != nil {
@@ -202,6 +220,10 @@ func ListManagedArtifactSyncs(ctx context.Context, token string, options ListMan
 
 // DescribeManagedArtifactSync returns one synchronization and its artifact results.
 func DescribeManagedArtifactSync(ctx context.Context, token, syncID string) (*model.ManagedArtifactSync, error) {
+	if strings.TrimSpace(syncID) == "" {
+		return nil, fmt.Errorf("sync ID is required")
+	}
+
 	var result model.ManagedArtifactSync
 	if err := doManagedArtifactRequest(ctx, token, http.MethodGet,
 		managedArtifactURL("syncs", syncID), nil, &result); err != nil {
