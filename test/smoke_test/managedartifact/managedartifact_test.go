@@ -18,7 +18,8 @@ func TestManagedArtifactCommands(t *testing.T) {
 	testutils.SmokeTest(t)
 
 	ctx := context.Background()
-	defer testutils.Cleanup()
+	// Cleanup callbacks run in reverse order, so keep authentication until policy restoration finishes.
+	t.Cleanup(testutils.Cleanup)
 
 	testEmail, testPassword, err := testutils.GetTestAccount()
 	require.NoError(t, err)
