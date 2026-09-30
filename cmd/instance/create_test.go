@@ -35,6 +35,8 @@ func TestCreateCommandFlags(t *testing.T) {
 	flag = createCmd.Flags().Lookup("onprem-platform")
 	require.NotNil(t, flag)
 	assert.Contains(t, flag.Usage, "installer-backed")
+	assert.Contains(t, flag.Usage, "EKS, GKE, AKS, Generic")
+	assert.NotContains(t, flag.Usage, "OpenShift")
 
 	flag = createCmd.Flags().Lookup("breakpoints")
 	require.NotNil(t, flag)

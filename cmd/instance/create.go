@@ -103,7 +103,7 @@ func init() {
 	createCmd.Flags().String("customer-account-id", "", "Customer BYOA account onboarding instance ID to inject as the cloud account. Use 'omnistrate-ctl account customer list' or 'omnistrate-ctl account customer describe <instance-id>' to find it.")
 	createCmd.Flags().String("cloud-provider-native-network-id", "", fmt.Sprintf("Cloud provider native network ID to inject as %s in instance deployment parameters", cloudProviderNativeNetworkIDParamKey))
 	createCmd.Flags().String("network-type", "", "Optional network type for the instance deployment (PUBLIC / INTERNAL)")
-	createCmd.Flags().String("onprem-platform", "", "On-prem platform for installer-backed deployments (for example EKS, GKE, AKS, OpenShift, Generic)")
+	createCmd.Flags().String("onprem-platform", "", "On-prem platform for installer-backed deployments (for example EKS, GKE, AKS, Generic)")
 	createCmd.Flags().String("tags", "", `Custom tags to add to the instance deployment (format: key=value,key2=value2). Escape commas inside values with \,`)
 	createCmd.Flags().String("breakpoints", "", "Workflow breakpoint resource IDs or resource keys, optionally scoped to events as id-or-key:event or id-or-key:event|event")
 	createCmd.Flags().StringP("subscription-id", "", "", "Subscription ID to use for the instance deployment. If not provided, instance deployment will be created in your own subscription.")
