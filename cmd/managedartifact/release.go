@@ -99,6 +99,13 @@ func runReleaseList(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return fmt.Errorf("failed to get user token: %w", err)
 	}
+	var sm utils.SpinnerManager
+	var spinner *utils.Spinner
+	if output != common.OutputTypeJson {
+		sm = utils.NewSpinnerManager()
+		spinner = sm.AddSpinner("Listing managed artifact releases...")
+		sm.Start()
+	}
 	result, err := dataaccess.ListManagedArtifactReleases(cmd.Context(), token, dataaccess.ListManagedArtifactReleasesOptions{
 		BundleVersion:  bundleVersion,
 		ReleasedAfter:  releasedAfter,
@@ -107,8 +114,11 @@ func runReleaseList(cmd *cobra.Command, args []string) error {
 		NextPageToken:  nextPageToken,
 	})
 	if err != nil {
-		return fmt.Errorf("failed to list managed artifact releases: %w", err)
+		err = fmt.Errorf("failed to list managed artifact releases: %w", err)
+		utils.HandleSpinnerError(spinner, sm, err)
+		return err
 	}
+	utils.HandleSpinnerSuccess(spinner, sm, "Successfully listed managed artifact releases")
 
 	if output != "table" {
 		return utils.PrintTextTableJsonOutput(output, result)
@@ -139,10 +149,20 @@ func runReleaseDescribe(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return fmt.Errorf("failed to get user token: %w", err)
 	}
+	var sm utils.SpinnerManager
+	var spinner *utils.Spinner
+	if output != common.OutputTypeJson {
+		sm = utils.NewSpinnerManager()
+		spinner = sm.AddSpinner(fmt.Sprintf("Describing managed artifact release %s...", bundleVersion))
+		sm.Start()
+	}
 	release, err := dataaccess.DescribeManagedArtifactRelease(cmd.Context(), token, bundleVersion)
 	if err != nil {
-		return fmt.Errorf("failed to describe managed artifact release: %w", err)
+		err = fmt.Errorf("failed to describe managed artifact release: %w", err)
+		utils.HandleSpinnerError(spinner, sm, err)
+		return err
 	}
+	utils.HandleSpinnerSuccess(spinner, sm, fmt.Sprintf("Successfully described managed artifact release %s", bundleVersion))
 
 	if output != "table" {
 		return utils.PrintTextTableJsonOutput(output, release)

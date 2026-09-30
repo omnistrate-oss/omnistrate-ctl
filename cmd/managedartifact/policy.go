@@ -89,10 +89,20 @@ func runPolicyDescribe(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return fmt.Errorf("failed to get user token: %w", err)
 	}
+	var sm utils.SpinnerManager
+	var spinner *utils.Spinner
+	if output != common.OutputTypeJson {
+		sm = utils.NewSpinnerManager()
+		spinner = sm.AddSpinner("Describing managed artifact release policy...")
+		sm.Start()
+	}
 	policy, err := dataaccess.DescribeManagedArtifactReleasePolicy(cmd.Context(), token, environmentType, cloudProvider)
 	if err != nil {
-		return fmt.Errorf("failed to describe managed artifact release policy: %w", err)
+		err = fmt.Errorf("failed to describe managed artifact release policy: %w", err)
+		utils.HandleSpinnerError(spinner, sm, err)
+		return err
 	}
+	utils.HandleSpinnerSuccess(spinner, sm, "Successfully described managed artifact release policy")
 	return utils.PrintTextTableJsonOutput(output, policy)
 }
 
@@ -111,6 +121,9 @@ func runPolicyUpdate(cmd *cobra.Command, args []string) error {
 	}
 	if autoUpgrade && preferredBundleVersion != "" {
 		return fmt.Errorf("--preferred-bundle-version cannot be used when --auto-upgrade=true")
+	}
+	if !autoUpgrade && cloudProvider != "aws" {
+		return fmt.Errorf("--auto-upgrade=false is supported only for aws")
 	}
 
 	token, err := common.GetTokenWithLogin()

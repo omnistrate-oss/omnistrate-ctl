@@ -107,6 +107,13 @@ func runSyncList(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return fmt.Errorf("failed to get user token: %w", err)
 	}
+	var sm utils.SpinnerManager
+	var spinner *utils.Spinner
+	if output != common.OutputTypeJson {
+		sm = utils.NewSpinnerManager()
+		spinner = sm.AddSpinner("Listing managed artifact syncs...")
+		sm.Start()
+	}
 	result, err := dataaccess.ListManagedArtifactSyncs(cmd.Context(), token, dataaccess.ListManagedArtifactSyncsOptions{
 		BundleVersion: bundleVersion,
 		Status:        status,
@@ -117,8 +124,11 @@ func runSyncList(cmd *cobra.Command, args []string) error {
 		NextPageToken: nextPageToken,
 	})
 	if err != nil {
-		return fmt.Errorf("failed to list managed artifact syncs: %w", err)
+		err = fmt.Errorf("failed to list managed artifact syncs: %w", err)
+		utils.HandleSpinnerError(spinner, sm, err)
+		return err
 	}
+	utils.HandleSpinnerSuccess(spinner, sm, "Successfully listed managed artifact syncs")
 
 	if output != "table" {
 		return utils.PrintTextTableJsonOutput(output, result)
@@ -149,10 +159,20 @@ func runSyncDescribe(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return fmt.Errorf("failed to get user token: %w", err)
 	}
+	var sm utils.SpinnerManager
+	var spinner *utils.Spinner
+	if output != common.OutputTypeJson {
+		sm = utils.NewSpinnerManager()
+		spinner = sm.AddSpinner(fmt.Sprintf("Describing managed artifact sync %s...", syncID))
+		sm.Start()
+	}
 	sync, err := dataaccess.DescribeManagedArtifactSync(cmd.Context(), token, syncID)
 	if err != nil {
-		return fmt.Errorf("failed to describe managed artifact sync: %w", err)
+		err = fmt.Errorf("failed to describe managed artifact sync: %w", err)
+		utils.HandleSpinnerError(spinner, sm, err)
+		return err
 	}
+	utils.HandleSpinnerSuccess(spinner, sm, fmt.Sprintf("Successfully described managed artifact sync %s", syncID))
 
 	if output != "table" {
 		return utils.PrintTextTableJsonOutput(output, sync)
