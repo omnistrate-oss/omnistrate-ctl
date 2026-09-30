@@ -42,15 +42,23 @@ RUN --mount=type=bind,source=.,target=/go/src/ctl,rw \
       -o /out/omnistrate-ctl \
       github.com/omnistrate-oss/omnistrate-ctl
 
+## Patched runtime dependency (built for the target architecture)
+FROM alpine:3.24 AS zlib-builder
+RUN --mount=type=bind,source=build/zlib.sh,target=/build-zlib.sh \
+    sh /build-zlib.sh
+
 ## Deploy
-FROM alpine:latest AS app
+FROM alpine:3.24 AS app
 
 # The published alpine:latest image is rebuilt less often than the Alpine package
 # repository is updated, so its preinstalled packages can carry already-fixed CVEs — the
 # OpenSSL libraries that apk-tools links against are the usual offenders. Upgrading before
 # installing pulls those forward to whatever the repository currently ships, which keeps
 # the image clean as new advisories land rather than only at the next base-image rebuild.
-RUN apk --no-cache upgrade && apk add --no-cache ca-certificates curl jq
+# Only the locally built, checksum-verified package is allowed to be unsigned.
+RUN --mount=type=bind,from=zlib-builder,source=/out/zlib.apk,target=/tmp/zlib.apk \
+    apk --no-cache upgrade && apk add --no-cache ca-certificates curl jq && \
+    apk add --no-cache --no-network --allow-untrusted /tmp/zlib.apk
 
 COPY --from=builder /out/omnistrate-ctl /usr/local/bin/omnistrate-ctl
 WORKDIR /omnistrate

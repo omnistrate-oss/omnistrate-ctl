@@ -23,6 +23,11 @@ COPY ./mkdocs .
 # Build the static site
 RUN mkdocs build --strict 
 
+# Patched runtime dependency (built for the target architecture)
+FROM alpine:3.24 AS zlib-builder
+RUN --mount=type=bind,source=build/zlib.sh,target=/build-zlib.sh \
+    sh /build-zlib.sh
+
 # Production stage - Serve the built site
 #
 # alpine-slim rather than alpine: the full nginx:alpine image ships the optional dynamic
@@ -30,12 +35,14 @@ RUN mkdocs build --strict
 # and loads no dynamic modules, so none of that is reachable — but tiff was contributing two
 # high-severity advisories with no fixed version available upstream, so they could not be
 # patched away. Dropping to the slim variant removes the dependency instead.
-FROM nginx:alpine-slim
+FROM nginx:alpine3.24-slim AS app
 
 # The published base image is rebuilt less often than the Alpine package repository is
 # updated, so preinstalled packages can carry already-fixed CVEs. Upgrade so the served
 # image picks up current patches as advisories land.
-RUN apk --no-cache upgrade
+# Only the locally built, checksum-verified package is allowed to be unsigned.
+RUN --mount=type=bind,from=zlib-builder,source=/out/zlib.apk,target=/tmp/zlib.apk \
+    apk --no-cache upgrade && apk add --no-cache --no-network --allow-untrusted /tmp/zlib.apk
 
 # Copy the built site from the builder stage
 COPY --from=builder /app/site /usr/share/nginx/html

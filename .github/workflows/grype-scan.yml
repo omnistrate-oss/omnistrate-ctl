@@ -68,6 +68,9 @@ jobs:
           platforms: ${{ env.SCAN_PLATFORM }}
           push: false
           load: true
+          # Refresh OS patches without discarding source/module build caches.
+          pull: true
+          no-cache-filters: app
           tags: ${{ env.SCAN_IMAGE_NAME }}:${{ github.sha }}
           cache-from: type=gha,scope=grype-scan-${{ matrix.image.slug }}-amd64
           cache-to: type=gha,mode=max,scope=grype-scan-${{ matrix.image.slug }}-amd64
