@@ -17,39 +17,39 @@ func TestSignIn(t *testing.T) {
 	require.NoError(t, err)
 
 	tests := []struct {
-		name             string
-		email            string
-		password         string
-		wantErr          bool
-		expectedErrParts []string
+		name           string
+		email          string
+		password       string
+		wantErr        bool
+		expectedErrMsg string
 	}{
 		{
 			"valid login",
 			testEmail,
 			testPassword,
 			false,
-			nil,
+			"",
 		},
 		{
 			"missing email",
 			"",
 			"",
 			true,
-			[]string{"invalid_format", "body.email must be formatted as a email", "length of body.email", "length of body.password"},
+			"invalid_format\nDetail: body.email must be formatted as a email but got value \"\", mail: no address; length of body.email must be greater or equal than 1 but got value \"\" (len=0); length of body.password must be greater or equal than 1 but got value \"\" (len=0)",
 		},
 		{
 			"missing password",
 			"xzhang+cli1@omnistrate.com",
 			"",
 			true,
-			[]string{"invalid_length", "length of body.password"},
+			"invalid_length\nDetail: length of body.password must be greater or equal than 1 but got value \"\" (len=0)",
 		},
 		{
 			"invalid password",
 			"--email=xzhang+cli@omnistrate.com",
 			"wrong_password",
 			true,
-			[]string{"bad_request", "Invalid request: wrong user email or password"},
+			"bad_request\nDetail: Invalid request: wrong user email or password",
 		},
 	}
 
@@ -62,10 +62,7 @@ func TestSignIn(t *testing.T) {
 			result, err := dataaccess.LoginWithPassword(ctx, tt.email, tt.password)
 
 			if tt.wantErr {
-				require.Error(err)
-				for _, expectedErrPart := range tt.expectedErrParts {
-					assert.Contains(err.Error(), expectedErrPart)
-				}
+				assert.Equal(tt.expectedErrMsg, err.Error())
 				assert.Empty(result.JWTToken)
 			} else {
 				require.NoError(err)
