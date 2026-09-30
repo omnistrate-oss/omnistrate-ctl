@@ -2,7 +2,6 @@ package dataaccess
 
 import (
 	"context"
-	"os"
 	"testing"
 
 	"github.com/omnistrate-oss/omnistrate-ctl/internal/dataaccess"
@@ -14,9 +13,6 @@ import (
 
 func TestManagedArtifactReadOnlyOperations(t *testing.T) {
 	testutils.IntegrationTest(t)
-	if os.Getenv("ENABLE_MANAGED_ARTIFACT_INTEGRATION_TEST") != "true" {
-		t.Skip("set ENABLE_MANAGED_ARTIFACT_INTEGRATION_TEST=true after the managed artifact API is deployed")
-	}
 
 	testEmail, testPassword, err := testutils.GetTestAccount()
 	require.NoError(t, err)

@@ -84,7 +84,7 @@ func runSyncList(cmd *cobra.Command, args []string) error {
 	updatedBefore, _ := cmd.Flags().GetString("updated-before")
 	limit, _ := cmd.Flags().GetInt("limit")
 	nextPageToken, _ := cmd.Flags().GetString("next-page-token")
-	output, _ := cmd.Flags().GetString("output")
+	output, _ := cmd.Flags().GetString(common.OutputFlag)
 
 	if err := validateBundleVersion(bundleVersion); err != nil {
 		return err
@@ -150,7 +150,7 @@ func runSyncDescribe(cmd *cobra.Command, args []string) error {
 	defer config.CleanupArgsAndFlags(cmd, &args)
 
 	syncID, _ := cmd.Flags().GetString("id")
-	output, _ := cmd.Flags().GetString("output")
+	output, _ := cmd.Flags().GetString(common.OutputFlag)
 	if err := validateSyncID(syncID); err != nil {
 		return err
 	}

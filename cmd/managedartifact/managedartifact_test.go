@@ -18,14 +18,21 @@ func TestManagedArtifactCommands(t *testing.T) {
 
 	for _, command := range []struct {
 		name string
-		cmd  string
+		args []string
 	}{
-		{name: "release list", cmd: "list"},
-		{name: "release describe", cmd: "describe"},
+		{name: "policy describe", args: []string{"policy", "describe"}},
+		{name: "policy update", args: []string{"policy", "update"}},
+		{name: "release list", args: []string{"release", "list"}},
+		{name: "release describe", args: []string{"release", "describe"}},
+		{name: "sync list", args: []string{"sync", "list"}},
+		{name: "sync describe", args: []string{"sync", "describe"}},
 	} {
-		found, _, err := releaseCmd.Find([]string{command.cmd})
-		require.NoError(t, err, command.name)
-		require.Equal(t, command.cmd, found.Name())
+		t.Run(command.name, func(t *testing.T) {
+			found, _, err := Cmd.Find(command.args)
+			require.NoError(t, err)
+			require.Equal(t, command.args[1], found.Name())
+			require.Equal(t, command.args[0], found.Parent().Name())
+		})
 	}
 
 	require.NotNil(t, policyDescribeCmd.Flags().Lookup("environment-type"))

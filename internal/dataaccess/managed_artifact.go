@@ -87,14 +87,17 @@ func doManagedArtifactRequest(ctx context.Context, token, method, requestURL str
 		}
 		if json.Unmarshal(responseBody, &apiError) == nil && apiError.Message != "" {
 			if apiError.Name != "" {
-				return fmt.Errorf("%s: %s", apiError.Name, apiError.Message)
+				return fmt.Errorf("%s\nDetail: %s", apiError.Name, apiError.Message)
 			}
 			return fmt.Errorf("managed artifact API returned %d: %s", response.StatusCode, apiError.Message)
 		}
 		return fmt.Errorf("managed artifact API returned %d: %s", response.StatusCode, strings.TrimSpace(string(responseBody)))
 	}
 
-	if result != nil && len(responseBody) > 0 {
+	if result != nil {
+		if len(bytes.TrimSpace(responseBody)) == 0 || bytes.Equal(bytes.TrimSpace(responseBody), []byte("null")) {
+			return fmt.Errorf("managed artifact API returned %d without a JSON result", response.StatusCode)
+		}
 		if err := json.Unmarshal(responseBody, result); err != nil {
 			return fmt.Errorf("failed to decode managed artifact response: %w", err)
 		}

@@ -84,7 +84,7 @@ func runPolicyDescribe(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
-	output, _ := cmd.Flags().GetString("output")
+	output, _ := cmd.Flags().GetString(common.OutputFlag)
 	token, err := common.GetTokenWithLogin()
 	if err != nil {
 		return fmt.Errorf("failed to get user token: %w", err)
@@ -115,7 +115,7 @@ func runPolicyUpdate(cmd *cobra.Command, args []string) error {
 	}
 	autoUpgrade, _ := cmd.Flags().GetBool("auto-upgrade")
 	preferredBundleVersion, _ := cmd.Flags().GetString("preferred-bundle-version")
-	output, _ := cmd.Flags().GetString("output")
+	output, _ := cmd.Flags().GetString(common.OutputFlag)
 	if err := validateBundleVersion(preferredBundleVersion); err != nil {
 		return err
 	}
@@ -124,6 +124,9 @@ func runPolicyUpdate(cmd *cobra.Command, args []string) error {
 	}
 	if !autoUpgrade && cloudProvider != "aws" {
 		return fmt.Errorf("--auto-upgrade=false is supported only for aws")
+	}
+	if output != common.OutputTypeJson && output != "table" && output != "text" {
+		return fmt.Errorf("unsupported output format: %s", output)
 	}
 
 	token, err := common.GetTokenWithLogin()

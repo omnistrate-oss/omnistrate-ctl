@@ -293,7 +293,35 @@ func TestManagedArtifactAPIRejectsInvalidToken(t *testing.T) {
 
 	_, err := DescribeManagedArtifactReleasePolicy(context.Background(), "invalid-token", "PROD", "aws")
 	require.Error(t, err)
-	assert.Equal(t, "unauthorized: invalid bearer token", err.Error())
+	assert.Equal(t, "unauthorized\nDetail: invalid bearer token", err.Error())
+}
+
+func TestManagedArtifactAPIRejectsMissingOrInvalidResults(t *testing.T) {
+	for _, tt := range []struct {
+		name   string
+		status int
+		body   string
+	}{
+		{name: "empty response", status: http.StatusOK},
+		{name: "whitespace response", status: http.StatusOK, body: " \n "},
+		{name: "null response", status: http.StatusOK, body: "null"},
+		{name: "no content response", status: http.StatusNoContent},
+		{name: "invalid JSON", status: http.StatusOK, body: "not JSON"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(tt.status)
+				_, _ = w.Write([]byte(tt.body))
+			}))
+			t.Cleanup(server.Close)
+			setManagedArtifactTestHost(t, server.URL)
+
+			result, err := DescribeManagedArtifactReleasePolicy(t.Context(), "test-token", "DEV", "aws")
+			require.Error(t, err)
+			assert.Nil(t, result, "invalid responses must not be reported as a zero-valued policy")
+		})
+	}
 }
 
 func setManagedArtifactTestHost(t *testing.T, rawURL string) {
@@ -303,6 +331,6 @@ func setManagedArtifactTestHost(t *testing.T, rawURL string) {
 	require.NoError(t, err)
 	t.Setenv("OMNISTRATE_HOST", serverURL.Host)
 	t.Setenv("OMNISTRATE_HOST_SCHEME", serverURL.Scheme)
-	t.Setenv("CLIENT_TIMEOUT_IN_SECONDS", "5")
+	t.Setenv("OMNISTRATE_CLIENT_TIMEOUT_IN_SECONDS", "5")
 	t.Setenv("OMNISTRATE_RETRY_MAX", "0")
 }

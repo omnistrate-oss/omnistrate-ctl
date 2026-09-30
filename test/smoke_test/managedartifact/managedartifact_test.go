@@ -60,6 +60,17 @@ func TestManagedArtifactCommands(t *testing.T) {
 	assert.Equal(t, syncs.Syncs[0].BundleVersion, sync.BundleVersion)
 	assert.Len(t, sync.Artifacts, sync.ArtifactCount)
 
+	for _, args := range [][]string{
+		{"managed-artifact", "policy", "describe", "--environment-type", "dev", "--cloud-provider", "aws"},
+		{"managed-artifact", "release", "list", "--limit", "1"},
+		{"managed-artifact", "release", "describe", "--bundle-version", release.BundleVersion},
+		{"managed-artifact", "sync", "list", "--limit", "1"},
+		{"managed-artifact", "sync", "describe", "--id", sync.ID},
+	} {
+		cmd.RootCmd.SetArgs(append(args, "--output", "table"))
+		require.NoError(t, cmd.RootCmd.ExecuteContext(ctx), "table command failed: %v", args)
+	}
+
 	restored := false
 	restorePolicy := func() {
 		args := []string{

@@ -80,7 +80,7 @@ func runReleaseList(cmd *cobra.Command, args []string) error {
 	releasedBefore, _ := cmd.Flags().GetString("released-before")
 	limit, _ := cmd.Flags().GetInt("limit")
 	nextPageToken, _ := cmd.Flags().GetString("next-page-token")
-	output, _ := cmd.Flags().GetString("output")
+	output, _ := cmd.Flags().GetString(common.OutputFlag)
 
 	if err := validateBundleVersion(bundleVersion); err != nil {
 		return err
@@ -140,7 +140,7 @@ func runReleaseDescribe(cmd *cobra.Command, args []string) error {
 	defer config.CleanupArgsAndFlags(cmd, &args)
 
 	bundleVersion, _ := cmd.Flags().GetString("bundle-version")
-	output, _ := cmd.Flags().GetString("output")
+	output, _ := cmd.Flags().GetString(common.OutputFlag)
 	if err := validateBundleVersion(bundleVersion); err != nil {
 		return err
 	}
