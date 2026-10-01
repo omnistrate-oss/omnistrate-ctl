@@ -35,14 +35,14 @@ func TestSignIn(t *testing.T) {
 			"",
 			"",
 			true,
-			"invalid_format\nDetail: body.email must be formatted as a email but got value \"\", mail: no address; length of body.email must be greater or equal than 1 but got value \"\" (len=0); length of body.password must be greater or equal than 1 but got value \"\" (len=0)",
+			"invalid_format\nDetail: body.email must be formatted as a email but got value \"\", mail: no address; length of body.email must be at least 1 but got 0; length of body.password must be at least 1 but got 0",
 		},
 		{
 			"missing password",
 			"xzhang+cli1@omnistrate.com",
 			"",
 			true,
-			"invalid_length\nDetail: length of body.password must be greater or equal than 1 but got value \"\" (len=0)",
+			"invalid_length\nDetail: length of body.password must be at least 1 but got 0",
 		},
 		{
 			"invalid password",
