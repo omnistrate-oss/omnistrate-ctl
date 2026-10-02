@@ -97,8 +97,10 @@ jobs:
     permissions:
       contents: read
     concurrency:
+      # Serialize shared-environment tests without canceling other PRs.
       group: ${{ github.workflow }}-integration-tests
-      cancel-in-progress: true
+      cancel-in-progress: false
+      queue: max
 
     steps:
       - name: Checkout repository
@@ -134,8 +136,10 @@ jobs:
     if: github.event_name != 'push'
     needs: [build, lint]
     concurrency:
+      # Serialize shared-environment tests without canceling other PRs.
       group: ${{ github.workflow }}-smoke-tests
-      cancel-in-progress: true
+      cancel-in-progress: false
+      queue: max
     uses: ./.github/workflows/smoke-tests.yml
     with:
       environment: Dev-us-west-2
