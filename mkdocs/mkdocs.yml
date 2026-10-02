@@ -68,6 +68,7 @@ nav:
       - environment: "omnistrate-ctl_environment.md"
       - helm: "omnistrate-ctl_helm.md"
       - instance: "omnistrate-ctl_instance.md"
+      - managed-artifact: "omnistrate-ctl_managed-artifact.md"
       - operations: "omnistrate-ctl_operations.md"
       - secret: "omnistrate-ctl_secret.md"
       - service-plan: "omnistrate-ctl_service-plan.md"
