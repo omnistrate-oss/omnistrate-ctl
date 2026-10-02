@@ -52,6 +52,13 @@ FROM alpine:latest AS app
 # the image clean as new advisories land rather than only at the next base-image rebuild.
 RUN apk --no-cache upgrade && apk add --no-cache ca-certificates curl jq
 
+# zlib 1.3.1.2 through 1.3.2 carry CVE-2026-85091 (high, heap overflow in gz_vacate), and every
+# supported Alpine branch ships 1.3.2-r0 with no fix yet. It cannot be dropped — libcurl and
+# apk-tools link against it — so pin the last unaffected release from v3.19, whose ABI is
+# compatible. The repository is passed for this one command only and is not persisted.
+# Remove this pin once Alpine publishes a fixed zlib, otherwise the image stays on 1.3.1.
+RUN apk add --no-cache --repository https://dl-cdn.alpinelinux.org/alpine/v3.19/main 'zlib=1.3.1-r0'
+
 COPY --from=builder /out/omnistrate-ctl /usr/local/bin/omnistrate-ctl
 WORKDIR /omnistrate
 ENTRYPOINT [ "/usr/local/bin/omnistrate-ctl" ]
