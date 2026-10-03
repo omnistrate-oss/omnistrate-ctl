@@ -20,6 +20,7 @@ func init() {
 	Cmd.AddCommand(approveRequestCmd)
 	Cmd.AddCommand(denyRequestCmd)
 	Cmd.AddCommand(createOnBehalfCmd)
+	Cmd.AddCommand(updateCmd)
 	Cmd.AddCommand(suspendCmd)
 	Cmd.AddCommand(resumeCmd)
 	Cmd.AddCommand(terminateCmd)

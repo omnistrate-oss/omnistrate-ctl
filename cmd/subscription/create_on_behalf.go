@@ -6,6 +6,7 @@ import (
 	"fmt"
 
 	"github.com/omnistrate-oss/omnistrate-ctl/cmd/common"
+	"github.com/omnistrate-oss/omnistrate-ctl/internal/config"
 	"github.com/omnistrate-oss/omnistrate-ctl/internal/dataaccess"
 	"github.com/omnistrate-oss/omnistrate-ctl/internal/utils"
 	"github.com/spf13/cobra"
@@ -31,6 +32,7 @@ func init() {
 	createOnBehalfCmd.Flags().String("external-payer-id", "", "External payer ID")
 	createOnBehalfCmd.Flags().Int64("max-instances", 0, "Maximum number of instances")
 	createOnBehalfCmd.Flags().String("price-effective-date", "", "Price effective date")
+	createOnBehalfCmd.Flags().String(allowedDeploymentLocationsFlag, "", "Subscription deployment location restriction as a JSON array. Omit or set to [] to inherit product tier deployment locations")
 
 	_ = createOnBehalfCmd.MarkFlagRequired("service-id")
 	_ = createOnBehalfCmd.MarkFlagRequired("environment-id")
@@ -38,6 +40,8 @@ func init() {
 }
 
 func runCreateOnBehalf(cmd *cobra.Command, args []string) error {
+	defer config.CleanupArgsAndFlags(cmd, &args)
+
 	ctx := context.Background()
 
 	serviceID, _ := cmd.Flags().GetString("service-id")
@@ -52,6 +56,7 @@ func runCreateOnBehalf(cmd *cobra.Command, args []string) error {
 	externalPayerID, _ := cmd.Flags().GetString("external-payer-id")
 	maxInstances, _ := cmd.Flags().GetInt64("max-instances")
 	priceEffectiveDate, _ := cmd.Flags().GetString("price-effective-date")
+	allowedDeploymentLocationsStr, _ := cmd.Flags().GetString(allowedDeploymentLocationsFlag)
 
 	// Validate that at least one of customer-user-id or customer-email is provided
 	if customerUserID == "" && customerEmail == "" {
@@ -84,6 +89,13 @@ func runCreateOnBehalf(cmd *cobra.Command, args []string) error {
 	}
 	if cmd.Flags().Changed("max-instances") {
 		opts.MaxNumberOfInstances = &maxInstances
+	}
+	if cmd.Flags().Changed(allowedDeploymentLocationsFlag) {
+		allowedDeploymentLocations, err := parseAllowedDeploymentLocations(allowedDeploymentLocationsStr)
+		if err != nil {
+			return err
+		}
+		opts.AllowedDeploymentLocations = allowedDeploymentLocations
 	}
 
 	token, err := common.GetTokenWithLogin()

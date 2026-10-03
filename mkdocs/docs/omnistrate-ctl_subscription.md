@@ -36,4 +36,5 @@ omnistrate-ctl subscription [operation] [flags]
 * [omnistrate-ctl subscription resume](omnistrate-ctl_subscription_resume.md)	 - Resume a suspended subscription
 * [omnistrate-ctl subscription suspend](omnistrate-ctl_subscription_suspend.md)	 - Suspend a subscription
 * [omnistrate-ctl subscription terminate](omnistrate-ctl_subscription_terminate.md)	 - Terminate a subscription
+* [omnistrate-ctl subscription update](omnistrate-ctl_subscription_update.md)	 - Update a subscription
 
