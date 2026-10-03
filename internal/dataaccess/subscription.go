@@ -440,6 +440,7 @@ type CreateSubscriptionOnBehalfOptions struct {
 	ExternalPayerID                      string
 	MaxNumberOfInstances                 *int64
 	PriceEffectiveDate                   string
+	AllowedDeploymentLocations           []openapiclientfleet.SubscriptionAllowedDeploymentLocation
 }
 
 func CreateSubscriptionOnBehalf(ctx context.Context, token string, serviceID, environmentID string, opts *CreateSubscriptionOnBehalfOptions) (resp *openapiclientfleet.FleetCreateSubscriptionOnBehalfOfCustomerResult, err error) {
@@ -489,6 +490,9 @@ func CreateSubscriptionOnBehalf(ctx context.Context, token string, serviceID, en
 	if opts.PriceEffectiveDate != "" {
 		requestBody.PriceEffectiveDate = &opts.PriceEffectiveDate
 	}
+	if opts.AllowedDeploymentLocations != nil {
+		requestBody.AllowedDeploymentLocations = opts.AllowedDeploymentLocations
+	}
 
 	req := apiClient.InventoryApiAPI.InventoryApiCreateSubscriptionOnBehalfOfCustomer(
 		ctxWithToken,
@@ -506,6 +510,40 @@ func CreateSubscriptionOnBehalf(ctx context.Context, token string, serviceID, en
 	resp, r, err = req.Execute()
 	if err != nil {
 		return nil, handleFleetError(err)
+	}
+	return
+}
+
+type UpdateSubscriptionOptions struct {
+	AllowedDeploymentLocations []openapiclientfleet.SubscriptionAllowedDeploymentLocation
+}
+
+func UpdateSubscription(ctx context.Context, token string, serviceID, environmentID, subscriptionID string, opts *UpdateSubscriptionOptions) (err error) {
+	ctxWithToken := context.WithValue(ctx, openapiclientfleet.ContextAccessToken, token)
+	apiClient := getFleetClient()
+
+	requestBody := openapiclientfleet.FleetUpdateSubscriptionRequest2{}
+	if opts != nil && opts.AllowedDeploymentLocations != nil {
+		requestBody.AllowedDeploymentLocations = opts.AllowedDeploymentLocations
+	}
+
+	req := apiClient.InventoryApiAPI.InventoryApiUpdateSubscription(
+		ctxWithToken,
+		serviceID,
+		environmentID,
+		subscriptionID,
+	).FleetUpdateSubscriptionRequest2(requestBody)
+
+	var r *http.Response
+	defer func() {
+		if r != nil {
+			_ = r.Body.Close()
+		}
+	}()
+
+	r, err = req.Execute()
+	if err != nil {
+		return handleFleetError(err)
 	}
 	return
 }
