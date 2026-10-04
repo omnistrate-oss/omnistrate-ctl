@@ -68,22 +68,35 @@ type ManagedArtifactTarget struct {
 	AccountID     string `json:"accountId,omitempty"`
 }
 
-// ManagedArtifactSyncArtifact is the synchronization result for one artifact.
-type ManagedArtifactSyncArtifact struct {
-	AmenityName     string `json:"amenityName"`
-	ArtifactKey     string `json:"artifactKey"`
-	Version         string `json:"version"`
-	Status          string `json:"status"`
-	CompletedAt     string `json:"completedAt,omitempty"`
-	FailureCategory string `json:"failureCategory,omitempty"`
-	FailureMessage  string `json:"failureMessage,omitempty"`
+// ManagedArtifactDestination identifies the registry, independently of its executor.
+type ManagedArtifactDestination struct {
+	CloudProvider string `json:"cloudProvider,omitempty"`
+	AccountID     string `json:"accountId,omitempty"`
+	Registry      string `json:"registry,omitempty"`
 }
 
-// ManagedArtifactSync describes synchronization to one provisioner target.
+// ManagedArtifactSyncArtifact is the synchronization result for one artifact.
+type ManagedArtifactSyncArtifact struct {
+	AmenityName       string `json:"amenityName"`
+	ArtifactKey       string `json:"artifactKey"`
+	Version           string `json:"version"`
+	Status            string `json:"status"`
+	SourceRef         string `json:"sourceRef,omitempty"`
+	SourceDigest      string `json:"sourceDigest,omitempty"`
+	DestinationRef    string `json:"destinationRef,omitempty"`
+	DestinationDigest string `json:"destinationDigest,omitempty"`
+	CompletedAt       string `json:"completedAt,omitempty"`
+	FailureCategory   string `json:"failureCategory,omitempty"`
+	FailureMessage    string `json:"failureMessage,omitempty"`
+}
+
+// ManagedArtifactSync describes a private target sync or public account publication.
 type ManagedArtifactSync struct {
 	ID                     string                        `json:"id"`
+	RegistryType           string                        `json:"registryType,omitempty"`
+	Destination            *ManagedArtifactDestination   `json:"destination,omitempty"`
 	BundleVersion          string                        `json:"bundleVersion"`
-	Target                 ManagedArtifactTarget         `json:"target"`
+	Target                 *ManagedArtifactTarget        `json:"target,omitempty"`
 	Status                 string                        `json:"status"`
 	ArtifactCount          int                           `json:"artifactCount"`
 	CompletedArtifactCount int                           `json:"completedArtifactCount"`

@@ -192,6 +192,7 @@ func TestListManagedArtifactSyncsSendsFilters(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, result.Syncs, 1)
 	assert.Equal(t, "spabs-123", result.Syncs[0].ID)
+	require.NotNil(t, result.Syncs[0].Target)
 	assert.Equal(t, "hc-123", result.Syncs[0].Target.ID)
 	assert.Equal(t, "next-token", result.NextPageToken)
 	assert.Equal(t, "r0000020", capturedQuery.Get("bundleVersion"))
@@ -201,6 +202,32 @@ func TestListManagedArtifactSyncsSendsFilters(t *testing.T) {
 	assert.Equal(t, "2026-10-01T00:00:00Z", capturedQuery.Get("updatedBefore"))
 	assert.Equal(t, "25", capturedQuery.Get("limit"))
 	assert.Equal(t, "page-token", capturedQuery.Get("nextPageToken"))
+	assert.False(t, capturedQuery.Has("registryType"), "legacy requests must not send new filters")
+	assert.False(t, capturedQuery.Has("destinationAccountId"))
+}
+
+func TestListManagedArtifactSyncsSendsDestinationFilters(t *testing.T) {
+	for _, registryType := range []string{"", "PRIVATE_ECR", "PUBLIC_ECR"} {
+		t.Run("registry="+registryType, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				assert.Equal(t, registryType, r.URL.Query().Get("registryType"))
+				assert.Equal(t, "123456789012", r.URL.Query().Get("destinationAccountId"))
+				assert.Equal(t, "hc-executor", r.URL.Query().Get("targetId"))
+				assert.Equal(t, "scoped-cursor", r.URL.Query().Get("nextPageToken"))
+				w.Header().Set("Content-Type", "application/json")
+				_, err := w.Write([]byte(`{"syncs":[],"nextPageToken":"next-scoped-cursor"}`))
+				assert.NoError(t, err)
+			}))
+			t.Cleanup(server.Close)
+			setManagedArtifactTestHost(t, server.URL)
+			result, err := ListManagedArtifactSyncs(t.Context(), "test-token", ListManagedArtifactSyncsOptions{
+				RegistryType: registryType, DestinationAccountID: "123456789012", TargetID: "hc-executor", NextPageToken: "scoped-cursor", // #nosec G101 -- opaque pagination fixture, not a credential.
+			})
+			require.NoError(t, err)
+			require.Empty(t, result.Syncs)
+			require.Equal(t, "next-scoped-cursor", result.NextPageToken)
+		})
+	}
 }
 
 func TestDescribeManagedArtifactSync(t *testing.T) {
@@ -229,6 +256,7 @@ func TestDescribeManagedArtifactSync(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "spabs-123", result.ID)
 	assert.Equal(t, "READY", result.Status)
+	require.NotNil(t, result.Target)
 	assert.Equal(t, "us-east-2", result.Target.Region)
 	require.Len(t, result.Artifacts, 1)
 	assert.Equal(t, "cert-manager", result.Artifacts[0].AmenityName)

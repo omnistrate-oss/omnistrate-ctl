@@ -4,7 +4,7 @@ Manage Base Amenities artifact releases
 
 ### Synopsis
 
-Inspect managed artifact releases and provisioner synchronization, and manage Base Amenities release policy.
+Inspect managed artifact releases, private synchronization and public ECR publication, and manage Base Amenities release policy.
 
 Managed artifact access must be enabled for your organization. Read commands require
 the root, admin, editor, or reader role; policy updates require the root, admin, or
@@ -32,5 +32,5 @@ omnistrate-ctl managed-artifact [operation] [flags]
 * [omnistrate-ctl](omnistrate-ctl.md)	 - Manage your Omnistrate SaaS from the command line
 * [omnistrate-ctl managed-artifact policy](omnistrate-ctl_managed-artifact_policy.md)	 - Manage Base Amenities release policy
 * [omnistrate-ctl managed-artifact release](omnistrate-ctl_managed-artifact_release.md)	 - Inspect managed artifact releases
-* [omnistrate-ctl managed-artifact sync](omnistrate-ctl_managed-artifact_sync.md)	 - Inspect provisioner managed artifact synchronization
+* [omnistrate-ctl managed-artifact sync](omnistrate-ctl_managed-artifact_sync.md)	 - Inspect private artifact syncs and public ECR publications
 

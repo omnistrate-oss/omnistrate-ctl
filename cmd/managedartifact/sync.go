@@ -13,15 +13,21 @@ import (
 
 var syncCmd = &cobra.Command{
 	Use:          "sync [operation] [flags]",
-	Short:        "Inspect provisioner managed artifact synchronization",
+	Short:        "Inspect private artifact syncs and public ECR publications",
 	Run:          run,
 	SilenceUsage: true,
 }
 
 var syncListCmd = &cobra.Command{
-	Use:          "list [flags]",
-	Short:        "List managed artifact synchronization records",
-	Example:      "omnistrate-ctl managed-artifact sync list --status failed\nomnistrate-ctl managed-artifact sync list --target-id hc-123 -o json",
+	Use:   "list [flags]",
+	Short: "List managed artifact synchronization records",
+	Long: `List private ECR synchronization records or public ECR publications.
+
+Omitting --registry-type preserves private ECR behavior. --destination-account-id
+filters either registry type by its destination AWS account. When --target-id is
+also supplied, both filters must match. Public publications may have no execution
+target yet. These filters require the public ECR managed-artifact API update.`,
+	Example:      "omnistrate-ctl managed-artifact sync list --status failed\nomnistrate-ctl managed-artifact sync list --registry-type public_ecr --destination-account-id 123456789012 -o json\nomnistrate-ctl managed-artifact sync list --target-id hc-123 -o json",
 	Args:         cobra.NoArgs,
 	RunE:         runSyncList,
 	SilenceUsage: true,
@@ -30,32 +36,39 @@ var syncListCmd = &cobra.Command{
 var syncDescribeCmd = &cobra.Command{
 	Use:          "describe [flags]",
 	Short:        "Describe a managed artifact synchronization record",
-	Example:      "omnistrate-ctl managed-artifact sync describe --id spabs-123",
+	Example:      "omnistrate-ctl managed-artifact sync describe --id spabs-123\nomnistrate-ctl managed-artifact sync describe --id sppap-123 -o json",
 	Args:         cobra.NoArgs,
 	RunE:         runSyncDescribe,
 	SilenceUsage: true,
 }
 
 type syncTableRow struct {
-	ID                 string `json:"id"`
-	BundleVersion      string `json:"bundle_version"`
-	TargetID           string `json:"target_id"`
-	TargetName         string `json:"target_name"`
-	CloudProvider      string `json:"cloud_provider"`
-	Region             string `json:"region"`
-	Status             string `json:"status"`
-	ArtifactProgress   string `json:"artifact_progress"`
-	FailedArtifacts    int    `json:"failed_artifacts"`
-	LastTransitionTime string `json:"last_transition_time"`
+	ID                   string `json:"id"`
+	BundleVersion        string `json:"bundle_version"`
+	RegistryType         string `json:"registry_type"`
+	DestinationAccountID string `json:"destination_account_id"`
+	DestinationRegistry  string `json:"destination_registry"`
+	TargetID             string `json:"target_id"`
+	TargetName           string `json:"target_name"`
+	CloudProvider        string `json:"cloud_provider"`
+	Region               string `json:"region"`
+	Status               string `json:"status"`
+	ArtifactProgress     string `json:"artifact_progress"`
+	FailedArtifacts      int    `json:"failed_artifacts"`
+	LastTransitionTime   string `json:"last_transition_time"`
 }
 
 type syncArtifactTableRow struct {
-	AmenityName     string `json:"amenity_name"`
-	ArtifactKey     string `json:"artifact_key"`
-	Version         string `json:"version"`
-	Status          string `json:"status"`
-	FailureCategory string `json:"failure_category"`
-	FailureMessage  string `json:"failure_message"`
+	AmenityName       string `json:"amenity_name"`
+	ArtifactKey       string `json:"artifact_key"`
+	Version           string `json:"version"`
+	Status            string `json:"status"`
+	SourceRef         string `json:"source_ref"`
+	SourceDigest      string `json:"source_digest"`
+	DestinationRef    string `json:"destination_ref"`
+	DestinationDigest string `json:"destination_digest"`
+	FailureCategory   string `json:"failure_category"`
+	FailureMessage    string `json:"failure_message"`
 }
 
 func init() {
@@ -64,13 +77,15 @@ func init() {
 
 	syncListCmd.Flags().String("bundle-version", "", "Filter by bundle version, for example r0000020")
 	syncListCmd.Flags().String("status", "", "Filter by status: pending, in_progress, ready, failed, or skipped")
-	syncListCmd.Flags().String("target-id", "", "Filter by provisioner target ID")
+	syncListCmd.Flags().String("registry-type", "", "Registry type: private_ecr or public_ecr (omitted defaults to private ECR)")
+	syncListCmd.Flags().String("destination-account-id", "", "Filter either ECR registry type by 12-digit destination AWS account ID")
+	syncListCmd.Flags().String("target-id", "", "Filter by execution provisioner ID; must also match any destination account filter")
 	syncListCmd.Flags().String("updated-after", "", "Filter syncs updated at or after this RFC3339 timestamp")
 	syncListCmd.Flags().String("updated-before", "", "Filter syncs updated before this RFC3339 timestamp")
 	syncListCmd.Flags().Int("limit", 20, "Maximum number of syncs to return (1-100)")
 	syncListCmd.Flags().String("next-page-token", "", "Opaque token returned by the previous page")
 
-	syncDescribeCmd.Flags().String("id", "", "Managed artifact synchronization ID (required)")
+	syncDescribeCmd.Flags().String("id", "", "Private sync (spabs-*) or public publication (sppap-*) ID (required)")
 	_ = syncDescribeCmd.MarkFlagRequired("id")
 }
 
@@ -79,6 +94,8 @@ func runSyncList(cmd *cobra.Command, args []string) error {
 
 	bundleVersion, _ := cmd.Flags().GetString("bundle-version")
 	status, _ := cmd.Flags().GetString("status")
+	registryType, _ := cmd.Flags().GetString("registry-type")
+	destinationAccountID, _ := cmd.Flags().GetString("destination-account-id")
 	targetID, _ := cmd.Flags().GetString("target-id")
 	updatedAfter, _ := cmd.Flags().GetString("updated-after")
 	updatedBefore, _ := cmd.Flags().GetString("updated-before")
@@ -89,7 +106,14 @@ func runSyncList(cmd *cobra.Command, args []string) error {
 	if err := validateBundleVersion(bundleVersion); err != nil {
 		return err
 	}
-	status, err := normalizeSyncStatus(status)
+	registryType, err := normalizeRegistryType(registryType)
+	if err != nil {
+		return err
+	}
+	if destinationAccountID != "" && !destinationAccountIDPattern.MatchString(destinationAccountID) {
+		return fmt.Errorf("--destination-account-id must contain exactly 12 digits")
+	}
+	status, err = normalizeSyncStatus(status)
 	if err != nil {
 		return err
 	}
@@ -115,13 +139,15 @@ func runSyncList(cmd *cobra.Command, args []string) error {
 		sm.Start()
 	}
 	result, err := dataaccess.ListManagedArtifactSyncs(cmd.Context(), token, dataaccess.ListManagedArtifactSyncsOptions{
-		BundleVersion: bundleVersion,
-		Status:        status,
-		TargetID:      targetID,
-		UpdatedAfter:  updatedAfter,
-		UpdatedBefore: updatedBefore,
-		Limit:         limit,
-		NextPageToken: nextPageToken,
+		RegistryType:         registryType,
+		DestinationAccountID: destinationAccountID,
+		BundleVersion:        bundleVersion,
+		Status:               status,
+		TargetID:             targetID,
+		UpdatedAfter:         updatedAfter,
+		UpdatedBefore:        updatedBefore,
+		Limit:                limit,
+		NextPageToken:        nextPageToken,
 	})
 	if err != nil {
 		err = fmt.Errorf("failed to list managed artifact syncs: %w", err)
@@ -183,28 +209,49 @@ func runSyncDescribe(cmd *cobra.Command, args []string) error {
 	artifacts := make([]syncArtifactTableRow, 0, len(sync.Artifacts))
 	for _, artifact := range sync.Artifacts {
 		artifacts = append(artifacts, syncArtifactTableRow{
-			AmenityName:     artifact.AmenityName,
-			ArtifactKey:     artifact.ArtifactKey,
-			Version:         artifact.Version,
-			Status:          artifact.Status,
-			FailureCategory: artifact.FailureCategory,
-			FailureMessage:  artifact.FailureMessage,
+			AmenityName:       artifact.AmenityName,
+			ArtifactKey:       artifact.ArtifactKey,
+			Version:           artifact.Version,
+			Status:            artifact.Status,
+			SourceRef:         artifact.SourceRef,
+			SourceDigest:      artifact.SourceDigest,
+			DestinationRef:    artifact.DestinationRef,
+			DestinationDigest: artifact.DestinationDigest,
+			FailureCategory:   artifact.FailureCategory,
+			FailureMessage:    artifact.FailureMessage,
 		})
 	}
 	return utils.PrintTextTableJsonArrayOutput(output, artifacts)
 }
 
 func syncSummary(sync model.ManagedArtifactSync) syncTableRow {
-	return syncTableRow{
+	row := syncTableRow{
 		ID:                 sync.ID,
 		BundleVersion:      sync.BundleVersion,
-		TargetID:           sync.Target.ID,
-		TargetName:         sync.Target.Name,
-		CloudProvider:      sync.Target.CloudProvider,
-		Region:             sync.Target.Region,
+		RegistryType:       sync.RegistryType,
 		Status:             sync.Status,
 		ArtifactProgress:   fmt.Sprintf("%d/%d", sync.CompletedArtifactCount, sync.ArtifactCount),
 		FailedArtifacts:    sync.FailedArtifactCount,
 		LastTransitionTime: sync.LastTransitionTime,
 	}
+	if row.RegistryType == "" {
+		row.RegistryType = "PRIVATE_ECR"
+	}
+	if sync.Target != nil {
+		row.TargetID, row.TargetName = sync.Target.ID, sync.Target.Name
+		row.CloudProvider, row.Region = sync.Target.CloudProvider, sync.Target.Region
+		if row.RegistryType == "PRIVATE_ECR" {
+			row.DestinationAccountID = sync.Target.AccountID
+		}
+	}
+	if sync.Destination != nil {
+		row.DestinationRegistry = sync.Destination.Registry
+		if sync.Destination.AccountID != "" {
+			row.DestinationAccountID = sync.Destination.AccountID
+		}
+		if sync.Destination.CloudProvider != "" {
+			row.CloudProvider = sync.Destination.CloudProvider
+		}
+	}
+	return row
 }

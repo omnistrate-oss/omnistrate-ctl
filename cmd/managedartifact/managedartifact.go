@@ -10,13 +10,14 @@ import (
 )
 
 var bundleVersionPattern = regexp.MustCompile(`^r[0-9]{7,}$`)
-var syncIDPattern = regexp.MustCompile(`^spabs-[a-zA-Z0-9-]+$`)
+var syncIDPattern = regexp.MustCompile(`^(spabs|sppap)-[a-zA-Z0-9-]+$`)
+var destinationAccountIDPattern = regexp.MustCompile(`^[0-9]{12}$`)
 
 // Cmd is the parent command for managed artifact operations.
 var Cmd = &cobra.Command{
 	Use:   "managed-artifact [operation] [flags]",
 	Short: "Manage Base Amenities artifact releases",
-	Long: `Inspect managed artifact releases and provisioner synchronization, and manage Base Amenities release policy.
+	Long: `Inspect managed artifact releases, private synchronization and public ECR publication, and manage Base Amenities release policy.
 
 Managed artifact access must be enabled for your organization. Read commands require
 the root, admin, editor, or reader role; policy updates require the root, admin, or
@@ -68,6 +69,16 @@ func normalizeSyncStatus(value string) (string, error) {
 	}
 }
 
+func normalizeRegistryType(value string) (string, error) {
+	normalized := strings.ToUpper(strings.TrimSpace(value))
+	switch normalized {
+	case "", "PRIVATE_ECR", "PUBLIC_ECR":
+		return normalized, nil
+	default:
+		return "", fmt.Errorf("invalid registry type %q: expected private_ecr or public_ecr", value)
+	}
+}
+
 func validateBundleVersion(value string) error {
 	if value != "" && !bundleVersionPattern.MatchString(value) {
 		return fmt.Errorf("invalid bundle version %q: expected r followed by at least seven digits", value)
@@ -77,7 +88,7 @@ func validateBundleVersion(value string) error {
 
 func validateSyncID(value string) error {
 	if !syncIDPattern.MatchString(value) {
-		return fmt.Errorf("invalid sync ID %q: expected a value beginning with spabs-", value)
+		return fmt.Errorf("invalid sync ID %q: expected a value beginning with spabs- or sppap-", value)
 	}
 	return nil
 }

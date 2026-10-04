@@ -10,13 +10,14 @@ omnistrate-ctl managed-artifact sync describe [flags]
 
 ```
 omnistrate-ctl managed-artifact sync describe --id spabs-123
+omnistrate-ctl managed-artifact sync describe --id sppap-123 -o json
 ```
 
 ### Options
 
 ```
   -h, --help        help for describe
-      --id string   Managed artifact synchronization ID (required)
+      --id string   Private sync (spabs-*) or public publication (sppap-*) ID (required)
 ```
 
 ### Options inherited from parent commands
@@ -28,5 +29,5 @@ omnistrate-ctl managed-artifact sync describe --id spabs-123
 
 ### SEE ALSO
 
-* [omnistrate-ctl managed-artifact sync](omnistrate-ctl_managed-artifact_sync.md)	 - Inspect provisioner managed artifact synchronization
+* [omnistrate-ctl managed-artifact sync](omnistrate-ctl_managed-artifact_sync.md)	 - Inspect private artifact syncs and public ECR publications
 
