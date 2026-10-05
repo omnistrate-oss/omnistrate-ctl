@@ -10,6 +10,9 @@ Omitting --registry-type preserves private ECR behavior. --destination-account-i
 filters either registry type by its destination AWS account. When --target-id is
 also supplied, both filters must match. Public publications may have no execution
 target yet. These filters require the public ECR managed-artifact API update.
+Returned records must match the requested registry and destination account; an
+empty result alone cannot establish backend support. When paging, keep all
+filters unchanged, including --registry-type and --destination-account-id.
 
 ```
 omnistrate-ctl managed-artifact sync list [flags]

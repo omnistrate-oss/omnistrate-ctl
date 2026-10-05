@@ -845,3 +845,26 @@ match, err := utils.MatchesFilters(widget, filterMaps)
 - [ ] Run `make build` to verify compilation
 - [ ] Run `make unit-test` to verify all tests pass
 - [ ] Run `make gen-doc` to regenerate documentation
+
+## Public ECR Managed Artifact Validation
+
+The public-ECR smoke and data-access integration tests are read-only and opt-in.
+Set `MANAGED_ARTIFACT_PUBLIC_ECR_TEST_ACCOUNT_ID` to a 12-digit provider AWS account
+with public managed-artifact access and at least one existing publication. Use the
+normal test-account credentials and an explicitly selected test API environment.
+The tests check `PUBLIC_ECR` and destination-account filtering, `sppap-*` describe
+requests, optional pagination with unchanged filters, and CLI JSON/table output.
+An empty initial list fails for a configured fixture rather than being treated as
+evidence that the backend supports the new filters.
+
+```bash
+ENABLE_INTEGRATION_TEST=true go test ./test/integration_test/dataaccess \
+  -run '^TestManagedArtifactPublicECRReadOnlyOperations$' -count=1
+ENABLE_SMOKE_TEST=true go test ./test/smoke_test/managedartifact \
+  -run '^TestManagedArtifactPublicECRCommands$' -count=1
+```
+
+Without the account fixture or the corresponding existing suite flag, these tests
+skip before authenticating. They do not enable feature access, publish artifacts,
+change release policy, update IAM, or modify deployment cells. Local mock tests
+cover ignored filters on older backends; those checks are not live E2E evidence.

@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
+	"strings"
 	"testing"
 
 	"github.com/omnistrate-oss/omnistrate-ctl/cmd"
@@ -115,6 +117,57 @@ func TestManagedArtifactCommands(t *testing.T) {
 	require.Equal(t, originalPolicy.AutoUpgrade, restoredPolicy.AutoUpgrade)
 	require.Equal(t, originalPolicy.PreferredBundleVersion, restoredPolicy.PreferredBundleVersion)
 	restored = true
+}
+
+func TestManagedArtifactPublicECRCommands(t *testing.T) {
+	testutils.SmokeTest(t)
+
+	accountID := os.Getenv("MANAGED_ARTIFACT_PUBLIC_ECR_TEST_ACCOUNT_ID")
+	if accountID == "" {
+		t.Skip("set MANAGED_ARTIFACT_PUBLIC_ECR_TEST_ACCOUNT_ID to a provider account with public artifact access and an existing publication")
+	}
+	require.Regexp(t, `^[0-9]{12}$`, accountID)
+	t.Cleanup(testutils.Cleanup)
+	testEmail, testPassword, err := testutils.GetTestAccount()
+	require.NoError(t, err)
+	ctx := context.Background()
+	cmd.RootCmd.SetArgs([]string{"login", fmt.Sprintf("--email=%s", testEmail), fmt.Sprintf("--password=%s", testPassword)})
+	require.NoError(t, cmd.RootCmd.ExecuteContext(ctx))
+
+	listArgs := []string{"managed-artifact", "sync", "list", "--registry-type", "public_ecr", "--destination-account-id", accountID, "--limit", "1"}
+	var publications model.ManagedArtifactSyncList
+	runManagedArtifactJSON(t, ctx, &publications, listArgs...)
+	require.NotEmpty(t, publications.Syncs, "the configured account must contain a public publication; an empty list cannot prove filter support")
+	publication := publications.Syncs[0]
+	require.Equal(t, "PUBLIC_ECR", publication.RegistryType)
+	require.True(t, strings.HasPrefix(publication.ID, "sppap-"))
+	require.NotNil(t, publication.Destination)
+	require.Equal(t, accountID, publication.Destination.AccountID)
+
+	var detail model.ManagedArtifactSync
+	runManagedArtifactJSON(t, ctx, &detail, "managed-artifact", "sync", "describe", "--id", publication.ID)
+	assert.Equal(t, publication.ID, detail.ID)
+	assert.Equal(t, "PUBLIC_ECR", detail.RegistryType)
+	require.NotNil(t, detail.Destination)
+	assert.Equal(t, accountID, detail.Destination.AccountID)
+	assert.Equal(t, publication.BundleVersion, detail.BundleVersion)
+	assert.Len(t, detail.Artifacts, detail.ArtifactCount)
+
+	if publications.NextPageToken != "" {
+		var page model.ManagedArtifactSyncList
+		runManagedArtifactJSON(t, ctx, &page, append(listArgs, "--next-page-token", publications.NextPageToken)...)
+		for _, item := range page.Syncs {
+			assert.Equal(t, "PUBLIC_ECR", item.RegistryType)
+			require.NotNil(t, item.Destination)
+			assert.Equal(t, accountID, item.Destination.AccountID)
+		}
+	}
+	for _, args := range [][]string{listArgs, {"managed-artifact", "sync", "describe", "--id", publication.ID}} {
+		utils.LastPrintedString = ""
+		cmd.RootCmd.SetArgs(append(args, "--output", "table"))
+		require.NoError(t, cmd.RootCmd.ExecuteContext(ctx))
+		require.NotEmpty(t, utils.LastPrintedString)
+	}
 }
 
 func runManagedArtifactJSON(t *testing.T, ctx context.Context, result any, args ...string) {

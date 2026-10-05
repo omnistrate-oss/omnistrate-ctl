@@ -2,6 +2,8 @@ package dataaccess
 
 import (
 	"context"
+	"os"
+	"strings"
 	"testing"
 
 	"github.com/omnistrate-oss/omnistrate-ctl/internal/dataaccess"
@@ -44,6 +46,69 @@ func TestManagedArtifactReadOnlyOperations(t *testing.T) {
 
 	_, err = dataaccess.ListManagedArtifactReleases(ctx, "invalid-token", dataaccess.ListManagedArtifactReleasesOptions{Limit: 1})
 	assert.Error(t, err)
+}
+
+func TestManagedArtifactPublicECRReadOnlyOperations(t *testing.T) {
+	testutils.IntegrationTest(t)
+
+	accountID := os.Getenv("MANAGED_ARTIFACT_PUBLIC_ECR_TEST_ACCOUNT_ID")
+	if accountID == "" {
+		t.Skip("set MANAGED_ARTIFACT_PUBLIC_ECR_TEST_ACCOUNT_ID to a provider account with public artifact access and an existing publication")
+	}
+	require.Regexp(t, `^[0-9]{12}$`, accountID)
+	testEmail, testPassword, err := testutils.GetTestAccount()
+	require.NoError(t, err)
+	ctx := context.Background()
+	login, err := dataaccess.LoginWithPassword(ctx, testEmail, testPassword)
+	require.NoError(t, err)
+
+	options := dataaccess.ListManagedArtifactSyncsOptions{RegistryType: "PUBLIC_ECR", DestinationAccountID: accountID, Limit: 1}
+	publications, err := dataaccess.ListManagedArtifactSyncs(ctx, login.JWTToken, options)
+	require.NoError(t, err)
+	require.NotEmpty(t, publications.Syncs, "the configured account must contain a public publication; an empty list cannot prove filter support")
+	publication := publications.Syncs[0]
+	require.Equal(t, "PUBLIC_ECR", publication.RegistryType)
+	require.True(t, strings.HasPrefix(publication.ID, "sppap-"))
+	require.NotNil(t, publication.Destination)
+	require.Equal(t, accountID, publication.Destination.AccountID)
+
+	detail, err := dataaccess.DescribeManagedArtifactSync(ctx, login.JWTToken, publication.ID)
+	require.NoError(t, err)
+	assert.Equal(t, publication.ID, detail.ID)
+	assert.Equal(t, "PUBLIC_ECR", detail.RegistryType)
+	require.NotNil(t, detail.Destination)
+	assert.Equal(t, accountID, detail.Destination.AccountID)
+	assert.Equal(t, publication.BundleVersion, detail.BundleVersion)
+	assert.Len(t, detail.Artifacts, detail.ArtifactCount)
+
+	if publications.NextPageToken != "" {
+		options.NextPageToken = publications.NextPageToken
+		page, pageErr := dataaccess.ListManagedArtifactSyncs(ctx, login.JWTToken, options)
+		require.NoError(t, pageErr)
+		for _, item := range page.Syncs {
+			assert.Equal(t, "PUBLIC_ECR", item.RegistryType)
+			require.NotNil(t, item.Destination)
+			assert.Equal(t, accountID, item.Destination.AccountID)
+		}
+	}
+	options.NextPageToken = ""
+	options.BundleVersion, options.Status = publication.BundleVersion, publication.Status
+	if publication.Target != nil {
+		options.TargetID = publication.Target.ID
+	}
+	filtered, err := dataaccess.ListManagedArtifactSyncs(ctx, login.JWTToken, options)
+	require.NoError(t, err)
+	for _, item := range filtered.Syncs {
+		assert.Equal(t, "PUBLIC_ECR", item.RegistryType)
+		require.NotNil(t, item.Destination)
+		assert.Equal(t, accountID, item.Destination.AccountID)
+		assert.Equal(t, options.BundleVersion, item.BundleVersion)
+		assert.Equal(t, options.Status, item.Status)
+		if options.TargetID != "" {
+			require.NotNil(t, item.Target)
+			assert.Equal(t, options.TargetID, item.Target.ID)
+		}
+	}
 }
 
 func TestManagedArtifactRequiredParameters(t *testing.T) {
