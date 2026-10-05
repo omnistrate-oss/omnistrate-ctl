@@ -43,6 +43,7 @@ jobs:
             "domain/...",
             "environment/...",
             "helm/...",
+            "managedartifact/...",
             "service/...",
             "serviceplan/...",
             "customnetwork/...",
