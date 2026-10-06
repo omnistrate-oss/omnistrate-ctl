@@ -4,7 +4,7 @@ Describe a managed artifact synchronization record
 
 ### Synopsis
 
-Describe a private synchronization or public publication. Use --output json for source references, digests, completion timestamps, and full execution-target metadata.
+Describe a private synchronization or public publication. Artifact tables include source and destination references. Use --output json for digests, completion timestamps, and full execution-target metadata.
 
 ```
 omnistrate-ctl managed-artifact sync describe [flags]

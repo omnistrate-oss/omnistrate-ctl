@@ -39,7 +39,7 @@ filters unchanged, including --registry-type and --destination-account-id.`,
 var syncDescribeCmd = &cobra.Command{
 	Use:          "describe [flags]",
 	Short:        "Describe a managed artifact synchronization record",
-	Long:         "Describe a private synchronization or public publication. Use --output json for source references, digests, completion timestamps, and full execution-target metadata.",
+	Long:         "Describe a private synchronization or public publication. Artifact tables include source and destination references. Use --output json for digests, completion timestamps, and full execution-target metadata.",
 	Example:      "omnistrate-ctl managed-artifact sync describe --id spabs-123\nomnistrate-ctl managed-artifact sync describe --id sppap-123 -o json",
 	Args:         cobra.NoArgs,
 	RunE:         runSyncDescribe,
@@ -65,6 +65,7 @@ type syncArtifactTableRow struct {
 	ArtifactKey     string `json:"artifact_key"`
 	Version         string `json:"version"`
 	Status          string `json:"status"`
+	SourceRef       string `json:"source_ref"`
 	DestinationRef  string `json:"destination_ref"`
 	FailureCategory string `json:"failure_category"`
 	FailureMessage  string `json:"failure_message"`
@@ -224,6 +225,7 @@ func runSyncDescribe(cmd *cobra.Command, args []string) error {
 			ArtifactKey:     artifact.ArtifactKey,
 			Version:         artifact.Version,
 			Status:          artifact.Status,
+			SourceRef:       artifact.SourceRef,
 			DestinationRef:  artifact.DestinationRef,
 			FailureCategory: artifact.FailureCategory,
 			FailureMessage:  artifact.FailureMessage,

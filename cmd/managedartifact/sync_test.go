@@ -119,13 +119,12 @@ func TestManagedArtifactPublicSyncCommands(t *testing.T) {
 					require.Equal(t, "hc-executor", capturedQuery.Get("targetId"))
 					require.Contains(t, utils.LastPrintedString, "public.ecr.aws/example")
 				} else {
+					require.Contains(t, utils.LastPrintedString, record.Artifacts[0].SourceRef)
 					require.Contains(t, utils.LastPrintedString, record.Artifacts[0].DestinationRef)
 					if output == "json" {
 						require.Contains(t, utils.LastPrintedString, digest)
-						require.Contains(t, utils.LastPrintedString, record.Artifacts[0].SourceRef)
 					} else {
 						require.NotContains(t, utils.LastPrintedString, digest)
-						require.NotContains(t, utils.LastPrintedString, record.Artifacts[0].SourceRef)
 					}
 				}
 				if output == "json" {
