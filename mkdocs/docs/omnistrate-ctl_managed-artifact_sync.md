@@ -1,6 +1,6 @@
 ## omnistrate-ctl managed-artifact sync
 
-Inspect provisioner managed artifact synchronization
+Inspect private artifact syncs and public ECR publications
 
 ```
 omnistrate-ctl managed-artifact sync [operation] [flags]

@@ -40,6 +40,9 @@ func TestManagedArtifactCommands(t *testing.T) {
 	require.NotNil(t, policyUpdateCmd.Flags().Lookup("auto-upgrade"))
 	require.NotNil(t, policyUpdateCmd.Flags().Lookup("preferred-bundle-version"))
 	require.NotNil(t, syncListCmd.Flags().Lookup("status"))
+	require.NotNil(t, syncListCmd.Flags().Lookup("registry-type"))
+	require.Equal(t, "", syncListCmd.Flags().Lookup("registry-type").DefValue)
+	require.NotNil(t, syncListCmd.Flags().Lookup("destination-account-id"))
 	require.NotNil(t, syncDescribeCmd.Flags().Lookup("id"))
 }
 
@@ -71,6 +74,8 @@ func TestManagedArtifactValidation(t *testing.T) {
 		{name: "valid bundle", input: "r0000020", check: validateBundleVersion},
 		{name: "invalid bundle", input: "v20", check: validateBundleVersion, wantErr: true},
 		{name: "valid sync", input: "spabs-test-123", check: validateSyncID},
+		{name: "valid public publication", input: "sppap-test-123", check: validateSyncID},
+		{name: "empty public publication", input: "sppap-", check: validateSyncID, wantErr: true},
 		{name: "invalid sync", input: "sync-test", check: validateSyncID, wantErr: true},
 		{name: "valid timestamp", input: "2026-09-18T12:00:00Z", check: func(value string) error { return validateRFC3339Flag("updated-after", value) }},
 		{name: "invalid timestamp", input: "yesterday", check: func(value string) error { return validateRFC3339Flag("updated-after", value) }, wantErr: true},

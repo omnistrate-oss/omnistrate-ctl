@@ -32,13 +32,15 @@ type ListManagedArtifactReleasesOptions struct {
 
 // ListManagedArtifactSyncsOptions contains optional synchronization filters.
 type ListManagedArtifactSyncsOptions struct {
-	BundleVersion string
-	Status        string
-	TargetID      string
-	UpdatedAfter  string
-	UpdatedBefore string
-	Limit         int
-	NextPageToken string
+	RegistryType         string
+	DestinationAccountID string
+	BundleVersion        string
+	Status               string
+	TargetID             string
+	UpdatedAfter         string
+	UpdatedBefore        string
+	Limit                int
+	NextPageToken        string
 }
 
 func managedArtifactURL(pathSegments ...string) string {
@@ -184,13 +186,19 @@ func DescribeManagedArtifactRelease(ctx context.Context, token, bundleVersion st
 	return &result, nil
 }
 
-// ListManagedArtifactSyncs lists synchronization records for provisioner targets.
+// ListManagedArtifactSyncs lists private target syncs or public account publications.
 func ListManagedArtifactSyncs(ctx context.Context, token string, options ListManagedArtifactSyncsOptions) (*model.ManagedArtifactSyncList, error) {
 	requestURL, err := url.Parse(managedArtifactURL("syncs"))
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse managed artifact syncs URL: %w", err)
 	}
 	query := requestURL.Query()
+	if options.RegistryType != "" {
+		query.Set("registryType", options.RegistryType)
+	}
+	if options.DestinationAccountID != "" {
+		query.Set("destinationAccountId", options.DestinationAccountID)
+	}
 	if options.BundleVersion != "" {
 		query.Set("bundleVersion", options.BundleVersion)
 	}
