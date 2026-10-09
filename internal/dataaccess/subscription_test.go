@@ -613,6 +613,65 @@ func TestCreateSubscriptionOnBehalfResolvesUserByEmail(t *testing.T) {
 	assert.Equal(t, "user-test", capturedUserID)
 }
 
+func TestCreateSubscriptionOnBehalfSendsAllowedDeploymentLocations(t *testing.T) {
+	var capturedLocations []any
+	startSubscriptionTestServer(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if r.URL.Path != "/2022-09-01-00/fleet/service/s-test/environment/se-test/subscription" {
+			t.Fatalf("unexpected path %s", r.URL.Path)
+		}
+
+		var body map[string]any
+		require.NoError(t, json.NewDecoder(r.Body).Decode(&body))
+		var ok bool
+		capturedLocations, ok = body["allowedDeploymentLocations"].([]any)
+		require.True(t, ok, "allowedDeploymentLocations must be present in the create request")
+		_ = json.NewEncoder(w).Encode(map[string]any{"id": "sub-new"})
+	})
+
+	result, err := CreateSubscriptionOnBehalf(context.Background(), "test-token", "s-test", "se-test", &CreateSubscriptionOnBehalfOptions{
+		ProductTierID:            "pt-test",
+		OnBehalfOfCustomerUserID: "user-test",
+		AllowedDeploymentLocations: []openapiclientfleet.SubscriptionAllowedDeploymentLocation{
+			{CloudProvider: "aws", Regions: []string{"us-east-1", "us-west-2"}},
+			{CloudProvider: "gcp"},
+		},
+	})
+
+	require.NoError(t, err)
+	assert.Equal(t, "sub-new", result.GetId())
+	require.Len(t, capturedLocations, 2)
+	assert.Equal(t, "aws", capturedLocations[0].(map[string]any)["cloudProvider"])
+	assert.Equal(t, "gcp", capturedLocations[1].(map[string]any)["cloudProvider"])
+	assert.NotContains(t, capturedLocations[1].(map[string]any), "regions")
+}
+
+func TestUpdateSubscriptionSendsEmptyAllowedDeploymentLocations(t *testing.T) {
+	var capturedLocations []any
+	startSubscriptionTestServer(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		require.Equal(t, http.MethodPatch, r.Method)
+		if r.URL.Path != "/2022-09-01-00/fleet/service/s-test/environment/se-test/subscription/sub-test" {
+			t.Fatalf("unexpected path %s", r.URL.Path)
+		}
+
+		var body map[string]any
+		require.NoError(t, json.NewDecoder(r.Body).Decode(&body))
+		var ok bool
+		capturedLocations, ok = body["allowedDeploymentLocations"].([]any)
+		require.True(t, ok, "empty allowedDeploymentLocations must be sent to reset the subscription to product-tier inheritance")
+		w.WriteHeader(http.StatusNoContent)
+	})
+
+	err := UpdateSubscription(context.Background(), "test-token", "s-test", "se-test", "sub-test", &UpdateSubscriptionOptions{
+		AllowedDeploymentLocations: []openapiclientfleet.SubscriptionAllowedDeploymentLocation{},
+	})
+
+	require.NoError(t, err)
+	assert.NotNil(t, capturedLocations)
+	assert.Empty(t, capturedLocations)
+}
+
 func TestCreateSubscriptionOnBehalfReportsUnknownEmail(t *testing.T) {
 	startSubscriptionTestServer(t, func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")

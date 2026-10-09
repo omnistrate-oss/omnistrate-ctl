@@ -3,6 +3,7 @@ package subscription
 import (
 	"context"
 	"fmt"
+	"os"
 	"testing"
 
 	"github.com/omnistrate-oss/omnistrate-ctl/cmd"
@@ -56,4 +57,35 @@ func Test_subscription_list(t *testing.T) {
 	cmd.RootCmd.SetArgs([]string{"subscription", "list", "--filter", "status:ACTIVE", "--output", "json"})
 	err = cmd.RootCmd.ExecuteContext(ctx)
 	require.NoError(err, "subscription list with filter in json format should not error")
+}
+
+func Test_subscription_update(t *testing.T) {
+	testutils.SmokeTest(t)
+
+	serviceID := os.Getenv("SUBSCRIPTION_UPDATE_TEST_SERVICE_ID")
+	environmentID := os.Getenv("SUBSCRIPTION_UPDATE_TEST_ENVIRONMENT_ID")
+	subscriptionID := os.Getenv("SUBSCRIPTION_UPDATE_TEST_SUBSCRIPTION_ID")
+	if serviceID == "" || environmentID == "" || subscriptionID == "" {
+		t.Skip("set SUBSCRIPTION_UPDATE_TEST_SERVICE_ID, SUBSCRIPTION_UPDATE_TEST_ENVIRONMENT_ID, and SUBSCRIPTION_UPDATE_TEST_SUBSCRIPTION_ID")
+	}
+
+	ctx := context.TODO()
+
+	require := require.New(t)
+	defer testutils.Cleanup()
+
+	testEmail, testPassword, err := testutils.GetTestAccount()
+	require.NoError(err)
+	cmd.RootCmd.SetArgs([]string{"login", fmt.Sprintf("--email=%s", testEmail), fmt.Sprintf("--password=%s", testPassword)})
+	err = cmd.RootCmd.ExecuteContext(ctx)
+	require.NoError(err)
+
+	cmd.RootCmd.SetArgs([]string{
+		"subscription", "update", subscriptionID,
+		"--service-id", serviceID,
+		"--environment-id", environmentID,
+		"--allowed-deployment-locations", "[]",
+	})
+	err = cmd.RootCmd.ExecuteContext(ctx)
+	require.NoError(err, "subscription update should reset allowed deployment locations")
 }
