@@ -59,7 +59,7 @@ omnistrate-ctl instance create --service=mysql --environment=prod --plan=mysql -
   -h, --help                                      help for create
       --instance-id string                        ID of a previously deleted instance to restore
       --network-type string                       Optional network type for the instance deployment (PUBLIC / INTERNAL)
-      --onprem-platform string                    On-prem platform for installer-backed deployments (for example EKS, GKE, AKS, OpenShift, Generic)
+      --onprem-platform string                    On-prem platform for installer-backed deployments (for example EKS, GKE, AKS, Generic)
       --param string                              Parameters for the instance deployment
       --param-file string                         Json file containing parameters for the instance deployment
       --plan string                               Service plan name
