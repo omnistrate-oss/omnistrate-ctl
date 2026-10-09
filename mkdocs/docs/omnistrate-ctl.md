@@ -60,6 +60,7 @@ omnistrate-ctl [flags]
 * [omnistrate-ctl instance](omnistrate-ctl_instance.md)	 - Manage Instance Deployments for your service
 * [omnistrate-ctl login](omnistrate-ctl_login.md)	 - Log in to the Omnistrate platform
 * [omnistrate-ctl logout](omnistrate-ctl_logout.md)	 - Logout and revoke refresh token
+* [omnistrate-ctl managed-artifact](omnistrate-ctl_managed-artifact.md)	 - Manage Base Amenities artifact releases
 * [omnistrate-ctl mcp](omnistrate-ctl_mcp.md)	 - MCP server management
 * [omnistrate-ctl operations](omnistrate-ctl_operations.md)	 - Operations and health monitoring commands
 * [omnistrate-ctl refresh](omnistrate-ctl_refresh.md)	 - Refresh the access token using the stored refresh token
