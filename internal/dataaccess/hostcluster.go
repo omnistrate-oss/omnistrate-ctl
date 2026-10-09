@@ -106,6 +106,28 @@ func ApplyPendingChangesToHostCluster(ctx context.Context, token string, hostClu
 	return nil
 }
 
+// RestartHostClusterDeployment requests a deployment restart for a host cluster.
+func RestartHostClusterDeployment(ctx context.Context, token string, hostClusterID string) error {
+	if strings.TrimSpace(hostClusterID) == "" {
+		return fmt.Errorf("host cluster ID cannot be empty")
+	}
+
+	ctxWithToken := context.WithValue(ctx, openapiclientfleet.ContextAccessToken, token)
+	apiClient := getFleetClient()
+
+	r, err := apiClient.HostclusterApiAPI.HostclusterApiRestartHostClusterDeployment(ctxWithToken, hostClusterID).Execute()
+	defer func() {
+		if r != nil {
+			_ = r.Body.Close()
+		}
+	}()
+	if err != nil {
+		return handleFleetError(err)
+	}
+
+	return nil
+}
+
 func UpdateHostCluster(ctx context.Context, token string, hostClusterID string, pendingAmenities []openapiclientfleet.Amenity, syncWithOrgTemplate *bool) error {
 	ctxWithToken := context.WithValue(ctx, openapiclientfleet.ContextAccessToken, token)
 	apiClient := getFleetClient()
