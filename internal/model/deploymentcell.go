@@ -6,6 +6,12 @@ import (
 	"time"
 )
 
+// DeploymentCellRestartResult acknowledges a deployment cell restart request.
+type DeploymentCellRestartResult struct {
+	ID      string `json:"id"`
+	Message string `json:"message"`
+}
+
 // DeploymentCellTemplate represents a template structure for API responses
 type DeploymentCellTemplate struct {
 	ManagedIdentities []ManagedWorkloadIdentity `json:"managed_identities,omitempty" yaml:"managedIdentities,omitempty"`
