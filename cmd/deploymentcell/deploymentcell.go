@@ -21,6 +21,7 @@ func init() {
 	Cmd.AddCommand(statusCmd)
 	Cmd.AddCommand(listCmd)
 	Cmd.AddCommand(deleteCmd)
+	Cmd.AddCommand(restartCmd)
 	Cmd.AddCommand(updateKubeConfigCmd)
 	Cmd.AddCommand(applyPendingChangesCmd)
 	Cmd.AddCommand(generateTemplateCmd)
