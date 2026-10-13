@@ -21,6 +21,9 @@ func TestCreateResourceInstanceWithNonexistentCustomNetwork(t *testing.T) {
 	testutils.IntegrationTest(t)
 	t.Setenv("OMNISTRATE_RETRY_MAX", "0")
 
+	awsAccountID := strings.TrimSpace(os.Getenv("OMCTL_AWS_ACCOUNT_ID"))
+	require.NotEmpty(t, awsAccountID, "set OMCTL_AWS_ACCOUNT_ID to the AWS account used by the customer-hosted test service")
+
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 	defer cancel()
 
@@ -31,15 +34,16 @@ func TestCreateResourceInstanceWithNonexistentCustomNetwork(t *testing.T) {
 	require.NotEmpty(t, login.JWTToken)
 	token := login.JWTToken
 
-	// Enable CUSTOM_NETWORKS so the request reaches the network lookup instead
-	// of failing because the service model does not support custom networks.
+	// CUSTOM_NETWORKS requires a CUSTOMER_HOSTED model with a configured account.
+	// Reuse the smoke-test AWS account so no account onboarding is needed here.
 	spec, err := os.ReadFile("testfiles/instance_custom_network.yaml")
 	require.NoError(t, err)
+	resolvedSpec := strings.ReplaceAll(string(spec), "${OMCTL_AWS_ACCOUNT_ID}", awsAccountID)
 	build, err := dataaccess.BuildServiceFromComposeSpec(ctx, token, openapiclientv1.BuildServiceFromComposeSpecRequest2{
 		Name:               "instance-network-" + testutils.RandomTestSuffix(),
 		Environment:        utils.ToPtr("dev"),
 		EnvironmentType:    utils.ToPtr("DEV"),
-		FileContent:        base64.StdEncoding.EncodeToString(spec),
+		FileContent:        base64.StdEncoding.EncodeToString([]byte(resolvedSpec)),
 		Release:            utils.ToPtr(true),
 		ReleaseAsPreferred: utils.ToPtr(true),
 	})
@@ -77,6 +81,7 @@ func TestCreateResourceInstanceWithNonexistentCustomNetwork(t *testing.T) {
 		}
 		return false
 	}, 2*time.Minute, 3*time.Second, "the built service plan and web resource must be available in fleet inventory")
+	require.Equal(t, "CUSTOMER_HOSTED", offering.ServiceModelType, "CUSTOM_NETWORKS requires a customer-hosted model")
 
 	const customNetworkID = "n-123456789"
 	result, err := dataaccess.CreateResourceInstance(ctx, token,

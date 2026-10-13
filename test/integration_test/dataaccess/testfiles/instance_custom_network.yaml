@@ -2,6 +2,10 @@ version: "3.9"
 x-omnistrate-service-plan:
   name: custom-network
   tenancyType: OMNISTRATE_DEDICATED_TENANCY
+  deployment:
+    hostedDeployment:
+      AwsAccountId: "${OMCTL_AWS_ACCOUNT_ID}"
+      AwsBootstrapRoleAccountArn: "arn:aws:iam::${OMCTL_AWS_ACCOUNT_ID}:role/omnistrate-bootstrap-role"
   features:
     CUSTOM_NETWORKS: {}
 services:
