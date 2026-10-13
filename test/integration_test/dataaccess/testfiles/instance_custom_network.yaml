@@ -1,0 +1,11 @@
+version: "3.9"
+x-omnistrate-service-plan:
+  name: custom-network
+  tenancyType: OMNISTRATE_DEDICATED_TENANCY
+  features:
+    CUSTOM_NETWORKS: {}
+services:
+  web:
+    image: nginx:stable
+    ports:
+      - "80:80"
