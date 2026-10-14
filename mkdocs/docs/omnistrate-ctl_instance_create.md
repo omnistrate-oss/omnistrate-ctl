@@ -7,7 +7,7 @@ Create an instance deployment
 This command helps you create an instance deployment for your service.
 
 ```
-omnistrate-ctl instance create --service=[service] --environment=[environment] --plan=[plan] --version=[version] --resource=[resource] [--cloud-provider=aws|gcp|azure|nebius] [--region=region] [--param=param] [--param-file=file-path] [--instance-id=id] [--customer-email=email] [--customer-account-id=account-instance-id] [--cloud-provider-native-network-id=network-id] [--network-type=PUBLIC|INTERNAL] [--onprem-platform=platform] [--tags key=value,key2=value2] [--breakpoints id-or-key[:event[|event...]],...] [flags]
+omnistrate-ctl instance create --service=[service] --environment=[environment] --plan=[plan] --version=[version] --resource=[resource] [--cloud-provider=aws|gcp|azure|nebius] [--region=region] [--param=param] [--param-file=file-path] [--instance-id=id] [--customer-email=email] [--customer-account-id=account-instance-id] [--custom-network-id=network-id] [--cloud-provider-native-network-id=network-id] [--network-type=PUBLIC|INTERNAL] [--onprem-platform=platform] [--tags key=value,key2=value2] [--breakpoints id-or-key[:event[|event...]],...] [flags]
 ```
 
 ### Examples
@@ -45,6 +45,9 @@ omnistrate-ctl instance create --service=MyService --environment=dev --plan='Air
 
 # Create an instance deployment on behalf of an end customer, resolved from their email
 omnistrate-ctl instance create --service=mysql --environment=prod --plan=mysql --resource=mySQL --cloud-provider=aws --region=us-east-2 --param-file /path/to/params.json --customer-email customer@example.com
+
+# Create an instance deployment on behalf of an end customer in a custom network
+omnistrate-ctl instance create --service=mysql --environment=prod --plan=mysql --resource=mySQL --cloud-provider=aws --region=us-east-2 --param-file /path/to/params.json --customer-email customer@example.com --custom-network-id n-123456789
 ```
 
 ### Options
@@ -53,6 +56,7 @@ omnistrate-ctl instance create --service=mysql --environment=prod --plan=mysql -
       --breakpoints string                        Workflow breakpoint resource IDs or resource keys, optionally scoped to events as id-or-key:event or id-or-key:event|event
       --cloud-provider string                     Cloud provider (aws|gcp|azure|nebius). Required unless --onprem-platform is provided; do not use with --onprem-platform.
       --cloud-provider-native-network-id string   Cloud provider native network ID to inject as cloud_provider_native_network_id in instance deployment parameters
+      --custom-network-id string                  Omnistrate custom network ID for the instance deployment (sets the top-level custom_network_id field)
       --customer-account-id string                Customer BYOA account onboarding instance ID to inject as the cloud account. Use 'omnistrate-ctl account customer list' or 'omnistrate-ctl account customer describe <instance-id>' to find it.
       --customer-email string                     Customer email to create the instance deployment on behalf of. Resolves the customer's subscription for this service plan, creating one if they have none. Cannot be combined with --subscription-id.
       --environment string                        Environment name

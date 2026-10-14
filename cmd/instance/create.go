@@ -49,7 +49,10 @@ omnistrate-ctl instance create --service=MyService --environment=dev --plan='AWS
 omnistrate-ctl instance create --service=MyService --environment=dev --plan='Airgap' --resource=myResource --onprem-platform=Generic --param-file /path/to/params.json
 
 # Create an instance deployment on behalf of an end customer, resolved from their email
-omnistrate-ctl instance create --service=mysql --environment=prod --plan=mysql --resource=mySQL --cloud-provider=aws --region=us-east-2 --param-file /path/to/params.json --customer-email customer@example.com`
+omnistrate-ctl instance create --service=mysql --environment=prod --plan=mysql --resource=mySQL --cloud-provider=aws --region=us-east-2 --param-file /path/to/params.json --customer-email customer@example.com
+
+# Create an instance deployment on behalf of an end customer in a custom network
+omnistrate-ctl instance create --service=mysql --environment=prod --plan=mysql --resource=mySQL --cloud-provider=aws --region=us-east-2 --param-file /path/to/params.json --customer-email customer@example.com --custom-network-id n-123456789`
 
 	customerAccountConfigIDParamKey      = "cloud_provider_account_config_id"
 	cloudProviderNativeNetworkIDParamKey = "cloud_provider_native_network_id"
@@ -82,7 +85,7 @@ var InstanceID string
 var SubscriptionID string
 
 var createCmd = &cobra.Command{
-	Use:          "create --service=[service] --environment=[environment] --plan=[plan] --version=[version] --resource=[resource] [--cloud-provider=aws|gcp|azure|nebius] [--region=region] [--param=param] [--param-file=file-path] [--instance-id=id] [--customer-email=email] [--customer-account-id=account-instance-id] [--cloud-provider-native-network-id=network-id] [--network-type=PUBLIC|INTERNAL] [--onprem-platform=platform] [--tags key=value,key2=value2] [--breakpoints id-or-key[:event[|event...]],...]",
+	Use:          "create --service=[service] --environment=[environment] --plan=[plan] --version=[version] --resource=[resource] [--cloud-provider=aws|gcp|azure|nebius] [--region=region] [--param=param] [--param-file=file-path] [--instance-id=id] [--customer-email=email] [--customer-account-id=account-instance-id] [--custom-network-id=network-id] [--cloud-provider-native-network-id=network-id] [--network-type=PUBLIC|INTERNAL] [--onprem-platform=platform] [--tags key=value,key2=value2] [--breakpoints id-or-key[:event[|event...]],...]",
 	Short:        "Create an instance deployment",
 	Long:         `This command helps you create an instance deployment for your service.`,
 	Example:      createExample,
@@ -101,6 +104,7 @@ func init() {
 	createCmd.Flags().String("param", "", "Parameters for the instance deployment")
 	createCmd.Flags().String("param-file", "", "Json file containing parameters for the instance deployment")
 	createCmd.Flags().String("customer-account-id", "", "Customer BYOA account onboarding instance ID to inject as the cloud account. Use 'omnistrate-ctl account customer list' or 'omnistrate-ctl account customer describe <instance-id>' to find it.")
+	createCmd.Flags().String("custom-network-id", "", "Omnistrate custom network ID for the instance deployment (sets the top-level custom_network_id field)")
 	createCmd.Flags().String("cloud-provider-native-network-id", "", fmt.Sprintf("Cloud provider native network ID to inject as %s in instance deployment parameters", cloudProviderNativeNetworkIDParamKey))
 	createCmd.Flags().String("network-type", "", "Optional network type for the instance deployment (PUBLIC / INTERNAL)")
 	createCmd.Flags().String("onprem-platform", "", "On-prem platform for installer-backed deployments (for example EKS, GKE, AKS, Generic)")
@@ -186,6 +190,11 @@ func runCreate(cmd *cobra.Command, args []string) error {
 		return err
 	}
 	cloudProviderNativeNetworkID, err := cmd.Flags().GetString("cloud-provider-native-network-id")
+	if err != nil {
+		utils.PrintError(err)
+		return err
+	}
+	customNetworkID, err := cmd.Flags().GetString("custom-network-id")
 	if err != nil {
 		utils.PrintError(err)
 		return err
@@ -372,6 +381,7 @@ func runCreate(cmd *cobra.Command, args []string) error {
 	}
 	applyCloudProviderToCreateRequest(&request, cloudProvider)
 	applyRegionToCreateRequest(&request, region)
+	applyCustomNetworkIDToCreateRequest(&request, customNetworkID)
 	applyOnpremPlatformToCreateRequest(&request, onpremPlatform)
 	applyNetworkTypeToCreateRequest(&request, networkType)
 	if tagsProvided {
@@ -976,6 +986,14 @@ func applyRegionToCreateRequest(request *openapiclientfleet.FleetCreateResourceI
 		return
 	}
 	request.Region = utils.ToPtr(region)
+}
+
+func applyCustomNetworkIDToCreateRequest(request *openapiclientfleet.FleetCreateResourceInstanceRequest2, customNetworkID string) {
+	customNetworkID = strings.TrimSpace(customNetworkID)
+	if request == nil || customNetworkID == "" {
+		return
+	}
+	request.CustomNetworkId = utils.ToPtr(customNetworkID)
 }
 
 func applyOnpremPlatformToCreateRequest(request *openapiclientfleet.FleetCreateResourceInstanceRequest2, onpremPlatform string) {

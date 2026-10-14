@@ -32,6 +32,14 @@ func TestCreateCommandFlags(t *testing.T) {
 	require.NotNil(t, flag)
 	assert.Contains(t, flag.Usage, cloudProviderNativeNetworkIDParamKey)
 
+	flag = createCmd.Flags().Lookup("custom-network-id")
+	require.NotNil(t, flag)
+	assert.Equal(t, "string", flag.Value.Type())
+	assert.Equal(t, "", flag.DefValue)
+	assert.Contains(t, flag.Usage, "custom_network_id")
+	assert.Contains(t, createCmd.Use, "--custom-network-id")
+	assert.Contains(t, createExample, "--custom-network-id")
+
 	flag = createCmd.Flags().Lookup("onprem-platform")
 	require.NotNil(t, flag)
 	assert.Contains(t, flag.Usage, "installer-backed")
@@ -59,7 +67,7 @@ func TestCreateCommandFlags_AllExpectedFlags(t *testing.T) {
 	expectedFlags := []string{
 		"service", "environment", "plan", "version", "resource",
 		"cloud-provider", "region", "param", "param-file",
-		"customer-account-id", "cloud-provider-native-network-id", "onprem-platform", "tags", "breakpoints",
+		"customer-account-id", "custom-network-id", "cloud-provider-native-network-id", "onprem-platform", "tags", "breakpoints",
 		"subscription-id", "instance-id", "wait", "network-type", "customer-email",
 	}
 	for _, flagName := range expectedFlags {
@@ -810,6 +818,7 @@ func newTestCreateCommand() *cobra.Command {
 	flags.String("param", "", "")
 	flags.String("param-file", "", "")
 	flags.String("customer-account-id", "", "")
+	flags.String("custom-network-id", "", "")
 	flags.String("cloud-provider-native-network-id", "", "")
 	flags.String("network-type", "", "")
 	flags.String("onprem-platform", "", "")
@@ -824,93 +833,116 @@ func newTestCreateCommand() *cobra.Command {
 }
 
 func TestRunCreateWiresResolvedSubscriptionIDIntoCreateRequest(t *testing.T) {
-	// Isolate the config directory so GetTokenWithLogin reads/writes a throwaway auth
-	// config under a temp HOME, never the real user's ~/.omnistrate. go-homedir caches the
-	// resolved home directory process-wide, so the cache must be reset after pointing HOME
-	// at the temp dir (to pick it up) and again after HOME is restored (so later tests, and
-	// the real environment, aren't left resolving into a deleted temp dir). t.Cleanup runs
-	// LIFO, so registering the reset before t.Setenv makes it run *after* Setenv's own
-	// restore-cleanup.
-	t.Cleanup(func() { homedir.Reset() })
-	t.Setenv("HOME", t.TempDir())
-	homedir.Reset()
-
-	token := fakeJWT(t, time.Now().Add(time.Hour))
-	require.NoError(t, config.CreateOrUpdateAuthConfig(config.AuthConfig{Token: token}))
-
-	const (
-		serviceID         = "s-test"
-		environmentID     = "se-test"
-		productTierID     = "pt-test"
-		resourceName      = "myResource"
-		resourceURLKey    = "myresource-key"
-		wantSubscription  = "sub-test"
-		createdInstanceID = "instance-test"
-	)
-
-	var (
-		createRequestSeen bool
-		createRequestBody map[string]any
-	)
-
-	startCreateInstanceTestServer(t, func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		switch {
-		case r.Method == http.MethodGet && r.URL.Path == "/2022-09-01-00/user":
-			require.NoError(t, json.NewEncoder(w).Encode(map[string]any{"id": "user-test"}))
-		case r.Method == http.MethodGet && r.URL.Path == "/2022-09-01-00/service":
-			require.NoError(t, json.NewEncoder(w).Encode(servicesFixture(
-				serviceFixture(serviceID, "test-service", environmentID, "prod", productTierID, "test-plan"),
-			)))
-		case r.Method == http.MethodGet && r.URL.Path == "/2022-09-01-00/service-offering/"+serviceID:
-			require.NoError(t, json.NewEncoder(w).Encode(externalDescribeServiceOfferingFixture(
-				serviceID,
-				v1ServiceOfferingFixture(environmentID, productTierID, "res-v1-test", resourceName),
-			)))
-		case r.Method == http.MethodGet && r.URL.Path == "/2022-09-01-00/fleet/service-offering/"+serviceID:
-			require.NoError(t, json.NewEncoder(w).Encode(fleetDescribeServiceOfferingFixture(
-				serviceID,
-				fleetServiceOfferingFixture(environmentID, productTierID, resourceName, resourceURLKey),
-			)))
-		case r.Method == http.MethodPost && strings.HasPrefix(r.URL.Path, "/2022-09-01-00/fleet/resource-instance/"):
-			createRequestSeen = true
-			require.NoError(t, json.NewDecoder(r.Body).Decode(&createRequestBody))
-			require.NoError(t, json.NewEncoder(w).Encode(map[string]any{"id": createdInstanceID}))
-		case r.Method == http.MethodGet && r.URL.Path == "/2022-09-01-00/fleet/service/"+serviceID+"/environment/"+environmentID+"/instance/"+createdInstanceID:
-			require.NoError(t, json.NewEncoder(w).Encode(resourceInstanceFixture(serviceID, environmentID, wantSubscription)))
-		default:
-			t.Fatalf("unexpected request: %s %s", r.Method, r.URL.Path)
-		}
-	})
-
-	// Stub only the customer-email-to-subscription lookup (already covered by
-	// TestResolveInstanceSubscriptionID* above) so this test's HTTP surface stays limited to
-	// what runCreate itself talks to.
-	original := resolveInstanceSubscriptionByEmail
-	t.Cleanup(func() { resolveInstanceSubscriptionByEmail = original })
-	resolveInstanceSubscriptionByEmail = func(_ context.Context, _ string, lookup dataaccess.CustomerSubscriptionLookup) (*openapiclientfleet.FleetDescribeSubscriptionResult, error) {
-		// The fixture's offering carries ServiceEnvironmentType "PROD"; this must reach the
-		// lookup unchanged so the production org-scoped fallback stays wired in. Dropping
-		// this field on the caller side silently reinstates the duplicate-subscription bug.
-		assert.Equal(t, "PROD", lookup.EnvironmentType)
-		return &openapiclientfleet.FleetDescribeSubscriptionResult{Id: wantSubscription}, nil
+	tests := []struct {
+		name                string
+		customNetworkID     string
+		wantCustomNetworkID string
+	}{
+		{name: "without custom network"},
+		{name: "with custom network", customNetworkID: "n-123456789", wantCustomNetworkID: "n-123456789"},
+		{name: "trimmed custom network", customNetworkID: " n-123456789 ", wantCustomNetworkID: "n-123456789"},
+		{name: "whitespace custom network", customNetworkID: " "},
 	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Isolate the config directory so GetTokenWithLogin reads/writes a throwaway auth
+			// config under a temp HOME, never the real user's ~/.omnistrate. go-homedir caches the
+			// resolved home directory process-wide, so the cache must be reset after pointing HOME
+			// at the temp dir (to pick it up) and again after HOME is restored (so later tests, and
+			// the real environment, aren't left resolving into a deleted temp dir). t.Cleanup runs
+			// LIFO, so registering the reset before t.Setenv makes it run *after* Setenv's own
+			// restore-cleanup.
+			t.Cleanup(func() { homedir.Reset() })
+			t.Setenv("HOME", t.TempDir())
+			homedir.Reset()
 
-	cmd := newTestCreateCommand()
-	cmd.SetContext(context.Background())
-	require.NoError(t, cmd.Flags().Set("service", serviceID))
-	require.NoError(t, cmd.Flags().Set("environment", environmentID))
-	require.NoError(t, cmd.Flags().Set("plan", productTierID))
-	require.NoError(t, cmd.Flags().Set("resource", resourceName))
-	require.NoError(t, cmd.Flags().Set("cloud-provider", "aws"))
-	require.NoError(t, cmd.Flags().Set("region", "us-east-2"))
-	require.NoError(t, cmd.Flags().Set("customer-email", "customer@example.com"))
-	require.NoError(t, cmd.Flags().Set("output", "json"))
+			token := fakeJWT(t, time.Now().Add(time.Hour))
+			require.NoError(t, config.CreateOrUpdateAuthConfig(config.AuthConfig{Token: token}))
 
-	err := runCreate(cmd, nil)
-	require.NoError(t, err)
+			const (
+				serviceID         = "s-test"
+				environmentID     = "se-test"
+				productTierID     = "pt-test"
+				resourceName      = "myResource"
+				resourceURLKey    = "myresource-key"
+				wantSubscription  = "sub-test"
+				createdInstanceID = "instance-test"
+			)
 
-	require.True(t, createRequestSeen, "expected the create-resource-instance request to reach the stub server")
-	assert.Equal(t, wantSubscription, createRequestBody["subscriptionId"],
-		"the subscription resolved from --customer-email must reach the create-instance request body")
+			var (
+				createRequestSeen bool
+				createRequestBody map[string]any
+			)
+
+			startCreateInstanceTestServer(t, func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				switch {
+				case r.Method == http.MethodGet && r.URL.Path == "/2022-09-01-00/user":
+					require.NoError(t, json.NewEncoder(w).Encode(map[string]any{"id": "user-test"}))
+				case r.Method == http.MethodGet && r.URL.Path == "/2022-09-01-00/service":
+					require.NoError(t, json.NewEncoder(w).Encode(servicesFixture(
+						serviceFixture(serviceID, "test-service", environmentID, "prod", productTierID, "test-plan"),
+					)))
+				case r.Method == http.MethodGet && r.URL.Path == "/2022-09-01-00/service-offering/"+serviceID:
+					require.NoError(t, json.NewEncoder(w).Encode(externalDescribeServiceOfferingFixture(
+						serviceID,
+						v1ServiceOfferingFixture(environmentID, productTierID, "res-v1-test", resourceName),
+					)))
+				case r.Method == http.MethodGet && r.URL.Path == "/2022-09-01-00/fleet/service-offering/"+serviceID:
+					require.NoError(t, json.NewEncoder(w).Encode(fleetDescribeServiceOfferingFixture(
+						serviceID,
+						fleetServiceOfferingFixture(environmentID, productTierID, resourceName, resourceURLKey),
+					)))
+				case r.Method == http.MethodPost && strings.HasPrefix(r.URL.Path, "/2022-09-01-00/fleet/resource-instance/"):
+					createRequestSeen = true
+					require.NoError(t, json.NewDecoder(r.Body).Decode(&createRequestBody))
+					require.NoError(t, json.NewEncoder(w).Encode(map[string]any{"id": createdInstanceID}))
+				case r.Method == http.MethodGet && r.URL.Path == "/2022-09-01-00/fleet/service/"+serviceID+"/environment/"+environmentID+"/instance/"+createdInstanceID:
+					require.NoError(t, json.NewEncoder(w).Encode(resourceInstanceFixture(serviceID, environmentID, wantSubscription)))
+				default:
+					t.Fatalf("unexpected request: %s %s", r.Method, r.URL.Path)
+				}
+			})
+
+			// Stub only the customer-email-to-subscription lookup (already covered by
+			// TestResolveInstanceSubscriptionID* above) so this test's HTTP surface stays limited to
+			// what runCreate itself talks to.
+			original := resolveInstanceSubscriptionByEmail
+			t.Cleanup(func() { resolveInstanceSubscriptionByEmail = original })
+			resolveInstanceSubscriptionByEmail = func(_ context.Context, _ string, lookup dataaccess.CustomerSubscriptionLookup) (*openapiclientfleet.FleetDescribeSubscriptionResult, error) {
+				// The fixture's offering carries ServiceEnvironmentType "PROD"; this must reach the
+				// lookup unchanged so the production org-scoped fallback stays wired in. Dropping
+				// this field on the caller side silently reinstates the duplicate-subscription bug.
+				assert.Equal(t, "PROD", lookup.EnvironmentType)
+				return &openapiclientfleet.FleetDescribeSubscriptionResult{Id: wantSubscription}, nil
+			}
+
+			cmd := newTestCreateCommand()
+			cmd.SetContext(context.Background())
+			require.NoError(t, cmd.Flags().Set("service", serviceID))
+			require.NoError(t, cmd.Flags().Set("environment", environmentID))
+			require.NoError(t, cmd.Flags().Set("plan", productTierID))
+			require.NoError(t, cmd.Flags().Set("resource", resourceName))
+			require.NoError(t, cmd.Flags().Set("cloud-provider", "aws"))
+			require.NoError(t, cmd.Flags().Set("region", "us-east-2"))
+			require.NoError(t, cmd.Flags().Set("customer-email", "customer@example.com"))
+			require.NoError(t, cmd.Flags().Set("custom-network-id", tt.customNetworkID))
+			require.NoError(t, cmd.Flags().Set("param", `{"existing":"value"}`))
+			require.NoError(t, cmd.Flags().Set("output", "json"))
+
+			err := runCreate(cmd, nil)
+			require.NoError(t, err)
+
+			require.True(t, createRequestSeen, "expected the create-resource-instance request to reach the stub server")
+			assert.Equal(t, wantSubscription, createRequestBody["subscriptionId"],
+				"the subscription resolved from --customer-email must reach the create-instance request body")
+			if tt.wantCustomNetworkID == "" {
+				assert.NotContains(t, createRequestBody, "custom_network_id")
+			} else {
+				assert.Equal(t, tt.wantCustomNetworkID, createRequestBody["custom_network_id"])
+			}
+			assert.Equal(t, map[string]any{"existing": "value"}, createRequestBody["requestParams"],
+				"the custom network must be a top-level field and leave service parameters unchanged")
+		})
+	}
 }
