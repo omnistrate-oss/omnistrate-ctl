@@ -80,7 +80,7 @@ type customerCreateOutput struct {
 	SubscriptionID  string `json:"subscriptionId,omitempty"`
 }
 
-type customerAccountTarget struct {
+type customerAccountOnboardingContext struct {
 	ServiceID           string
 	ServiceName         string
 	ServiceProviderID   string
@@ -105,6 +105,7 @@ type customerAccountTarget struct {
 
 var (
 	resolveCustomerSubscriptionByEmail = dataaccess.GetSubscriptionByCustomerEmailInEnvironment
+	describeCustomerSubscriptionFn     = dataaccess.DescribeSubscription
 	describeCurrentUserFn              = dataaccess.DescribeUser
 )
 
@@ -174,31 +175,36 @@ func runCustomerCreate(cmd *cobra.Command, args []string) error {
 	var spinner *utils.Spinner
 	if output != "json" {
 		sm = utils.NewSpinnerManager()
-		spinner = sm.AddSpinner("Resolving BYOA account target...")
+		spinner = sm.AddSpinner("Resolving BYOA account onboarding context...")
 		sm.Start()
 	}
 
-	target, err := resolveCustomerAccountTarget(cmd.Context(), token, serviceArg, environmentArg, planArg)
+	onboardingContext, err := resolveCustomerAccountOnboardingContext(cmd.Context(), token, serviceArg, environmentArg, planArg)
 	if err != nil {
+		utils.HandleSpinnerError(spinner, sm, err)
+		return err
+	}
+	if onboardingContext == nil {
+		err = fmt.Errorf("customer account onboarding context resolution returned no context")
 		utils.HandleSpinnerError(spinner, sm, err)
 		return err
 	}
 
 	utils.HandleSpinnerSuccess(spinner, sm, fmt.Sprintf(
 		"Resolved %s / %s / %s (%s)",
-		target.ServiceName,
-		target.EnvironmentName,
-		target.ProductTierName,
-		target.Version,
+		onboardingContext.ServiceName,
+		onboardingContext.EnvironmentName,
+		onboardingContext.ProductTierName,
+		onboardingContext.Version,
 	))
 	spinner = nil
 	sm = nil
 
-	target.SubscriptionID = strings.TrimSpace(subscriptionID)
-	target.SubscriptionID, err = resolveCustomerAccountSubscription(
+	onboardingContext.SubscriptionID = strings.TrimSpace(subscriptionID)
+	onboardingContext.SubscriptionID, err = resolveCustomerAccountSubscription(
 		cmd.Context(),
 		token,
-		target,
+		onboardingContext,
 		subscriptionID,
 		customerEmail,
 	)
@@ -207,7 +213,13 @@ func runCustomerCreate(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	requestParams, err := buildCustomerAccountRequestParams(cmd.Context(), token, params, target.AccountInputParams)
+	requestParams, err := buildCustomerAccountRequestParams(
+		cmd.Context(),
+		token,
+		onboardingContext,
+		params,
+		onboardingContext.AccountInputParams,
+	)
 	if err != nil {
 		utils.PrintError(err)
 		return err
@@ -220,11 +232,11 @@ func runCustomerCreate(cmd *cobra.Command, args []string) error {
 	}
 
 	request := openapiclientfleet.FleetCreateResourceInstanceRequest2{
-		ProductTierVersion: &target.Version,
+		ProductTierVersion: &onboardingContext.Version,
 		RequestParams:      requestParams,
 	}
-	if target.SubscriptionID != "" {
-		request.SubscriptionId = &target.SubscriptionID
+	if onboardingContext.SubscriptionID != "" {
+		request.SubscriptionId = &onboardingContext.SubscriptionID
 	}
 	if len(params.CustomTags) > 0 {
 		// The tags flow through the onboarding instance to the customer's backing account config
@@ -238,13 +250,13 @@ func runCustomerCreate(cmd *cobra.Command, args []string) error {
 	createResult, err := dataaccess.CreateResourceInstance(
 		cmd.Context(),
 		token,
-		target.ServiceProviderID,
-		target.ServiceURLKey,
-		target.ServiceAPIVersion,
-		target.EnvironmentKey,
-		target.ServiceModelKey,
-		target.ProductTierKey,
-		target.AccountResourceKey,
+		onboardingContext.ServiceProviderID,
+		onboardingContext.ServiceURLKey,
+		onboardingContext.ServiceAPIVersion,
+		onboardingContext.EnvironmentKey,
+		onboardingContext.ServiceModelKey,
+		onboardingContext.ProductTierKey,
+		onboardingContext.AccountResourceKey,
 		request,
 	)
 	if err != nil {
@@ -274,7 +286,7 @@ func runCustomerCreate(cmd *cobra.Command, args []string) error {
 			sm.Start()
 		}
 
-		if err = waitForCustomerAccountInstanceReady(cmd.Context(), token, target.ServiceID, target.EnvironmentID, instanceID); err != nil {
+		if err = waitForCustomerAccountInstanceReady(cmd.Context(), token, onboardingContext.ServiceID, onboardingContext.EnvironmentID, instanceID); err != nil {
 			utils.HandleSpinnerError(waitSpinner, sm, err)
 			utils.PrintError(fmt.Errorf("customer account onboarding did not become READY: %v", err))
 			return err
@@ -283,7 +295,13 @@ func runCustomerCreate(cmd *cobra.Command, args []string) error {
 		utils.HandleSpinnerSuccess(waitSpinner, sm, "BYOA account onboarding is now READY")
 	}
 
-	instanceDetail, err := dataaccess.DescribeResourceInstance(cmd.Context(), token, target.ServiceID, target.EnvironmentID, instanceID)
+	instanceDetail, err := dataaccess.DescribeResourceInstance(
+		cmd.Context(),
+		token,
+		onboardingContext.ServiceID,
+		onboardingContext.EnvironmentID,
+		instanceID,
+	)
 	if err != nil {
 		utils.PrintError(err)
 		return err
@@ -308,7 +326,13 @@ func runCustomerCreate(cmd *cobra.Command, args []string) error {
 				kitSpinner = sm.AddSpinner("Waiting for BYOC On-Premise install kit to become available...")
 				sm.Start()
 			}
-			instanceDetail, accountConfigID, err = waitForCustomerAccountConfigID(cmd.Context(), token, target.ServiceID, target.EnvironmentID, instanceID)
+			instanceDetail, accountConfigID, err = waitForCustomerAccountConfigID(
+				cmd.Context(),
+				token,
+				onboardingContext.ServiceID,
+				onboardingContext.EnvironmentID,
+				instanceID,
+			)
 			if err != nil {
 				utils.HandleSpinnerError(kitSpinner, sm, err)
 				utils.PrintError(err)
@@ -323,7 +347,7 @@ func runCustomerCreate(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	createOutput := buildCustomerCreateOutput(target, params, instanceID, accountConfigID, instanceDetail)
+	createOutput := buildCustomerCreateOutput(onboardingContext, params, instanceID, accountConfigID, instanceDetail)
 	if err = utils.PrintTextTableJsonOutput(output, createOutput); err != nil {
 		utils.PrintError(err)
 		return err
@@ -346,58 +370,60 @@ func runCustomerCreate(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
-func resolveCustomerAccountTarget(
+func resolveCustomerAccountOnboardingContext(
 	ctx context.Context,
 	token string,
 	serviceArg string,
 	environmentArg string,
 	planArg string,
-) (*customerAccountTarget, error) {
-	serviceID, serviceName, err := resolveServiceByNameOrID(ctx, token, serviceArg)
-	if err != nil {
-		return nil, err
+) (onboardingContext *customerAccountOnboardingContext, err error) {
+	var serviceID string
+	var serviceName string
+	if serviceID, serviceName, err = resolveServiceByNameOrID(ctx, token, serviceArg); err != nil {
+		return
 	}
 
-	environment, err := resolveServiceEnvironmentByNameOrID(ctx, token, serviceID, environmentArg)
-	if err != nil {
-		return nil, err
+	var environment *openapiclient.DescribeServiceEnvironmentResult
+	if environment, err = resolveServiceEnvironmentByNameOrID(ctx, token, serviceID, environmentArg); err != nil {
+		return
 	}
 
-	plan, err := resolveServicePlanByNameOrID(ctx, token, serviceID, environment.Id, planArg)
-	if err != nil {
-		return nil, err
+	var plan *openapiclient.GetServicePlanResult
+	if plan, err = resolveServicePlanByNameOrID(ctx, token, serviceID, environment.Id, planArg); err != nil {
+		return
 	}
 
-	version, err := resolveCustomerAccountVersion(ctx, token, serviceID, plan.ProductTierId, customerAccountDefaultVersion)
-	if err != nil {
-		return nil, err
+	var version string
+	if version, err = resolveCustomerAccountVersion(ctx, token, serviceID, plan.ProductTierId, customerAccountDefaultVersion); err != nil {
+		return
 	}
 
-	offeringResult, err := dataaccess.ExternalDescribeServiceOffering(ctx, token, serviceID, environment.Id, plan.ProductTierId)
-	if err != nil {
-		return nil, err
+	var offeringResult *openapiclient.DescribeServiceOfferingResult
+	if offeringResult, err = dataaccess.ExternalDescribeServiceOffering(ctx, token, serviceID, environment.Id, plan.ProductTierId); err != nil {
+		return
 	}
 
-	offering, err := findCustomerAccountOffering(offeringResult, environment.Id, plan.ProductTierId)
-	if err != nil {
-		return nil, err
+	var offering *openapiclient.ServiceOffering
+	if offering, err = findCustomerAccountOffering(offeringResult, environment.Id, plan.ProductTierId); err != nil {
+		return
 	}
 
 	if !strings.EqualFold(offering.ServiceModelType, "BYOA") {
-		return nil, fmt.Errorf(
+		err = fmt.Errorf(
 			"service plan %q in environment %q is not a BYOA model (got %q)",
 			offering.ProductTierName,
 			offering.ServiceEnvironmentName,
 			offering.ServiceModelType,
 		)
+		return
 	}
 
-	accountResource, err := findCustomerAccountResource(offering.ResourceParameters)
-	if err != nil {
-		return nil, err
+	var accountResource *openapiclient.ResourceEntity
+	if accountResource, err = findCustomerAccountResource(offering.ResourceParameters); err != nil {
+		return
 	}
 
-	return &customerAccountTarget{
+	onboardingContext = &customerAccountOnboardingContext{
 		ServiceID:           serviceID,
 		ServiceName:         serviceName,
 		ServiceProviderID:   offeringResult.ServiceProviderId,
@@ -417,7 +443,8 @@ func resolveCustomerAccountTarget(
 		AccountResourceKey:  accountResource.UrlKey,
 		AccountResourceName: accountResource.Name,
 		AccountInputParams:  customerAccountInputParameters(),
-	}, nil
+	}
+	return
 }
 
 func resolveServiceByNameOrID(ctx context.Context, token string, serviceArg string) (string, string, error) {
@@ -587,12 +614,12 @@ func customerAccountInputParameters() []openapiclient.DescribeInputParameterResu
 func resolveCustomerAccountSubscription(
 	ctx context.Context,
 	token string,
-	target *customerAccountTarget,
+	onboardingContext *customerAccountOnboardingContext,
 	requestedSubscriptionID string,
 	requestedCustomerEmail string,
 ) (string, error) {
-	if target == nil {
-		return "", fmt.Errorf("customer account target is required")
+	if onboardingContext == nil {
+		return "", fmt.Errorf("customer account onboarding context is required")
 	}
 
 	subscriptionID := strings.TrimSpace(requestedSubscriptionID)
@@ -607,7 +634,7 @@ func resolveCustomerAccountSubscription(
 		}
 	}
 
-	if utils.IsProductionEnvironmentType(target.EnvironmentType) && customerEmail == "" && subscriptionID == "" {
+	if utils.IsProductionEnvironmentType(onboardingContext.EnvironmentType) && customerEmail == "" && subscriptionID == "" {
 		currentUser, err := describeCurrentUserFn(ctx, token)
 		if err != nil {
 			return "", fmt.Errorf("failed to resolve the calling user for production subscription lookup: %w", err)
@@ -628,10 +655,10 @@ func resolveCustomerAccountSubscription(
 		ctx,
 		token,
 		dataaccess.CustomerSubscriptionLookup{
-			ServiceID:       target.ServiceID,
-			EnvironmentID:   target.EnvironmentID,
-			EnvironmentType: target.EnvironmentType,
-			PlanID:          target.ProductTierID,
+			ServiceID:       onboardingContext.ServiceID,
+			EnvironmentID:   onboardingContext.EnvironmentID,
+			EnvironmentType: onboardingContext.EnvironmentType,
+			PlanID:          onboardingContext.ProductTierID,
 			CustomerEmail:   customerEmail,
 		},
 	)
@@ -639,8 +666,8 @@ func resolveCustomerAccountSubscription(
 		return "", fmt.Errorf(
 			"failed to resolve subscription for customer %s in %s/%s: %w",
 			customerEmail,
-			target.ServiceName,
-			target.ProductTierName,
+			onboardingContext.ServiceName,
+			onboardingContext.ProductTierName,
 			err,
 		)
 	}
@@ -654,23 +681,65 @@ func resolveCustomerAccountSubscription(
 func buildCustomerAccountRequestParams(
 	ctx context.Context,
 	token string,
+	onboardingContext *customerAccountOnboardingContext,
 	params CloudAccountParams,
 	inputParameters []openapiclient.DescribeInputParameterResult,
 ) (map[string]any, error) {
 	gcpServiceAccountEmail := ""
 	if params.GcpProjectID != "" {
-		user, err := dataaccess.DescribeUser(ctx, token)
+		accountOrgID, err := resolveCustomerAccountOrgID(ctx, token, onboardingContext)
 		if err != nil {
 			return nil, err
 		}
-		if user.OrgId == nil || strings.TrimSpace(*user.OrgId) == "" {
-			return nil, fmt.Errorf("describe user returned an empty org ID; cannot derive the GCP bootstrap service account email")
-		}
 
-		gcpServiceAccountEmail = fmt.Sprintf("bootstrap-%s@%s.iam.gserviceaccount.com", *user.OrgId, params.GcpProjectID)
+		gcpServiceAccountEmail = fmt.Sprintf("bootstrap-%s@%s.iam.gserviceaccount.com", accountOrgID, params.GcpProjectID)
 	}
 
 	return buildCustomerAccountRequestParamsWithDerivedValues(params, inputParameters, gcpServiceAccountEmail)
+}
+
+func resolveCustomerAccountOrgID(
+	ctx context.Context,
+	token string,
+	onboardingContext *customerAccountOnboardingContext,
+) (accountOrgID string, err error) {
+	if onboardingContext == nil {
+		err = fmt.Errorf("customer account onboarding context is required")
+		return
+	}
+
+	if subscriptionID := strings.TrimSpace(onboardingContext.SubscriptionID); subscriptionID != "" {
+		var subscription *openapiclientfleet.FleetDescribeSubscriptionResult
+		if subscription, err = describeCustomerSubscriptionFn(
+			ctx,
+			token,
+			onboardingContext.ServiceID,
+			onboardingContext.EnvironmentID,
+			subscriptionID,
+		); err != nil {
+			err = fmt.Errorf("failed to describe customer subscription %s: %w", subscriptionID, err)
+			return
+		}
+		if subscription == nil || subscription.RootUserOrgId == nil || strings.TrimSpace(*subscription.RootUserOrgId) == "" {
+			err = fmt.Errorf("customer subscription %s has no owner org ID", subscriptionID)
+			return
+		}
+
+		accountOrgID = strings.TrimSpace(*subscription.RootUserOrgId)
+		return
+	}
+
+	var user *openapiclient.DescribeUserResult
+	if user, err = describeCurrentUserFn(ctx, token); err != nil {
+		return
+	}
+	if user == nil || user.OrgId == nil || strings.TrimSpace(*user.OrgId) == "" {
+		err = fmt.Errorf("describe user returned an empty org ID; cannot derive the GCP bootstrap service account email")
+		return
+	}
+
+	accountOrgID = strings.TrimSpace(*user.OrgId)
+	return
 }
 
 func buildCustomerAccountRequestParamsWithDerivedValues(
@@ -953,7 +1022,7 @@ func extractCustomerAccountConfigID(instance *openapiclientfleet.ResourceInstanc
 }
 
 func buildCustomerCreateOutput(
-	target *customerAccountTarget,
+	onboardingContext *customerAccountOnboardingContext,
 	params CloudAccountParams,
 	instanceID string,
 	accountConfigID string,
@@ -967,13 +1036,13 @@ func buildCustomerCreateOutput(
 	return customerCreateOutput{
 		InstanceID:      instanceID,
 		AccountConfigID: accountConfigID,
-		Service:         target.ServiceName,
-		Environment:     target.EnvironmentName,
-		Plan:            target.ProductTierName,
-		Version:         target.Version,
-		Resource:        target.AccountResourceName,
+		Service:         onboardingContext.ServiceName,
+		Environment:     onboardingContext.EnvironmentName,
+		Plan:            onboardingContext.ProductTierName,
+		Version:         onboardingContext.Version,
+		Resource:        onboardingContext.AccountResourceName,
 		CloudProvider:   requestedCloudProvider(params),
 		Status:          status,
-		SubscriptionID:  target.SubscriptionID,
+		SubscriptionID:  onboardingContext.SubscriptionID,
 	}
 }
