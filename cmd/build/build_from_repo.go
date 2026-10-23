@@ -86,7 +86,7 @@ func fetchGitHubUser(ctx context.Context, pat string) (responseBody []byte, err 
 	request.Header.Set("User-Agent", "omnistrate-ctl")
 
 	var response *http.Response
-	if response, err = githubHTTPClient.Do(request); err != nil {
+	if response, err = githubHTTPClient.Do(request); err != nil { //nolint:gosec // GitHub endpoint is a compile-time constant; the PAT is only an authorization header.
 		err = errors.Wrap(err, "failed to request GitHub user")
 		return
 	}
