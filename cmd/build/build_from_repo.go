@@ -6,6 +6,8 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"io"
+	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -64,10 +66,37 @@ set GH_PAT=ghp_xxxxxxxx
 omnistrate-ctl build-from-repo
 "`
 	GitHubPATGenerateURL      = "https://github.com/settings/tokens"
+	githubUserAPIURL          = "https://api.github.com/user"
 	DefaultProdEnvName        = "Production"
 	defaultServiceName        = "default" // Default service name when no compose spec exists in the repo. It won't show up in the resulting image or compose spec. Only intermediate use.
 	ignoreKeyForFileEmbedding = "x-embed-$"
 )
+
+func fetchGitHubUser(ctx context.Context, url string, pat string) (responseBody []byte, err error) {
+	var request *http.Request
+	if request, err = http.NewRequestWithContext(ctx, http.MethodGet, url, nil); err != nil {
+		err = errors.Wrap(err, "failed to create GitHub user request")
+		return
+	}
+
+	request.Header.Set("Authorization", fmt.Sprintf("token %s", pat))
+	request.Header.Set("Accept", "application/vnd.github+json")
+	request.Header.Set("User-Agent", "omnistrate-ctl")
+
+	var response *http.Response
+	if response, err = http.DefaultClient.Do(request); err != nil {
+		err = errors.Wrap(err, "failed to request GitHub user")
+		return
+	}
+	defer response.Body.Close()
+
+	if responseBody, err = io.ReadAll(response.Body); err != nil {
+		err = errors.Wrap(err, "failed to read GitHub user response")
+		return
+	}
+
+	return
+}
 
 var BuildFromRepoCmd = &cobra.Command{
 	Use:          "build-from-repo",
@@ -746,8 +775,7 @@ func BuildServiceFromRepository(cmd *cobra.Command, ctx context.Context, token, 
 					ghUsername = config.GithubTokenUserName
 				} else {
 					// Use GitHub API directly with PAT to get username
-					authHeader := fmt.Sprintf("Authorization: token %s", pat)
-					ghUsernameOutput, err := exec.Command("curl", "-s", "-H", authHeader, "https://api.github.com/user").Output()
+					ghUsernameOutput, err := fetchGitHubUser(ctx, githubUserAPIURL, pat)
 					if err != nil {
 						utils.HandleSpinnerError(spinner, sm, err)
 						return "", "", "", nil, err
@@ -868,8 +896,7 @@ func BuildServiceFromRepository(cmd *cobra.Command, ctx context.Context, token, 
 				ghUsername = config.GithubTokenUserName
 			} else {
 				// Use GitHub API directly with PAT to get username
-				authHeader := fmt.Sprintf("Authorization: token %s", pat)
-				ghUsernameOutput, err := exec.Command("curl", "-s", "-H", authHeader, "https://api.github.com/user").Output()
+				ghUsernameOutput, err := fetchGitHubUser(ctx, githubUserAPIURL, pat)
 				if err != nil {
 					utils.HandleSpinnerError(spinner, sm, err)
 					return "", "", "", nil, err
