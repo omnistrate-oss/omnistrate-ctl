@@ -72,9 +72,11 @@ omnistrate-ctl build-from-repo
 	ignoreKeyForFileEmbedding = "x-embed-$"
 )
 
-func fetchGitHubUser(ctx context.Context, url string, pat string) (responseBody []byte, err error) {
+var githubHTTPClient = http.DefaultClient
+
+func fetchGitHubUser(ctx context.Context, pat string) (responseBody []byte, err error) {
 	var request *http.Request
-	if request, err = http.NewRequestWithContext(ctx, http.MethodGet, url, nil); err != nil {
+	if request, err = http.NewRequestWithContext(ctx, http.MethodGet, githubUserAPIURL, nil); err != nil {
 		err = errors.Wrap(err, "failed to create GitHub user request")
 		return
 	}
@@ -84,7 +86,7 @@ func fetchGitHubUser(ctx context.Context, url string, pat string) (responseBody 
 	request.Header.Set("User-Agent", "omnistrate-ctl")
 
 	var response *http.Response
-	if response, err = http.DefaultClient.Do(request); err != nil {
+	if response, err = githubHTTPClient.Do(request); err != nil {
 		err = errors.Wrap(err, "failed to request GitHub user")
 		return
 	}
@@ -775,7 +777,7 @@ func BuildServiceFromRepository(cmd *cobra.Command, ctx context.Context, token, 
 					ghUsername = config.GithubTokenUserName
 				} else {
 					// Use GitHub API directly with PAT to get username
-					ghUsernameOutput, err := fetchGitHubUser(ctx, githubUserAPIURL, pat)
+					ghUsernameOutput, err := fetchGitHubUser(ctx, pat)
 					if err != nil {
 						utils.HandleSpinnerError(spinner, sm, err)
 						return "", "", "", nil, err
@@ -896,7 +898,7 @@ func BuildServiceFromRepository(cmd *cobra.Command, ctx context.Context, token, 
 				ghUsername = config.GithubTokenUserName
 			} else {
 				// Use GitHub API directly with PAT to get username
-				ghUsernameOutput, err := fetchGitHubUser(ctx, githubUserAPIURL, pat)
+				ghUsernameOutput, err := fetchGitHubUser(ctx, pat)
 				if err != nil {
 					utils.HandleSpinnerError(spinner, sm, err)
 					return "", "", "", nil, err
