@@ -51,7 +51,7 @@ FROM alpine:latest AS app
 # installing pulls those forward to whatever the repository currently ships, which keeps
 # the image clean as new advisories land rather than only at the next base-image rebuild.
 # Require the Alpine package that fixes CVE-2026-85091, while allowing future patches.
-RUN apk --no-cache upgrade && apk add --no-cache ca-certificates curl jq 'zlib>=1.3.2-r1'
+RUN apk --no-cache upgrade && apk add --no-cache ca-certificates jq 'zlib>=1.3.2-r1'
 
 COPY --from=builder /out/omnistrate-ctl /usr/local/bin/omnistrate-ctl
 WORKDIR /omnistrate

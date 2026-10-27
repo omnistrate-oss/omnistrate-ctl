@@ -159,6 +159,86 @@ func TestBuildCustomerAccountRequestParamsWithDerivedValues_AWS(t *testing.T) {
 	assert.Equal(t, true, requestParams["allow_new_cloud_native_network_creation"])
 }
 
+func TestBuildCustomerAccountRequestParams_GCPUsesCustomerSubscriptionOrg(t *testing.T) {
+	originalDescribeSubscription := describeCustomerSubscriptionFn
+	originalDescribeCurrentUser := describeCurrentUserFn
+	t.Cleanup(func() {
+		describeCustomerSubscriptionFn = originalDescribeSubscription
+		describeCurrentUserFn = originalDescribeCurrentUser
+	})
+
+	describeCustomerSubscriptionFn = func(
+		_ context.Context,
+		_ string,
+		serviceID string,
+		environmentID string,
+		subscriptionID string,
+	) (*openapiclientfleet.FleetDescribeSubscriptionResult, error) {
+		assert.Equal(t, "svc-1", serviceID)
+		assert.Equal(t, "env-1", environmentID)
+		assert.Equal(t, "sub-1", subscriptionID)
+		return &openapiclientfleet.FleetDescribeSubscriptionResult{
+			RootUserOrgId: strPtr("org-customer"),
+		}, nil
+	}
+	describeCurrentUserFn = func(context.Context, string) (*openapiclient.DescribeUserResult, error) {
+		return &openapiclient.DescribeUserResult{OrgId: strPtr("org-provider")}, nil
+	}
+
+	onboardingContext := &customerAccountOnboardingContext{
+		ServiceID:      "svc-1",
+		EnvironmentID:  "env-1",
+		SubscriptionID: "sub-1",
+	}
+	params := CloudAccountParams{
+		GcpProjectID:     "customer-project",
+		GcpProjectNumber: "123456789",
+		AllowCreateNew:   true,
+	}
+	inputParameters := []openapiclient.DescribeInputParameterResult{
+		{Name: customerAccountIacToolName, Key: "account_configuration_method"},
+		{Name: customerAccountGCPProjectIDName, Key: "gcp_project_id"},
+		{Name: customerAccountGCPProjectNumberName, Key: "gcp_project_number"},
+		{Name: customerAccountGCPServiceAccountName, Key: "gcp_service_account_email"},
+		{Name: customerAccountAllowCreateNewName, Key: "allow_new_cloud_native_network_creation"},
+	}
+
+	requestParams, err := buildCustomerAccountRequestParams(
+		context.Background(),
+		"token",
+		onboardingContext,
+		params,
+		inputParameters,
+	)
+	require.NoError(t, err)
+	assert.Equal(
+		t,
+		"bootstrap-org-customer@customer-project.iam.gserviceaccount.com",
+		requestParams["gcp_service_account_email"],
+	)
+}
+
+func TestResolveCustomerAccountOrgID_SelfServiceUsesCallerOrg(t *testing.T) {
+	originalDescribeSubscription := describeCustomerSubscriptionFn
+	originalDescribeCurrentUser := describeCurrentUserFn
+	t.Cleanup(func() {
+		describeCustomerSubscriptionFn = originalDescribeSubscription
+		describeCurrentUserFn = originalDescribeCurrentUser
+	})
+
+	describeCustomerSubscriptionFn = func(context.Context, string, string, string, string) (*openapiclientfleet.FleetDescribeSubscriptionResult, error) {
+		t.Fatal("subscription lookup should not be called without a subscription ID")
+		return nil, nil
+	}
+	describeCurrentUserFn = func(context.Context, string) (*openapiclient.DescribeUserResult, error) {
+		return &openapiclient.DescribeUserResult{OrgId: strPtr("org-caller")}, nil
+	}
+
+	orgID, err := resolveCustomerAccountOrgID(context.Background(), "token", &customerAccountOnboardingContext{})
+	require.NoError(t, err)
+	assert.Equal(t, "org-caller", orgID)
+}
+
 func TestCustomerAccountInputParameters(t *testing.T) {
 	parameters := customerAccountInputParameters()
 	keysByName := map[string]string{}
@@ -345,7 +425,7 @@ func TestBuildCustomerAccountRequestParamsWithDerivedValues_AWSPrivateLinkDefaul
 }
 
 func TestResolveCustomerAccountSubscription_NonProductionUsesProvidedSubscription(t *testing.T) {
-	target := &customerAccountTarget{
+	onboardingContext := &customerAccountOnboardingContext{
 		ServiceID:       "svc-1",
 		EnvironmentID:   "env-1",
 		EnvironmentType: "DEV",
@@ -371,7 +451,7 @@ func TestResolveCustomerAccountSubscription_NonProductionUsesProvidedSubscriptio
 	subscriptionID, err := resolveCustomerAccountSubscription(
 		context.Background(),
 		"token",
-		target,
+		onboardingContext,
 		"sub-123",
 		"",
 	)
@@ -380,7 +460,7 @@ func TestResolveCustomerAccountSubscription_NonProductionUsesProvidedSubscriptio
 }
 
 func TestResolveCustomerAccountSubscription_ProductionDefaultsToCallingUserSubscription(t *testing.T) {
-	target := &customerAccountTarget{
+	onboardingContext := &customerAccountOnboardingContext{
 		ServiceID:       "svc-1",
 		ServiceName:     "postgres",
 		EnvironmentID:   "env-1",
@@ -416,7 +496,7 @@ func TestResolveCustomerAccountSubscription_ProductionDefaultsToCallingUserSubsc
 	subscriptionID, err := resolveCustomerAccountSubscription(
 		context.Background(),
 		"token",
-		target,
+		onboardingContext,
 		"",
 		"",
 	)
@@ -425,7 +505,7 @@ func TestResolveCustomerAccountSubscription_ProductionDefaultsToCallingUserSubsc
 }
 
 func TestResolveCustomerAccountSubscription_ProductionFailsWhenCallingUserEmailIsUnavailable(t *testing.T) {
-	target := &customerAccountTarget{
+	onboardingContext := &customerAccountOnboardingContext{
 		EnvironmentName: "prod",
 		EnvironmentType: "PROD",
 	}
@@ -445,20 +525,20 @@ func TestResolveCustomerAccountSubscription_ProductionFailsWhenCallingUserEmailI
 		return &openapiclient.DescribeUserResult{}, nil
 	}
 
-	_, err := resolveCustomerAccountSubscription(context.Background(), "token", target, "", "")
+	_, err := resolveCustomerAccountSubscription(context.Background(), "token", onboardingContext, "", "")
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "current user email is unavailable")
 }
 
 func TestResolveCustomerAccountSubscription_RejectsConflictingFlags(t *testing.T) {
-	target := &customerAccountTarget{
+	onboardingContext := &customerAccountOnboardingContext{
 		EnvironmentType: "DEV",
 	}
 
 	_, err := resolveCustomerAccountSubscription(
 		context.Background(),
 		"token",
-		target,
+		onboardingContext,
 		"sub-123",
 		"customer@example.com",
 	)
@@ -467,7 +547,7 @@ func TestResolveCustomerAccountSubscription_RejectsConflictingFlags(t *testing.T
 }
 
 func TestResolveCustomerAccountSubscription_ProductionAllowsSubscriptionIDOverride(t *testing.T) {
-	target := &customerAccountTarget{
+	onboardingContext := &customerAccountOnboardingContext{
 		EnvironmentType: "PRODUCTION",
 	}
 
@@ -490,7 +570,7 @@ func TestResolveCustomerAccountSubscription_ProductionAllowsSubscriptionIDOverri
 	subscriptionID, err := resolveCustomerAccountSubscription(
 		context.Background(),
 		"token",
-		target,
+		onboardingContext,
 		"sub-123",
 		"",
 	)
