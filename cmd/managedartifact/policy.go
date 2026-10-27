@@ -38,9 +38,13 @@ flag is omitted. Pinning requires the organization's managed artifact consumptio
 feature for the selected cloud provider. Enabling auto-upgrade can clear an
 existing pin even when that feature is disabled.
 
+The provider feature flags retain their existing ECR names. This command selects
+a release policy; it does not choose or change the artifact registry.
+
 Requires the root, admin, or editor role.`,
 	Example: `omnistrate-ctl managed-artifact policy update --environment-type prod --cloud-provider aws --auto-upgrade=true
-omnistrate-ctl managed-artifact policy update --environment-type prod --cloud-provider aws --auto-upgrade=false --preferred-bundle-version r0000020`,
+omnistrate-ctl managed-artifact policy update --environment-type prod --cloud-provider aws --auto-upgrade=false --preferred-bundle-version r0000020
+omnistrate-ctl managed-artifact policy update --environment-type dev --cloud-provider byoc-onprem --auto-upgrade=false --preferred-bundle-version r0000294`,
 	Args:         cobra.NoArgs,
 	RunE:         runPolicyUpdate,
 	SilenceUsage: true,
@@ -133,6 +137,8 @@ func runPolicyUpdate(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to get user token: %w", err)
 	}
 	if !autoUpgrade {
+		// These are the existing /user and backend consumption-gate names,
+		// not a request to use ECR as the selected cloud's artifact registry.
 		featureFlag := map[string]string{
 			"aws":         "USE_SP_ECR_FOR_MANAGED_ARTIFACTS",
 			"azure":       "USE_SP_ECR_FOR_MANAGED_ARTIFACTS_AZURE",

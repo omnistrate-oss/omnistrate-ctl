@@ -12,6 +12,9 @@ flag is omitted. Pinning requires the organization's managed artifact consumptio
 feature for the selected cloud provider. Enabling auto-upgrade can clear an
 existing pin even when that feature is disabled.
 
+The provider feature flags retain their existing ECR names. This command selects
+a release policy; it does not choose or change the artifact registry.
+
 Requires the root, admin, or editor role.
 
 ```
@@ -23,6 +26,7 @@ omnistrate-ctl managed-artifact policy update [flags]
 ```
 omnistrate-ctl managed-artifact policy update --environment-type prod --cloud-provider aws --auto-upgrade=true
 omnistrate-ctl managed-artifact policy update --environment-type prod --cloud-provider aws --auto-upgrade=false --preferred-bundle-version r0000020
+omnistrate-ctl managed-artifact policy update --environment-type dev --cloud-provider byoc-onprem --auto-upgrade=false --preferred-bundle-version r0000294
 ```
 
 ### Options

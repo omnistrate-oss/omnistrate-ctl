@@ -11,6 +11,7 @@ import (
 	"github.com/mitchellh/go-homedir"
 	"github.com/omnistrate-oss/omnistrate-ctl/cmd/common"
 	"github.com/omnistrate-oss/omnistrate-ctl/internal/config"
+	"github.com/omnistrate-oss/omnistrate-ctl/internal/dataaccess"
 	"github.com/omnistrate-oss/omnistrate-ctl/internal/model"
 	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/require"
@@ -28,10 +29,16 @@ func TestPolicyUpdateRespectsUserFeatureFlags(t *testing.T) {
 	var rejectUpdate bool
 	var updatedPath string
 	var updatedRequest model.UpdateManagedArtifactReleasePolicyRequest
+	var currentPolicy model.ManagedArtifactReleasePolicy
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		if r.URL.Path == "/2022-09-01-00/user" {
 			require.NoError(t, json.NewEncoder(w).Encode(map[string]any{"id": "mock-user", "featureFlags": flags}))
+			return
+		}
+		if r.Method == http.MethodGet {
+			require.Equal(t, "/2022-09-01-00/managed-artifact/release-policy/GLOBAL/byoc-onprem", r.URL.Path)
+			require.NoError(t, json.NewEncoder(w).Encode(currentPolicy))
 			return
 		}
 		require.Equal(t, http.MethodPut, r.Method)
@@ -45,9 +52,16 @@ func TestPolicyUpdateRespectsUserFeatureFlags(t *testing.T) {
 		var request model.UpdateManagedArtifactReleasePolicyRequest
 		require.NoError(t, json.NewDecoder(r.Body).Decode(&request))
 		updatedRequest = request
-		require.NoError(t, json.NewEncoder(w).Encode(model.ManagedArtifactReleasePolicy{
-			AutoUpgrade: request.AutoUpgrade, PreferredBundleVersion: request.PreferredBundleVersion,
-		}))
+		currentPolicy = model.ManagedArtifactReleasePolicy{
+			AutoUpgrade: request.AutoUpgrade, EffectiveBundleVersion: "r0000295",
+		}
+		if !request.AutoUpgrade {
+			if request.PreferredBundleVersion != "" {
+				currentPolicy.EffectiveBundleVersion = request.PreferredBundleVersion
+			}
+			currentPolicy.PreferredBundleVersion = currentPolicy.EffectiveBundleVersion
+		}
+		require.NoError(t, json.NewEncoder(w).Encode(currentPolicy))
 	}))
 	t.Cleanup(server.Close)
 	serverURL, err := url.Parse(server.URL)
@@ -129,6 +143,41 @@ func TestPolicyUpdateRespectsUserFeatureFlags(t *testing.T) {
 			}
 		})
 	}
+	t.Run("BYOK bundle changes and auto-upgrade restoration", func(t *testing.T) {
+		rejectUpdate = false
+		command := &cobra.Command{Use: "update", RunE: runPolicyUpdate, SilenceErrors: true, SilenceUsage: true}
+		addPolicyScopeFlags(command)
+		command.Flags().Bool("auto-upgrade", false, "Automatically adopt new releases")
+		command.Flags().String("preferred-bundle-version", "", "Release to pin")
+		command.Flags().String(common.OutputFlag, "json", "Output format")
+		for _, step := range []struct {
+			name, version, effective string
+			autoUpgrade              bool
+		}{
+			{name: "pin previous release", version: "r0000294", effective: "r0000294"},
+			{name: "change pinned release", version: "r0000293", effective: "r0000293"},
+			{name: "restore auto-upgrade after feature revocation", effective: "r0000295", autoUpgrade: true},
+		} {
+			t.Run(step.name, func(t *testing.T) {
+				flags = map[string]bool{"USE_SP_ECR_FOR_MANAGED_ARTIFACTS_BYOK": !step.autoUpgrade}
+				args := []string{"--environment-type", "global", "--cloud-provider", "byoc-onprem",
+					"--auto-upgrade=" + map[bool]string{false: "false", true: "true"}[step.autoUpgrade]}
+				if step.version != "" {
+					args = append(args, "--preferred-bundle-version", step.version)
+				}
+				command.SetArgs(args)
+				before := updateCalls
+				require.NoError(t, command.ExecuteContext(t.Context()))
+				require.Equal(t, before+1, updateCalls)
+				require.Equal(t, "/2022-09-01-00/managed-artifact/release-policy/GLOBAL/byoc-onprem", updatedPath)
+				policy, err := dataaccess.DescribeManagedArtifactReleasePolicy(t.Context(), token, "GLOBAL", "byoc-onprem")
+				require.NoError(t, err)
+				require.Equal(t, step.autoUpgrade, policy.AutoUpgrade)
+				require.Equal(t, step.version, policy.PreferredBundleVersion)
+				require.Equal(t, step.effective, policy.EffectiveBundleVersion)
+			})
+		}
+	})
 }
 
 func TestPolicyUpdateRejectsUnsupportedOutputBeforeAuthentication(t *testing.T) {
