@@ -34,11 +34,17 @@ var policyUpdateCmd = &cobra.Command{
 
 Enabling auto-upgrade clears a stored release pin. Disabling auto-upgrade pins the
 release set by --preferred-bundle-version, or the current effective release if the
-flag is omitted. Pinning is currently supported only for aws.
+flag is omitted. Pinning requires the organization's managed artifact consumption
+feature for the selected cloud provider. Enabling auto-upgrade can clear an
+existing pin even when that feature is disabled.
+
+The provider feature flags retain their existing ECR names. This command selects
+a release policy; it does not choose or change the artifact registry.
 
 Requires the root, admin, or editor role.`,
 	Example: `omnistrate-ctl managed-artifact policy update --environment-type prod --cloud-provider aws --auto-upgrade=true
-omnistrate-ctl managed-artifact policy update --environment-type prod --cloud-provider aws --auto-upgrade=false --preferred-bundle-version r0000020`,
+omnistrate-ctl managed-artifact policy update --environment-type prod --cloud-provider aws --auto-upgrade=false --preferred-bundle-version r0000020
+omnistrate-ctl managed-artifact policy update --environment-type dev --cloud-provider byoc-onprem --auto-upgrade=false --preferred-bundle-version r0000294`,
 	Args:         cobra.NoArgs,
 	RunE:         runPolicyUpdate,
 	SilenceUsage: true,
@@ -122,9 +128,6 @@ func runPolicyUpdate(cmd *cobra.Command, args []string) error {
 	if autoUpgrade && preferredBundleVersion != "" {
 		return fmt.Errorf("--preferred-bundle-version cannot be used when --auto-upgrade=true")
 	}
-	if !autoUpgrade && cloudProvider != "aws" {
-		return fmt.Errorf("--auto-upgrade=false is supported only for aws")
-	}
 	if output != common.OutputTypeJson && output != "table" && output != "text" {
 		return fmt.Errorf("unsupported output format: %s", output)
 	}
@@ -132,6 +135,26 @@ func runPolicyUpdate(cmd *cobra.Command, args []string) error {
 	token, err := common.GetTokenWithLogin()
 	if err != nil {
 		return fmt.Errorf("failed to get user token: %w", err)
+	}
+	if !autoUpgrade {
+		// These are the existing /user and backend consumption-gate names,
+		// not a request to use ECR as the selected cloud's artifact registry.
+		featureFlag := map[string]string{
+			"aws":         "USE_SP_ECR_FOR_MANAGED_ARTIFACTS",
+			"azure":       "USE_SP_ECR_FOR_MANAGED_ARTIFACTS_AZURE",
+			"gcp":         "USE_SP_ECR_FOR_MANAGED_ARTIFACTS_GCP",
+			"byoc-onprem": "USE_SP_ECR_FOR_MANAGED_ARTIFACTS_BYOK",
+		}[cloudProvider]
+		if featureFlag == "" {
+			return fmt.Errorf("managed artifact release pinning is not available for cloud provider %s", cloudProvider)
+		}
+		user, err := dataaccess.DescribeUser(cmd.Context(), token)
+		if err != nil {
+			return fmt.Errorf("failed to get managed artifact feature flags: %w", err)
+		}
+		if !user.GetFeatureFlags()[featureFlag] {
+			return fmt.Errorf("managed artifact release pinning requires the %s feature flag", featureFlag)
+		}
 	}
 	policy, err := dataaccess.UpdateManagedArtifactReleasePolicy(cmd.Context(), token, environmentType, cloudProvider, model.UpdateManagedArtifactReleasePolicyRequest{
 		AutoUpgrade:            autoUpgrade,

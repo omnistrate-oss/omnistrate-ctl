@@ -8,7 +8,12 @@ Update automatic managed artifact release adoption for one Base Amenities enviro
 
 Enabling auto-upgrade clears a stored release pin. Disabling auto-upgrade pins the
 release set by --preferred-bundle-version, or the current effective release if the
-flag is omitted. Pinning is currently supported only for aws.
+flag is omitted. Pinning requires the organization's managed artifact consumption
+feature for the selected cloud provider. Enabling auto-upgrade can clear an
+existing pin even when that feature is disabled.
+
+The provider feature flags retain their existing ECR names. This command selects
+a release policy; it does not choose or change the artifact registry.
 
 Requires the root, admin, or editor role.
 
@@ -21,6 +26,7 @@ omnistrate-ctl managed-artifact policy update [flags]
 ```
 omnistrate-ctl managed-artifact policy update --environment-type prod --cloud-provider aws --auto-upgrade=true
 omnistrate-ctl managed-artifact policy update --environment-type prod --cloud-provider aws --auto-upgrade=false --preferred-bundle-version r0000020
+omnistrate-ctl managed-artifact policy update --environment-type dev --cloud-provider byoc-onprem --auto-upgrade=false --preferred-bundle-version r0000294
 ```
 
 ### Options
