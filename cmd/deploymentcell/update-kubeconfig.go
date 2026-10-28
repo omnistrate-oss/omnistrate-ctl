@@ -4,18 +4,19 @@ import (
 	"context"
 	"encoding/base64"
 	"fmt"
-	"github.com/omnistrate-oss/omnistrate-ctl/internal/model"
-	openapiclientfleet "github.com/omnistrate-oss/omnistrate-sdk-go/fleet"
 	"os"
 	"path/filepath"
-
-	"github.com/spf13/cobra"
-	"gopkg.in/yaml.v3"
+	"strings"
+	"time"
 
 	"github.com/omnistrate-oss/omnistrate-ctl/cmd/common"
 	"github.com/omnistrate-oss/omnistrate-ctl/internal/config"
 	"github.com/omnistrate-oss/omnistrate-ctl/internal/dataaccess"
+	"github.com/omnistrate-oss/omnistrate-ctl/internal/model"
 	"github.com/omnistrate-oss/omnistrate-ctl/internal/utils"
+	openapiclientfleet "github.com/omnistrate-oss/omnistrate-sdk-go/fleet"
+	"github.com/spf13/cobra"
+	"gopkg.in/yaml.v3"
 )
 
 const (
@@ -23,13 +24,19 @@ const (
 omnistrate-ctl deployment-cell update-kubeconfig deployment-cell-id-123
 
 # Update kubeconfig with custom kubeconfig path
-omnistrate-ctl deployment-cell update-kubeconfig deployment-cell-id-123 --kubeconfig ~/.kube/my-config`
+omnistrate-ctl deployment-cell update-kubeconfig deployment-cell-id-123 --kubeconfig ~/.kube/my-config
+
+# Request access when manual approval is enabled
+omnistrate-ctl deployment-cell update-kubeconfig deployment-cell-id-123 --reason "Investigate deployment health"`
+
+	accessRequestApprovalWaitTimeout  = 5 * time.Minute
+	accessRequestApprovalPollInterval = 2 * time.Second
 )
 
 var updateKubeConfigCmd = &cobra.Command{
 	Use:          "update-kubeconfig [deployment-cell-id]",
 	Short:        "Update kubeconfig for a deployment cell",
-	Long:         `Update your local kubeconfig with the configuration for the specified deployment cell and set it as the default context.`,
+	Long:         `Create or reuse a deployment-cell access request, wait for automatic approval, then update the local kubeconfig and set it as the default context. Manual requests print approval instructions without writing credentials.`,
 	Example:      updateKubeConfigExample,
 	Args:         cobra.ExactArgs(1),
 	RunE:         runUpdateKubeConfig,
@@ -80,6 +87,45 @@ func init() {
 	updateKubeConfigCmd.Flags().String("kubeconfig", "", "Path to kubeconfig file (default: /tmp/kubeconfig)")
 	updateKubeConfigCmd.Flags().String("customer-email", "", "Customer email to filter by (optional)")
 	updateKubeConfigCmd.Flags().String("role", "", "Access role for the kube context (optional, default: 'cluster-reader')")
+	updateKubeConfigCmd.Flags().String("reason", "", "Reason for requesting access when manual approval is enabled")
+}
+
+type kubeConfigAccessDependencies struct {
+	getKubeConfig          func(context.Context, string, string, string) (*openapiclientfleet.KubeConfigHostClusterResult, error)
+	createRequest          func(context.Context, string, dataaccess.CreateAccessRequestRequest) (*model.AccessRequest, error)
+	waitForApproval        func(context.Context, string, *model.AccessRequest) (*model.AccessRequest, error)
+	kubeConfigWaitTimeout  time.Duration
+	kubeConfigPollInterval time.Duration
+	promptReason           func() (string, error)
+}
+
+var defaultKubeConfigAccessDependencies = kubeConfigAccessDependencies{
+	getKubeConfig: dataaccess.GetKubeConfigForHostCluster,
+	createRequest: dataaccess.CreateAccessRequest,
+	waitForApproval: func(ctx context.Context, token string, request *model.AccessRequest) (*model.AccessRequest, error) {
+		return waitForAccessRequestApproval(
+			ctx,
+			token,
+			request,
+			dataaccess.DescribeAccessRequest,
+			accessRequestApprovalWaitTimeout,
+			accessRequestApprovalPollInterval,
+		)
+	},
+	kubeConfigWaitTimeout:  accessRequestApprovalWaitTimeout,
+	kubeConfigPollInterval: accessRequestApprovalPollInterval,
+	promptReason: func() (string, error) {
+		return utils.PromptInput(
+			"Reason for requesting deployment-cell access:",
+			"Investigate deployment health",
+			func(value string) error {
+				if strings.TrimSpace(value) == "" {
+					return fmt.Errorf("access reason is required")
+				}
+				return nil
+			},
+		)
+	},
 }
 
 func runUpdateKubeConfig(cmd *cobra.Command, args []string) error {
@@ -105,12 +151,18 @@ func runUpdateKubeConfig(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
+	reason, err := cmd.Flags().GetString("reason")
+	if err != nil {
+		utils.PrintError(err)
+		return err
+	}
+
 	// Default kubeconfig path
 	if kubeconfigPath == "" {
 		kubeconfigPath = "/tmp/kubeconfig"
 	}
 
-	ctx := context.Background()
+	ctx := cmd.Context()
 	token, err := common.GetTokenWithLogin()
 	if err != nil {
 		utils.PrintError(err)
@@ -153,11 +205,23 @@ func runUpdateKubeConfig(cmd *cobra.Command, args []string) error {
 	}
 
 	// Get kubeconfig data from the API
-	spinner.UpdateMessage("Fetching kubeconfig for deployment cell (this may take a couple of minutes)...")
-	kubeConfigResult, err := dataaccess.GetKubeConfigForHostCluster(ctx, token, deploymentCellID, role)
+	spinner.UpdateMessage("Requesting access and fetching kubeconfig (this may take a couple of minutes)...")
+	kubeConfigResult, accessRequest, err := resolveKubeConfigAccess(
+		ctx,
+		token,
+		deploymentCellID,
+		role,
+		reason,
+		defaultKubeConfigAccessDependencies,
+	)
 	if err != nil {
 		utils.HandleSpinnerError(spinner, sm, fmt.Errorf("failed to get kubeconfig for deployment cell %s: %w", deploymentCellID, err))
 		return err
+	}
+	if kubeConfigResult == nil {
+		utils.HandleSpinnerSuccess(spinner, sm, "Access request recorded")
+		printAccessRequestInstructions(accessRequest, deploymentCellID, role)
+		return nil
 	}
 
 	// Validate base64 encoded data
@@ -261,6 +325,236 @@ func runUpdateKubeConfig(cmd *cobra.Command, args []string) error {
 	utils.PrintInfo(fmt.Sprintf("Current context set to: %s", contextName))
 
 	return nil
+}
+
+func resolveKubeConfigAccess(
+	ctx context.Context,
+	token string,
+	deploymentCellID string,
+	role string,
+	reason string,
+	dependencies kubeConfigAccessDependencies,
+) (*openapiclientfleet.KubeConfigHostClusterResult, *model.AccessRequest, error) {
+	requestReason := strings.TrimSpace(reason)
+	accessRequest, requestErr := dependencies.createRequest(ctx, token, dataaccess.CreateAccessRequestRequest{
+		DeploymentCellID: deploymentCellID,
+		Role:             normalizedKubeConfigRole(role),
+		Reason:           optionalString(requestReason),
+	})
+	if requestErr != nil && requestReason == "" && dataaccess.IsManualAccessReasonRequiredError(requestErr) {
+		requestReason, requestErr = dependencies.promptReason()
+		requestReason = strings.TrimSpace(requestReason)
+		if requestErr != nil {
+			return nil, nil, requestErr
+		}
+		if requestReason == "" {
+			return nil, nil, fmt.Errorf("access reason is required")
+		}
+		accessRequest, requestErr = dependencies.createRequest(ctx, token, dataaccess.CreateAccessRequestRequest{
+			DeploymentCellID: deploymentCellID,
+			Role:             normalizedKubeConfigRole(role),
+			Reason:           &requestReason,
+		})
+	}
+	if requestErr != nil {
+		return nil, nil, requestErr
+	}
+	if accessRequest == nil {
+		return nil, nil, fmt.Errorf("access request API returned no request")
+	}
+
+	if strings.EqualFold(accessRequest.Status, "APPROVING") {
+		if dependencies.waitForApproval == nil {
+			return nil, accessRequest, fmt.Errorf("access request approval waiter is not configured")
+		}
+		accessRequest, requestErr = dependencies.waitForApproval(ctx, token, accessRequest)
+		if requestErr != nil {
+			return nil, accessRequest, requestErr
+		}
+		if accessRequest == nil {
+			return nil, nil, fmt.Errorf("access request approval returned no request")
+		}
+	}
+
+	switch strings.ToUpper(accessRequest.Status) {
+	case "APPROVED":
+		waitTimeout := dependencies.kubeConfigWaitTimeout
+		if waitTimeout <= 0 {
+			waitTimeout = accessRequestApprovalWaitTimeout
+		}
+		pollInterval := dependencies.kubeConfigPollInterval
+		if pollInterval <= 0 {
+			pollInterval = accessRequestApprovalPollInterval
+		}
+		kubeConfig, stillPending, err := waitForKubeConfigAvailability(
+			ctx,
+			token,
+			deploymentCellID,
+			role,
+			dependencies.getKubeConfig,
+			waitTimeout,
+			pollInterval,
+		)
+		if err != nil {
+			return nil, accessRequest, err
+		}
+		if stillPending {
+			return nil, accessRequest, nil
+		}
+		return kubeConfig, accessRequest, nil
+	case "PENDING", "APPROVING":
+		return nil, accessRequest, nil
+	default:
+		return nil, accessRequest, fmt.Errorf("access request %s is %s", accessRequest.ID, accessRequest.Status)
+	}
+}
+
+func waitForKubeConfigAvailability(
+	ctx context.Context,
+	token string,
+	deploymentCellID string,
+	role string,
+	getKubeConfig func(context.Context, string, string, string) (*openapiclientfleet.KubeConfigHostClusterResult, error),
+	timeout time.Duration,
+	pollInterval time.Duration,
+) (*openapiclientfleet.KubeConfigHostClusterResult, bool, error) {
+	if getKubeConfig == nil {
+		return nil, false, fmt.Errorf("kubeconfig operation is not configured")
+	}
+
+	waitCtx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+
+	for {
+		result, err := getKubeConfig(waitCtx, token, deploymentCellID, role)
+		if err == nil {
+			return result, false, nil
+		}
+		if !dataaccess.IsKubeConfigAccessRequestPendingError(err) {
+			return nil, false, err
+		}
+
+		select {
+		case <-waitCtx.Done():
+			if waitCtx.Err() == context.DeadlineExceeded {
+				return nil, true, nil
+			}
+			return nil, false, waitCtx.Err()
+		case <-time.After(pollInterval):
+		}
+	}
+}
+
+func waitForAccessRequestApproval(
+	ctx context.Context,
+	token string,
+	request *model.AccessRequest,
+	describeRequest func(context.Context, string, string) (*model.AccessRequest, error),
+	timeout time.Duration,
+	pollInterval time.Duration,
+) (*model.AccessRequest, error) {
+	if request == nil {
+		return nil, fmt.Errorf("access request is required")
+	}
+	if describeRequest == nil {
+		return request, fmt.Errorf("access request describe operation is not configured")
+	}
+
+	waitCtx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+
+	current := request
+	for {
+		described, err := describeRequest(waitCtx, token, current.ID)
+		if err != nil {
+			if waitCtx.Err() == context.DeadlineExceeded {
+				return current, nil
+			}
+			return current, err
+		}
+		if described == nil {
+			return current, fmt.Errorf("access request API returned no request while waiting for approval")
+		}
+		current = described
+
+		switch strings.ToUpper(current.Status) {
+		case "APPROVED", "PENDING":
+			return current, nil
+		case "APPROVING":
+			// Continue polling. A timeout returns the reusable request so the
+			// caller can print rerun instructions instead of losing its ID.
+		default:
+			return current, nil
+		}
+
+		select {
+		case <-waitCtx.Done():
+			if waitCtx.Err() == context.DeadlineExceeded {
+				return current, nil
+			}
+			return current, waitCtx.Err()
+		case <-time.After(pollInterval):
+		}
+	}
+}
+
+func normalizedKubeConfigRole(role string) string {
+	if strings.TrimSpace(role) == "" {
+		return "cluster-reader"
+	}
+	return strings.TrimSpace(role)
+}
+
+func optionalString(value string) *string {
+	if value == "" {
+		return nil
+	}
+	return &value
+}
+
+func printAccessRequestInstructions(request *model.AccessRequest, deploymentCellID, role string) {
+	if request == nil {
+		return
+	}
+	switch strings.ToUpper(request.Status) {
+	case "PENDING":
+		utils.PrintInfo(fmt.Sprintf("Access request %s is pending approval.", request.ID))
+	case "APPROVING":
+		utils.PrintInfo(fmt.Sprintf("Access request %s is being approved.", request.ID))
+	case "APPROVED":
+		utils.PrintInfo(fmt.Sprintf("Access request %s is approved; kubeconfig credentials are still being prepared.", request.ID))
+	default:
+		utils.PrintInfo(fmt.Sprintf("Access request %s has status %s.", request.ID, request.Status))
+	}
+	if approvalURL := accessRequestApprovalURL(request); approvalURL != "" {
+		utils.PrintURL("Approval URL", approvalURL)
+	}
+	command := fmt.Sprintf("omnistrate-ctl deployment-cell update-kubeconfig %s", deploymentCellID)
+	if normalizedKubeConfigRole(role) != "cluster-reader" {
+		command += " --role " + normalizedKubeConfigRole(role)
+	}
+	if strings.EqualFold(request.Status, "APPROVED") {
+		utils.PrintInfo("Retry with: " + command)
+	} else {
+		utils.PrintInfo("After approval, rerun: " + command)
+	}
+}
+
+func accessRequestApprovalURL(request *model.AccessRequest) string {
+	if request == nil {
+		return ""
+	}
+	if !strings.EqualFold(request.Status, "PENDING") {
+		return ""
+	}
+	if strings.TrimSpace(request.ApprovalURL) != "" {
+		return strings.TrimSpace(request.ApprovalURL)
+	}
+	if request.ID != "" {
+		// Temporary console route until the backend returns the final approval URL.
+		return fmt.Sprintf("https://%s/access-requests/%s", config.GetRootDomain(), request.ID)
+	}
+	return ""
 }
 
 func removeCluster(clusters []KubeConfigCluster, name string) []KubeConfigCluster {

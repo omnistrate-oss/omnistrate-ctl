@@ -32,6 +32,7 @@ func TestInstanceCreateDescribeAndList(t *testing.T) {
 	require.NoError(t, cmd.RootCmd.ExecuteContext(ctx))
 
 	require.NoError(t, testutils.WaitForInstanceToReachStatus(ctx, instanceID, instance.InstanceStatusRunning))
+	verifyDeploymentCellAccessRequest(t, ctx, instanceID)
 
 	cmd.RootCmd.SetArgs([]string{"instance", "list"})
 	require.NoError(t, cmd.RootCmd.ExecuteContext(ctx))
