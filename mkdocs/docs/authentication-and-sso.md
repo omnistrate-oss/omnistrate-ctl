@@ -64,3 +64,26 @@ The CLI will:
 3. Show (and copy) a user code
 4. Poll Omnistrate until authentication completes
 5. Save the Omnistrate JWT token locally
+
+### Microsoft Entra claim requirements
+
+`omnistrate-ctl` sends the Entra device code to Omnistrate; the backend parses
+and validates the resulting identity token. The required claims depend on the
+Entra application configuration:
+
+| Mode | Required claims | Assurance |
+| --- | --- | --- |
+| Compatibility | At least one of `email`, `upn`, or `preferred_username`; `xms_edov` absent | Preserves existing applications without verified-domain assurance. |
+| Hardened (recommended) | `email` and boolean `xms_edov: true` | Entra asserts that the email domain owner is verified. |
+
+If `email_verified` is emitted, it must be `true`. Explicit false or malformed
+`email_verified` and `xms_edov` values are rejected.
+
+`xms_edov` is not emitted by default. Omnistrate operators should add both
+`email` and `xms_edov` to the optional ID-token claims of the Entra application
+registrations used by CTL. Requesting the `openid email profile` scopes alone
+does not enable `xms_edov`.
+
+The compatibility claims are mutable and should not be treated as durable
+authorization identifiers. Stable account linking should use Entra `tid` and
+`oid` when supported by the backend identity model.
