@@ -11,6 +11,7 @@ import (
 	"github.com/omnistrate-oss/omnistrate-ctl/cmd"
 	"github.com/omnistrate-oss/omnistrate-ctl/internal/model"
 	"github.com/omnistrate-oss/omnistrate-ctl/internal/utils"
+	"github.com/omnistrate-oss/omnistrate-ctl/test/testutils"
 	openapiclientfleet "github.com/omnistrate-oss/omnistrate-sdk-go/fleet"
 	"github.com/stretchr/testify/require"
 	authenticationv1 "k8s.io/api/authentication/v1"
@@ -22,14 +23,29 @@ import (
 const (
 	accessRequestSmokeRole            = "cluster-reader"
 	accessRequestServiceAccountPrefix = "system:serviceaccount:dataplane-agent:omnistrate-"
+	accessRequestSmokeDeploymentCell  = "hc-dyjkjnzcs"
 )
 
-func verifyDeploymentCellAccessRequest(t *testing.T, ctx context.Context, instanceID string) {
-	t.Helper()
+func TestDeploymentCellAccessRequest(t *testing.T) {
+	testutils.SmokeTest(t)
+	resetGlobals()
 
-	describedInstance := describeInstanceForAccessSmokeTest(t, ctx, instanceID)
-	deploymentCellID := describedInstance.GetDeploymentCellID()
-	require.NotEmpty(t, deploymentCellID, "running instance must expose its deployment cell ID")
+	ctx := context.Background()
+	t.Cleanup(testutils.Cleanup)
+	testEmail, testPassword, err := testutils.GetTestAccount()
+	require.NoError(t, err)
+	cmd.RootCmd.SetArgs([]string{
+		"login",
+		fmt.Sprintf("--email=%s", testEmail),
+		fmt.Sprintf("--password=%s", testPassword),
+	})
+	require.NoError(t, cmd.RootCmd.ExecuteContext(ctx))
+
+	verifyDeploymentCellAccessRequest(t, ctx, accessRequestSmokeDeploymentCell)
+}
+
+func verifyDeploymentCellAccessRequest(t *testing.T, ctx context.Context, deploymentCellID string) {
+	t.Helper()
 
 	kubeconfigPath := t.TempDir() + "/kubeconfig"
 	cmd.RootCmd.SetArgs([]string{
@@ -71,23 +87,6 @@ func verifyDeploymentCellAccessRequest(t *testing.T, ctx context.Context, instan
 	require.Equal(t, deploymentCellID, describedRequest.DeploymentCellID)
 
 	requireAccessRequestAuditEvents(t, ctx, describedRequest)
-}
-
-func describeInstanceForAccessSmokeTest(
-	t *testing.T,
-	ctx context.Context,
-	instanceID string,
-) *openapiclientfleet.ResourceInstance {
-	t.Helper()
-
-	utils.LastPrintedString = ""
-	cmd.RootCmd.SetArgs([]string{"instance", "describe", instanceID, "--output", "json"})
-	require.NoError(t, cmd.RootCmd.ExecuteContext(ctx))
-	require.NotEmpty(t, utils.LastPrintedString)
-
-	var instance openapiclientfleet.ResourceInstance
-	require.NoError(t, json.Unmarshal([]byte(utils.LastPrintedString), &instance))
-	return &instance
 }
 
 func findAccessRequestForSmokeTest(
