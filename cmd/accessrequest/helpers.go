@@ -10,10 +10,10 @@ import (
 	"github.com/spf13/cobra"
 )
 
-func requiredValue(name, value string) (string, error) {
+func requiredAccessRequestID(value string) (string, error) {
 	value = strings.TrimSpace(value)
 	if value == "" {
-		return "", fmt.Errorf("%s is required", name)
+		return "", fmt.Errorf("access request ID is required")
 	}
 	return value, nil
 }

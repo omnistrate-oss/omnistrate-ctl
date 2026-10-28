@@ -30,7 +30,7 @@ func init() {
 func runApprove(cmd *cobra.Command, args []string) error {
 	defer config.CleanupArgsAndFlags(cmd, &args)
 
-	accessRequestID, err := requiredValue("access request ID", args[0])
+	accessRequestID, err := requiredAccessRequestID(args[0])
 	if err != nil {
 		return err
 	}

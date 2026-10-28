@@ -60,11 +60,11 @@ func TestAccessRequestCommandArguments(t *testing.T) {
 }
 
 func TestRequiredValue(t *testing.T) {
-	value, err := requiredValue("access request ID", "  ar-12345678  ")
+	value, err := requiredAccessRequestID("  ar-12345678  ")
 	require.NoError(t, err)
 	require.Equal(t, "ar-12345678", value)
 
-	_, err = requiredValue("access request ID", " \t ")
+	_, err = requiredAccessRequestID(" \t ")
 	require.ErrorContains(t, err, "access request ID is required")
 }
 
