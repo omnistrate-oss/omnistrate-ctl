@@ -22,7 +22,6 @@ omnistrate-ctl instance debug [instance-id] [flags]
 ```
   -h, --help            help for debug
   -o, --output string   Output format (interactive|json) (default "interactive")
-      --reason string   Reason for a new manual access request (required when manual approval is enabled)
 ```
 
 ### Options inherited from parent commands

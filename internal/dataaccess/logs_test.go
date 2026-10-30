@@ -137,7 +137,7 @@ func TestLogsServiceBuildLogStreamsUsesKubernetesPods(t *testing.T) {
 	service := NewLogsService()
 	service.k8sClientForCell = func(_ context.Context, _ string, cellID string, role string) (kubernetes.Interface, error) {
 		require.Equal(t, deploymentCellID, cellID)
-		require.Equal(t, "cluster-admin", role)
+		require.Equal(t, "cluster-reader", role)
 		return clientset, nil
 	}
 

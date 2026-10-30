@@ -307,10 +307,15 @@ func TestDebugCommandStructure(t *testing.T) {
 	require.NotNil(flag)
 	require.Equal("interactive", flag.DefValue)
 
-	reasonFlag := debugCmd.PersistentFlags().Lookup("reason")
-	require.NotNil(reasonFlag)
-	require.Empty(reasonFlag.DefValue)
+	require.Nil(debugCmd.PersistentFlags().Lookup("reason"))
 	require.NotNil(debugCmd.PersistentPreRunE)
+}
+
+func TestInstanceDebugAccessReasonIsAutomatic(t *testing.T) {
+	require.Equal(t, "cluster-reader", instanceDebugAccessRole)
+	require.Equal(t,
+		"Debug instance instance-test using omnistrate-ctl",
+		instanceDebugAccessReason("instance-test"))
 }
 
 func TestDeploymentCellIDsForDebug(t *testing.T) {

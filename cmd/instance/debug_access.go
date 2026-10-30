@@ -10,13 +10,11 @@ import (
 	"github.com/spf13/cobra"
 )
 
+const instanceDebugAccessRole = "cluster-reader"
+
 func ensureInstanceDebugAccess(cmd *cobra.Command, args []string) error {
 	if len(args) != 1 {
 		return nil
-	}
-	reason, err := cmd.Flags().GetString("reason")
-	if err != nil {
-		return fmt.Errorf("failed to get access reason: %w", err)
 	}
 	token, err := common.GetTokenWithLogin()
 	if err != nil {
@@ -40,11 +38,15 @@ func ensureInstanceDebugAccess(cmd *cobra.Command, args []string) error {
 	}
 	for _, deploymentCellID := range deploymentCellIDs {
 		if _, err = common.EnsureDeploymentCellAccess(
-			ctx, token, deploymentCellID, "cluster-admin", reason); err != nil {
+			ctx, token, deploymentCellID, instanceDebugAccessRole, instanceDebugAccessReason(instanceID)); err != nil {
 			return fmt.Errorf("failed to obtain debug access to deployment cell %s: %w", deploymentCellID, err)
 		}
 	}
 	return nil
+}
+
+func instanceDebugAccessReason(instanceID string) string {
+	return fmt.Sprintf("Debug instance %s using omnistrate-ctl", instanceID)
 }
 
 func deploymentCellIDsForDebug(instance *openapiclientfleet.ResourceInstance) []string {
