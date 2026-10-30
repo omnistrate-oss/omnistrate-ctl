@@ -1,7 +1,6 @@
 package deploymentcell
 
 import (
-	"context"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
@@ -43,13 +42,17 @@ func runDebugDeploymentCell(cmd *cobra.Command, args []string) error {
 		utils.PrintError(err)
 		return err
 	}
-
 	token, err := common.GetTokenWithLogin()
 	if err != nil {
 		return fmt.Errorf("failed to get token: %w", err)
 	}
 
-	ctx := context.Background()
+	ctx := cmd.Context()
+	if _, err = common.EnsureDeploymentCellAccess(
+		ctx, token, deploymentCellID, "cluster-admin", deploymentCellDebugAccessReason(deploymentCellID)); err != nil {
+		return fmt.Errorf("failed to obtain deployment-cell debug access: %w", err)
+	}
+
 	// Retrieve debug data from API
 	debugResult, err := dataaccess.DebugHostCluster(ctx, token, deploymentCellID)
 	if err != nil {
@@ -108,4 +111,8 @@ func runDebugDeploymentCell(cmd *cobra.Command, args []string) error {
 	}
 
 	return nil
+}
+
+func deploymentCellDebugAccessReason(deploymentCellID string) string {
+	return fmt.Sprintf("Debug deployment cell %s using omnistrate-ctl", deploymentCellID)
 }

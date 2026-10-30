@@ -4,7 +4,7 @@ Update kubeconfig for a deployment cell
 
 ### Synopsis
 
-Update your local kubeconfig with the configuration for the specified deployment cell and set it as the default context.
+Create or reuse a deployment-cell access request, wait for approval when required, then update the local kubeconfig and set it as the default context.
 
 ```
 omnistrate-ctl deployment-cell update-kubeconfig [deployment-cell-id] [flags]
@@ -18,6 +18,9 @@ omnistrate-ctl deployment-cell update-kubeconfig deployment-cell-id-123
 
 # Update kubeconfig with custom kubeconfig path
 omnistrate-ctl deployment-cell update-kubeconfig deployment-cell-id-123 --kubeconfig ~/.kube/my-config
+
+# Request access when manual approval is enabled
+omnistrate-ctl deployment-cell update-kubeconfig deployment-cell-id-123 --reason "Investigate deployment health"
 ```
 
 ### Options
@@ -26,6 +29,7 @@ omnistrate-ctl deployment-cell update-kubeconfig deployment-cell-id-123 --kubeco
       --customer-email string   Customer email to filter by (optional)
   -h, --help                    help for update-kubeconfig
       --kubeconfig string       Path to kubeconfig file (default: /tmp/kubeconfig)
+      --reason string           Reason for a new manual access request (required when manual approval is enabled)
       --role string             Access role for the kube context (optional, default: 'cluster-reader')
 ```
 

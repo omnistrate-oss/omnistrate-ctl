@@ -252,3 +252,51 @@ func UpdateServiceProviderOrganization(ctx context.Context, token string, deploy
 	}
 	return
 }
+
+// ConfigureAccessRequestApproval updates one environment's just-in-time access
+// approval mode and optional inline approver list.
+func ConfigureAccessRequestApproval(
+	ctx context.Context,
+	token string,
+	environment string,
+	approvalMode string,
+	approverUserIDs []string,
+) (err error) {
+	ctxWithToken := context.WithValue(ctx, openapiclient.ContextAccessToken, token)
+	apiClient := getV1Client()
+
+	type approverUser struct {
+		UserID string `json:"userId"`
+	}
+	type approvalConfiguration struct {
+		ApprovalMode  string         `json:"approvalMode"`
+		ApproverUsers []approverUser `json:"approverUsers"`
+	}
+
+	approvers := make([]approverUser, 0, len(approverUserIDs))
+	for _, userID := range approverUserIDs {
+		approvers = append(approvers, approverUser{UserID: userID})
+	}
+	configurations := map[string]approvalConfiguration{
+		environment: {
+			ApprovalMode:  approvalMode,
+			ApproverUsers: approvers,
+		},
+	}
+
+	req := apiClient.SpOrganizationApiAPI.SpOrganizationApiModifyServiceProviderOrganization(ctxWithToken)
+	req = req.ModifyServiceProviderOrganizationRequest2(openapiclient.ModifyServiceProviderOrganizationRequest2{
+		AdditionalProperties: map[string]interface{}{
+			"justInTimeAccessConfigurations": configurations,
+		},
+	})
+	var response *http.Response
+	defer func() {
+		if response != nil {
+			_ = response.Body.Close()
+		}
+	}()
+
+	response, err = req.Execute()
+	return handleV1Error(err)
+}
