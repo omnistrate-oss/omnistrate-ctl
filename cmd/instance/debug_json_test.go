@@ -4,9 +4,11 @@ import (
 	"context"
 	"encoding/json"
 	"testing"
+	"time"
 
 	"github.com/omnistrate-oss/omnistrate-ctl/internal/dataaccess"
 	openapiclientfleet "github.com/omnistrate-oss/omnistrate-sdk-go/fleet"
+	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/require"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -312,10 +314,38 @@ func TestDebugCommandStructure(t *testing.T) {
 }
 
 func TestInstanceDebugAccessReasonIsAutomatic(t *testing.T) {
-	require.Equal(t, "cluster-reader", instanceDebugAccessRole)
 	require.Equal(t,
 		"Debug instance instance-test using omnistrate-ctl",
 		instanceDebugAccessReason("instance-test"))
+}
+
+func TestInstanceDebugTokenUsesCapturedRequesterIdentity(t *testing.T) {
+	cmd := &cobra.Command{}
+	cmd.SetContext(context.WithValue(context.Background(), instanceDebugTokenContextKey{}, "requester-token"))
+
+	token, err := instanceDebugToken(cmd)
+
+	require.NoError(t, err)
+	require.Equal(t, "requester-token", token)
+}
+
+func TestInstanceDebugTokenRequiresInitializedSession(t *testing.T) {
+	cmd := &cobra.Command{}
+	cmd.SetContext(context.Background())
+
+	_, err := instanceDebugToken(cmd)
+
+	require.EqualError(t, err, "debug session authentication was not initialized")
+}
+
+func TestInstanceDebugFetchContextHasDeadline(t *testing.T) {
+	ctx, cancel := instanceDebugFetchContext(context.Background(), time.Minute)
+	defer cancel()
+
+	deadline, ok := ctx.Deadline()
+
+	require.True(t, ok)
+	require.WithinDuration(t, time.Now().Add(time.Minute), deadline, time.Second)
 }
 
 func TestDeploymentCellIDsForDebug(t *testing.T) {

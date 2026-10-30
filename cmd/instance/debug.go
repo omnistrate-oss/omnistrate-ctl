@@ -8,7 +8,6 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/omnistrate-oss/omnistrate-ctl/cmd/common"
 	"github.com/omnistrate-oss/omnistrate-ctl/internal/dataaccess"
 
 	"github.com/charmbracelet/bubbles/spinner"
@@ -94,9 +93,10 @@ func (m loadingModel) View() string {
 	return fmt.Sprintf("\n  %s %s\n", m.spinner.View(), m.status)
 }
 
-func fetchDebugData(instanceID, token string) tea.Cmd {
+func fetchDebugData(parent context.Context, instanceID, token string) tea.Cmd {
 	return func() tea.Msg {
-		ctx := context.Background()
+		ctx, cancel := instanceDebugFetchContext(parent, instanceDebugInitialFetchTimeout)
+		defer cancel()
 
 		serviceID, environmentID, _, _, err := getInstance(ctx, token, instanceID)
 		if err != nil {
@@ -167,13 +167,13 @@ func runDebug(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to get output flag: %w", err)
 	}
 
-	token, err := common.GetTokenWithLogin()
+	token, err := instanceDebugToken(cmd)
 	if err != nil {
 		return fmt.Errorf("failed to get token: %w", err)
 	}
 
 	if output == "json" {
-		return runDebugJSON(instanceID, token)
+		return runDebugJSON(cmd.Context(), instanceID, token)
 	}
 
 	// Interactive mode: show spinner while loading
@@ -181,7 +181,7 @@ func runDebug(cmd *cobra.Command, args []string) error {
 	p := tea.NewProgram(model)
 
 	go func() {
-		fetchCmd := fetchDebugData(instanceID, token)
+		fetchCmd := fetchDebugData(cmd.Context(), instanceID, token)
 		msg := fetchCmd()
 		p.Send(msg)
 	}()
@@ -203,8 +203,9 @@ func runDebug(cmd *cobra.Command, args []string) error {
 	return launchDebugTUI(m.result.data)
 }
 
-func runDebugJSON(instanceID, token string) error {
-	ctx := context.Background()
+func runDebugJSON(parent context.Context, instanceID, token string) error {
+	ctx, cancel := instanceDebugFetchContext(parent, instanceDebugInitialFetchTimeout)
+	defer cancel()
 
 	serviceID, environmentID, _, _, err := getInstance(ctx, token, instanceID)
 	if err != nil {

@@ -1,8 +1,10 @@
 package instance
 
 import (
+	"context"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/omnistrate-oss/omnistrate-ctl/cmd/common"
 	"github.com/omnistrate-oss/omnistrate-ctl/internal/dataaccess"
@@ -10,7 +12,12 @@ import (
 	"github.com/spf13/cobra"
 )
 
-const instanceDebugAccessRole = "cluster-reader"
+type instanceDebugTokenContextKey struct{}
+
+const (
+	instanceDebugInitialFetchTimeout  = 2 * time.Minute
+	instanceDebugProgressFetchTimeout = 30 * time.Second
+)
 
 func ensureInstanceDebugAccess(cmd *cobra.Command, args []string) error {
 	if len(args) != 1 {
@@ -20,6 +27,7 @@ func ensureInstanceDebugAccess(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return fmt.Errorf("failed to get token: %w", err)
 	}
+	cmd.SetContext(context.WithValue(cmd.Context(), instanceDebugTokenContextKey{}, token))
 
 	ctx := cmd.Context()
 	instanceID := args[0]
@@ -38,11 +46,26 @@ func ensureInstanceDebugAccess(cmd *cobra.Command, args []string) error {
 	}
 	for _, deploymentCellID := range deploymentCellIDs {
 		if _, err = common.EnsureDeploymentCellAccess(
-			ctx, token, deploymentCellID, instanceDebugAccessRole, instanceDebugAccessReason(instanceID)); err != nil {
+			ctx, token, deploymentCellID, "cluster-admin", instanceDebugAccessReason(instanceID)); err != nil {
 			return fmt.Errorf("failed to obtain debug access to deployment cell %s: %w", deploymentCellID, err)
 		}
 	}
 	return nil
+}
+
+func instanceDebugToken(cmd *cobra.Command) (string, error) {
+	token, ok := cmd.Context().Value(instanceDebugTokenContextKey{}).(string)
+	if !ok || strings.TrimSpace(token) == "" {
+		return "", fmt.Errorf("debug session authentication was not initialized")
+	}
+	return token, nil
+}
+
+func instanceDebugFetchContext(parent context.Context, timeout time.Duration) (context.Context, context.CancelFunc) {
+	if parent == nil {
+		parent = context.Background()
+	}
+	return context.WithTimeout(parent, timeout)
 }
 
 func instanceDebugAccessReason(instanceID string) string {

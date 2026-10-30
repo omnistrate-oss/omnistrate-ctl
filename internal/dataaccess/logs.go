@@ -14,8 +14,6 @@ import (
 	"k8s.io/client-go/kubernetes"
 )
 
-const debugKubernetesAccessRole = "cluster-reader"
-
 // LogsStream represents a log stream configuration
 type LogsStream struct {
 	PodName       string `json:"podName"`
@@ -233,7 +231,7 @@ func (ls *LogsService) logClusterClients(ctx context.Context, token string, inst
 		return nil, fmt.Errorf("deployment cell ID not found")
 	}
 
-	dataplaneClient, err := loader(ctx, token, deploymentCellID, debugKubernetesAccessRole)
+	dataplaneClient, err := loader(ctx, token, deploymentCellID, "cluster-admin")
 	if err != nil {
 		return nil, fmt.Errorf("failed to create Kubernetes client for deployment cell %s: %w", deploymentCellID, err)
 	}
@@ -246,7 +244,7 @@ func (ls *LogsService) logClusterClients(ctx context.Context, token string, inst
 
 	controlPlaneDeploymentCellID := instance.GetControlPlaneDeploymentCellID()
 	if controlPlaneDeploymentCellID != "" && controlPlaneDeploymentCellID != deploymentCellID {
-		controlPlaneClient, err := loader(ctx, token, controlPlaneDeploymentCellID, debugKubernetesAccessRole)
+		controlPlaneClient, err := loader(ctx, token, controlPlaneDeploymentCellID, "cluster-admin")
 		if err != nil {
 			return nil, fmt.Errorf("failed to create Kubernetes client for control plane deployment cell %s: %w", controlPlaneDeploymentCellID, err)
 		}

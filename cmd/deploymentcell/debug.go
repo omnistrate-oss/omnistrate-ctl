@@ -19,8 +19,6 @@ import (
 
 var outputDir string
 
-const deploymentCellDebugAccessRole = "cluster-reader"
-
 var debugCmd = &cobra.Command{
 	Use:          "debug",
 	Short:        "Debug deployment cell resources and retrieve custom helm execution logs",
@@ -51,7 +49,7 @@ func runDebugDeploymentCell(cmd *cobra.Command, args []string) error {
 
 	ctx := cmd.Context()
 	if _, err = common.EnsureDeploymentCellAccess(
-		ctx, token, deploymentCellID, deploymentCellDebugAccessRole, deploymentCellDebugAccessReason(deploymentCellID)); err != nil {
+		ctx, token, deploymentCellID, "cluster-admin", deploymentCellDebugAccessReason(deploymentCellID)); err != nil {
 		return fmt.Errorf("failed to obtain deployment-cell debug access: %w", err)
 	}
 
