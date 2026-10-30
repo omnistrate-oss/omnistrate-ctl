@@ -597,6 +597,8 @@ func collectComposeDebugInfoWithFetchers(ctx context.Context, token, serviceID s
 
 func init() {
 	debugCmd.Flags().StringP("output", "o", "interactive", "Output format (interactive|json)")
+	debugCmd.PersistentFlags().String("reason", "", "Reason for a new manual access request (required when manual approval is enabled)")
+	debugCmd.PersistentPreRunE = ensureInstanceDebugAccess
 	debugCmd.AddCommand(debugHelmLogsCmd)
 	debugCmd.AddCommand(debugHelmValuesCmd)
 	debugCmd.AddCommand(debugTerraformFilesCmd)

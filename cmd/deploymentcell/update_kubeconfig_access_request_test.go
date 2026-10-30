@@ -15,7 +15,6 @@ import (
 func TestResolveKubeConfigAccessCreatesRequestBeforeFetchingKubeConfig(t *testing.T) {
 	expected := &openapiclientfleet.KubeConfigHostClusterResult{Id: "hc-test"}
 	createCalls := 0
-	promptCalls := 0
 
 	result, request, err := resolveKubeConfigAccess(t.Context(), "token", "hc-test", "", "", kubeConfigAccessDependencies{
 		getKubeConfig: func(context.Context, string, string, string) (*openapiclientfleet.KubeConfigHostClusterResult, error) {
@@ -25,69 +24,72 @@ func TestResolveKubeConfigAccessCreatesRequestBeforeFetchingKubeConfig(t *testin
 			createCalls++
 			return &model.AccessRequest{ID: "ar-approved", Status: "APPROVED"}, nil
 		},
-		promptReason: func() (string, error) {
-			promptCalls++
-			return "", nil
-		},
 	})
 
 	require.NoError(t, err)
 	require.Same(t, expected, result)
 	require.Equal(t, "ar-approved", request.ID)
 	require.Equal(t, 1, createCalls)
-	require.Zero(t, promptCalls)
 }
 
-func TestResolveKubeConfigAccessReturnsPendingRequestWithoutWritingCredentials(t *testing.T) {
-	promptCalls := 0
+func TestResolveKubeConfigAccessWaitsAndContinuesAfterManualApproval(t *testing.T) {
+	expected := &openapiclientfleet.KubeConfigHostClusterResult{Id: "hc-test"}
+	waitCalls := 0
+	approvalRequiredCalls := 0
+	approvalGrantedCalls := 0
 	result, request, err := resolveKubeConfigAccess(t.Context(), "token", "hc-test", "cluster-admin", "", kubeConfigAccessDependencies{
-		getKubeConfig: accessRequestBlockedKubeConfig,
+		getKubeConfig: func(context.Context, string, string, string) (*openapiclientfleet.KubeConfigHostClusterResult, error) {
+			return expected, nil
+		},
 		createRequest: func(_ context.Context, _ string, input dataaccess.CreateAccessRequestRequest) (*model.AccessRequest, error) {
 			require.Equal(t, "hc-test", input.DeploymentCellID)
 			require.Equal(t, "cluster-admin", input.Role)
 			require.Nil(t, input.Reason)
-			return &model.AccessRequest{ID: "ar-pending", Status: "PENDING", ApprovalURL: "https://example.test/approve"}, nil
+			return &model.AccessRequest{ID: "ar-pending", Status: "PENDING"}, nil
 		},
-		promptReason: func() (string, error) {
-			promptCalls++
-			return "", nil
+		waitForApproval: func(_ context.Context, _ string, pending *model.AccessRequest) (*model.AccessRequest, error) {
+			waitCalls++
+			require.Equal(t, "ar-pending", pending.ID)
+			return &model.AccessRequest{ID: pending.ID, Status: "APPROVED"}, nil
+		},
+		onApprovalRequired: func(pending *model.AccessRequest) {
+			approvalRequiredCalls++
+			require.Equal(t, "ar-pending", pending.ID)
+		},
+		onApprovalGranted: func(approved *model.AccessRequest) {
+			approvalGrantedCalls++
+			require.Equal(t, "APPROVED", approved.Status)
 		},
 	})
 
 	require.NoError(t, err)
-	require.Nil(t, result)
+	require.Same(t, expected, result)
 	require.Equal(t, "ar-pending", request.ID)
-	require.Zero(t, promptCalls, "reusing a pending request must not prompt for another reason")
+	require.Equal(t, "APPROVED", request.Status)
+	require.Equal(t, 1, waitCalls)
+	require.Equal(t, 1, approvalRequiredCalls)
+	require.Equal(t, 1, approvalGrantedCalls)
 }
 
-func TestResolveKubeConfigAccessPromptsOnlyWhenNewManualRequestNeedsReason(t *testing.T) {
+func TestResolveKubeConfigAccessRequiresReasonFlagForNewManualRequest(t *testing.T) {
 	createCalls := 0
 	result, request, err := resolveKubeConfigAccess(t.Context(), "token", "hc-test", "", "", kubeConfigAccessDependencies{
 		getKubeConfig: accessRequestBlockedKubeConfig,
 		createRequest: func(_ context.Context, _ string, input dataaccess.CreateAccessRequestRequest) (*model.AccessRequest, error) {
 			createCalls++
 			require.Equal(t, "cluster-reader", input.Role)
-			if createCalls == 1 {
-				require.Nil(t, input.Reason)
-				return nil, errors.New("bad_request\nDetail: manual access requires a nonblank reason")
-			}
-			require.NotNil(t, input.Reason)
-			require.Equal(t, "Investigate incident", *input.Reason)
-			return &model.AccessRequest{ID: "ar-new", Status: "PENDING"}, nil
-		},
-		promptReason: func() (string, error) {
-			return "  Investigate incident  ", nil
+			require.Nil(t, input.Reason)
+			return nil, errors.New("bad_request\nDetail: manual access requires a nonblank reason")
 		},
 	})
 
-	require.NoError(t, err)
+	require.ErrorContains(t, err, "requires --reason")
 	require.Nil(t, result)
-	require.Equal(t, "ar-new", request.ID)
-	require.Equal(t, 2, createCalls)
+	require.Nil(t, request)
+	require.Equal(t, 1, createCalls)
 }
 
-func TestResolveKubeConfigAccessUsesReasonFlagWithoutPrompting(t *testing.T) {
-	promptCalls := 0
+func TestResolveKubeConfigAccessUsesReasonFlag(t *testing.T) {
 	result, request, err := resolveKubeConfigAccess(t.Context(), "token", "hc-test", "cluster-reader", "  Planned maintenance  ", kubeConfigAccessDependencies{
 		getKubeConfig: accessRequestBlockedKubeConfig,
 		createRequest: func(_ context.Context, _ string, input dataaccess.CreateAccessRequestRequest) (*model.AccessRequest, error) {
@@ -95,16 +97,14 @@ func TestResolveKubeConfigAccessUsesReasonFlagWithoutPrompting(t *testing.T) {
 			require.Equal(t, "Planned maintenance", *input.Reason)
 			return &model.AccessRequest{ID: "ar-flag", Status: "PENDING"}, nil
 		},
-		promptReason: func() (string, error) {
-			promptCalls++
-			return "", nil
+		waitForApproval: func(_ context.Context, _ string, pending *model.AccessRequest) (*model.AccessRequest, error) {
+			return pending, nil
 		},
 	})
 
 	require.NoError(t, err)
 	require.Nil(t, result)
 	require.Equal(t, "ar-flag", request.ID)
-	require.Zero(t, promptCalls)
 }
 
 func TestResolveKubeConfigAccessRetriesUnchangedEndpointAfterApproval(t *testing.T) {
@@ -117,10 +117,6 @@ func TestResolveKubeConfigAccessRetriesUnchangedEndpointAfterApproval(t *testing
 		},
 		createRequest: func(context.Context, string, dataaccess.CreateAccessRequestRequest) (*model.AccessRequest, error) {
 			return &model.AccessRequest{ID: "ar-approved", Status: "APPROVED"}, nil
-		},
-		promptReason: func() (string, error) {
-			t.Fatal("approved request must not prompt for a reason")
-			return "", nil
 		},
 	})
 
@@ -147,10 +143,6 @@ func TestResolveKubeConfigAccessWaitsForAutomaticApprovalAndContinues(t *testing
 			require.Equal(t, "ar-approving", pending.ID)
 			return &model.AccessRequest{ID: pending.ID, Status: "APPROVED"}, nil
 		},
-		promptReason: func() (string, error) {
-			t.Fatal("automatic approval must not prompt for a reason")
-			return "", nil
-		},
 	})
 
 	require.NoError(t, err)
@@ -176,10 +168,6 @@ func TestResolveKubeConfigAccessWaitsWhenKubeConfigStillSeesApprovingRequest(t *
 		},
 		kubeConfigWaitTimeout:  time.Second,
 		kubeConfigPollInterval: time.Millisecond,
-		promptReason: func() (string, error) {
-			t.Fatal("automatic approval must not prompt for a reason")
-			return "", nil
-		},
 	})
 
 	require.NoError(t, err)
@@ -200,10 +188,6 @@ func TestResolveKubeConfigAccessAllowsRerunWhenKubeConfigRemainsPending(t *testi
 		},
 		kubeConfigWaitTimeout:  10 * time.Millisecond,
 		kubeConfigPollInterval: time.Millisecond,
-		promptReason: func() (string, error) {
-			t.Fatal("automatic approval must not prompt for a reason")
-			return "", nil
-		},
 	})
 
 	require.NoError(t, err)
@@ -224,10 +208,6 @@ func TestResolveKubeConfigAccessAllowsRerunWhenAutomaticApprovalIsStillRunning(t
 		waitForApproval: func(_ context.Context, _ string, pending *model.AccessRequest) (*model.AccessRequest, error) {
 			return pending, nil
 		},
-		promptReason: func() (string, error) {
-			t.Fatal("automatic approval must not prompt for a reason")
-			return "", nil
-		},
 	})
 
 	require.NoError(t, err)
@@ -246,10 +226,6 @@ func TestResolveKubeConfigAccessDoesNotMaskRequestCreationErrors(t *testing.T) {
 		createRequest: func(context.Context, string, dataaccess.CreateAccessRequestRequest) (*model.AccessRequest, error) {
 			return nil, expectedErr
 		},
-		promptReason: func() (string, error) {
-			t.Fatal("unrelated errors must not prompt")
-			return "", nil
-		},
 	})
 
 	require.ErrorIs(t, err, expectedErr)
@@ -260,12 +236,15 @@ func TestWaitForAccessRequestApprovalPollsUntilApproved(t *testing.T) {
 	request, err := waitForAccessRequestApproval(
 		t.Context(),
 		"token",
-		&model.AccessRequest{ID: "ar-test", Status: "APPROVING"},
+		&model.AccessRequest{ID: "ar-test", Status: "PENDING"},
 		func(_ context.Context, token, requestID string) (*model.AccessRequest, error) {
 			describeCalls++
 			require.Equal(t, "token", token)
 			require.Equal(t, "ar-test", requestID)
 			if describeCalls == 1 {
+				return &model.AccessRequest{ID: requestID, Status: "PENDING"}, nil
+			}
+			if describeCalls == 2 {
 				return &model.AccessRequest{ID: requestID, Status: "APPROVING"}, nil
 			}
 			return &model.AccessRequest{ID: requestID, Status: "APPROVED"}, nil
@@ -276,16 +255,16 @@ func TestWaitForAccessRequestApprovalPollsUntilApproved(t *testing.T) {
 
 	require.NoError(t, err)
 	require.Equal(t, "APPROVED", request.Status)
-	require.Equal(t, 2, describeCalls)
+	require.Equal(t, 3, describeCalls)
 }
 
 func TestWaitForAccessRequestApprovalReturnsReusableRequestOnTimeout(t *testing.T) {
 	request, err := waitForAccessRequestApproval(
 		t.Context(),
 		"token",
-		&model.AccessRequest{ID: "ar-test", Status: "APPROVING"},
+		&model.AccessRequest{ID: "ar-test", Status: "PENDING"},
 		func(_ context.Context, _, requestID string) (*model.AccessRequest, error) {
-			return &model.AccessRequest{ID: requestID, Status: "APPROVING"}, nil
+			return &model.AccessRequest{ID: requestID, Status: "PENDING"}, nil
 		},
 		10*time.Millisecond,
 		time.Millisecond,
@@ -293,33 +272,26 @@ func TestWaitForAccessRequestApprovalReturnsReusableRequestOnTimeout(t *testing.
 
 	require.NoError(t, err)
 	require.Equal(t, "ar-test", request.ID)
-	require.Equal(t, "APPROVING", request.Status)
+	require.Equal(t, "PENDING", request.Status)
 }
 
-func TestAccessRequestApprovalURL(t *testing.T) {
-	t.Run("uses backend URL", func(t *testing.T) {
-		request := &model.AccessRequest{
-			ID:          "ar-test",
-			Status:      "PENDING",
-			ApprovalURL: "https://console.example.test/review/ar-test",
-		}
-		require.Equal(t, request.ApprovalURL, accessRequestApprovalURL(request))
-	})
+func TestWaitForAccessRequestApprovalWaitsWithoutTimeoutUntilCanceled(t *testing.T) {
+	ctx, cancel := context.WithCancel(t.Context())
+	request, err := waitForAccessRequestApproval(
+		ctx,
+		"token",
+		&model.AccessRequest{ID: "ar-test", Status: "PENDING"},
+		func(_ context.Context, _, requestID string) (*model.AccessRequest, error) {
+			cancel()
+			return &model.AccessRequest{ID: requestID, Status: "PENDING"}, nil
+		},
+		0,
+		time.Hour,
+	)
 
-	t.Run("creates temporary console URL for pending request", func(t *testing.T) {
-		t.Setenv("OMNISTRATE_ROOT_DOMAIN", "example.test")
-		request := &model.AccessRequest{ID: "ar-test", Status: "PENDING"}
-		require.Equal(t, "https://example.test/access-requests/ar-test", accessRequestApprovalURL(request))
-	})
-
-	t.Run("does not create approval URL for automatic approval", func(t *testing.T) {
-		request := &model.AccessRequest{
-			ID:          "ar-test",
-			Status:      "APPROVING",
-			ApprovalURL: "https://console.example.test/review/ar-test",
-		}
-		require.Empty(t, accessRequestApprovalURL(request))
-	})
+	require.ErrorIs(t, err, context.Canceled)
+	require.Equal(t, "ar-test", request.ID)
+	require.Equal(t, "PENDING", request.Status)
 }
 
 func accessRequestBlockedKubeConfig(context.Context, string, string, string) (*openapiclientfleet.KubeConfigHostClusterResult, error) {

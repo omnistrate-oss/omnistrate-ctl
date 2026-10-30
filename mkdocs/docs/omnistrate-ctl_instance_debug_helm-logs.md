@@ -30,6 +30,7 @@ omnistrate-ctl instance debug helm-logs [instance-id] [flags]
 
 ```
   -o, --output string   Output format (text|table|json) (default "table")
+      --reason string   Reason for a new manual access request (required when manual approval is enabled)
   -v, --version         Print the version number of omnistrate-ctl
 ```
 

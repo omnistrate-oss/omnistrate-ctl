@@ -306,6 +306,28 @@ func TestDebugCommandStructure(t *testing.T) {
 	flag := debugCmd.Flags().Lookup("output")
 	require.NotNil(flag)
 	require.Equal("interactive", flag.DefValue)
+
+	reasonFlag := debugCmd.PersistentFlags().Lookup("reason")
+	require.NotNil(reasonFlag)
+	require.Empty(reasonFlag.DefValue)
+	require.NotNil(debugCmd.PersistentPreRunE)
+}
+
+func TestDeploymentCellIDsForDebug(t *testing.T) {
+	dataplane := "hc-dataplane"
+	controlPlane := "hc-control-plane"
+
+	require.Equal(t, []string{"hc-dataplane", "hc-control-plane"}, deploymentCellIDsForDebug(
+		&openapiclientfleet.ResourceInstance{
+			DeploymentCellID:             &dataplane,
+			ControlPlaneDeploymentCellID: &controlPlane,
+		}))
+	require.Equal(t, []string{"hc-dataplane"}, deploymentCellIDsForDebug(
+		&openapiclientfleet.ResourceInstance{
+			DeploymentCellID:             &dataplane,
+			ControlPlaneDeploymentCellID: &dataplane,
+		}))
+	require.Empty(t, deploymentCellIDsForDebug(nil))
 }
 
 func TestResourceDebugInfoHelmJSON(t *testing.T) {

@@ -1,7 +1,6 @@
 package deploymentcell
 
 import (
-	"context"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
@@ -32,6 +31,7 @@ var debugCmd = &cobra.Command{
 func init() {
 	debugCmd.Flags().StringP("id", "i", "", "Deployment cell ID (required)")
 	debugCmd.Flags().StringVarP(&outputDir, "output-dir", "d", "./debug-output", "Output directory to save debug logs")
+	debugCmd.Flags().String("reason", "", "Reason for a new manual access request (required when manual approval is enabled)")
 	_ = debugCmd.MarkFlagRequired("id")
 }
 
@@ -43,13 +43,23 @@ func runDebugDeploymentCell(cmd *cobra.Command, args []string) error {
 		utils.PrintError(err)
 		return err
 	}
+	reason, err := cmd.Flags().GetString("reason")
+	if err != nil {
+		utils.PrintError(err)
+		return err
+	}
 
 	token, err := common.GetTokenWithLogin()
 	if err != nil {
 		return fmt.Errorf("failed to get token: %w", err)
 	}
 
-	ctx := context.Background()
+	ctx := cmd.Context()
+	if _, err = common.EnsureDeploymentCellAccess(
+		ctx, token, deploymentCellID, "cluster-admin", reason); err != nil {
+		return fmt.Errorf("failed to obtain deployment-cell debug access: %w", err)
+	}
+
 	// Retrieve debug data from API
 	debugResult, err := dataaccess.DebugHostCluster(ctx, token, deploymentCellID)
 	if err != nil {

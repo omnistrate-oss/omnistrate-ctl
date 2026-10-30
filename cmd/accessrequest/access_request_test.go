@@ -11,9 +11,9 @@ import (
 func TestAccessRequestCommands(t *testing.T) {
 	require.Equal(t, "access-request [operation] [flags]", Cmd.Use)
 	require.Equal(t, "Manage deployment-cell access requests", Cmd.Short)
-	require.Contains(t, Cmd.Long, "approve, deny, and revoke")
+	require.Contains(t, Cmd.Long, "Configure")
 
-	expectedCommands := []string{"approve", "deny", "describe", "list", "revoke"}
+	expectedCommands := []string{"approve", "configure", "deny", "describe", "list", "revoke"}
 	require.Len(t, Cmd.Commands(), len(expectedCommands))
 	for index, expected := range expectedCommands {
 		require.Equal(t, expected, Cmd.Commands()[index].Name())
@@ -30,6 +30,9 @@ func TestAccessRequestCommandFlags(t *testing.T) {
 	require.Equal(t, "[]", listCmd.Flags().Lookup("status").DefValue)
 	require.Equal(t, "false", listCmd.Flags().Lookup("include-deleted").DefValue)
 	require.Equal(t, "0", approveCmd.Flags().Lookup("duration-minutes").DefValue)
+	require.Equal(t, "", configureCmd.Flags().Lookup("environment-type").DefValue)
+	require.Equal(t, "", configureCmd.Flags().Lookup("approval-mode").DefValue)
+	require.Equal(t, "[]", configureCmd.Flags().Lookup("approver-user-id").DefValue)
 }
 
 func TestAccessRequestCommandArguments(t *testing.T) {
@@ -43,6 +46,8 @@ func TestAccessRequestCommandArguments(t *testing.T) {
 		{name: "list rejects arguments", command: listCmd, args: []string{"extra"}, wantErr: "unknown command"},
 		{name: "approve accepts request", command: approveCmd, args: []string{"ar-12345678"}},
 		{name: "approve requires request", command: approveCmd, wantErr: "accepts 1 arg(s)"},
+		{name: "configure accepts no arguments", command: configureCmd},
+		{name: "configure rejects arguments", command: configureCmd, args: []string{"extra"}, wantErr: "unknown command"},
 		{name: "deny accepts request", command: denyCmd, args: []string{"ar-12345678"}},
 		{name: "deny requires request", command: denyCmd, wantErr: "accepts 1 arg(s)"},
 		{name: "revoke accepts request", command: revokeCmd, args: []string{"ar-12345678"}},
@@ -55,6 +60,54 @@ func TestAccessRequestCommandArguments(t *testing.T) {
 				return
 			}
 			require.ErrorContains(t, err, testCase.wantErr)
+		})
+	}
+}
+
+func TestValidateAccessRequestConfiguration(t *testing.T) {
+	for _, testCase := range []struct {
+		name            string
+		environment     string
+		mode            string
+		approvers       []string
+		wantEnvironment string
+		wantMode        string
+		wantApprovers   []string
+		wantErr         string
+	}{
+		{
+			name:            "normalizes manual configuration",
+			environment:     " global ",
+			mode:            " manual ",
+			approvers:       []string{" user-1 ", "user-1", "user-2"},
+			wantEnvironment: "GLOBAL",
+			wantMode:        "MANUAL",
+			wantApprovers:   []string{"user-1", "user-2"},
+		},
+		{
+			name:            "accepts automatic prod configuration",
+			environment:     "PROD",
+			mode:            "AUTO",
+			wantEnvironment: "PROD",
+			wantMode:        "AUTO",
+			wantApprovers:   []string{},
+		},
+		{name: "rejects unsupported environment", environment: "DEV", mode: "AUTO", wantErr: "unsupported environment type"},
+		{name: "rejects unsupported mode", environment: "GLOBAL", mode: "PROMPT", wantErr: "AUTO or MANUAL"},
+		{name: "requires manual approver", environment: "GLOBAL", mode: "MANUAL", wantErr: "at least one"},
+		{name: "rejects automatic approver", environment: "GLOBAL", mode: "AUTO", approvers: []string{"user-1"}, wantErr: "only valid with MANUAL"},
+	} {
+		t.Run(testCase.name, func(t *testing.T) {
+			environment, mode, approvers, err := validateAccessRequestConfiguration(
+				testCase.environment, testCase.mode, testCase.approvers)
+			if testCase.wantErr != "" {
+				require.ErrorContains(t, err, testCase.wantErr)
+				return
+			}
+			require.NoError(t, err)
+			require.Equal(t, testCase.wantEnvironment, environment)
+			require.Equal(t, testCase.wantMode, mode)
+			require.Equal(t, testCase.wantApprovers, approvers)
 		})
 	}
 }

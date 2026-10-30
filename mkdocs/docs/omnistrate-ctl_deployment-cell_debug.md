@@ -22,6 +22,7 @@ omnistrate-ctl deployment-cell debug [flags]
   -h, --help                help for debug
   -i, --id string           Deployment cell ID (required)
   -d, --output-dir string   Output directory to save debug logs (default "./debug-output")
+      --reason string       Reason for a new manual access request (required when manual approval is enabled)
 ```
 
 ### Options inherited from parent commands
