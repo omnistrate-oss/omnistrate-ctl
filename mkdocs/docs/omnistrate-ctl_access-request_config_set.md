@@ -1,8 +1,10 @@
 ## omnistrate-ctl access-request config set
 
-Update JIT access approval configuration and display the resulting configuration.
+Update JIT access approval configuration
 
 ### Synopsis
+
+Update JIT access approval configuration and display the resulting configuration.
 
 ```
 omnistrate-ctl access-request config set [flags]
@@ -36,4 +38,5 @@ omnistrate-ctl access-request config set --approval-mode AUTO
 
 ### SEE ALSO
 
-* [omnistrate-ctl access-request config](omnistrate-ctl_access-request_config.md) - View or update JIT access approval configuration
+* [omnistrate-ctl access-request config](omnistrate-ctl_access-request_config.md)	 - View or update JIT access approval configuration
+

@@ -2,8 +2,6 @@
 
 View or update JIT access approval configuration
 
-### Synopsis
-
 ```
 omnistrate-ctl access-request config [operation] [flags]
 ```
@@ -23,6 +21,7 @@ omnistrate-ctl access-request config [operation] [flags]
 
 ### SEE ALSO
 
-* [omnistrate-ctl access-request](omnistrate-ctl_access-request.md) - Manage deployment-cell access requests
-* [omnistrate-ctl access-request config get](omnistrate-ctl_access-request_config_get.md) - View JIT access approval configuration
-* [omnistrate-ctl access-request config set](omnistrate-ctl_access-request_config_set.md) - Update JIT access approval configuration
+* [omnistrate-ctl access-request](omnistrate-ctl_access-request.md)	 - Manage deployment-cell access requests
+* [omnistrate-ctl access-request config get](omnistrate-ctl_access-request_config_get.md)	 - View JIT access approval configuration
+* [omnistrate-ctl access-request config set](omnistrate-ctl_access-request_config_set.md)	 - Update JIT access approval configuration
+
