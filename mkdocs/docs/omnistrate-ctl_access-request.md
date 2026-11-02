@@ -27,7 +27,7 @@ omnistrate-ctl access-request [operation] [flags]
 
 * [omnistrate-ctl](omnistrate-ctl.md)	 - Manage your Omnistrate SaaS from the command line
 * [omnistrate-ctl access-request approve](omnistrate-ctl_access-request_approve.md)	 - Approve a pending access request
-* [omnistrate-ctl access-request configure](omnistrate-ctl_access-request_configure.md)	 - Configure deployment-cell access approval
+* [omnistrate-ctl access-request config](omnistrate-ctl_access-request_config.md)	 - View or update JIT access approval configuration
 * [omnistrate-ctl access-request deny](omnistrate-ctl_access-request_deny.md)	 - Deny a pending access request
 * [omnistrate-ctl access-request describe](omnistrate-ctl_access-request_describe.md)	 - Describe an access request
 * [omnistrate-ctl access-request list](omnistrate-ctl_access-request_list.md)	 - List access requests

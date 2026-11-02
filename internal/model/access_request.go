@@ -23,3 +23,19 @@ type AccessRequest struct {
 type AccessRequestList struct {
 	Requests []AccessRequest `json:"requests"`
 }
+
+// AccessRequestApprover describes a configured JIT access approver.
+type AccessRequestApprover struct {
+	UserID string `json:"userId,omitempty"`
+	Email  string `json:"email,omitempty"`
+	Name   string `json:"name,omitempty"`
+}
+
+// AccessRequestApprovalConfiguration describes one environment's JIT access
+// approval configuration.
+type AccessRequestApprovalConfiguration struct {
+	EnvironmentType string                  `json:"environmentType"`
+	ApprovalMode    string                  `json:"approvalMode"`
+	Defaulted       bool                    `json:"defaulted"`
+	Approvers       []AccessRequestApprover `json:"approvers"`
+}

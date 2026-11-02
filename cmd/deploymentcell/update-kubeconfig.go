@@ -117,6 +117,7 @@ var defaultKubeConfigAccessDependencies = kubeConfigAccessDependencies{
 			dataaccess.DescribeAccessRequest,
 			waitTimeout,
 			accessRequestApprovalPollInterval,
+			dataaccess.ListAccessRequests,
 		)
 	},
 	kubeConfigWaitTimeout:  accessRequestApprovalWaitTimeout,
@@ -208,7 +209,9 @@ func runUpdateKubeConfig(cmd *cobra.Command, args []string) error {
 		spinner.Pending()
 		sm.Stop()
 		utils.EnsureCursorRestoration()
-		printAccessRequestApprovalWait(request)
+		approvers, _ := dataaccess.GetConfiguredAccessRequestApprovers(
+			ctx, token, request.EnvironmentType)
+		printAccessRequestApprovalWait(request, approvers)
 		waitingForManualApproval = true
 	}
 	accessDependencies.onApprovalGranted = func(request *model.AccessRequest) {
@@ -226,6 +229,16 @@ func runUpdateKubeConfig(cmd *cobra.Command, args []string) error {
 		accessDependencies,
 	)
 	if err != nil {
+		if common.IsDeniedAccessRequest(accessRequest, err) {
+			if !waitingForManualApproval {
+				spinner.UpdateMessage("Access request denied")
+				spinner.Pending()
+				sm.Stop()
+				utils.EnsureCursorRestoration()
+			}
+			printAccessRequestMessage(common.DeniedAccessRequestMessage(accessRequest))
+			return nil
+		}
 		utils.HandleSpinnerError(spinner, sm, fmt.Errorf("failed to get kubeconfig for deployment cell %s: %w", deploymentCellID, err))
 		return err
 	}
@@ -353,7 +366,7 @@ func resolveKubeConfigAccess(
 		Reason:           optionalString(requestReason),
 	})
 	if requestErr != nil && requestReason == "" && dataaccess.IsManualAccessReasonRequiredError(requestErr) {
-		return nil, nil, fmt.Errorf("manual deployment-cell access requires --reason")
+		return nil, nil, fmt.Errorf("JIT access requires manual approval for this organization. Specify a reason with --reason and try again")
 	}
 	if requestErr != nil {
 		return nil, nil, requestErr
@@ -411,7 +424,7 @@ func resolveKubeConfigAccess(
 	case "PENDING", "APPROVING":
 		return nil, accessRequest, nil
 	default:
-		return nil, accessRequest, fmt.Errorf("access request %s is %s", accessRequest.ID, accessRequest.Status)
+		return nil, accessRequest, kubeConfigAccessRequestStateError(accessRequest.ID, accessRequest.Status)
 	}
 }
 
@@ -458,6 +471,7 @@ func waitForAccessRequestApproval(
 	describeRequest func(context.Context, string, string) (*model.AccessRequest, error),
 	timeout time.Duration,
 	pollInterval time.Duration,
+	listRequests ...func(context.Context, string, dataaccess.ListAccessRequestsOptions) (*model.AccessRequestList, error),
 ) (*model.AccessRequest, error) {
 	if request == nil {
 		return nil, fmt.Errorf("access request is required")
@@ -479,6 +493,17 @@ func waitForAccessRequestApproval(
 		if err != nil {
 			if waitCtx.Err() == context.DeadlineExceeded {
 				return current, nil
+			}
+			if dataaccess.IsAccessRequestNotFound(err) {
+				var list func(context.Context, string, dataaccess.ListAccessRequestsOptions) (*model.AccessRequestList, error)
+				if len(listRequests) > 0 {
+					list = listRequests[0]
+				}
+				terminal := findDeletedKubeConfigAccessRequest(waitCtx, token, current.ID, list)
+				if terminal != nil {
+					return terminal, kubeConfigAccessRequestStateError(terminal.ID, terminal.Status)
+				}
+				return current, fmt.Errorf("access request %s is no longer available", current.ID)
 			}
 			return current, err
 		}
@@ -541,12 +566,53 @@ func printAccessRequestInstructions(request *model.AccessRequest) {
 	}
 }
 
-func printAccessRequestApprovalWait(request *model.AccessRequest) {
+func findDeletedKubeConfigAccessRequest(
+	ctx context.Context,
+	token string,
+	requestID string,
+	list func(context.Context, string, dataaccess.ListAccessRequestsOptions) (*model.AccessRequestList, error),
+) *model.AccessRequest {
+	if list == nil {
+		return nil
+	}
+	requests, err := list(ctx, token, dataaccess.ListAccessRequestsOptions{
+		Statuses:       []string{"DENIED", "REVOKED", "EXPIRED"},
+		IncludeDeleted: true,
+	})
+	if err != nil || requests == nil {
+		return nil
+	}
+	for index := range requests.Requests {
+		if requests.Requests[index].ID == requestID {
+			return &requests.Requests[index]
+		}
+	}
+	return nil
+}
+
+func kubeConfigAccessRequestStateError(requestID, status string) error {
+	switch strings.ToUpper(strings.TrimSpace(status)) {
+	case "DENIED":
+		return fmt.Errorf("access request %s was denied", requestID)
+	case "REVOKED":
+		return fmt.Errorf("access request %s was revoked", requestID)
+	case "EXPIRED":
+		return fmt.Errorf("access request %s expired", requestID)
+	default:
+		return fmt.Errorf("access request %s is %s", requestID, status)
+	}
+}
+
+func printAccessRequestApprovalWait(request *model.AccessRequest, approvers []string) {
 	if request == nil {
 		return
 	}
 	printAccessRequestMessage(fmt.Sprintf("Access request %s is pending approval.", request.ID))
-	printAccessRequestMessage(fmt.Sprintf("Ask a configured approver to approve access request %s.", request.ID))
+	if len(approvers) > 0 {
+		printAccessRequestMessage(fmt.Sprintf("Configured approvers: %s", strings.Join(approvers, ", ")))
+	} else {
+		printAccessRequestMessage(fmt.Sprintf("Ask a configured approver to approve access request %s.", request.ID))
+	}
 	printAccessRequestMessage("Waiting for approval. This command will continue automatically once approved.")
 }
 

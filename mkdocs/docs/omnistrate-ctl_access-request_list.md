@@ -4,7 +4,7 @@ List access requests
 
 ### Synopsis
 
-List access requests visible to the authenticated service-provider organization.
+List access requests currently exposed by the backend to the authenticated service-provider organization. Revoked-request visibility is controlled by backend retention policy.
 
 ```
 omnistrate-ctl access-request list [flags]
@@ -13,9 +13,8 @@ omnistrate-ctl access-request list [flags]
 ### Options
 
 ```
-  -h, --help              help for list
-      --include-deleted   Include denied, revoked, and expired request history
-      --status strings    Filter by lifecycle status (comma-separated or repeated)
+  -h, --help             help for list
+      --status strings   Filter backend-visible requests by lifecycle status (comma-separated or repeated)
 ```
 
 ### Options inherited from parent commands

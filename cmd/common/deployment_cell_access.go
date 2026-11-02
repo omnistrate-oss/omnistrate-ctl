@@ -18,19 +18,23 @@ const (
 )
 
 type deploymentCellAccessDependencies struct {
-	create       func(context.Context, string, dataaccess.CreateAccessRequestRequest) (*model.AccessRequest, error)
-	describe     func(context.Context, string, string) (*model.AccessRequest, error)
-	output       io.Writer
-	pollInterval time.Duration
-	autoTimeout  time.Duration
+	create              func(context.Context, string, dataaccess.CreateAccessRequestRequest) (*model.AccessRequest, error)
+	describe            func(context.Context, string, string) (*model.AccessRequest, error)
+	list                func(context.Context, string, dataaccess.ListAccessRequestsOptions) (*model.AccessRequestList, error)
+	configuredApprovers func(context.Context, string, string) ([]string, error)
+	output              io.Writer
+	pollInterval        time.Duration
+	autoTimeout         time.Duration
 }
 
 var defaultDeploymentCellAccessDependencies = deploymentCellAccessDependencies{
-	create:       dataaccess.CreateAccessRequest,
-	describe:     dataaccess.DescribeAccessRequest,
-	output:       os.Stderr,
-	pollInterval: deploymentCellAccessPollInterval,
-	autoTimeout:  deploymentCellAccessApprovalTimeout,
+	create:              dataaccess.CreateAccessRequest,
+	describe:            dataaccess.DescribeAccessRequest,
+	list:                dataaccess.ListAccessRequests,
+	configuredApprovers: dataaccess.GetConfiguredAccessRequestApprovers,
+	output:              os.Stderr,
+	pollInterval:        deploymentCellAccessPollInterval,
+	autoTimeout:         deploymentCellAccessApprovalTimeout,
 }
 
 // EnsureDeploymentCellAccess creates or reuses an access request and waits
@@ -79,7 +83,7 @@ func ensureDeploymentCellAccess(
 	})
 	if err != nil {
 		if reason == "" && dataaccess.IsManualAccessReasonRequiredError(err) {
-			return nil, fmt.Errorf("manual deployment-cell access requires --reason")
+			return nil, fmt.Errorf("JIT access requires manual approval for this organization. Specify a reason with --reason and try again")
 		}
 		return nil, err
 	}
@@ -101,13 +105,18 @@ func ensureDeploymentCellAccess(
 			return request, nil
 		case "PENDING":
 			if !approvalMessageShown {
-				printDeploymentCellApprovalWait(dependencies.output, request.ID)
+				approvers := []string(nil)
+				if dependencies.configuredApprovers != nil {
+					approvers, _ = dependencies.configuredApprovers(
+						waitCtx, token, request.EnvironmentType)
+				}
+				printDeploymentCellApprovalWait(dependencies.output, request.ID, approvers)
 				approvalMessageShown = true
 			}
 		case "APPROVING":
 			// Automatic approval is in progress; continue polling.
 		default:
-			return request, fmt.Errorf("access request %s is %s", request.ID, request.Status)
+			return request, accessRequestStateError(request.ID, request.Status)
 		}
 
 		select {
@@ -119,10 +128,19 @@ func ensureDeploymentCellAccess(
 		case <-time.After(dependencies.pollInterval):
 		}
 
-		request, err = dependencies.describe(waitCtx, token, request.ID)
+		requestID := request.ID
+		updatedRequest, err := dependencies.describe(waitCtx, token, requestID)
 		if err != nil {
+			if dataaccess.IsAccessRequestNotFound(err) {
+				terminal := findDeletedAccessRequest(waitCtx, token, requestID, dependencies.list)
+				if terminal != nil {
+					return terminal, accessRequestStateError(terminal.ID, terminal.Status)
+				}
+				return request, fmt.Errorf("access request %s is no longer available", requestID)
+			}
 			return request, err
 		}
+		request = updatedRequest
 		if request == nil {
 			return nil, fmt.Errorf("access request API returned no request while waiting for approval")
 		}
@@ -136,8 +154,63 @@ func optionalAccessReason(reason string) *string {
 	return &reason
 }
 
-func printDeploymentCellApprovalWait(output io.Writer, requestID string) {
+func findDeletedAccessRequest(
+	ctx context.Context,
+	token string,
+	requestID string,
+	list func(context.Context, string, dataaccess.ListAccessRequestsOptions) (*model.AccessRequestList, error),
+) *model.AccessRequest {
+	if list == nil {
+		return nil
+	}
+	requests, err := list(ctx, token, dataaccess.ListAccessRequestsOptions{
+		Statuses:       []string{"DENIED", "REVOKED", "EXPIRED"},
+		IncludeDeleted: true,
+	})
+	if err != nil || requests == nil {
+		return nil
+	}
+	for index := range requests.Requests {
+		if requests.Requests[index].ID == requestID {
+			return &requests.Requests[index]
+		}
+	}
+	return nil
+}
+
+func accessRequestStateError(requestID, status string) error {
+	switch strings.ToUpper(strings.TrimSpace(status)) {
+	case "DENIED":
+		return fmt.Errorf("access request %s was denied", requestID)
+	case "REVOKED":
+		return fmt.Errorf("access request %s was revoked", requestID)
+	case "EXPIRED":
+		return fmt.Errorf("access request %s expired", requestID)
+	default:
+		return fmt.Errorf("access request %s is %s", requestID, status)
+	}
+}
+
+// IsDeniedAccessRequest reports whether an access operation stopped because
+// the known request reached DENIED state.
+func IsDeniedAccessRequest(request *model.AccessRequest, err error) bool {
+	return err != nil && request != nil && strings.EqualFold(request.Status, "DENIED")
+}
+
+// DeniedAccessRequestMessage returns the customer-facing denial message.
+func DeniedAccessRequestMessage(request *model.AccessRequest) string {
+	if request == nil {
+		return "Access request was denied."
+	}
+	return fmt.Sprintf("Access request %s was denied.", request.ID)
+}
+
+func printDeploymentCellApprovalWait(output io.Writer, requestID string, approvers []string) {
 	_, _ = fmt.Fprintf(output, "Access request %s is pending approval.\n", requestID)
-	_, _ = fmt.Fprintf(output, "Ask a configured approver to approve access request %s.\n", requestID)
+	if len(approvers) > 0 {
+		_, _ = fmt.Fprintf(output, "Configured approvers: %s\n", strings.Join(approvers, ", "))
+	} else {
+		_, _ = fmt.Fprintf(output, "Ask a configured approver to approve access request %s.\n", requestID)
+	}
 	_, _ = fmt.Fprintln(output, "Waiting for approval. This command will continue automatically once approved.")
 }

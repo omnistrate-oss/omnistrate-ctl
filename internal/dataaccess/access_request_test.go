@@ -3,6 +3,7 @@ package dataaccess
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -156,6 +157,13 @@ func TestAccessRequestAPIErrors(t *testing.T) {
 			assert.Nil(t, result)
 		})
 	}
+}
+
+func TestAccessRequestNotFoundClassification(t *testing.T) {
+	err := &AccessRequestAPIError{StatusCode: http.StatusNotFound, Name: "not_found", Message: "access request not found"}
+	assert.True(t, IsAccessRequestNotFound(err))
+	assert.True(t, IsAccessRequestNotFound(fmt.Errorf("describe request: %w", err)))
+	assert.False(t, IsAccessRequestNotFound(errors.New("not found")))
 }
 
 func TestAccessRequestErrorClassification(t *testing.T) {

@@ -3,11 +3,20 @@ package dataaccess
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
+	"strings"
 
 	"github.com/omnistrate-oss/omnistrate-ctl/internal/model"
 	"github.com/omnistrate-oss/omnistrate-ctl/internal/utils"
 	openapiclient "github.com/omnistrate-oss/omnistrate-sdk-go/v1"
+)
+
+const (
+	AccessApprovalModeAuto   = "AUTO"
+	AccessApprovalModeManual = "MANUAL"
+	AccessEnvironmentGlobal  = "GLOBAL"
+	AccessEnvironmentProd    = "PROD"
 )
 
 func GetServiceProviderOrganization(ctx context.Context, token string) (res *openapiclient.DescribeServiceProviderOrganizationResult, err error) {
@@ -29,6 +38,192 @@ func GetServiceProviderOrganization(ctx context.Context, token string) (res *ope
 	}
 
 	return
+}
+
+// GetOrganizationUsers returns users in the authenticated organization.
+func GetOrganizationUsers(ctx context.Context, token string) (users []openapiclient.OrgUsers, err error) {
+	ctxWithToken := context.WithValue(ctx, openapiclient.ContextAccessToken, token)
+	apiClient := getV1Client()
+
+	var response *http.Response
+	defer func() {
+		if response != nil {
+			_ = response.Body.Close()
+		}
+	}()
+
+	result, response, err := apiClient.UsersApiAPI.UsersApiDescribeUsersByOrg(ctxWithToken).Execute()
+	if err = handleV1Error(err); err != nil {
+		return nil, err
+	}
+	if result == nil {
+		return nil, fmt.Errorf("organization users API returned no result")
+	}
+	return result.OrgUsers, nil
+}
+
+// ResolveAccessRequestEnvironment returns an explicit environment or selects
+// GLOBAL/PROD from the organization's deployment-cell mode.
+func ResolveAccessRequestEnvironment(
+	organization *openapiclient.DescribeServiceProviderOrganizationResult,
+	environment string,
+) (string, error) {
+	environment = strings.ToUpper(strings.TrimSpace(environment))
+	if environment != "" {
+		if environment != AccessEnvironmentGlobal && environment != AccessEnvironmentProd {
+			return "", fmt.Errorf("environment type must be GLOBAL or PROD")
+		}
+		return environment, nil
+	}
+	if organization == nil || organization.IsPerEnvClusterEnabled == nil {
+		return "", fmt.Errorf("unable to determine the default environment type; specify --environment-type GLOBAL or PROD")
+	}
+	if *organization.IsPerEnvClusterEnabled {
+		return AccessEnvironmentProd, nil
+	}
+	return AccessEnvironmentGlobal, nil
+}
+
+type rawAccessRequestApprovalConfiguration struct {
+	ApprovalMode  string `json:"approvalMode"`
+	Defaulted     bool   `json:"defaulted"`
+	ApproverUsers []struct {
+		UserID string `json:"userId"`
+	} `json:"approverUsers"`
+}
+
+// AccessRequestApprovalConfiguration reads the effective JIT configuration.
+// Missing configurations are treated as defaulted AUTO without writing them.
+func AccessRequestApprovalConfiguration(
+	organization *openapiclient.DescribeServiceProviderOrganizationResult,
+	users []openapiclient.OrgUsers,
+	environment string,
+) (*model.AccessRequestApprovalConfiguration, error) {
+	configuration := rawAccessRequestApprovalConfiguration{
+		ApprovalMode: AccessApprovalModeAuto,
+		Defaulted:    true,
+	}
+	if organization != nil && organization.AdditionalProperties != nil {
+		if configurations, ok := organization.AdditionalProperties["justInTimeAccessConfigurations"]; ok {
+			encoded, err := json.Marshal(configurations)
+			if err != nil {
+				return nil, fmt.Errorf("failed to read JIT access configurations: %w", err)
+			}
+			var byEnvironment map[string]rawAccessRequestApprovalConfiguration
+			if err = json.Unmarshal(encoded, &byEnvironment); err != nil {
+				return nil, fmt.Errorf("failed to decode JIT access configurations: %w", err)
+			}
+			if configured, found := byEnvironment[environment]; found {
+				configuration = configured
+			}
+		}
+	}
+
+	if configuration.ApprovalMode == "" {
+		configuration.ApprovalMode = AccessApprovalModeAuto
+	}
+	usersByID := make(map[string]openapiclient.OrgUsers, len(users))
+	for _, user := range users {
+		usersByID[user.UserId] = user
+	}
+	approvers := make([]model.AccessRequestApprover, 0, len(configuration.ApproverUsers))
+	for _, configured := range configuration.ApproverUsers {
+		approver := model.AccessRequestApprover{UserID: configured.UserID}
+		if user, found := usersByID[configured.UserID]; found {
+			approver.Email = user.Email
+			approver.Name = user.Name
+		}
+		approvers = append(approvers, approver)
+	}
+	return &model.AccessRequestApprovalConfiguration{
+		EnvironmentType: environment,
+		ApprovalMode:    strings.ToUpper(configuration.ApprovalMode),
+		Defaulted:       configuration.Defaulted,
+		Approvers:       approvers,
+	}, nil
+}
+
+// ResolveAccessRequestApproverEmails resolves unique approver emails to user IDs.
+func ResolveAccessRequestApproverEmails(users []openapiclient.OrgUsers, emails []string) ([]string, error) {
+	usersByEmail := make(map[string][]openapiclient.OrgUsers, len(users))
+	for _, user := range users {
+		email := strings.ToLower(strings.TrimSpace(user.Email))
+		if email != "" {
+			usersByEmail[email] = append(usersByEmail[email], user)
+		}
+	}
+
+	userIDs := make([]string, 0, len(emails))
+	seenEmails := make(map[string]bool, len(emails))
+	for _, input := range emails {
+		email := strings.ToLower(strings.TrimSpace(input))
+		if email == "" || seenEmails[email] {
+			continue
+		}
+		seenEmails[email] = true
+		matches := usersByEmail[email]
+		switch len(matches) {
+		case 0:
+			return nil, fmt.Errorf("no organization user found for approver email %s", strings.TrimSpace(input))
+		case 1:
+			userIDs = append(userIDs, matches[0].UserId)
+		default:
+			return nil, fmt.Errorf("multiple organization users found for approver email %s", strings.TrimSpace(input))
+		}
+	}
+	return userIDs, nil
+}
+
+// GetAccessRequestApprovalConfiguration loads the effective configuration and
+// resolves configured approvers to organization user details.
+func GetAccessRequestApprovalConfiguration(
+	ctx context.Context,
+	token string,
+	environment string,
+) (*model.AccessRequestApprovalConfiguration, error) {
+	organization, err := GetServiceProviderOrganization(ctx, token)
+	if err != nil {
+		return nil, err
+	}
+	environment, err = ResolveAccessRequestEnvironment(organization, environment)
+	if err != nil {
+		return nil, err
+	}
+	configuration, err := AccessRequestApprovalConfiguration(organization, nil, environment)
+	if err != nil {
+		return nil, err
+	}
+	if len(configuration.Approvers) == 0 {
+		return configuration, nil
+	}
+	users, err := GetOrganizationUsers(ctx, token)
+	if err != nil {
+		return nil, err
+	}
+	return AccessRequestApprovalConfiguration(organization, users, environment)
+}
+
+// GetConfiguredAccessRequestApprovers returns configured approver emails,
+// falling back to user IDs for stale configuration entries.
+func GetConfiguredAccessRequestApprovers(ctx context.Context, token, environment string) ([]string, error) {
+	configuration, err := GetAccessRequestApprovalConfiguration(ctx, token, environment)
+	if err != nil {
+		return nil, err
+	}
+	approvers := make([]string, 0, len(configuration.Approvers))
+	seen := make(map[string]bool, len(configuration.Approvers))
+	for _, approver := range configuration.Approvers {
+		contact := strings.TrimSpace(approver.Email)
+		if contact == "" {
+			contact = strings.TrimSpace(approver.UserID)
+		}
+		normalized := strings.ToLower(contact)
+		if contact != "" && !seen[normalized] {
+			seen[normalized] = true
+			approvers = append(approvers, contact)
+		}
+	}
+	return approvers, nil
 }
 
 func convertTemplateToOpenAPIFormat(deploymentConfig model.DeploymentCellTemplate, cloudProvider string) openapiclient.DeploymentCellConfigurations {

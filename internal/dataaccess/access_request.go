@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -35,6 +36,30 @@ type ListAccessRequestsOptions struct {
 // ApproveAccessRequestRequest contains optional manual approval settings.
 type ApproveAccessRequestRequest struct {
 	DurationMinutes *int `json:"durationMinutes,omitempty"`
+}
+
+// AccessRequestAPIError preserves the HTTP and API error details returned by
+// access-request endpoints while retaining the existing customer-facing text.
+type AccessRequestAPIError struct {
+	StatusCode int
+	Name       string
+	Message    string
+}
+
+func (e *AccessRequestAPIError) Error() string {
+	if e.Name != "" && e.Message != "" {
+		return fmt.Sprintf("%s\nDetail: %s", e.Name, e.Message)
+	}
+	if e.Message != "" {
+		return fmt.Sprintf("access request API returned %d: %s", e.StatusCode, e.Message)
+	}
+	return fmt.Sprintf("access request API returned %d", e.StatusCode)
+}
+
+// IsAccessRequestNotFound reports whether the access-request API returned 404.
+func IsAccessRequestNotFound(err error) bool {
+	var apiError *AccessRequestAPIError
+	return errors.As(err, &apiError) && apiError.StatusCode == http.StatusNotFound
 }
 
 func accessRequestURL(pathSegments ...string) string {
@@ -86,12 +111,16 @@ func doAccessRequest(ctx context.Context, token, method, requestURL string, body
 			Message string `json:"message"`
 		}
 		if json.Unmarshal(responseBody, &apiError) == nil && apiError.Message != "" {
-			if apiError.Name != "" {
-				return fmt.Errorf("%s\nDetail: %s", apiError.Name, apiError.Message)
+			return &AccessRequestAPIError{
+				StatusCode: response.StatusCode,
+				Name:       apiError.Name,
+				Message:    apiError.Message,
 			}
-			return fmt.Errorf("access request API returned %d: %s", response.StatusCode, apiError.Message)
 		}
-		return fmt.Errorf("access request API returned %d: %s", response.StatusCode, strings.TrimSpace(string(responseBody)))
+		return &AccessRequestAPIError{
+			StatusCode: response.StatusCode,
+			Message:    strings.TrimSpace(string(responseBody)),
+		}
 	}
 
 	if result != nil {

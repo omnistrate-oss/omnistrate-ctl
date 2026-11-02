@@ -14,6 +14,7 @@ import (
 	"github.com/omnistrate-oss/omnistrate-ctl/cmd/common"
 	"github.com/omnistrate-oss/omnistrate-ctl/internal/config"
 	"github.com/omnistrate-oss/omnistrate-ctl/internal/dataaccess"
+	"github.com/omnistrate-oss/omnistrate-ctl/internal/model"
 	"github.com/omnistrate-oss/omnistrate-ctl/internal/utils"
 )
 
@@ -48,8 +49,13 @@ func runDebugDeploymentCell(cmd *cobra.Command, args []string) error {
 	}
 
 	ctx := cmd.Context()
-	if _, err = common.EnsureDeploymentCellAccess(
+	var accessRequest *model.AccessRequest
+	if accessRequest, err = common.EnsureDeploymentCellAccess(
 		ctx, token, deploymentCellID, "cluster-admin", deploymentCellDebugAccessReason(deploymentCellID)); err != nil {
+		if common.IsDeniedAccessRequest(accessRequest, err) {
+			fmt.Println(common.DeniedAccessRequestMessage(accessRequest))
+			return nil
+		}
 		return fmt.Errorf("failed to obtain deployment-cell debug access: %w", err)
 	}
 

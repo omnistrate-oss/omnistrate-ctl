@@ -8,6 +8,7 @@ import (
 
 	"github.com/omnistrate-oss/omnistrate-ctl/cmd/common"
 	"github.com/omnistrate-oss/omnistrate-ctl/internal/dataaccess"
+	"github.com/omnistrate-oss/omnistrate-ctl/internal/model"
 	openapiclientfleet "github.com/omnistrate-oss/omnistrate-sdk-go/fleet"
 	"github.com/spf13/cobra"
 )
@@ -45,8 +46,13 @@ func ensureInstanceDebugAccess(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("instance %s has no deployment cell", instanceID)
 	}
 	for _, deploymentCellID := range deploymentCellIDs {
-		if _, err = common.EnsureDeploymentCellAccess(
+		var accessRequest *model.AccessRequest
+		if accessRequest, err = common.EnsureDeploymentCellAccess(
 			ctx, token, deploymentCellID, "cluster-admin", instanceDebugAccessReason(instanceID)); err != nil {
+			if common.IsDeniedAccessRequest(accessRequest, err) {
+				fmt.Println(common.DeniedAccessRequestMessage(accessRequest))
+				return nil
+			}
 			return fmt.Errorf("failed to obtain debug access to deployment cell %s: %w", deploymentCellID, err)
 		}
 	}

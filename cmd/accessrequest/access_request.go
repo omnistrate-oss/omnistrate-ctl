@@ -18,7 +18,7 @@ func init() {
 	Cmd.AddCommand(describeCmd)
 	Cmd.AddCommand(listCmd)
 	Cmd.AddCommand(approveCmd)
-	Cmd.AddCommand(configureCmd)
+	Cmd.AddCommand(configCmd)
 	Cmd.AddCommand(denyCmd)
 	Cmd.AddCommand(revokeCmd)
 }

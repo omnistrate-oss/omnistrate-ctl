@@ -3,6 +3,7 @@ package deploymentcell
 import (
 	"context"
 	"errors"
+	"net/http"
 	"testing"
 	"time"
 
@@ -83,7 +84,7 @@ func TestResolveKubeConfigAccessRequiresReasonFlagForNewManualRequest(t *testing
 		},
 	})
 
-	require.ErrorContains(t, err, "requires --reason")
+	require.ErrorContains(t, err, "Specify a reason with --reason")
 	require.Nil(t, result)
 	require.Nil(t, request)
 	require.Equal(t, 1, createCalls)
@@ -292,6 +293,28 @@ func TestWaitForAccessRequestApprovalWaitsWithoutTimeoutUntilCanceled(t *testing
 	require.ErrorIs(t, err, context.Canceled)
 	require.Equal(t, "ar-test", request.ID)
 	require.Equal(t, "PENDING", request.Status)
+}
+
+func TestWaitForAccessRequestApprovalReportsDeniedDeletedRequest(t *testing.T) {
+	notFound := &dataaccess.AccessRequestAPIError{StatusCode: http.StatusNotFound, Name: "not_found", Message: "access request not found"}
+	request, err := waitForAccessRequestApproval(
+		t.Context(),
+		"token",
+		&model.AccessRequest{ID: "ar-denied", Status: "PENDING"},
+		func(context.Context, string, string) (*model.AccessRequest, error) {
+			return nil, notFound
+		},
+		time.Second,
+		time.Millisecond,
+		func(_ context.Context, _ string, options dataaccess.ListAccessRequestsOptions) (*model.AccessRequestList, error) {
+			require.True(t, options.IncludeDeleted)
+			return &model.AccessRequestList{Requests: []model.AccessRequest{{ID: "ar-denied", Status: "DENIED"}}}, nil
+		},
+	)
+
+	require.Equal(t, "DENIED", request.Status)
+	require.ErrorContains(t, err, "was denied")
+	require.NotContains(t, err.Error(), "not_found")
 }
 
 func accessRequestBlockedKubeConfig(context.Context, string, string, string) (*openapiclientfleet.KubeConfigHostClusterResult, error) {
