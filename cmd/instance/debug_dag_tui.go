@@ -168,7 +168,8 @@ func (m dagModel) Init() tea.Cmd {
 
 func (m dagModel) fetchWorkflowProgressForDAG() tea.Cmd {
 	return func() tea.Msg {
-		ctx := context.Background()
+		ctx, cancel := instanceDebugFetchContext(context.Background(), instanceDebugInitialFetchTimeout)
+		defer cancel()
 		data := m.debugData
 		// Build progress in a temporary plan to avoid shared-state race
 		tmpPlan := &PlanDAG{Nodes: m.plan.Nodes, Levels: m.plan.Levels}
@@ -186,7 +187,8 @@ func (m dagModel) fetchWorkflowProgressForDAG() tea.Cmd {
 
 func (m dagModel) fetchTerraformProgressForDAG() tea.Cmd {
 	return func() tea.Msg {
-		ctx := context.Background()
+		ctx, cancel := instanceDebugFetchContext(context.Background(), instanceDebugInitialFetchTimeout)
+		defer cancel()
 		data := m.debugData
 
 		updateMsg := tfProgressUpdateMsg{
@@ -687,7 +689,8 @@ func scheduleDagRefresh() tea.Cmd {
 
 func (m dagModel) fetchDagRefresh() tea.Cmd {
 	return func() tea.Msg {
-		ctx := context.Background()
+		ctx, cancel := instanceDebugFetchContext(context.Background(), instanceDebugProgressFetchTimeout)
+		defer cancel()
 		data := m.debugData
 
 		// Fetch workflow progress

@@ -42,6 +42,7 @@ omnistrate-ctl [flags]
 
 ### SEE ALSO
 
+* [omnistrate-ctl access-request](omnistrate-ctl_access-request.md)	 - Manage deployment-cell access requests
 * [omnistrate-ctl account](omnistrate-ctl_account.md)	 - Manage your Cloud Provider Accounts
 * [omnistrate-ctl agent](omnistrate-ctl_agent.md)	 - Manage AI agent configurations and skills
 * [omnistrate-ctl alarms](omnistrate-ctl_alarms.md)	 - Manage alarms and notification channels

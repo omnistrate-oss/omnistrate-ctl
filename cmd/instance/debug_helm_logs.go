@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/omnistrate-oss/omnistrate-ctl/cmd/common"
 	"github.com/omnistrate-oss/omnistrate-ctl/internal/dataaccess"
 	"github.com/spf13/cobra"
 )
@@ -47,7 +46,7 @@ func runDebugHelmLogs(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to get resource-key flag: %w", err)
 	}
 
-	token, err := common.GetTokenWithLogin()
+	token, err := instanceDebugToken(cmd)
 	if err != nil {
 		return fmt.Errorf("failed to get token: %w", err)
 	}

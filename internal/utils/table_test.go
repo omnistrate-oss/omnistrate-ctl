@@ -1,9 +1,12 @@
 package utils
 
 import (
+	"bytes"
 	"encoding/json"
-	"github.com/stretchr/testify/require"
+	"strings"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 )
 
 func TestTablePrint(t *testing.T) {
@@ -17,6 +20,17 @@ func TestTablePrint(t *testing.T) {
 	// -----------------------
 	// John Doe  30   USA
 	// Jane Doe  25   Canada
+}
+
+func TestTablePreservesExplicitColumnOrder(t *testing.T) {
+	table := NewTableWithColumnOrder([]string{"id", "status", "createdAt"})
+	table.AddRow([]any{"ar-test", "PENDING", "2026-11-02T00:00:00Z"})
+
+	var output bytes.Buffer
+	table.PrintToWriter(&output)
+	header := output.String()
+	require.Less(t, strings.Index(header, "id"), strings.Index(header, "status"))
+	require.Less(t, strings.Index(header, "status"), strings.Index(header, "createdAt"))
 }
 
 func TestTablePrintEmpty(t *testing.T) {
