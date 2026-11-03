@@ -311,7 +311,8 @@ func scheduleProgressRefresh() tea.Cmd {
 
 func (m terraformDetailModel) fetchProgressOnly() tea.Cmd {
 	return func() tea.Msg {
-		ctx := context.Background()
+		ctx, cancel := instanceDebugFetchContext(context.Background(), instanceDebugProgressFetchTimeout)
+		defer cancel()
 		instanceData, err := fetchInstanceDataForResource(
 			ctx, m.debugData.Token, m.debugData.ServiceID, m.debugData.EnvironmentID, m.debugData.InstanceID,
 		)
@@ -336,7 +337,8 @@ func (m terraformDetailModel) fetchProgressOnly() tea.Cmd {
 
 func (m terraformDetailModel) fetchData() tea.Cmd {
 	return func() tea.Msg {
-		ctx := context.Background()
+		ctx, cancel := instanceDebugFetchContext(context.Background(), instanceDebugInitialFetchTimeout)
+		defer cancel()
 		instanceData, err := fetchInstanceDataForResource(
 			ctx, m.debugData.Token, m.debugData.ServiceID, m.debugData.EnvironmentID, m.debugData.InstanceID,
 		)

@@ -1,7 +1,6 @@
 package deploymentcell
 
 import (
-	"context"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
@@ -15,6 +14,7 @@ import (
 	"github.com/omnistrate-oss/omnistrate-ctl/cmd/common"
 	"github.com/omnistrate-oss/omnistrate-ctl/internal/config"
 	"github.com/omnistrate-oss/omnistrate-ctl/internal/dataaccess"
+	"github.com/omnistrate-oss/omnistrate-ctl/internal/model"
 	"github.com/omnistrate-oss/omnistrate-ctl/internal/utils"
 )
 
@@ -43,13 +43,22 @@ func runDebugDeploymentCell(cmd *cobra.Command, args []string) error {
 		utils.PrintError(err)
 		return err
 	}
-
 	token, err := common.GetTokenWithLogin()
 	if err != nil {
 		return fmt.Errorf("failed to get token: %w", err)
 	}
 
-	ctx := context.Background()
+	ctx := cmd.Context()
+	var accessRequest *model.AccessRequest
+	if accessRequest, err = common.EnsureDeploymentCellAccess(
+		ctx, token, deploymentCellID, "cluster-admin", deploymentCellDebugAccessReason(deploymentCellID)); err != nil {
+		if common.IsDeniedAccessRequest(accessRequest, err) {
+			fmt.Println(common.DeniedAccessRequestMessage(accessRequest))
+			return nil
+		}
+		return fmt.Errorf("failed to obtain deployment-cell debug access: %w", err)
+	}
+
 	// Retrieve debug data from API
 	debugResult, err := dataaccess.DebugHostCluster(ctx, token, deploymentCellID)
 	if err != nil {
@@ -108,4 +117,8 @@ func runDebugDeploymentCell(cmd *cobra.Command, args []string) error {
 	}
 
 	return nil
+}
+
+func deploymentCellDebugAccessReason(deploymentCellID string) string {
+	return fmt.Sprintf("Debug deployment cell %s using omnistrate-ctl", deploymentCellID)
 }

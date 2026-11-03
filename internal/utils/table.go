@@ -18,15 +18,13 @@ type Table struct {
 }
 
 func NewTable(columns []any) (t *Table) {
-	t = &Table{}
-
 	columnsAsStrings := make([]string, 0, len(columns))
 	for _, column := range columns {
 		columnsAsStrings = append(columnsAsStrings, fmt.Sprintf("%v", column))
 	}
 
 	// Sort the columns with "name" first, then alphabetically
-	t.columns = columnsAsStrings
+	t = newTableWithColumns(columnsAsStrings)
 	slices.SortFunc(t.columns, func(a, b string) int {
 		// "name" always comes first
 		if a == "name" {
@@ -44,6 +42,15 @@ func NewTable(columns []any) (t *Table) {
 	})
 
 	return
+}
+
+// NewTableWithColumnOrder creates a table without sorting the supplied columns.
+func NewTableWithColumnOrder(columns []string) *Table {
+	return newTableWithColumns(columns)
+}
+
+func newTableWithColumns(columns []string) *Table {
+	return &Table{columns: append([]string(nil), columns...)}
 }
 
 func NewTableFromJSONTemplate(data json.RawMessage) (t *Table, err error) {
