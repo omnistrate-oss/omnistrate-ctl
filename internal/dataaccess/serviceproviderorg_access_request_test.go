@@ -89,7 +89,60 @@ func TestResolveAccessRequestEnvironment(t *testing.T) {
 	}
 }
 
-func TestAccessRequestApprovalConfiguration(t *testing.T) {
+func TestAccessRequestApprovalConfigurationTypedManual(t *testing.T) {
+	manual := "MANUAL"
+	userID := "user-1"
+	staleUserID := "user-stale"
+	emptyUserID := ""
+	configurations := map[string]openapiclient.JustInTimeAccessConfiguration{
+		"GLOBAL": {
+			ApprovalMode: &manual,
+			ApproverUsers: []openapiclient.JustInTimeAccessApproverUser{
+				{UserId: &userID},
+				{},
+				{UserId: &emptyUserID},
+				{UserId: &staleUserID},
+			},
+		},
+	}
+	organization := &openapiclient.DescribeServiceProviderOrganizationResult{
+		JustInTimeAccessConfigurations: &configurations,
+	}
+	users := []openapiclient.OrgUsers{{UserId: "user-1", Email: "approver@example.com", Name: "Approver"}}
+
+	configuration, err := AccessRequestApprovalConfiguration(organization, users, "GLOBAL")
+	require.NoError(t, err)
+	assert.Equal(t, "GLOBAL", configuration.EnvironmentType)
+	assert.Equal(t, "MANUAL", configuration.ApprovalMode)
+	assert.False(t, configuration.Defaulted)
+	require.Len(t, configuration.Approvers, 2)
+	assert.Equal(t, "approver@example.com", configuration.Approvers[0].Email)
+	assert.Equal(t, "user-stale", configuration.Approvers[1].UserID)
+	assert.Empty(t, configuration.Approvers[1].Email)
+}
+
+func TestAccessRequestApprovalConfigurationTypedAuto(t *testing.T) {
+	automatic := "AUTO"
+	configurations := map[string]openapiclient.JustInTimeAccessConfiguration{
+		"PROD": {
+			ApprovalMode: &automatic,
+			AdditionalProperties: map[string]any{
+				"defaulted": true,
+			},
+		},
+	}
+	organization := &openapiclient.DescribeServiceProviderOrganizationResult{
+		JustInTimeAccessConfigurations: &configurations,
+	}
+
+	configuration, err := AccessRequestApprovalConfiguration(organization, nil, "PROD")
+	require.NoError(t, err)
+	assert.Equal(t, "AUTO", configuration.ApprovalMode)
+	assert.True(t, configuration.Defaulted)
+	assert.Empty(t, configuration.Approvers)
+}
+
+func TestAccessRequestApprovalConfigurationLegacyFallback(t *testing.T) {
 	organization := &openapiclient.DescribeServiceProviderOrganizationResult{
 		AdditionalProperties: map[string]any{
 			"justInTimeAccessConfigurations": map[string]any{
@@ -121,6 +174,30 @@ func TestAccessRequestApprovalConfiguration(t *testing.T) {
 	assert.Equal(t, "AUTO", defaulted.ApprovalMode)
 	assert.True(t, defaulted.Defaulted)
 	assert.Empty(t, defaulted.Approvers)
+}
+
+func TestAccessRequestApprovalConfigurationTypedFieldTakesPrecedence(t *testing.T) {
+	automatic := "AUTO"
+	configurations := map[string]openapiclient.JustInTimeAccessConfiguration{
+		"GLOBAL": {ApprovalMode: &automatic},
+	}
+	organization := &openapiclient.DescribeServiceProviderOrganizationResult{
+		JustInTimeAccessConfigurations: &configurations,
+		AdditionalProperties: map[string]any{
+			"justInTimeAccessConfigurations": map[string]any{
+				"GLOBAL": map[string]any{
+					"approvalMode":  "MANUAL",
+					"approverUsers": []any{map[string]any{"userId": "legacy-user"}},
+				},
+			},
+		},
+	}
+
+	configuration, err := AccessRequestApprovalConfiguration(organization, nil, "GLOBAL")
+	require.NoError(t, err)
+	assert.Equal(t, "AUTO", configuration.ApprovalMode)
+	assert.False(t, configuration.Defaulted)
+	assert.Empty(t, configuration.Approvers)
 }
 
 func TestResolveAccessRequestApproverEmails(t *testing.T) {

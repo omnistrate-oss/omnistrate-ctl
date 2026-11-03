@@ -1,7 +1,9 @@
 package accessrequest
 
 import (
+	"context"
 	"fmt"
+	"slices"
 	"strings"
 
 	"github.com/omnistrate-oss/omnistrate-ctl/cmd/common"
@@ -9,7 +11,6 @@ import (
 	"github.com/omnistrate-oss/omnistrate-ctl/internal/dataaccess"
 	"github.com/omnistrate-oss/omnistrate-ctl/internal/model"
 	"github.com/omnistrate-oss/omnistrate-ctl/internal/utils"
-	openapiclient "github.com/omnistrate-oss/omnistrate-sdk-go/v1"
 	"github.com/spf13/cobra"
 )
 
@@ -112,10 +113,9 @@ func runConfigSet(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	var users []openapiclient.OrgUsers
 	var approverUserIDs []string
 	if mode == dataaccess.AccessApprovalModeManual {
-		users, err = dataaccess.GetOrganizationUsers(cmd.Context(), token)
+		users, err := dataaccess.GetOrganizationUsers(cmd.Context(), token)
 		if err != nil {
 			return fmt.Errorf("failed to list organization users: %w", err)
 		}
@@ -124,13 +124,88 @@ func runConfigSet(cmd *cobra.Command, args []string) error {
 			return err
 		}
 	}
-	if err = dataaccess.ConfigureAccessRequestApproval(
-		cmd.Context(), token, environment, mode, approverUserIDs); err != nil {
-		return fmt.Errorf("failed to configure JIT access approval: %w", err)
+	configuration, err := configureAndReadAccessRequestApproval(
+		cmd.Context(), token, environment, mode, approverUserIDs)
+	if err != nil {
+		return err
+	}
+	return printAccessRequestApprovalConfiguration(output, configuration)
+}
+
+func configureAndReadAccessRequestApproval(
+	ctx context.Context,
+	token string,
+	environment string,
+	mode string,
+	approverUserIDs []string,
+) (*model.AccessRequestApprovalConfiguration, error) {
+	if err := dataaccess.ConfigureAccessRequestApproval(
+		ctx, token, environment, mode, approverUserIDs); err != nil {
+		return nil, fmt.Errorf("failed to configure JIT access approval: %w", err)
 	}
 
-	configuration := configuredAccessRequestApproval(environment, mode, users, approverUserIDs)
-	return printAccessRequestApprovalConfiguration(output, configuration)
+	configuration, err := dataaccess.GetAccessRequestApprovalConfiguration(ctx, token, environment)
+	if err != nil {
+		return nil, fmt.Errorf(
+			"JIT access approval configuration was updated successfully, but verification failed: %w", err)
+	}
+	if err = verifyAccessRequestApprovalConfiguration(configuration, mode, approverUserIDs); err != nil {
+		return nil, fmt.Errorf(
+			"JIT access approval configuration was updated successfully, but verification failed: %w", err)
+	}
+	return configuration, nil
+}
+
+func verifyAccessRequestApprovalConfiguration(
+	configuration *model.AccessRequestApprovalConfiguration,
+	mode string,
+	approverUserIDs []string,
+) error {
+	if configuration == nil {
+		return fmt.Errorf("readback returned no configuration")
+	}
+
+	requestedMode := strings.ToUpper(strings.TrimSpace(mode))
+	persistedMode := strings.ToUpper(strings.TrimSpace(configuration.ApprovalMode))
+	if persistedMode != requestedMode {
+		return fmt.Errorf(
+			"persisted approval mode %q does not match requested mode %q",
+			persistedMode,
+			requestedMode,
+		)
+	}
+
+	persistedApproverUserIDs := make([]string, 0, len(configuration.Approvers))
+	for _, approver := range configuration.Approvers {
+		persistedApproverUserIDs = append(persistedApproverUserIDs, approver.UserID)
+	}
+	requestedApproverUserIDs := normalizedAccessRequestApproverUserIDs(approverUserIDs)
+	persistedApproverUserIDs = normalizedAccessRequestApproverUserIDs(persistedApproverUserIDs)
+	if !slices.Equal(persistedApproverUserIDs, requestedApproverUserIDs) {
+		return fmt.Errorf(
+			"persisted approver user IDs %v do not match requested user IDs %v",
+			persistedApproverUserIDs,
+			requestedApproverUserIDs,
+		)
+	}
+	return nil
+}
+
+func normalizedAccessRequestApproverUserIDs(userIDs []string) []string {
+	unique := make(map[string]struct{}, len(userIDs))
+	for _, userID := range userIDs {
+		userID = strings.TrimSpace(userID)
+		if userID != "" {
+			unique[userID] = struct{}{}
+		}
+	}
+
+	normalized := make([]string, 0, len(unique))
+	for userID := range unique {
+		normalized = append(normalized, userID)
+	}
+	slices.Sort(normalized)
+	return normalized
 }
 
 func validateAccessRequestConfiguration(mode string, approverEmails []string) (string, []string, error) {
@@ -156,33 +231,6 @@ func validateAccessRequestConfiguration(mode string, approverEmails []string) (s
 		return "", nil, fmt.Errorf("--approver-email is only valid with MANUAL approval")
 	}
 	return mode, cleanApprovers, nil
-}
-
-func configuredAccessRequestApproval(
-	environment string,
-	mode string,
-	users []openapiclient.OrgUsers,
-	approverUserIDs []string,
-) *model.AccessRequestApprovalConfiguration {
-	usersByID := make(map[string]openapiclient.OrgUsers, len(users))
-	for _, user := range users {
-		usersByID[user.UserId] = user
-	}
-	approvers := make([]model.AccessRequestApprover, 0, len(approverUserIDs))
-	for _, userID := range approverUserIDs {
-		approver := model.AccessRequestApprover{UserID: userID}
-		if user, found := usersByID[userID]; found {
-			approver.Email = user.Email
-			approver.Name = user.Name
-		}
-		approvers = append(approvers, approver)
-	}
-	return &model.AccessRequestApprovalConfiguration{
-		EnvironmentType: environment,
-		ApprovalMode:    mode,
-		Defaulted:       false,
-		Approvers:       approvers,
-	}
 }
 
 type accessRequestApprovalConfigurationOutput struct {
