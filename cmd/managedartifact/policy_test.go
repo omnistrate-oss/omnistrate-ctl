@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"strconv"
 	"testing"
 
 	"github.com/mitchellh/go-homedir"
@@ -17,7 +18,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestPolicyUpdateRespectsUserFeatureFlags(t *testing.T) {
+func TestPolicyUpdateDoesNotGateProviderOrFeatureAccess(t *testing.T) {
 	t.Cleanup(homedir.Reset)
 	t.Setenv("HOME", t.TempDir())
 	homedir.Reset()
@@ -72,102 +73,74 @@ func TestPolicyUpdateRespectsUserFeatureFlags(t *testing.T) {
 	token := "mock." + base64.RawURLEncoding.EncodeToString([]byte(`{"exp":4102444800}`)) + ".mock"
 	require.NoError(t, config.CreateOrUpdateAuthConfig(config.AuthConfig{Token: token}))
 
-	for _, provider := range []struct{ cloud, flag string }{
-		{"aws", "USE_SP_ECR_FOR_MANAGED_ARTIFACTS"},
-		{"azure", "USE_SP_ECR_FOR_MANAGED_ARTIFACTS_AZURE"},
-		{"gcp", "USE_SP_ECR_FOR_MANAGED_ARTIFACTS_GCP"},
-		{"byoc-onprem", "USE_SP_ECR_FOR_MANAGED_ARTIFACTS_BYOK"},
-	} {
-		for _, enabled := range []bool{false, true} {
-			for _, version := range []string{"", "r0000277"} {
-				t.Run(provider.cloud+"/"+version+"/enabled="+map[bool]string{false: "false", true: "true"}[enabled], func(t *testing.T) {
-					// AWS's flag must never authorize another cloud.
-					flags = map[string]bool{"USE_SP_ECR_FOR_MANAGED_ARTIFACTS": true}
-					flags[provider.flag] = enabled
-					before := updateCalls
-					command := &cobra.Command{Use: "update", RunE: runPolicyUpdate, SilenceErrors: true, SilenceUsage: true}
-					addPolicyScopeFlags(command)
-					command.Flags().Bool("auto-upgrade", false, "Automatically adopt new releases")
-					command.Flags().String("preferred-bundle-version", version, "Release to pin")
-					command.Flags().String(common.OutputFlag, "json", "Output format")
-					command.SetArgs([]string{"--environment-type", "global", "--cloud-provider", provider.cloud})
-					err := command.ExecuteContext(t.Context())
-					if enabled {
-						require.NoError(t, err)
-						require.Equal(t, before+1, updateCalls)
-						require.Equal(t, "/2022-09-01-00/managed-artifact/release-policy/GLOBAL/"+provider.cloud, updatedPath)
-						require.False(t, updatedRequest.AutoUpgrade)
-						require.Equal(t, version, updatedRequest.PreferredBundleVersion)
-					} else {
-						require.ErrorContains(t, err, provider.flag)
-						require.Equal(t, before, updateCalls)
-					}
-				})
-			}
-		}
-	}
-	for _, scenario := range []string{"missing flags", "backend revoked", "clear pin", "nebius", "oci"} {
-		t.Run(scenario, func(t *testing.T) {
-			flags = nil
-			rejectUpdate = scenario == "backend revoked"
-			if rejectUpdate {
-				flags = map[string]bool{"USE_SP_ECR_FOR_MANAGED_ARTIFACTS_AZURE": true}
-			}
-			before := updateCalls
-			command := &cobra.Command{Use: "update", RunE: runPolicyUpdate, SilenceErrors: true, SilenceUsage: true}
-			addPolicyScopeFlags(command)
-			command.Flags().Bool("auto-upgrade", scenario == "clear pin", "Automatically adopt new releases")
-			command.Flags().String("preferred-bundle-version", "", "Release to pin")
-			command.Flags().String(common.OutputFlag, "json", "Output format")
-			cloud := "azure"
-			if scenario == "nebius" || scenario == "oci" {
-				cloud = scenario
-			}
-			command.SetArgs([]string{"--environment-type", "global", "--cloud-provider", cloud})
-			err := command.ExecuteContext(t.Context())
-			switch scenario {
-			case "missing flags":
-				require.ErrorContains(t, err, "USE_SP_ECR_FOR_MANAGED_ARTIFACTS_AZURE")
-				require.Equal(t, before, updateCalls)
-			case "backend revoked":
-				require.ErrorContains(t, err, "pinning is not enabled")
-				require.Equal(t, before+1, updateCalls)
-			case "clear pin":
-				require.NoError(t, err)
-				require.Equal(t, before+1, updateCalls)
-				require.True(t, updatedRequest.AutoUpgrade)
-				require.Empty(t, updatedRequest.PreferredBundleVersion)
-			default:
-				require.ErrorContains(t, err, "pinning is not available for cloud provider "+cloud)
-				require.Equal(t, before, updateCalls)
-			}
-		})
-	}
-	t.Run("BYOK bundle changes and auto-upgrade restoration", func(t *testing.T) {
-		rejectUpdate = false
+	newCommand := func(cloud, version string, autoUpgrade bool) *cobra.Command {
 		command := &cobra.Command{Use: "update", RunE: runPolicyUpdate, SilenceErrors: true, SilenceUsage: true}
 		addPolicyScopeFlags(command)
 		command.Flags().Bool("auto-upgrade", false, "Automatically adopt new releases")
 		command.Flags().String("preferred-bundle-version", "", "Release to pin")
 		command.Flags().String(common.OutputFlag, "json", "Output format")
+		args := []string{"--environment-type", "global", "--cloud-provider", cloud, "--auto-upgrade=" + strconv.FormatBool(autoUpgrade)}
+		if version != "" {
+			args = append(args, "--preferred-bundle-version", version)
+		}
+		command.SetArgs(args)
+		return command
+	}
+
+	flags = nil
+	for _, provider := range []string{"aws", "azure", "gcp", "nebius", "oci", "byoc-onprem"} {
+		for _, version := range []string{"", "r0000277"} {
+			t.Run(provider+"/"+version+"/missing feature flags", func(t *testing.T) {
+				before := updateCalls
+				require.NoError(t, newCommand(provider, version, false).ExecuteContext(t.Context()))
+				require.Equal(t, before+1, updateCalls)
+				require.Equal(t, "/2022-09-01-00/managed-artifact/release-policy/GLOBAL/"+provider, updatedPath)
+				require.False(t, updatedRequest.AutoUpgrade)
+				require.Equal(t, version, updatedRequest.PreferredBundleVersion)
+			})
+		}
+	}
+
+	t.Run("disabled feature flag is ignored", func(t *testing.T) {
+		flags = map[string]bool{"USE_SP_ECR_FOR_MANAGED_ARTIFACTS_AZURE": false}
+		before := updateCalls
+		require.NoError(t, newCommand("azure", "r0000277", false).ExecuteContext(t.Context()))
+		require.Equal(t, before+1, updateCalls)
+	})
+
+	t.Run("backend rejection remains authoritative", func(t *testing.T) {
+		flags = nil
+		rejectUpdate = true
+		before := updateCalls
+		err := newCommand("azure", "r0000277", false).ExecuteContext(t.Context())
+		require.ErrorContains(t, err, "pinning is not enabled")
+		require.Equal(t, before+1, updateCalls)
+		rejectUpdate = false
+	})
+
+	t.Run("clear pin", func(t *testing.T) {
+		flags = nil
+		before := updateCalls
+		require.NoError(t, newCommand("azure", "", true).ExecuteContext(t.Context()))
+		require.Equal(t, before+1, updateCalls)
+		require.True(t, updatedRequest.AutoUpgrade)
+		require.Empty(t, updatedRequest.PreferredBundleVersion)
+	})
+
+	t.Run("BYOK bundle changes and auto-upgrade restoration", func(t *testing.T) {
+		flags = nil
+		rejectUpdate = false
 		for _, step := range []struct {
 			name, version, effective string
 			autoUpgrade              bool
 		}{
 			{name: "pin previous release", version: "r0000294", effective: "r0000294"},
 			{name: "change pinned release", version: "r0000293", effective: "r0000293"},
-			{name: "restore auto-upgrade after feature revocation", effective: "r0000295", autoUpgrade: true},
+			{name: "restore auto-upgrade", effective: "r0000295", autoUpgrade: true},
 		} {
 			t.Run(step.name, func(t *testing.T) {
-				flags = map[string]bool{"USE_SP_ECR_FOR_MANAGED_ARTIFACTS_BYOK": !step.autoUpgrade}
-				args := []string{"--environment-type", "global", "--cloud-provider", "byoc-onprem",
-					"--auto-upgrade=" + map[bool]string{false: "false", true: "true"}[step.autoUpgrade]}
-				if step.version != "" {
-					args = append(args, "--preferred-bundle-version", step.version)
-				}
-				command.SetArgs(args)
 				before := updateCalls
-				require.NoError(t, command.ExecuteContext(t.Context()))
+				require.NoError(t, newCommand("byoc-onprem", step.version, step.autoUpgrade).ExecuteContext(t.Context()))
 				require.Equal(t, before+1, updateCalls)
 				require.Equal(t, "/2022-09-01-00/managed-artifact/release-policy/GLOBAL/byoc-onprem", updatedPath)
 				policy, err := dataaccess.DescribeManagedArtifactReleasePolicy(t.Context(), token, "GLOBAL", "byoc-onprem")
