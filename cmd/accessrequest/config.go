@@ -1,6 +1,7 @@
 package accessrequest
 
 import (
+	"context"
 	"fmt"
 	"strings"
 
@@ -9,7 +10,6 @@ import (
 	"github.com/omnistrate-oss/omnistrate-ctl/internal/dataaccess"
 	"github.com/omnistrate-oss/omnistrate-ctl/internal/model"
 	"github.com/omnistrate-oss/omnistrate-ctl/internal/utils"
-	openapiclient "github.com/omnistrate-oss/omnistrate-sdk-go/v1"
 	"github.com/spf13/cobra"
 )
 
@@ -112,10 +112,9 @@ func runConfigSet(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	var users []openapiclient.OrgUsers
 	var approverUserIDs []string
 	if mode == dataaccess.AccessApprovalModeManual {
-		users, err = dataaccess.GetOrganizationUsers(cmd.Context(), token)
+		users, err := dataaccess.GetOrganizationUsers(cmd.Context(), token)
 		if err != nil {
 			return fmt.Errorf("failed to list organization users: %w", err)
 		}
@@ -124,13 +123,32 @@ func runConfigSet(cmd *cobra.Command, args []string) error {
 			return err
 		}
 	}
-	if err = dataaccess.ConfigureAccessRequestApproval(
-		cmd.Context(), token, environment, mode, approverUserIDs); err != nil {
-		return fmt.Errorf("failed to configure JIT access approval: %w", err)
+	configuration, err := configureAndReadAccessRequestApproval(
+		cmd.Context(), token, environment, mode, approverUserIDs)
+	if err != nil {
+		return err
+	}
+	return printAccessRequestApprovalConfiguration(output, configuration)
+}
+
+func configureAndReadAccessRequestApproval(
+	ctx context.Context,
+	token string,
+	environment string,
+	mode string,
+	approverUserIDs []string,
+) (*model.AccessRequestApprovalConfiguration, error) {
+	if err := dataaccess.ConfigureAccessRequestApproval(
+		ctx, token, environment, mode, approverUserIDs); err != nil {
+		return nil, fmt.Errorf("failed to configure JIT access approval: %w", err)
 	}
 
-	configuration := configuredAccessRequestApproval(environment, mode, users, approverUserIDs)
-	return printAccessRequestApprovalConfiguration(output, configuration)
+	configuration, err := dataaccess.GetAccessRequestApprovalConfiguration(ctx, token, environment)
+	if err != nil {
+		return nil, fmt.Errorf(
+			"JIT access approval configuration was updated successfully, but verification failed: %w", err)
+	}
+	return configuration, nil
 }
 
 func validateAccessRequestConfiguration(mode string, approverEmails []string) (string, []string, error) {
@@ -156,33 +174,6 @@ func validateAccessRequestConfiguration(mode string, approverEmails []string) (s
 		return "", nil, fmt.Errorf("--approver-email is only valid with MANUAL approval")
 	}
 	return mode, cleanApprovers, nil
-}
-
-func configuredAccessRequestApproval(
-	environment string,
-	mode string,
-	users []openapiclient.OrgUsers,
-	approverUserIDs []string,
-) *model.AccessRequestApprovalConfiguration {
-	usersByID := make(map[string]openapiclient.OrgUsers, len(users))
-	for _, user := range users {
-		usersByID[user.UserId] = user
-	}
-	approvers := make([]model.AccessRequestApprover, 0, len(approverUserIDs))
-	for _, userID := range approverUserIDs {
-		approver := model.AccessRequestApprover{UserID: userID}
-		if user, found := usersByID[userID]; found {
-			approver.Email = user.Email
-			approver.Name = user.Name
-		}
-		approvers = append(approvers, approver)
-	}
-	return &model.AccessRequestApprovalConfiguration{
-		EnvironmentType: environment,
-		ApprovalMode:    mode,
-		Defaulted:       false,
-		Approvers:       approvers,
-	}
 }
 
 type accessRequestApprovalConfigurationOutput struct {

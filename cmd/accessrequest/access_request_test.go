@@ -3,7 +3,11 @@ package accessrequest
 import (
 	"bytes"
 	"encoding/json"
+	"net/http"
+	"net/http/httptest"
+	"net/url"
 	"strings"
+	"sync/atomic"
 	"testing"
 
 	"github.com/omnistrate-oss/omnistrate-ctl/cmd/common"
@@ -109,6 +113,93 @@ func TestValidateAccessRequestConfiguration(t *testing.T) {
 			require.Equal(t, testCase.wantApprovers, approvers)
 		})
 	}
+}
+
+func TestConfigureAndReadAccessRequestApproval(t *testing.T) {
+	var writeCompleted atomic.Bool
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch {
+		case r.Method == http.MethodPatch && r.URL.Path == "/2022-09-01-00/sp-organization":
+			var requestBody map[string]any
+			require.NoError(t, json.NewDecoder(r.Body).Decode(&requestBody))
+			configurations, ok := requestBody["justInTimeAccessConfigurations"].(map[string]any)
+			require.True(t, ok)
+			configuration, ok := configurations["GLOBAL"].(map[string]any)
+			require.True(t, ok)
+			expectedApproverUsers := []any{map[string]any{"userId": "user-1"}}
+			require.Equal(t, "MANUAL", configuration["approvalMode"])
+			require.Equal(t, expectedApproverUsers, configuration["approverUsers"])
+			writeCompleted.Store(true)
+			w.WriteHeader(http.StatusNoContent)
+		case r.Method == http.MethodGet && r.URL.Path == "/2022-09-01-00/sp-organization":
+			require.True(t, writeCompleted.Load())
+			require.NoError(t, json.NewEncoder(w).Encode(map[string]any{
+				"isPerEnvClusterEnabled": false,
+				"justInTimeAccessConfigurations": map[string]any{
+					"GLOBAL": map[string]any{
+						"approvalMode":  "MANUAL",
+						"approverUsers": []any{map[string]any{"userId": "user-1"}},
+					},
+				},
+			}))
+		case r.Method == http.MethodGet && r.URL.Path == "/2022-09-01-00/org-users":
+			require.NoError(t, json.NewEncoder(w).Encode(map[string]any{
+				"Id": "org-test",
+				"orgUsers": []any{map[string]any{
+					"email":     "approver@example.com",
+					"invitedAt": "2026-11-03T00:00:00Z",
+					"name":      "Approver",
+					"roleType":  "admin",
+					"userId":    "user-1",
+				}},
+			}))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	t.Cleanup(server.Close)
+	setAccessRequestCommandTestHost(t, server.URL)
+
+	configuration, err := configureAndReadAccessRequestApproval(
+		t.Context(), "test-token", "GLOBAL", "MANUAL", []string{"user-1"})
+	require.NoError(t, err)
+	require.True(t, writeCompleted.Load())
+	require.Equal(t, "MANUAL", configuration.ApprovalMode)
+	require.False(t, configuration.Defaulted)
+	require.Len(t, configuration.Approvers, 1)
+	require.Equal(t, "approver@example.com", configuration.Approvers[0].Email)
+}
+
+func TestConfigureAndReadAccessRequestApprovalReportsVerificationFailure(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodPatch && r.URL.Path == "/2022-09-01-00/sp-organization":
+			w.WriteHeader(http.StatusNoContent)
+		case r.Method == http.MethodGet && r.URL.Path == "/2022-09-01-00/sp-organization":
+			http.Error(w, "verification unavailable", http.StatusInternalServerError)
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	t.Cleanup(server.Close)
+	setAccessRequestCommandTestHost(t, server.URL)
+
+	_, err := configureAndReadAccessRequestApproval(
+		t.Context(), "test-token", "GLOBAL", "AUTO", nil)
+	require.ErrorContains(t, err, "updated successfully")
+	require.ErrorContains(t, err, "verification failed")
+}
+
+func setAccessRequestCommandTestHost(t *testing.T, rawURL string) {
+	t.Helper()
+
+	serverURL, err := url.Parse(rawURL)
+	require.NoError(t, err)
+	t.Setenv("OMNISTRATE_HOST", serverURL.Host)
+	t.Setenv("OMNISTRATE_HOST_SCHEME", serverURL.Scheme)
+	t.Setenv("OMNISTRATE_CLIENT_TIMEOUT_IN_SECONDS", "5")
+	t.Setenv("OMNISTRATE_RETRY_MAX", "0")
 }
 
 func TestAccessRequestApprovalConfigurationTable(t *testing.T) {

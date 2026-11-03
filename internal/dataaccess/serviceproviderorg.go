@@ -84,12 +84,14 @@ func ResolveAccessRequestEnvironment(
 	return AccessEnvironmentGlobal, nil
 }
 
+type rawAccessRequestApproverUser struct {
+	UserID string `json:"userId"`
+}
+
 type rawAccessRequestApprovalConfiguration struct {
-	ApprovalMode  string `json:"approvalMode"`
-	Defaulted     bool   `json:"defaulted"`
-	ApproverUsers []struct {
-		UserID string `json:"userId"`
-	} `json:"approverUsers"`
+	ApprovalMode  string                         `json:"approvalMode"`
+	Defaulted     bool                           `json:"defaulted"`
+	ApproverUsers []rawAccessRequestApproverUser `json:"approverUsers"`
 }
 
 // AccessRequestApprovalConfiguration reads the effective JIT configuration.
@@ -103,7 +105,24 @@ func AccessRequestApprovalConfiguration(
 		ApprovalMode: AccessApprovalModeAuto,
 		Defaulted:    true,
 	}
-	if organization != nil && organization.AdditionalProperties != nil {
+	if organization != nil && organization.JustInTimeAccessConfigurations != nil {
+		if configured, found := (*organization.JustInTimeAccessConfigurations)[environment]; found {
+			configuration = rawAccessRequestApprovalConfiguration{
+				ApprovalMode: configured.GetApprovalMode(),
+				Defaulted:    false,
+			}
+			for _, approver := range configured.ApproverUsers {
+				userID := strings.TrimSpace(approver.GetUserId())
+				if userID == "" {
+					continue
+				}
+				configuration.ApproverUsers = append(
+					configuration.ApproverUsers,
+					rawAccessRequestApproverUser{UserID: userID},
+				)
+			}
+		}
+	} else if organization != nil && organization.AdditionalProperties != nil {
 		if configurations, ok := organization.AdditionalProperties["justInTimeAccessConfigurations"]; ok {
 			encoded, err := json.Marshal(configurations)
 			if err != nil {
@@ -460,30 +479,22 @@ func ConfigureAccessRequestApproval(
 	ctxWithToken := context.WithValue(ctx, openapiclient.ContextAccessToken, token)
 	apiClient := getV1Client()
 
-	type approverUser struct {
-		UserID string `json:"userId"`
-	}
-	type approvalConfiguration struct {
-		ApprovalMode  string         `json:"approvalMode"`
-		ApproverUsers []approverUser `json:"approverUsers"`
-	}
-
-	approvers := make([]approverUser, 0, len(approverUserIDs))
+	approvers := make([]openapiclient.JustInTimeAccessApproverUser, 0, len(approverUserIDs))
 	for _, userID := range approverUserIDs {
-		approvers = append(approvers, approverUser{UserID: userID})
+		approvers = append(approvers, openapiclient.JustInTimeAccessApproverUser{
+			UserId: utils.ToPtr(userID),
+		})
 	}
-	configurations := map[string]approvalConfiguration{
+	configurations := map[string]openapiclient.JustInTimeAccessConfiguration{
 		environment: {
-			ApprovalMode:  approvalMode,
+			ApprovalMode:  utils.ToPtr(approvalMode),
 			ApproverUsers: approvers,
 		},
 	}
 
 	req := apiClient.SpOrganizationApiAPI.SpOrganizationApiModifyServiceProviderOrganization(ctxWithToken)
 	req = req.ModifyServiceProviderOrganizationRequest2(openapiclient.ModifyServiceProviderOrganizationRequest2{
-		AdditionalProperties: map[string]interface{}{
-			"justInTimeAccessConfigurations": configurations,
-		},
+		JustInTimeAccessConfigurations: &configurations,
 	})
 	var response *http.Response
 	defer func() {
