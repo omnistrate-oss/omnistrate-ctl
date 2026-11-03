@@ -111,6 +111,15 @@ func AccessRequestApprovalConfiguration(
 				ApprovalMode: configured.GetApprovalMode(),
 				Defaulted:    false,
 			}
+			if defaulted, found := configured.AdditionalProperties["defaulted"]; found {
+				encoded, err := json.Marshal(defaulted)
+				if err != nil {
+					return nil, fmt.Errorf("failed to read JIT access configuration defaulted flag: %w", err)
+				}
+				if err = json.Unmarshal(encoded, &configuration.Defaulted); err != nil {
+					return nil, fmt.Errorf("failed to decode JIT access configuration defaulted flag: %w", err)
+				}
+			}
 			for _, approver := range configured.ApproverUsers {
 				userID := strings.TrimSpace(approver.GetUserId())
 				if userID == "" {

@@ -124,7 +124,12 @@ func TestAccessRequestApprovalConfigurationTypedManual(t *testing.T) {
 func TestAccessRequestApprovalConfigurationTypedAuto(t *testing.T) {
 	automatic := "AUTO"
 	configurations := map[string]openapiclient.JustInTimeAccessConfiguration{
-		"PROD": {ApprovalMode: &automatic},
+		"PROD": {
+			ApprovalMode: &automatic,
+			AdditionalProperties: map[string]any{
+				"defaulted": true,
+			},
+		},
 	}
 	organization := &openapiclient.DescribeServiceProviderOrganizationResult{
 		JustInTimeAccessConfigurations: &configurations,
@@ -133,7 +138,7 @@ func TestAccessRequestApprovalConfigurationTypedAuto(t *testing.T) {
 	configuration, err := AccessRequestApprovalConfiguration(organization, nil, "PROD")
 	require.NoError(t, err)
 	assert.Equal(t, "AUTO", configuration.ApprovalMode)
-	assert.False(t, configuration.Defaulted)
+	assert.True(t, configuration.Defaulted)
 	assert.Empty(t, configuration.Approvers)
 }
 

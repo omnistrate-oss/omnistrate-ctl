@@ -191,6 +191,66 @@ func TestConfigureAndReadAccessRequestApprovalReportsVerificationFailure(t *test
 	require.ErrorContains(t, err, "verification failed")
 }
 
+func TestVerifyAccessRequestApprovalConfiguration(t *testing.T) {
+	for _, testCase := range []struct {
+		name            string
+		configuration   *model.AccessRequestApprovalConfiguration
+		mode            string
+		approverUserIDs []string
+		wantErr         string
+	}{
+		{
+			name: "accepts matching unordered approver set",
+			configuration: &model.AccessRequestApprovalConfiguration{
+				ApprovalMode: "MANUAL",
+				Approvers: []model.AccessRequestApprover{
+					{UserID: "user-2"},
+					{UserID: "user-1"},
+				},
+			},
+			mode:            "MANUAL",
+			approverUserIDs: []string{"user-1", "user-2", "user-1"},
+		},
+		{
+			name: "rejects approval mode mismatch",
+			configuration: &model.AccessRequestApprovalConfiguration{
+				ApprovalMode: "AUTO",
+			},
+			mode:            "MANUAL",
+			approverUserIDs: []string{"user-1"},
+			wantErr:         "persisted approval mode",
+		},
+		{
+			name: "rejects approver mismatch",
+			configuration: &model.AccessRequestApprovalConfiguration{
+				ApprovalMode: "MANUAL",
+				Approvers:    []model.AccessRequestApprover{{UserID: "user-2"}},
+			},
+			mode:            "MANUAL",
+			approverUserIDs: []string{"user-1"},
+			wantErr:         "persisted approver user IDs",
+		},
+		{
+			name:    "rejects missing readback",
+			mode:    "AUTO",
+			wantErr: "no configuration",
+		},
+	} {
+		t.Run(testCase.name, func(t *testing.T) {
+			err := verifyAccessRequestApprovalConfiguration(
+				testCase.configuration,
+				testCase.mode,
+				testCase.approverUserIDs,
+			)
+			if testCase.wantErr == "" {
+				require.NoError(t, err)
+				return
+			}
+			require.ErrorContains(t, err, testCase.wantErr)
+		})
+	}
+}
+
 func setAccessRequestCommandTestHost(t *testing.T, rawURL string) {
 	t.Helper()
 
