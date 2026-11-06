@@ -16,7 +16,7 @@ import (
 type instanceDebugTokenContextKey struct{}
 
 const (
-	instanceDebugInitialFetchTimeout  = 2 * time.Minute
+	instanceDebugInitialFetchTimeout  = 5 * time.Minute
 	instanceDebugProgressFetchTimeout = 30 * time.Second
 )
 
