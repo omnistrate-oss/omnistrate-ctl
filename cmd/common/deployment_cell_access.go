@@ -99,8 +99,16 @@ func ensureDeploymentCellAccess(
 	defer cancel()
 
 	approvalMessageShown := false
+	lastReportedStatus := ""
 	for {
-		switch strings.ToUpper(request.Status) {
+		status := strings.ToUpper(strings.TrimSpace(request.Status))
+		if status != lastReportedStatus {
+			printDeploymentCellAccessRequestStatus(
+				dependencies.output, deploymentCellID, request.ID, status)
+			lastReportedStatus = status
+		}
+
+		switch status {
 		case "APPROVED":
 			return request, nil
 		case "PENDING":
@@ -122,7 +130,9 @@ func ensureDeploymentCellAccess(
 		select {
 		case <-waitCtx.Done():
 			if waitCtx.Err() == context.DeadlineExceeded {
-				return request, fmt.Errorf("access request %s did not reach approved status before timeout", request.ID)
+				return request, fmt.Errorf(
+					"deployment cell %s access request %s did not reach approved status before timeout (last status: %s)",
+					deploymentCellID, request.ID, status)
 			}
 			return request, waitCtx.Err()
 		case <-time.After(dependencies.pollInterval):
@@ -206,11 +216,31 @@ func DeniedAccessRequestMessage(request *model.AccessRequest) string {
 }
 
 func printDeploymentCellApprovalWait(output io.Writer, requestID string, approvers []string) {
-	_, _ = fmt.Fprintf(output, "Access request %s is pending approval.\n", requestID)
 	if len(approvers) > 0 {
 		_, _ = fmt.Fprintf(output, "Configured approvers: %s\n", strings.Join(approvers, ", "))
 	} else {
 		_, _ = fmt.Fprintf(output, "Ask a configured approver to approve access request %s.\n", requestID)
 	}
 	_, _ = fmt.Fprintln(output, "Waiting for approval. This command will continue automatically once approved.")
+}
+
+func printDeploymentCellAccessRequestStatus(output io.Writer, deploymentCellID, requestID, status string) {
+	switch status {
+	case "PENDING":
+		_, _ = fmt.Fprintf(output,
+			"Deployment cell %s: access request %s is PENDING; waiting for approval.\n",
+			deploymentCellID, requestID)
+	case "APPROVING":
+		_, _ = fmt.Fprintf(output,
+			"Deployment cell %s: access request %s is APPROVING; provisioning Kubernetes access.\n",
+			deploymentCellID, requestID)
+	case "APPROVED":
+		_, _ = fmt.Fprintf(output,
+			"Deployment cell %s: access request %s is APPROVED.\n",
+			deploymentCellID, requestID)
+	default:
+		_, _ = fmt.Fprintf(output,
+			"Deployment cell %s: access request %s is %s.\n",
+			deploymentCellID, requestID, status)
+	}
 }
