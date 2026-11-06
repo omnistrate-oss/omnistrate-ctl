@@ -24,6 +24,7 @@ const (
 	accessRequestSmokeRole            = "cluster-reader"
 	accessRequestServiceAccountPrefix = "system:serviceaccount:dataplane-agent:omnistrate-"
 	accessRequestSmokeDeploymentCell  = "hc-dyjkjnzcs"
+	accessRequestAuditEventCategory   = "JITAccessEvent"
 )
 
 func TestDeploymentCellAccessRequest(t *testing.T) {
@@ -146,7 +147,7 @@ func requireAccessRequestAuditEvents(t *testing.T, ctx context.Context, request 
 		utils.LastPrintedString = ""
 		cmd.RootCmd.SetArgs([]string{
 			"audit", "list",
-			"--event-source-types", "AccessRequestEvent",
+			"--event-source-types", accessRequestAuditEventCategory,
 			"--environment-type", request.EnvironmentType,
 			"--start-date", startDate,
 			"--page-size", "100",
@@ -185,7 +186,8 @@ func accessRequestIDFromServiceAccountUsername(username string) string {
 func accessRequestAuditEventsPresent(events []openapiclientfleet.FleetAuditEvent, requestID string) (created, approved bool) {
 	for eventIndex := range events {
 		event := &events[eventIndex]
-		if event.EventSource == nil || *event.EventSource != "AccessRequestEvent" || !strings.Contains(event.Message, requestID) {
+		eventCategory, ok := event.AdditionalProperties["eventCategory"].(string)
+		if !ok || eventCategory != accessRequestAuditEventCategory || !strings.Contains(event.Message, requestID) {
 			continue
 		}
 		switch event.ResourceName {
@@ -196,6 +198,26 @@ func accessRequestAuditEventsPresent(events []openapiclientfleet.FleetAuditEvent
 		}
 	}
 	return
+}
+
+func TestAccessRequestAuditEventsPresent(t *testing.T) {
+	requestID := "ar-test"
+	events := []openapiclientfleet.FleetAuditEvent{
+		{
+			ResourceName:         "Access request created",
+			Message:              "Access request " + requestID + " was created.",
+			AdditionalProperties: map[string]interface{}{"eventCategory": accessRequestAuditEventCategory},
+		},
+		{
+			ResourceName:         "Access request approved",
+			Message:              "Access request " + requestID + " was approved.",
+			AdditionalProperties: map[string]interface{}{"eventCategory": accessRequestAuditEventCategory},
+		},
+	}
+
+	created, approved := accessRequestAuditEventsPresent(events, requestID)
+	require.True(t, created)
+	require.True(t, approved)
 }
 
 func auditEventSummary(events []openapiclientfleet.FleetAuditEvent) string {

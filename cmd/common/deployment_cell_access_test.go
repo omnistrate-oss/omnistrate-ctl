@@ -15,6 +15,7 @@ import (
 )
 
 func TestEnsureDeploymentCellAccessReturnsApprovedRequest(t *testing.T) {
+	var output bytes.Buffer
 	request, err := ensureDeploymentCellAccess(
 		t.Context(), "token", "hc-test", "cluster-admin", "", deploymentCellAccessDependencies{
 			create: func(_ context.Context, token string, input dataaccess.CreateAccessRequestRequest) (*model.AccessRequest, error) {
@@ -28,10 +29,12 @@ func TestEnsureDeploymentCellAccessReturnsApprovedRequest(t *testing.T) {
 				t.Fatal("approved request must not be polled")
 				return nil, nil
 			},
+			output: &output,
 		})
 
 	require.NoError(t, err)
 	require.Equal(t, "ar-approved", request.ID)
+	require.Contains(t, output.String(), "Deployment cell hc-test: access request ar-approved is APPROVED.")
 }
 
 func TestEnsureDeploymentCellAccessWaitsForManualApproval(t *testing.T) {
@@ -62,9 +65,35 @@ func TestEnsureDeploymentCellAccessWaitsForManualApproval(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "APPROVED", request.Status)
 	require.Equal(t, 2, describeCalls)
-	require.Contains(t, output.String(), "Access request ar-pending is pending approval.")
+	require.Contains(t, output.String(), "Deployment cell hc-test: access request ar-pending is PENDING")
+	require.Contains(t, output.String(), "Deployment cell hc-test: access request ar-pending is APPROVING")
+	require.Contains(t, output.String(), "Deployment cell hc-test: access request ar-pending is APPROVED")
 	require.Contains(t, output.String(), "Configured approvers: first@example.com, second@example.com")
 	require.NotContains(t, output.String(), "http")
+}
+
+func TestEnsureDeploymentCellAccessReportsAutomaticApprovalProgress(t *testing.T) {
+	var output bytes.Buffer
+	describeCalls := 0
+	request, err := ensureDeploymentCellAccess(
+		t.Context(), "token", "hc-provisioner", "cluster-admin", "debug instance", deploymentCellAccessDependencies{
+			create: func(context.Context, string, dataaccess.CreateAccessRequestRequest) (*model.AccessRequest, error) {
+				return &model.AccessRequest{ID: "ar-auto", Status: "APPROVING"}, nil
+			},
+			describe: func(context.Context, string, string) (*model.AccessRequest, error) {
+				describeCalls++
+				return &model.AccessRequest{ID: "ar-auto", Status: "APPROVED"}, nil
+			},
+			output:       &output,
+			pollInterval: time.Millisecond,
+			autoTimeout:  time.Second,
+		})
+
+	require.NoError(t, err)
+	require.Equal(t, "APPROVED", request.Status)
+	require.Equal(t, 1, describeCalls)
+	require.Contains(t, output.String(), "Deployment cell hc-provisioner: access request ar-auto is APPROVING")
+	require.Contains(t, output.String(), "Deployment cell hc-provisioner: access request ar-auto is APPROVED")
 }
 
 func TestEnsureDeploymentCellAccessFallsBackWhenApproversCannotBeLoaded(t *testing.T) {
