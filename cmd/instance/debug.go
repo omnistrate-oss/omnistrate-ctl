@@ -3,7 +3,10 @@ package instance
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
+	"os"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -223,8 +226,15 @@ func runDebugJSON(parent context.Context, instanceID, token string) error {
 			Errors: []string{err.Error()},
 		}
 	}
+	// Collection failures still emit the partial JSON, then fail the command so
+	// automation can surface the error instead of treating the payload as complete.
+	var collectErr error
 	if planDAG != nil {
 		attachWorkflowProgress(ctx, token, serviceID, environmentID, instanceID, planDAG)
+		if err := ctx.Err(); err != nil {
+			collectErr = fmt.Errorf("instance debug data collection interrupted: %w", err)
+			planDAG.Errors = append(planDAG.Errors, collectErr.Error())
+		}
 		// Enrich bootstrap steps with dependency timelines for all resources
 		for resourceKey, steps := range planDAG.WorkflowStepsByKey {
 			enrichBootstrapSteps(steps, resourceKey, planDAG)
@@ -260,28 +270,54 @@ func runDebugJSON(parent context.Context, instanceID, token string) error {
 	}
 
 	// Collect per-resource debug info (helm data, terraform progress/files/logs)
-	if planDAG != nil {
-		data.ResourceDebugInfo = collectResourceDebugInfo(ctx, token, serviceID, environmentID, instanceID, planDAG, instanceData)
+	if planDAG != nil && collectErr == nil {
+		data.ResourceDebugInfo, err = collectResourceDebugInfo(ctx, token, serviceID, environmentID, instanceID, planDAG, instanceData)
+		if err != nil {
+			collectErr = fmt.Errorf("failed to collect resource debug info: %w", err)
+		}
 	}
 
+	return writeDebugJSON(os.Stdout, data, collectErr)
+}
+
+// writeDebugJSON writes the collected (possibly partial) debug data and then
+// returns collectErr so the command exits non-zero after emitting the payload.
+func writeDebugJSON(w io.Writer, data DebugData, collectErr error) error {
 	jsonData, err := json.MarshalIndent(data, "", "  ")
 	if err != nil {
-		return fmt.Errorf("failed to marshal debug data to JSON: %w", err)
+		return errors.Join(collectErr, fmt.Errorf("failed to marshal debug data to JSON: %w", err))
 	}
-	fmt.Println(string(jsonData))
-	return nil
+	if _, err := fmt.Fprintln(w, string(jsonData)); err != nil {
+		return errors.Join(collectErr, fmt.Errorf("failed to write debug JSON: %w", err))
+	}
+	return collectErr
 }
 
 // collectResourceDebugInfo fetches all per-resource debug data for the JSON output path.
 // It collects helm data (logs, values), terraform data (progress, history, files, logs),
 // operator data (input/output parameters), and compose data (input/output parameters)
 // for each resource in the plan DAG.
-// Errors for individual resources or data sources are handled gracefully — partial data
-// is returned rather than failing the entire operation.
-func collectResourceDebugInfo(ctx context.Context, token, serviceID, environmentID, instanceID string, planDAG *PlanDAG, instanceData *openapiclientfleet.ResourceInstance) map[string]*ResourceDebugInfo {
+// Optional enrichments are best-effort. A DebugResourceInstance failure or an
+// exhausted context is recorded in planDAG.Errors and returned alongside the
+// partial result so JSON callers cannot mistake it for a complete payload.
+func collectResourceDebugInfo(ctx context.Context, token, serviceID, environmentID, instanceID string, planDAG *PlanDAG, instanceData *openapiclientfleet.ResourceInstance) (map[string]*ResourceDebugInfo, error) {
+	return collectResourceDebugInfoWithFetchers(ctx, token, serviceID, environmentID, instanceID, planDAG, instanceData, resourceDebugFetchers{
+		debugResourceInstance: dataaccess.DebugResourceInstance,
+		inputParams:           fetchInputParams,
+		outputParams:          fetchOutputParams,
+	})
+}
+
+type resourceDebugFetchers struct {
+	debugResourceInstance debugResourceInstanceFetcher
+	inputParams           inputParamsFetcher
+	outputParams          outputParamsFetcher
+}
+
+func collectResourceDebugInfoWithFetchers(ctx context.Context, token, serviceID, environmentID, instanceID string, planDAG *PlanDAG, instanceData *openapiclientfleet.ResourceInstance, fetchers resourceDebugFetchers) (map[string]*ResourceDebugInfo, error) {
 	result := make(map[string]*ResourceDebugInfo)
 	if planDAG == nil || len(planDAG.Nodes) == 0 {
-		return result
+		return result, nil
 	}
 
 	// Initialize entries for all visible nodes
@@ -315,7 +351,7 @@ func collectResourceDebugInfo(ctx context.Context, token, serviceID, environment
 	}
 
 	// Collect helm debug data from the DebugResourceInstance API
-	collectHelmDebugInfo(ctx, token, serviceID, environmentID, instanceID, planDAG, instanceData, inputParams, resultParams, result)
+	collectErr := collectHelmDebugInfoWithFetcher(ctx, token, serviceID, environmentID, instanceID, planDAG, instanceData, inputParams, resultParams, result, fetchers.debugResourceInstance)
 
 	// Collect terraform debug data from k8s ConfigMaps
 	collectTerraformDebugInfo(ctx, token, instanceData, instanceID, planDAG, result)
@@ -324,7 +360,13 @@ func collectResourceDebugInfo(ctx context.Context, token, serviceID, environment
 	collectOperatorDebugInfo(ctx, token, serviceID, planDAG, instanceData, inputParams, resultParams, result)
 
 	// Collect compose debug data (input/output parameters) for compose resources
-	collectComposeDebugInfo(ctx, token, serviceID, planDAG, instanceData, inputParams, resultParams, result)
+	collectComposeDebugInfoWithFetchers(ctx, token, serviceID, planDAG, instanceData, inputParams, resultParams, result, fetchers.inputParams, fetchers.outputParams)
+	// Report interruption independently unless it already caused the core debug failure.
+	if err := ctx.Err(); err != nil && !errors.Is(collectErr, err) {
+		ctxErr := fmt.Errorf("resource debug collection interrupted: %w", err)
+		planDAG.Errors = append(planDAG.Errors, ctxErr.Error())
+		collectErr = errors.Join(collectErr, ctxErr)
+	}
 
 	// Remove entries that have no debug data
 	for key, info := range result {
@@ -333,14 +375,23 @@ func collectResourceDebugInfo(ctx context.Context, token, serviceID, environment
 		}
 	}
 
-	return result
+	return result, collectErr
 }
 
-// collectHelmDebugInfo fetches helm debug data (logs, chart values) and input/output parameters for all helm resources.
-func collectHelmDebugInfo(ctx context.Context, token, serviceID, environmentID, instanceID string, planDAG *PlanDAG, instanceData *openapiclientfleet.ResourceInstance, inputParams map[string]interface{}, resultParams map[string]interface{}, result map[string]*ResourceDebugInfo) {
-	debugResult, err := dataaccess.DebugResourceInstance(ctx, token, serviceID, environmentID, instanceID)
-	if err != nil || debugResult.ResourcesDebug == nil {
-		return
+type debugResourceInstanceFetcher func(ctx context.Context, token, serviceID, environmentID, instanceID string) (*openapiclientfleet.DebugResourceInstanceResult, error)
+
+// collectHelmDebugInfoWithFetcher fetches helm debug data (logs, chart values) and input/output parameters for all helm resources.
+func collectHelmDebugInfoWithFetcher(ctx context.Context, token, serviceID, environmentID, instanceID string, planDAG *PlanDAG, instanceData *openapiclientfleet.ResourceInstance, inputParams map[string]interface{}, resultParams map[string]interface{}, result map[string]*ResourceDebugInfo, fetchDebugResourceInstance debugResourceInstanceFetcher) error {
+	debugResult, err := fetchDebugResourceInstance(ctx, token, serviceID, environmentID, instanceID)
+	if err != nil {
+		err = fmt.Errorf("failed to debug resource instance %s: %w", instanceID, err)
+		if planDAG != nil {
+			planDAG.Errors = append(planDAG.Errors, err.Error())
+		}
+		return err
+	}
+	if debugResult == nil || debugResult.ResourcesDebug == nil {
+		return nil
 	}
 
 	for resourceKey, resourceDebugInfo := range *debugResult.ResourcesDebug {
@@ -401,6 +452,7 @@ func collectHelmDebugInfo(ctx context.Context, token, serviceID, environmentID, 
 			}
 		}
 	}
+	return nil
 }
 
 // collectTerraformDebugInfo fetches terraform debug data (progress, history, files, logs)
@@ -543,15 +595,11 @@ func collectOperatorDebugInfo(ctx context.Context, token, serviceID string, plan
 	}
 }
 
-// collectComposeDebugInfo fetches compose debug data (input/output parameters)
-// for compose-type resources.
-func collectComposeDebugInfo(ctx context.Context, token, serviceID string, planDAG *PlanDAG, instanceData *openapiclientfleet.ResourceInstance, inputParams map[string]interface{}, resultParams map[string]interface{}, result map[string]*ResourceDebugInfo) {
-	collectComposeDebugInfoWithFetchers(ctx, token, serviceID, planDAG, instanceData, inputParams, resultParams, result, fetchInputParams, fetchOutputParams)
-}
-
 type inputParamsFetcher func(context.Context, string, string, string, string, string, map[string]interface{}) ([]OperatorInputParam, error)
 type outputParamsFetcher func(context.Context, string, string, string, string, string, map[string]interface{}) ([]OperatorOutputParam, error)
 
+// collectComposeDebugInfoWithFetchers fetches compose debug data (input/output parameters)
+// for compose-type resources.
 func collectComposeDebugInfoWithFetchers(ctx context.Context, token, serviceID string, planDAG *PlanDAG, instanceData *openapiclientfleet.ResourceInstance, inputParams map[string]interface{}, resultParams map[string]interface{}, result map[string]*ResourceDebugInfo, fetchInput inputParamsFetcher, fetchOutput outputParamsFetcher) {
 	for _, node := range planDAG.Nodes {
 		lower := strings.ToLower(node.Type)

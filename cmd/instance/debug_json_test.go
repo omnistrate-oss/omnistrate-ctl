@@ -1,8 +1,10 @@
 package instance
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"testing"
 	"time"
 
@@ -346,6 +348,126 @@ func TestInstanceDebugFetchContextHasDeadline(t *testing.T) {
 
 	require.True(t, ok)
 	require.WithinDuration(t, time.Now().Add(time.Minute), deadline, time.Second)
+}
+
+func composeOnlyDebugFixture() (*PlanDAG, *openapiclientfleet.ResourceInstance) {
+	planDAG := &PlanDAG{
+		Nodes: map[string]PlanDAGNode{
+			"r-compose": {ID: "r-compose", Key: "compose", Name: "Compose", Type: "DockerCompose"},
+		},
+	}
+	return planDAG, &openapiclientfleet.ResourceInstance{ProductTierId: "tier-1", TierVersion: "v1"}
+}
+
+func TestCollectResourceDebugInfoErrors(t *testing.T) {
+	apiErr := errors.New("internal server error")
+	composeInput := []OperatorInputParam{{Key: "image", ResolvedValue: "redis:7"}}
+	composeOutput := []OperatorOutputParam{{Key: "endpoint", ResolvedValue: "compose.example.com"}}
+
+	tests := []struct {
+		name               string
+		debugErr           error
+		cancelDuringOutput bool
+		inputErr           error
+		wantErrs           []error
+		wantPlanErrors     []string
+		wantComposeInput   []OperatorInputParam
+	}{
+		{
+			name:             "optional enrichment failure stays non-fatal",
+			inputErr:         errors.New("input params unavailable"),
+			wantComposeInput: nil,
+		},
+		{
+			name:             "api error returns partial data",
+			debugErr:         apiErr,
+			wantErrs:         []error{apiErr},
+			wantPlanErrors:   []string{"failed to debug resource instance instance: internal server error"},
+			wantComposeInput: composeInput,
+		},
+		{
+			name:               "api error and later cancellation are both reported",
+			debugErr:           apiErr,
+			cancelDuringOutput: true,
+			wantErrs:           []error{apiErr, context.Canceled},
+			wantPlanErrors: []string{
+				"failed to debug resource instance instance: internal server error",
+				"resource debug collection interrupted: context canceled",
+			},
+			wantComposeInput: composeInput,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+			planDAG, instanceData := composeOnlyDebugFixture()
+
+			result, err := collectResourceDebugInfoWithFetchers(ctx, "token", "service", "environment", "instance", planDAG, instanceData, resourceDebugFetchers{
+				debugResourceInstance: func(context.Context, string, string, string, string) (*openapiclientfleet.DebugResourceInstanceResult, error) {
+					return nil, tt.debugErr
+				},
+				inputParams: func(context.Context, string, string, string, string, string, map[string]interface{}) ([]OperatorInputParam, error) {
+					return composeInput, tt.inputErr
+				},
+				outputParams: func(context.Context, string, string, string, string, string, map[string]interface{}) ([]OperatorOutputParam, error) {
+					if tt.cancelDuringOutput {
+						cancel()
+					}
+					return composeOutput, nil
+				},
+			})
+
+			if len(tt.wantErrs) == 0 {
+				require.NoError(t, err)
+			}
+			for _, wantErr := range tt.wantErrs {
+				require.ErrorIs(t, err, wantErr)
+			}
+			require.Equal(t, tt.wantPlanErrors, planDAG.Errors)
+			require.Contains(t, result, "compose")
+			require.Equal(t, tt.wantComposeInput, result["compose"].Compose.InputParams)
+			require.Equal(t, composeOutput, result["compose"].Compose.OutputParams)
+		})
+	}
+}
+
+func TestCollectResourceDebugInfoDoesNotDuplicateTimeout(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	planDAG, instanceData := composeOnlyDebugFixture()
+
+	_, err := collectResourceDebugInfoWithFetchers(ctx, "token", "service", "environment", "instance", planDAG, instanceData, resourceDebugFetchers{
+		debugResourceInstance: func(ctx context.Context, _, _, _, _ string) (*openapiclientfleet.DebugResourceInstanceResult, error) {
+			return nil, ctx.Err()
+		},
+		inputParams: func(context.Context, string, string, string, string, string, map[string]interface{}) ([]OperatorInputParam, error) {
+			return nil, context.Canceled
+		},
+		outputParams: func(context.Context, string, string, string, string, string, map[string]interface{}) ([]OperatorOutputParam, error) {
+			return nil, context.Canceled
+		},
+	})
+
+	require.ErrorIs(t, err, context.Canceled)
+	require.Equal(t, []string{"failed to debug resource instance instance: context canceled"}, planDAG.Errors)
+}
+
+func TestWriteDebugJSONEmitsPartialPayloadAndReturnsError(t *testing.T) {
+	collectErr := errors.New("failed to collect resource debug info")
+	data := DebugData{
+		InstanceID: "instance",
+		PlanDAG:    &PlanDAG{Errors: []string{collectErr.Error()}},
+	}
+	var out bytes.Buffer
+
+	err := writeDebugJSON(&out, data, collectErr)
+
+	require.ErrorIs(t, err, collectErr)
+	var decoded DebugData
+	require.NoError(t, json.Unmarshal(out.Bytes(), &decoded))
+	require.Equal(t, "instance", decoded.InstanceID)
+	require.Equal(t, []string{collectErr.Error()}, decoded.PlanDAG.Errors)
 }
 
 func TestDeploymentCellIDsForDebug(t *testing.T) {
