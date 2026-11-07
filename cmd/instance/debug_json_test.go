@@ -349,33 +349,30 @@ func TestInstanceDebugFetchContextHasDeadline(t *testing.T) {
 	require.WithinDuration(t, time.Now().Add(time.Minute), deadline, time.Second)
 }
 
-func TestCollectHelmDebugInfoReturnsTimeout(t *testing.T) {
-	fetch := func(ctx context.Context, token, serviceID, environmentID, instanceID string) (*openapiclientfleet.DebugResourceInstanceResult, error) {
-		require.Equal(t, "instance", instanceID)
-		return nil, context.DeadlineExceeded
+func TestCollectHelmDebugInfoReportsFetchErrors(t *testing.T) {
+	tests := []struct {
+		name     string
+		fetchErr error
+	}{
+		{name: "timeout", fetchErr: context.DeadlineExceeded},
+		{name: "api error", fetchErr: errors.New("internal server error")},
 	}
-	planDAG := &PlanDAG{}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			fetch := func(ctx context.Context, token, serviceID, environmentID, instanceID string) (*openapiclientfleet.DebugResourceInstanceResult, error) {
+				require.Equal(t, "instance", instanceID)
+				return nil, tt.fetchErr
+			}
+			planDAG := &PlanDAG{}
 
-	err := collectHelmDebugInfoWithFetcher(
-		context.Background(), "token", "service", "environment", "instance",
-		planDAG, nil, nil, nil, map[string]*ResourceDebugInfo{}, fetch)
+			err := collectHelmDebugInfoWithFetcher(
+				context.Background(), "token", "service", "environment", "instance",
+				planDAG, nil, nil, nil, map[string]*ResourceDebugInfo{}, fetch)
 
-	require.ErrorIs(t, err, context.DeadlineExceeded)
-	require.Empty(t, planDAG.Errors)
-}
-
-func TestCollectHelmDebugInfoRecordsAPIErrorAndContinues(t *testing.T) {
-	fetch := func(context.Context, string, string, string, string) (*openapiclientfleet.DebugResourceInstanceResult, error) {
-		return nil, errors.New("internal server error")
+			require.ErrorIs(t, err, tt.fetchErr)
+			require.Equal(t, []string{"failed to debug resource instance instance: " + tt.fetchErr.Error()}, planDAG.Errors)
+		})
 	}
-	planDAG := &PlanDAG{}
-
-	err := collectHelmDebugInfoWithFetcher(
-		context.Background(), "token", "service", "environment", "instance",
-		planDAG, nil, nil, nil, map[string]*ResourceDebugInfo{}, fetch)
-
-	require.NoError(t, err)
-	require.Equal(t, []string{"failed to debug resource instance instance: internal server error"}, planDAG.Errors)
 }
 
 func TestDeploymentCellIDsForDebug(t *testing.T) {

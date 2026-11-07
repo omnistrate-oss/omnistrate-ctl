@@ -3,7 +3,6 @@ package instance
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"strings"
 
@@ -224,10 +223,14 @@ func runDebugJSON(parent context.Context, instanceID, token string) error {
 			Errors: []string{err.Error()},
 		}
 	}
+	// Collection failures still emit the partial JSON, then fail the command so
+	// automation can surface the error instead of treating the payload as complete.
+	var collectErr error
 	if planDAG != nil {
 		attachWorkflowProgress(ctx, token, serviceID, environmentID, instanceID, planDAG)
 		if err := ctx.Err(); err != nil {
-			return fmt.Errorf("instance debug data collection interrupted: %w", err)
+			collectErr = fmt.Errorf("instance debug data collection interrupted: %w", err)
+			planDAG.Errors = append(planDAG.Errors, collectErr.Error())
 		}
 		// Enrich bootstrap steps with dependency timelines for all resources
 		for resourceKey, steps := range planDAG.WorkflowStepsByKey {
@@ -264,10 +267,10 @@ func runDebugJSON(parent context.Context, instanceID, token string) error {
 	}
 
 	// Collect per-resource debug info (helm data, terraform progress/files/logs)
-	if planDAG != nil {
+	if planDAG != nil && collectErr == nil {
 		data.ResourceDebugInfo, err = collectResourceDebugInfo(ctx, token, serviceID, environmentID, instanceID, planDAG, instanceData)
 		if err != nil {
-			return fmt.Errorf("failed to collect resource debug info: %w", err)
+			collectErr = fmt.Errorf("failed to collect resource debug info: %w", err)
 		}
 	}
 
@@ -276,16 +279,16 @@ func runDebugJSON(parent context.Context, instanceID, token string) error {
 		return fmt.Errorf("failed to marshal debug data to JSON: %w", err)
 	}
 	fmt.Println(string(jsonData))
-	return nil
+	return collectErr
 }
 
 // collectResourceDebugInfo fetches all per-resource debug data for the JSON output path.
 // It collects helm data (logs, values), terraform data (progress, history, files, logs),
 // operator data (input/output parameters), and compose data (input/output parameters)
 // for each resource in the plan DAG.
-// Resource enrichments are best-effort: API failures are recorded in planDAG.Errors
-// so partial data is still returned. Context timeout or cancellation is returned
-// as an error so JSON callers cannot mistake an incomplete payload for success.
+// Optional enrichments are best-effort. A DebugResourceInstance failure or an
+// exhausted context is recorded in planDAG.Errors and returned alongside the
+// partial result so JSON callers cannot mistake it for a complete payload.
 func collectResourceDebugInfo(ctx context.Context, token, serviceID, environmentID, instanceID string, planDAG *PlanDAG, instanceData *openapiclientfleet.ResourceInstance) (map[string]*ResourceDebugInfo, error) {
 	result := make(map[string]*ResourceDebugInfo)
 	if planDAG == nil || len(planDAG.Nodes) == 0 {
@@ -323,9 +326,7 @@ func collectResourceDebugInfo(ctx context.Context, token, serviceID, environment
 	}
 
 	// Collect helm debug data from the DebugResourceInstance API
-	if err := collectHelmDebugInfo(ctx, token, serviceID, environmentID, instanceID, planDAG, instanceData, inputParams, resultParams, result); err != nil {
-		return nil, err
-	}
+	collectErr := collectHelmDebugInfo(ctx, token, serviceID, environmentID, instanceID, planDAG, instanceData, inputParams, resultParams, result)
 
 	// Collect terraform debug data from k8s ConfigMaps
 	collectTerraformDebugInfo(ctx, token, instanceData, instanceID, planDAG, result)
@@ -335,8 +336,9 @@ func collectResourceDebugInfo(ctx context.Context, token, serviceID, environment
 
 	// Collect compose debug data (input/output parameters) for compose resources
 	collectComposeDebugInfo(ctx, token, serviceID, planDAG, instanceData, inputParams, resultParams, result)
-	if err := ctx.Err(); err != nil {
-		return nil, fmt.Errorf("resource debug collection interrupted: %w", err)
+	if err := ctx.Err(); err != nil && collectErr == nil {
+		collectErr = fmt.Errorf("resource debug collection interrupted: %w", err)
+		planDAG.Errors = append(planDAG.Errors, collectErr.Error())
 	}
 
 	// Remove entries that have no debug data
@@ -346,7 +348,7 @@ func collectResourceDebugInfo(ctx context.Context, token, serviceID, environment
 		}
 	}
 
-	return result, nil
+	return result, collectErr
 }
 
 // collectHelmDebugInfo fetches helm debug data (logs, chart values) and input/output parameters for all helm resources.
@@ -360,13 +362,10 @@ func collectHelmDebugInfoWithFetcher(ctx context.Context, token, serviceID, envi
 	debugResult, err := fetchDebugResourceInstance(ctx, token, serviceID, environmentID, instanceID)
 	if err != nil {
 		err = fmt.Errorf("failed to debug resource instance %s: %w", instanceID, err)
-		if ctx.Err() != nil || errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) {
-			return err
-		}
 		if planDAG != nil {
 			planDAG.Errors = append(planDAG.Errors, err.Error())
 		}
-		return nil
+		return err
 	}
 	if debugResult == nil || debugResult.ResourcesDebug == nil {
 		return nil
