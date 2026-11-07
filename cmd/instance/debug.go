@@ -3,6 +3,7 @@ package instance
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -226,7 +227,7 @@ func runDebugJSON(parent context.Context, instanceID, token string) error {
 	if planDAG != nil {
 		attachWorkflowProgress(ctx, token, serviceID, environmentID, instanceID, planDAG)
 		if err := ctx.Err(); err != nil {
-			return fmt.Errorf("failed to attach workflow progress: %w", err)
+			return fmt.Errorf("instance debug data collection interrupted: %w", err)
 		}
 		// Enrich bootstrap steps with dependency timelines for all resources
 		for resourceKey, steps := range planDAG.WorkflowStepsByKey {
@@ -282,9 +283,9 @@ func runDebugJSON(parent context.Context, instanceID, token string) error {
 // It collects helm data (logs, values), terraform data (progress, history, files, logs),
 // operator data (input/output parameters), and compose data (input/output parameters)
 // for each resource in the plan DAG.
-// Optional resource enrichments remain best-effort, while failure of the core
-// DebugResourceInstance request is returned so JSON callers cannot mistake an
-// empty payload for a successful debug operation.
+// Resource enrichments are best-effort: API failures are recorded in planDAG.Errors
+// so partial data is still returned. Context timeout or cancellation is returned
+// as an error so JSON callers cannot mistake an incomplete payload for success.
 func collectResourceDebugInfo(ctx context.Context, token, serviceID, environmentID, instanceID string, planDAG *PlanDAG, instanceData *openapiclientfleet.ResourceInstance) (map[string]*ResourceDebugInfo, error) {
 	result := make(map[string]*ResourceDebugInfo)
 	if planDAG == nil || len(planDAG.Nodes) == 0 {
@@ -350,10 +351,22 @@ func collectResourceDebugInfo(ctx context.Context, token, serviceID, environment
 
 // collectHelmDebugInfo fetches helm debug data (logs, chart values) and input/output parameters for all helm resources.
 func collectHelmDebugInfo(ctx context.Context, token, serviceID, environmentID, instanceID string, planDAG *PlanDAG, instanceData *openapiclientfleet.ResourceInstance, inputParams map[string]interface{}, resultParams map[string]interface{}, result map[string]*ResourceDebugInfo) error {
-	debugResult, err := fetchResourceDebugResult(
-		ctx, token, serviceID, environmentID, instanceID, dataaccess.DebugResourceInstance)
+	return collectHelmDebugInfoWithFetcher(ctx, token, serviceID, environmentID, instanceID, planDAG, instanceData, inputParams, resultParams, result, dataaccess.DebugResourceInstance)
+}
+
+type debugResourceInstanceFetcher func(ctx context.Context, token, serviceID, environmentID, instanceID string) (*openapiclientfleet.DebugResourceInstanceResult, error)
+
+func collectHelmDebugInfoWithFetcher(ctx context.Context, token, serviceID, environmentID, instanceID string, planDAG *PlanDAG, instanceData *openapiclientfleet.ResourceInstance, inputParams map[string]interface{}, resultParams map[string]interface{}, result map[string]*ResourceDebugInfo, fetchDebugResourceInstance debugResourceInstanceFetcher) error {
+	debugResult, err := fetchDebugResourceInstance(ctx, token, serviceID, environmentID, instanceID)
 	if err != nil {
-		return err
+		err = fmt.Errorf("failed to debug resource instance %s: %w", instanceID, err)
+		if ctx.Err() != nil || errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) {
+			return err
+		}
+		if planDAG != nil {
+			planDAG.Errors = append(planDAG.Errors, err.Error())
+		}
+		return nil
 	}
 	if debugResult == nil || debugResult.ResourcesDebug == nil {
 		return nil
@@ -418,16 +431,6 @@ func collectHelmDebugInfo(ctx context.Context, token, serviceID, environmentID, 
 		}
 	}
 	return nil
-}
-
-type debugResourceInstanceFetcher func(context.Context, string, string, string, string) (*openapiclientfleet.DebugResourceInstanceResult, error)
-
-func fetchResourceDebugResult(ctx context.Context, token, serviceID, environmentID, instanceID string, fetchDebugResourceInstance debugResourceInstanceFetcher) (*openapiclientfleet.DebugResourceInstanceResult, error) {
-	debugResult, err := fetchDebugResourceInstance(ctx, token, serviceID, environmentID, instanceID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to debug resource instance %s: %w", instanceID, err)
-	}
-	return debugResult, nil
 }
 
 // collectTerraformDebugInfo fetches terraform debug data (progress, history, files, logs)

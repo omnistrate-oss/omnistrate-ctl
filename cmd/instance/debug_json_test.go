@@ -3,6 +3,7 @@ package instance
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"testing"
 	"time"
 
@@ -348,32 +349,33 @@ func TestInstanceDebugFetchContextHasDeadline(t *testing.T) {
 	require.WithinDuration(t, time.Now().Add(time.Minute), deadline, time.Second)
 }
 
-func TestFetchResourceDebugResultReturnsError(t *testing.T) {
+func TestCollectHelmDebugInfoReturnsTimeout(t *testing.T) {
 	fetch := func(ctx context.Context, token, serviceID, environmentID, instanceID string) (*openapiclientfleet.DebugResourceInstanceResult, error) {
-		require.Equal(t, "token", token)
-		require.Equal(t, "service", serviceID)
-		require.Equal(t, "environment", environmentID)
 		require.Equal(t, "instance", instanceID)
 		return nil, context.DeadlineExceeded
 	}
+	planDAG := &PlanDAG{}
 
-	_, err := fetchResourceDebugResult(
-		context.Background(), "token", "service", "environment", "instance", fetch)
+	err := collectHelmDebugInfoWithFetcher(
+		context.Background(), "token", "service", "environment", "instance",
+		planDAG, nil, nil, nil, map[string]*ResourceDebugInfo{}, fetch)
 
 	require.ErrorIs(t, err, context.DeadlineExceeded)
-	require.Contains(t, err.Error(), "failed to debug resource instance instance")
+	require.Empty(t, planDAG.Errors)
 }
 
-func TestFetchResourceDebugResultAllowsEmptyResult(t *testing.T) {
+func TestCollectHelmDebugInfoRecordsAPIErrorAndContinues(t *testing.T) {
 	fetch := func(context.Context, string, string, string, string) (*openapiclientfleet.DebugResourceInstanceResult, error) {
-		return nil, nil
+		return nil, errors.New("internal server error")
 	}
+	planDAG := &PlanDAG{}
 
-	result, err := fetchResourceDebugResult(
-		context.Background(), "token", "service", "environment", "instance", fetch)
+	err := collectHelmDebugInfoWithFetcher(
+		context.Background(), "token", "service", "environment", "instance",
+		planDAG, nil, nil, nil, map[string]*ResourceDebugInfo{}, fetch)
 
 	require.NoError(t, err)
-	require.Nil(t, result)
+	require.Equal(t, []string{"failed to debug resource instance instance: internal server error"}, planDAG.Errors)
 }
 
 func TestDeploymentCellIDsForDebug(t *testing.T) {
