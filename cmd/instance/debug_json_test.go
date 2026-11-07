@@ -348,6 +348,34 @@ func TestInstanceDebugFetchContextHasDeadline(t *testing.T) {
 	require.WithinDuration(t, time.Now().Add(time.Minute), deadline, time.Second)
 }
 
+func TestFetchResourceDebugResultReturnsError(t *testing.T) {
+	fetch := func(ctx context.Context, token, serviceID, environmentID, instanceID string) (*openapiclientfleet.DebugResourceInstanceResult, error) {
+		require.Equal(t, "token", token)
+		require.Equal(t, "service", serviceID)
+		require.Equal(t, "environment", environmentID)
+		require.Equal(t, "instance", instanceID)
+		return nil, context.DeadlineExceeded
+	}
+
+	_, err := fetchResourceDebugResult(
+		context.Background(), "token", "service", "environment", "instance", fetch)
+
+	require.ErrorIs(t, err, context.DeadlineExceeded)
+	require.Contains(t, err.Error(), "failed to debug resource instance instance")
+}
+
+func TestFetchResourceDebugResultAllowsEmptyResult(t *testing.T) {
+	fetch := func(context.Context, string, string, string, string) (*openapiclientfleet.DebugResourceInstanceResult, error) {
+		return nil, nil
+	}
+
+	result, err := fetchResourceDebugResult(
+		context.Background(), "token", "service", "environment", "instance", fetch)
+
+	require.NoError(t, err)
+	require.Nil(t, result)
+}
+
 func TestDeploymentCellIDsForDebug(t *testing.T) {
 	dataplane := "hc-dataplane"
 	controlPlane := "hc-control-plane"
