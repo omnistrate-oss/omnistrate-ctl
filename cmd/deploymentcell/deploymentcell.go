@@ -46,8 +46,7 @@ func run(cmd *cobra.Command, args []string) {
 }
 
 func formatDeploymentCell(cluster *openapiclientfleet.HostCluster) model.DeploymentCell {
-	// TODO: Switch to the typed SDK getters when omnistrate-sdk-go PR #144 is released.
-	// Generated SDK unmarshalling removes typed fields from AdditionalProperties.
+	// SDK v0.1.0 preserves response fields it does not model in AdditionalProperties.
 	var currentManagedArtifactVersion, effectiveManagedArtifactVersion *string
 	if value, ok := cluster.AdditionalProperties["currentManagedArtifactVersion"].(string); ok {
 		currentManagedArtifactVersion = utils.ToPtr(value)
