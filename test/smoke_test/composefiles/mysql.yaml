@@ -10,7 +10,7 @@ services:
         modifiable: true
         required: true
         export: false
-        defaultValue: a_secure_root_password
+        defaultValue: __OMNISTRATE_TEST_DB_PASSWORD__
       - key: password
         description: Default database password
         name: Password
@@ -18,7 +18,7 @@ services:
         modifiable: true
         required: true
         export: false
-        defaultValue: a_secure_password
+        defaultValue: __OMNISTRATE_TEST_DB_PASSWORD__
       - key: username
         description: Default database username
         name: Username
