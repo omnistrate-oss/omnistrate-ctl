@@ -2,7 +2,10 @@ package instance
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -15,17 +18,12 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-const (
-	mysqlCreateParam = `{"databaseName":"default","password":"a_secure_password","rootPassword":"a_secure_root_password","username":"user"}`
-	mysqlUpdateParam = `{"databaseName":"default","password":"updated_password","rootPassword":"updated_root_password","username":"user"}`
-)
-
 func TestInstanceCreateDescribeAndList(t *testing.T) {
 	ctx, serviceName := setupInstanceSmokeTest(t, "mysql-create")
 
 	instanceID := createMySQLInstance(t, ctx, serviceName,
 		"--tags", "environment=dev,owner=platform",
-		"--param", mysqlCreateParam,
+		"--param", newMySQLParamsJSON(t),
 	)
 
 	cmd.RootCmd.SetArgs([]string{"instance", "describe", instanceID})
@@ -48,7 +46,7 @@ func TestInstanceModifyTagsAndFilters(t *testing.T) {
 
 	instanceID := createMySQLInstance(t, ctx, serviceName,
 		"--tags", "environment=dev,owner=platform",
-		"--param", mysqlCreateParam,
+		"--param", newMySQLParamsJSON(t),
 	)
 	require.NoError(t, testutils.WaitForInstanceToReachStatus(ctx, instanceID, instance.InstanceStatusRunning))
 
@@ -73,11 +71,11 @@ func TestInstanceCreateFromParamFileAndUpdate(t *testing.T) {
 
 	instanceID := createMySQLInstance(t, ctx, serviceName,
 		"--tags", "source=file",
-		"--param-file", "paramfiles/instance_create_param.json",
+		"--param-file", writeMySQLParamsFile(t),
 	)
 	require.NoError(t, testutils.WaitForInstanceToReachStatus(ctx, instanceID, instance.InstanceStatusRunning))
 
-	cmd.RootCmd.SetArgs([]string{"instance", "update", instanceID, "--param-file", "paramfiles/instance_update_param.json"})
+	cmd.RootCmd.SetArgs([]string{"instance", "update", instanceID, "--param-file", writeMySQLParamsFile(t)})
 	require.NoError(t, cmd.RootCmd.ExecuteContext(ctx))
 
 	time.Sleep(60 * time.Second)
@@ -90,7 +88,7 @@ func TestInstanceCreateFromParamFileAndUpdate(t *testing.T) {
 func TestInstanceStopStartRestart(t *testing.T) {
 	ctx, serviceName := setupInstanceSmokeTest(t, "mysql-power")
 
-	instanceID := createMySQLInstance(t, ctx, serviceName, "--param", mysqlCreateParam)
+	instanceID := createMySQLInstance(t, ctx, serviceName, "--param", newMySQLParamsJSON(t))
 	require.NoError(t, testutils.WaitForInstanceToReachStatus(ctx, instanceID, instance.InstanceStatusRunning))
 
 	cmd.RootCmd.SetArgs([]string{"instance", "stop", instanceID})
@@ -111,10 +109,10 @@ func TestInstanceStopStartRestart(t *testing.T) {
 func TestInstanceUpdateParameters(t *testing.T) {
 	ctx, serviceName := setupInstanceSmokeTest(t, "mysql-update")
 
-	instanceID := createMySQLInstance(t, ctx, serviceName, "--param", mysqlCreateParam)
+	instanceID := createMySQLInstance(t, ctx, serviceName, "--param", newMySQLParamsJSON(t))
 	require.NoError(t, testutils.WaitForInstanceToReachStatus(ctx, instanceID, instance.InstanceStatusRunning))
 
-	cmd.RootCmd.SetArgs([]string{"instance", "update", instanceID, "--param", mysqlUpdateParam})
+	cmd.RootCmd.SetArgs([]string{"instance", "update", instanceID, "--param", newMySQLParamsJSON(t)})
 	require.NoError(t, cmd.RootCmd.ExecuteContext(ctx))
 
 	time.Sleep(60 * time.Second)
@@ -135,7 +133,7 @@ func setupInstanceSmokeTest(t *testing.T, servicePrefix string) (context.Context
 	require.NoError(t, cmd.RootCmd.ExecuteContext(ctx))
 
 	serviceName := fmt.Sprintf("%s-%s", servicePrefix, uuid.NewString()[:8])
-	cmd.RootCmd.SetArgs([]string{"build", "--file", "../composefiles/mysql.yaml", "--name", serviceName, "--environment=dev", "--environment-type=dev"})
+	cmd.RootCmd.SetArgs([]string{"build", "--file", writeRenderedMySQLComposeFile(t), "--name", serviceName, "--environment=dev", "--environment-type=dev"})
 	require.NoError(t, cmd.RootCmd.ExecuteContext(ctx))
 
 	t.Cleanup(func() {
@@ -161,6 +159,7 @@ func createMySQLInstance(t *testing.T, ctx context.Context, serviceName string, 
 		"--resource=mySQL",
 		"--cloud-provider=aws",
 		"--region=ca-central-1",
+		"--network-type=INTERNAL",
 	}
 	args = append(args, extraArgs...)
 
@@ -173,6 +172,39 @@ func createMySQLInstance(t *testing.T, ctx context.Context, serviceName string, 
 	})
 
 	return instanceID
+}
+
+func newMySQLParamsJSON(t *testing.T) string {
+	t.Helper()
+
+	params, err := json.Marshal(map[string]string{
+		"databaseName": "default",
+		"password":     testutils.RandomTestPassword(),
+		"rootPassword": testutils.RandomTestPassword(),
+		"username":     "user",
+	})
+	require.NoError(t, err)
+	return string(params)
+}
+
+func writeMySQLParamsFile(t *testing.T) string {
+	t.Helper()
+
+	path := filepath.Join(t.TempDir(), "mysql-params.json")
+	require.NoError(t, os.WriteFile(path, []byte(newMySQLParamsJSON(t)), 0o600))
+	return path
+}
+
+func writeRenderedMySQLComposeFile(t *testing.T) string {
+	t.Helper()
+
+	content, err := os.ReadFile("../composefiles/mysql.yaml")
+	require.NoError(t, err)
+
+	path := filepath.Join(t.TempDir(), "mysql.yaml")
+	rendered := testutils.RenderTestCredentials(string(content))
+	require.NoError(t, os.WriteFile(path, []byte(rendered), 0o600)) //nolint:gosec // destination is confined to t.TempDir
+	return path
 }
 
 func deleteInstanceIfPresent(t *testing.T, ctx context.Context, instanceID string) {
