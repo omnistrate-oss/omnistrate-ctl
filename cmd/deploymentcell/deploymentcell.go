@@ -2,6 +2,7 @@ package deploymentcell
 
 import (
 	"github.com/omnistrate-oss/omnistrate-ctl/internal/model"
+	"github.com/omnistrate-oss/omnistrate-ctl/internal/utils"
 	openapiclientfleet "github.com/omnistrate-oss/omnistrate-sdk-go/fleet"
 	"github.com/spf13/cobra"
 )
@@ -45,6 +46,14 @@ func run(cmd *cobra.Command, args []string) {
 }
 
 func formatDeploymentCell(cluster *openapiclientfleet.HostCluster) model.DeploymentCell {
+	var currentManagedArtifactVersion, effectiveManagedArtifactVersion *string
+	if value, ok := cluster.AdditionalProperties["currentManagedArtifactVersion"].(string); ok {
+		currentManagedArtifactVersion = utils.ToPtr(value)
+	}
+	if value, ok := cluster.AdditionalProperties["effectiveManagedArtifactVersion"].(string); ok {
+		effectiveManagedArtifactVersion = utils.ToPtr(value)
+	}
+
 	return model.DeploymentCell{
 		// Basic identification
 		ID:          cluster.GetId(),
@@ -62,8 +71,8 @@ func formatDeploymentCell(cluster *openapiclientfleet.HostCluster) model.Deploym
 		IsCustomDeployment: cluster.GetIsCustomDeployment(),
 
 		// Deployment information
-		CurrentManagedArtifactVersion:   stringAdditionalProperty(cluster.AdditionalProperties, "currentManagedArtifactVersion"),
-		EffectiveManagedArtifactVersion: stringAdditionalProperty(cluster.AdditionalProperties, "effectiveManagedArtifactVersion"),
+		CurrentManagedArtifactVersion:   currentManagedArtifactVersion,
+		EffectiveManagedArtifactVersion: effectiveManagedArtifactVersion,
 		CurrentNumberOfDeployments:      cluster.GetCurrentNumberOfDeployments(),
 
 		// Health status
@@ -89,15 +98,6 @@ func formatDeploymentCell(cluster *openapiclientfleet.HostCluster) model.Deploym
 		CustomerEmail:            cluster.CustomerEmail,
 		CustomerOrganizationName: cluster.CustomerOrganizationName,
 	}
-}
-
-func stringAdditionalProperty(properties map[string]interface{}, key string) *string {
-	value, ok := properties[key].(string)
-	if !ok {
-		return nil
-	}
-
-	return &value
 }
 
 func formatHealthStatus(healthStatus *openapiclientfleet.HostClusterHealthStatus) model.DeploymentCellHealthStatus {
