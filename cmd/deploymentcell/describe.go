@@ -47,13 +47,18 @@ func runDescribe(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to get user token: %w", err)
 	}
 
-	hostClusters, err := dataaccess.ListHostClusters(cmd.Context(), token, nil, nil)
-	if err != nil {
-		return fmt.Errorf("failed to resolve deployment cell %s: %w", deploymentCellIdentifier, err)
-	}
-	deploymentCellID := resolveDeploymentCellID(deploymentCellIdentifier, hostClusters.GetHostClusters())
+	hostCluster, err := dataaccess.DescribeHostCluster(cmd.Context(), token, deploymentCellIdentifier)
+	if dataaccess.IsHostClusterNotFound(err) {
+		hostClusters, listErr := dataaccess.ListHostClusters(cmd.Context(), token, nil, nil)
+		if listErr != nil {
+			return fmt.Errorf("failed to resolve deployment cell %s: %w", deploymentCellIdentifier, listErr)
+		}
 
-	hostCluster, err := dataaccess.DescribeHostCluster(cmd.Context(), token, deploymentCellID)
+		deploymentCellID := resolveDeploymentCellID(deploymentCellIdentifier, hostClusters.GetHostClusters())
+		if deploymentCellID != deploymentCellIdentifier {
+			hostCluster, err = dataaccess.DescribeHostCluster(cmd.Context(), token, deploymentCellID)
+		}
+	}
 	if err != nil {
 		return fmt.Errorf("failed to describe deployment cell %s: %w", deploymentCellIdentifier, err)
 	}
