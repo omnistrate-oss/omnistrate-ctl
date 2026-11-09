@@ -18,6 +18,7 @@ var Cmd = &cobra.Command{
 
 func init() {
 	Cmd.AddCommand(adoptCmd)
+	Cmd.AddCommand(describeCmd)
 	Cmd.AddCommand(statusCmd)
 	Cmd.AddCommand(listCmd)
 	Cmd.AddCommand(deleteCmd)
@@ -61,7 +62,8 @@ func formatDeploymentCell(cluster *openapiclientfleet.HostCluster) model.Deploym
 		IsCustomDeployment: cluster.GetIsCustomDeployment(),
 
 		// Deployment information
-		CurrentNumberOfDeployments: cluster.GetCurrentNumberOfDeployments(),
+		CurrentManagedArtifactVersion: cluster.CurrentManagedArtifactVersion,
+		CurrentNumberOfDeployments:    cluster.GetCurrentNumberOfDeployments(),
 
 		// Health status
 		HealthStatus: formatHealthStatus(cluster.HealthStatus),

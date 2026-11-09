@@ -55,6 +55,18 @@ func TestDeploymentCell_ToTableView_AdoptedClusterUsesKeyAsID(t *testing.T) {
 	assert.Equal(t, "custom-key-abc", view.ID, "adopted clusters (non-dataplane- key) should use Key as ID")
 }
 
+func TestDeploymentCell_ToTableView_CurrentManagedArtifactVersion(t *testing.T) {
+	version := "r0000020"
+	dc := DeploymentCell{
+		Key:                           "dataplane-test",
+		ID:                            "dc-123",
+		CurrentManagedArtifactVersion: &version,
+	}
+
+	view := dc.ToTableView()
+	assert.Equal(t, &version, view.CurrentManagedArtifactVersion)
+}
+
 func ptr[T any](v T) *T {
 	return &v
 }
