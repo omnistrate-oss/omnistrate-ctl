@@ -14,7 +14,7 @@ import (
 var describeCmd = &cobra.Command{
 	Use:   "describe [deployment-cell-id]",
 	Short: "Describe a deployment cell",
-	Long:  "Describe a deployment cell by ID, including its current managed artifact version.",
+	Long:  "Describe a deployment cell by ID, including its current and effective managed artifact versions.",
 	Example: `# Describe a deployment cell
 omnistrate-ctl deployment-cell describe hc-12345678
 

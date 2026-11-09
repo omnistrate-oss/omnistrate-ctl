@@ -4,7 +4,7 @@ Describe a deployment cell
 
 ### Synopsis
 
-Describe a deployment cell by ID, including its current managed artifact version.
+Describe a deployment cell by ID, including its current and effective managed artifact versions.
 
 ```
 omnistrate-ctl deployment-cell describe [deployment-cell-id] [flags]

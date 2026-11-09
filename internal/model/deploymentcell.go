@@ -37,8 +37,9 @@ type DeploymentCell struct {
 	IsCustomDeployment bool   `json:"is_custom_deployment"`
 
 	// Deployment information
-	CurrentManagedArtifactVersion *string `json:"current_managed_artifact_version,omitempty"`
-	CurrentNumberOfDeployments    int64   `json:"current_number_of_deployments"`
+	CurrentManagedArtifactVersion   *string `json:"current_managed_artifact_version,omitempty"`
+	EffectiveManagedArtifactVersion *string `json:"effective_managed_artifact_version,omitempty"`
+	CurrentNumberOfDeployments      int64   `json:"current_number_of_deployments"`
 
 	// Health status summary
 	HealthStatus DeploymentCellHealthStatus `json:"health_status"`
@@ -113,17 +114,18 @@ func (h DeploymentCellHealthStatus) String() string {
 
 // DeploymentCellTableView returns a simplified view of the deployment cell for table display
 type DeploymentCellTableView struct {
-	ID                            string  `json:"id"`
-	CustomerEmail                 *string `json:"customer_email"`
-	CustomerOrganizationName      *string `json:"customer_organization_name"`
-	Status                        string  `json:"status"`
-	Type                          string  `json:"type"`
-	CloudProvider                 string  `json:"cloud_provider"`
-	Region                        string  `json:"region"`
-	PrivateLink                   string  `json:"private_link"`
-	CurrentManagedArtifactVersion *string `json:"current_managed_artifact_version,omitempty"`
-	CurrentNumberOfDeployments    int64   `json:"current_number_of_deployments"`
-	HealthStatus                  string  `json:"health_status"`
+	ID                              string  `json:"id"`
+	CustomerEmail                   *string `json:"customer_email"`
+	CustomerOrganizationName        *string `json:"customer_organization_name"`
+	Status                          string  `json:"status"`
+	Type                            string  `json:"type"`
+	CloudProvider                   string  `json:"cloud_provider"`
+	Region                          string  `json:"region"`
+	PrivateLink                     string  `json:"private_link"`
+	CurrentManagedArtifactVersion   *string `json:"current_managed_artifact_version,omitempty"`
+	EffectiveManagedArtifactVersion *string `json:"effective_managed_artifact_version,omitempty"`
+	CurrentNumberOfDeployments      int64   `json:"current_number_of_deployments"`
+	HealthStatus                    string  `json:"health_status"`
 }
 
 // ToTableView converts a DeploymentCell to a table-friendly view
@@ -139,17 +141,18 @@ func (dc DeploymentCell) ToTableView() DeploymentCellTableView {
 		privateLink = "No"
 	}
 	return DeploymentCellTableView{
-		ID:                            dc.ID,
-		CustomerEmail:                 dc.CustomerEmail,
-		CustomerOrganizationName:      dc.CustomerOrganizationName,
-		Status:                        dc.Status,
-		Type:                          dc.Type,
-		CloudProvider:                 dc.CloudProvider,
-		Region:                        dc.Region,
-		PrivateLink:                   privateLink,
-		CurrentManagedArtifactVersion: dc.CurrentManagedArtifactVersion,
-		CurrentNumberOfDeployments:    dc.CurrentNumberOfDeployments,
-		HealthStatus:                  dc.HealthStatus.String(),
+		ID:                              dc.ID,
+		CustomerEmail:                   dc.CustomerEmail,
+		CustomerOrganizationName:        dc.CustomerOrganizationName,
+		Status:                          dc.Status,
+		Type:                            dc.Type,
+		CloudProvider:                   dc.CloudProvider,
+		Region:                          dc.Region,
+		PrivateLink:                     privateLink,
+		CurrentManagedArtifactVersion:   dc.CurrentManagedArtifactVersion,
+		EffectiveManagedArtifactVersion: dc.EffectiveManagedArtifactVersion,
+		CurrentNumberOfDeployments:      dc.CurrentNumberOfDeployments,
+		HealthStatus:                    dc.HealthStatus.String(),
 	}
 }
 

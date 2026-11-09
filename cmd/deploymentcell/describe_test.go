@@ -13,7 +13,7 @@ func TestDescribeCommand(t *testing.T) {
 	require.Same(t, describeCmd, command)
 	require.Equal(t, "describe [deployment-cell-id]", command.Use)
 	require.NotEmpty(t, command.Short)
-	require.Contains(t, command.Long, "current managed artifact version")
+	require.Contains(t, command.Long, "current and effective managed artifact versions")
 	require.NotNil(t, command.RunE)
 	require.True(t, command.SilenceUsage)
 
@@ -22,14 +22,18 @@ func TestDescribeCommand(t *testing.T) {
 	require.Error(t, command.ValidateArgs([]string{"hc-1", "hc-2"}))
 }
 
-func TestFormatDeploymentCellIncludesCurrentManagedArtifactVersion(t *testing.T) {
-	version := "r0000020"
+func TestFormatDeploymentCellIncludesManagedArtifactVersions(t *testing.T) {
+	currentVersion := "r0000020"
+	effectiveVersion := "r0000021"
 	cluster := openapiclientfleet.HostCluster{
-		Id:                            "hc-12345678",
-		CurrentManagedArtifactVersion: &version,
+		Id:                              "hc-12345678",
+		CurrentManagedArtifactVersion:   &currentVersion,
+		EffectiveManagedArtifactVersion: &effectiveVersion,
 	}
 
 	formatted := formatDeploymentCell(&cluster)
-	require.Equal(t, &version, formatted.CurrentManagedArtifactVersion)
-	require.Equal(t, &version, formatted.ToTableView().CurrentManagedArtifactVersion)
+	require.Equal(t, &currentVersion, formatted.CurrentManagedArtifactVersion)
+	require.Equal(t, &effectiveVersion, formatted.EffectiveManagedArtifactVersion)
+	require.Equal(t, &currentVersion, formatted.ToTableView().CurrentManagedArtifactVersion)
+	require.Equal(t, &effectiveVersion, formatted.ToTableView().EffectiveManagedArtifactVersion)
 }

@@ -62,8 +62,9 @@ func formatDeploymentCell(cluster *openapiclientfleet.HostCluster) model.Deploym
 		IsCustomDeployment: cluster.GetIsCustomDeployment(),
 
 		// Deployment information
-		CurrentManagedArtifactVersion: cluster.CurrentManagedArtifactVersion,
-		CurrentNumberOfDeployments:    cluster.GetCurrentNumberOfDeployments(),
+		CurrentManagedArtifactVersion:   cluster.CurrentManagedArtifactVersion,
+		EffectiveManagedArtifactVersion: cluster.EffectiveManagedArtifactVersion,
+		CurrentNumberOfDeployments:      cluster.GetCurrentNumberOfDeployments(),
 
 		// Health status
 		HealthStatus: formatHealthStatus(cluster.HealthStatus),
