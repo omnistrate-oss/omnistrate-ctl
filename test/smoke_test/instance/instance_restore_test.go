@@ -50,7 +50,7 @@ func TestInstanceUndeleteWithInstanceID(t *testing.T) {
 
 	// Build a service
 	serviceName := "undelete-test-" + uuid.NewString()[:8]
-	cmd.RootCmd.SetArgs([]string{"build", "--file", "../composefiles/mysql.yaml", "--name", serviceName, "--environment=dev", "--environment-type=dev"})
+	cmd.RootCmd.SetArgs([]string{"build", "--file", writeRenderedMySQLComposeFile(t), "--name", serviceName, "--environment=dev", "--environment-type=dev"})
 	err = cmd.RootCmd.ExecuteContext(ctx)
 	require.NoError(t, err)
 	require.NotEmpty(t, build.ServiceID)
@@ -65,7 +65,8 @@ func TestInstanceUndeleteWithInstanceID(t *testing.T) {
 		"--resource=mySQL",
 		"--cloud-provider=aws",
 		"--region=ca-central-1",
-		"--param", `{"databaseName":"default","password":"a_secure_password","rootPassword":"a_secure_root_password","username":"user"}`,
+		"--network-type=INTERNAL",
+		"--param", newMySQLParamsJSON(t),
 	})
 	originalInstanceID := instance.InstanceID
 	originalSubscriptionID := instance.SubscriptionID
@@ -96,6 +97,7 @@ func TestInstanceUndeleteWithInstanceID(t *testing.T) {
 			"--resource=mySQL",
 			"--cloud-provider=aws",
 			"--region=ca-central-1",
+			"--network-type=INTERNAL",
 			fmt.Sprintf("--instance-id=%s", originalInstanceID),
 			fmt.Sprintf("--subscription-id=%s", originalSubscriptionID),
 		})
@@ -139,7 +141,7 @@ func TestSnapshotRestoreToSource(t *testing.T) {
 
 	// Build a service
 	serviceName := "restore-src-" + uuid.NewString()[:8]
-	cmd.RootCmd.SetArgs([]string{"build", "--file", "../composefiles/mysql.yaml", "--name", serviceName, "--environment=dev", "--environment-type=dev"})
+	cmd.RootCmd.SetArgs([]string{"build", "--file", writeRenderedMySQLComposeFile(t), "--name", serviceName, "--environment=dev", "--environment-type=dev"})
 	err = cmd.RootCmd.ExecuteContext(ctx)
 	require.NoError(t, err)
 	serviceID := build.ServiceID
@@ -156,7 +158,8 @@ func TestSnapshotRestoreToSource(t *testing.T) {
 		"--resource=mySQL",
 		"--cloud-provider=aws",
 		"--region=ca-central-1",
-		"--param", `{"databaseName":"default","password":"a_secure_password","rootPassword":"a_secure_root_password","username":"user"}`,
+		"--network-type=INTERNAL",
+		"--param", newMySQLParamsJSON(t),
 	})
 	originalInstanceID := instance.InstanceID
 	require.NotEmpty(t, originalInstanceID)
