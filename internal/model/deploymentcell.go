@@ -114,18 +114,16 @@ func (h DeploymentCellHealthStatus) String() string {
 
 // DeploymentCellTableView returns a simplified view of the deployment cell for table display
 type DeploymentCellTableView struct {
-	ID                              string  `json:"id"`
-	CustomerEmail                   *string `json:"customer_email"`
-	CustomerOrganizationName        *string `json:"customer_organization_name"`
-	Status                          string  `json:"status"`
-	Type                            string  `json:"type"`
-	CloudProvider                   string  `json:"cloud_provider"`
-	Region                          string  `json:"region"`
-	PrivateLink                     string  `json:"private_link"`
-	CurrentManagedArtifactVersion   *string `json:"current_managed_artifact_version,omitempty"`
-	EffectiveManagedArtifactVersion *string `json:"effective_managed_artifact_version,omitempty"`
-	CurrentNumberOfDeployments      int64   `json:"current_number_of_deployments"`
-	HealthStatus                    string  `json:"health_status"`
+	ID                         string  `json:"id"`
+	CustomerEmail              *string `json:"customer_email"`
+	CustomerOrganizationName   *string `json:"customer_organization_name"`
+	Status                     string  `json:"status"`
+	Type                       string  `json:"type"`
+	CloudProvider              string  `json:"cloud_provider"`
+	Region                     string  `json:"region"`
+	PrivateLink                string  `json:"private_link"`
+	CurrentNumberOfDeployments int64   `json:"current_number_of_deployments"`
+	HealthStatus               string  `json:"health_status"`
 }
 
 // ToTableView converts a DeploymentCell to a table-friendly view
@@ -141,18 +139,32 @@ func (dc DeploymentCell) ToTableView() DeploymentCellTableView {
 		privateLink = "No"
 	}
 	return DeploymentCellTableView{
-		ID:                              dc.ID,
-		CustomerEmail:                   dc.CustomerEmail,
-		CustomerOrganizationName:        dc.CustomerOrganizationName,
-		Status:                          dc.Status,
-		Type:                            dc.Type,
-		CloudProvider:                   dc.CloudProvider,
-		Region:                          dc.Region,
-		PrivateLink:                     privateLink,
+		ID:                         dc.ID,
+		CustomerEmail:              dc.CustomerEmail,
+		CustomerOrganizationName:   dc.CustomerOrganizationName,
+		Status:                     dc.Status,
+		Type:                       dc.Type,
+		CloudProvider:              dc.CloudProvider,
+		Region:                     dc.Region,
+		PrivateLink:                privateLink,
+		CurrentNumberOfDeployments: dc.CurrentNumberOfDeployments,
+		HealthStatus:               dc.HealthStatus.String(),
+	}
+}
+
+// DeploymentCellDescribeTableView adds managed artifact versions to the single-cell table view.
+type DeploymentCellDescribeTableView struct {
+	DeploymentCellTableView
+	CurrentManagedArtifactVersion   *string `json:"current_managed_artifact_version,omitempty"`
+	EffectiveManagedArtifactVersion *string `json:"effective_managed_artifact_version,omitempty"`
+}
+
+// ToDescribeTableView converts a DeploymentCell to the detailed table used by describe.
+func (dc DeploymentCell) ToDescribeTableView() DeploymentCellDescribeTableView {
+	return DeploymentCellDescribeTableView{
+		DeploymentCellTableView:         dc.ToTableView(),
 		CurrentManagedArtifactVersion:   dc.CurrentManagedArtifactVersion,
 		EffectiveManagedArtifactVersion: dc.EffectiveManagedArtifactVersion,
-		CurrentNumberOfDeployments:      dc.CurrentNumberOfDeployments,
-		HealthStatus:                    dc.HealthStatus.String(),
 	}
 }
 

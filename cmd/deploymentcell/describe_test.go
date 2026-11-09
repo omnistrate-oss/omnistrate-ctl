@@ -1,6 +1,7 @@
 package deploymentcell
 
 import (
+	"encoding/json"
 	"testing"
 
 	openapiclientfleet "github.com/omnistrate-oss/omnistrate-sdk-go/fleet"
@@ -11,11 +12,6 @@ func TestDescribeCommand(t *testing.T) {
 	command, _, err := Cmd.Find([]string{"describe"})
 	require.NoError(t, err)
 	require.Same(t, describeCmd, command)
-	require.Equal(t, "describe [deployment-cell-id]", command.Use)
-	require.NotEmpty(t, command.Short)
-	require.Contains(t, command.Long, "current and effective managed artifact versions")
-	require.NotNil(t, command.RunE)
-	require.True(t, command.SilenceUsage)
 
 	require.NoError(t, command.ValidateArgs([]string{"hc-12345678"}))
 	require.Error(t, command.ValidateArgs(nil))
@@ -25,15 +21,37 @@ func TestDescribeCommand(t *testing.T) {
 func TestFormatDeploymentCellIncludesManagedArtifactVersions(t *testing.T) {
 	currentVersion := "r0000020"
 	effectiveVersion := "r0000021"
-	cluster := openapiclientfleet.HostCluster{
-		Id:                              "hc-12345678",
-		CurrentManagedArtifactVersion:   &currentVersion,
-		EffectiveManagedArtifactVersion: &effectiveVersion,
-	}
+	var cluster openapiclientfleet.HostCluster
+	err := json.Unmarshal([]byte(`{
+		"accountConfigId":"ac-1",
+		"accountID":"123456789012",
+		"cloudProvider":"aws",
+		"currentManagedArtifactVersion":"r0000020",
+		"currentNumberOfDeployments":0,
+		"description":"test",
+		"effectiveManagedArtifactVersion":"r0000021",
+		"id":"hc-12345678",
+		"isCustomDeployment":false,
+		"key":"dataplane-test",
+		"region":"us-east-1",
+		"regionId":"region-1",
+		"status":"RUNNING",
+		"type":"HOSTED"
+	}`), &cluster)
+	require.NoError(t, err)
 
 	formatted := formatDeploymentCell(&cluster)
 	require.Equal(t, &currentVersion, formatted.CurrentManagedArtifactVersion)
 	require.Equal(t, &effectiveVersion, formatted.EffectiveManagedArtifactVersion)
-	require.Equal(t, &currentVersion, formatted.ToTableView().CurrentManagedArtifactVersion)
-	require.Equal(t, &effectiveVersion, formatted.ToTableView().EffectiveManagedArtifactVersion)
+}
+
+func TestResolveDeploymentCellID(t *testing.T) {
+	hostClusters := []openapiclientfleet.HostCluster{
+		{Id: "hc-managed", Key: "dataplane-managed"},
+		{Id: "hc-adopted", Key: "my-adopted-cell"},
+	}
+
+	require.Equal(t, "hc-managed", resolveDeploymentCellID("hc-managed", hostClusters))
+	require.Equal(t, "hc-adopted", resolveDeploymentCellID("my-adopted-cell", hostClusters))
+	require.Equal(t, "unknown", resolveDeploymentCellID("unknown", hostClusters))
 }

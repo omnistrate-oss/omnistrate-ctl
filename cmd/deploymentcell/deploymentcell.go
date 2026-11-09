@@ -62,8 +62,8 @@ func formatDeploymentCell(cluster *openapiclientfleet.HostCluster) model.Deploym
 		IsCustomDeployment: cluster.GetIsCustomDeployment(),
 
 		// Deployment information
-		CurrentManagedArtifactVersion:   cluster.CurrentManagedArtifactVersion,
-		EffectiveManagedArtifactVersion: cluster.EffectiveManagedArtifactVersion,
+		CurrentManagedArtifactVersion:   stringAdditionalProperty(cluster.AdditionalProperties, "currentManagedArtifactVersion"),
+		EffectiveManagedArtifactVersion: stringAdditionalProperty(cluster.AdditionalProperties, "effectiveManagedArtifactVersion"),
 		CurrentNumberOfDeployments:      cluster.GetCurrentNumberOfDeployments(),
 
 		// Health status
@@ -89,6 +89,15 @@ func formatDeploymentCell(cluster *openapiclientfleet.HostCluster) model.Deploym
 		CustomerEmail:            cluster.CustomerEmail,
 		CustomerOrganizationName: cluster.CustomerOrganizationName,
 	}
+}
+
+func stringAdditionalProperty(properties map[string]interface{}, key string) *string {
+	value, ok := properties[key].(string)
+	if !ok {
+		return nil
+	}
+
+	return &value
 }
 
 func formatHealthStatus(healthStatus *openapiclientfleet.HostClusterHealthStatus) model.DeploymentCellHealthStatus {

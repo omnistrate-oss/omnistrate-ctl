@@ -230,8 +230,8 @@ github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822 h1:C3w9PqII01/Oq
 github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822/go.mod h1:+n7T8mK8HuQTcFwEeznm/DIxMOiR9yIdICNftLE1DvQ=
 github.com/njayp/ophis v1.1.4 h1:6aq3UdU6MlGIjpg//IzKc2yIxHYMf6Rg1A5MLovM9gg=
 github.com/njayp/ophis v1.1.4/go.mod h1:F9KEnfeCJzCWo3e0JP2QqSCN04bXptXl1ico5lcLeYg=
-github.com/omnistrate-oss/omnistrate-sdk-go v0.1.2-0.20261109201752-d844a80ffc8b h1:Fkju+0cXKDPQoH7V3OAcv9BnQhsLyklTnxQJCNdwrT0=
-github.com/omnistrate-oss/omnistrate-sdk-go v0.1.2-0.20261109201752-d844a80ffc8b/go.mod h1:eUi3vI9HtKWm+cxNzUt1+RXuDmoIE1dN5HH5g681d9s=
+github.com/omnistrate-oss/omnistrate-sdk-go v0.1.0 h1:nHf5wzjbAvvhGVpKn7kLAhtu+vpHF8fQ7zcGAAHCtpQ=
+github.com/omnistrate-oss/omnistrate-sdk-go v0.1.0/go.mod h1:eUi3vI9HtKWm+cxNzUt1+RXuDmoIE1dN5HH5g681d9s=
 github.com/opencontainers/go-digest v1.0.0 h1:apOUWs51W5PlhuyGyz9FCeeBIOUDA/6nW8Oi/yOhh5U=
 github.com/opencontainers/go-digest v1.0.0/go.mod h1:0JzlMkj0TRzQZfJkVvzbP0HBR3IKzErnv2BNG4W4MAM=
 github.com/pkg/browser v0.0.0-20240102092130-5ac0b6a4141c h1:+mdjkGKdHQG3305AYmdv1U2eRNDiU2ErMBj1gwrq8eQ=
