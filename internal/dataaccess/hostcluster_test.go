@@ -40,6 +40,39 @@ func TestHostClusterNodepoolEntityType(t *testing.T) {
 	})
 }
 
+func TestDescribeHostClusterNotFoundClassification(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		status   int
+		notFound bool
+	}{
+		{name: "not found", status: http.StatusNotFound, notFound: true},
+		{name: "forbidden", status: http.StatusForbidden, notFound: false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				assert.Equal(t, http.MethodGet, r.Method)
+				assert.Equal(t, "/2022-09-01-00/fleet/host-cluster/hc-test", r.URL.Path)
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(tc.status)
+				assert.NoError(t, json.NewEncoder(w).Encode(openapiclientfleet.Error{
+					Name: "request_failed", Message: http.StatusText(tc.status), Id: "test-error",
+				}))
+			}))
+			t.Cleanup(server.Close)
+			serverURL, err := url.Parse(server.URL)
+			require.NoError(t, err)
+			t.Setenv("OMNISTRATE_HOST", serverURL.Host)
+			t.Setenv("OMNISTRATE_HOST_SCHEME", serverURL.Scheme)
+			t.Setenv("OMNISTRATE_RETRY_MAX", "0")
+
+			_, err = DescribeHostCluster(t.Context(), "test-token", "hc-test")
+			require.Error(t, err)
+			assert.Equal(t, tc.notFound, IsHostClusterNotFound(err))
+		})
+	}
+}
+
 func TestRestartHostClusterDeployment(t *testing.T) {
 	for _, tc := range []struct {
 		name, id, token, apiName, message string

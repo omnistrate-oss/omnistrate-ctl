@@ -1,6 +1,7 @@
 package model
 
 import (
+	"encoding/json"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -53,6 +54,28 @@ func TestDeploymentCell_ToTableView_AdoptedClusterUsesKeyAsID(t *testing.T) {
 	}
 	view := dc.ToTableView()
 	assert.Equal(t, "custom-key-abc", view.ID, "adopted clusters (non-dataplane- key) should use Key as ID")
+}
+
+func TestDeploymentCell_ToDescribeTableView_ManagedArtifactVersions(t *testing.T) {
+	currentVersion := "r0000020"
+	effectiveVersion := "r0000021"
+	dc := DeploymentCell{
+		Key:                             "dataplane-test",
+		ID:                              "dc-123",
+		CurrentManagedArtifactVersion:   &currentVersion,
+		EffectiveManagedArtifactVersion: &effectiveVersion,
+	}
+
+	view := dc.ToDescribeTableView()
+	assert.Equal(t, &currentVersion, view.CurrentManagedArtifactVersion)
+	assert.Equal(t, &effectiveVersion, view.EffectiveManagedArtifactVersion)
+}
+
+func TestDeploymentCell_JSONOmitsMissingManagedArtifactVersions(t *testing.T) {
+	data, err := json.Marshal(DeploymentCell{ID: "dc-123"})
+	assert.NoError(t, err)
+	assert.NotContains(t, string(data), "current_managed_artifact_version")
+	assert.NotContains(t, string(data), "effective_managed_artifact_version")
 }
 
 func ptr[T any](v T) *T {
