@@ -37,7 +37,9 @@ type DeploymentCell struct {
 	IsCustomDeployment bool   `json:"is_custom_deployment"`
 
 	// Deployment information
-	CurrentNumberOfDeployments int64 `json:"current_number_of_deployments"`
+	CurrentManagedArtifactVersion   *string `json:"current_managed_artifact_version,omitempty"`
+	EffectiveManagedArtifactVersion *string `json:"effective_managed_artifact_version,omitempty"`
+	CurrentNumberOfDeployments      int64   `json:"current_number_of_deployments"`
 
 	// Health status summary
 	HealthStatus DeploymentCellHealthStatus `json:"health_status"`
@@ -147,6 +149,22 @@ func (dc DeploymentCell) ToTableView() DeploymentCellTableView {
 		PrivateLink:                privateLink,
 		CurrentNumberOfDeployments: dc.CurrentNumberOfDeployments,
 		HealthStatus:               dc.HealthStatus.String(),
+	}
+}
+
+// DeploymentCellDescribeTableView adds managed artifact versions to the single-cell table view.
+type DeploymentCellDescribeTableView struct {
+	DeploymentCellTableView
+	CurrentManagedArtifactVersion   *string `json:"current_managed_artifact_version,omitempty"`
+	EffectiveManagedArtifactVersion *string `json:"effective_managed_artifact_version,omitempty"`
+}
+
+// ToDescribeTableView converts a DeploymentCell to the detailed table used by describe.
+func (dc DeploymentCell) ToDescribeTableView() DeploymentCellDescribeTableView {
+	return DeploymentCellDescribeTableView{
+		DeploymentCellTableView:         dc.ToTableView(),
+		CurrentManagedArtifactVersion:   dc.CurrentManagedArtifactVersion,
+		EffectiveManagedArtifactVersion: dc.EffectiveManagedArtifactVersion,
 	}
 }
 
