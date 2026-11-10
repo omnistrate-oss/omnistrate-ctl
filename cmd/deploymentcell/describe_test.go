@@ -1,10 +1,14 @@
 package deploymentcell
 
 import (
+	"bytes"
 	"encoding/json"
+	"path/filepath"
+	"strings"
 	"testing"
 
 	openapiclientfleet "github.com/omnistrate-oss/omnistrate-sdk-go/fleet"
+	"github.com/spf13/cobra/doc"
 	"github.com/stretchr/testify/require"
 )
 
@@ -16,6 +20,23 @@ func TestDescribeCommand(t *testing.T) {
 	require.NoError(t, command.ValidateArgs([]string{"hc-12345678"}))
 	require.Error(t, command.ValidateArgs(nil))
 	require.Error(t, command.ValidateArgs([]string{"hc-1", "hc-2"}))
+}
+
+func TestDescribeCommandVisibility(t *testing.T) {
+	require.False(t, describeCmd.Hidden)
+	require.True(t, describeCmd.IsAvailableCommand())
+
+	var help bytes.Buffer
+	previousOutput := Cmd.OutOrStdout()
+	Cmd.SetOut(&help)
+	t.Cleanup(func() { Cmd.SetOut(previousOutput) })
+	require.NoError(t, Cmd.Help())
+	require.Contains(t, help.String(), "Describe a deployment cell\n")
+
+	docDir := t.TempDir()
+	require.NoError(t, doc.GenMarkdownTree(Cmd, docDir))
+	docPrefix := strings.ReplaceAll(Cmd.CommandPath(), " ", "_")
+	require.FileExists(t, filepath.Join(docDir, docPrefix+"_describe.md"))
 }
 
 func TestFormatDeploymentCellIncludesManagedArtifactVersions(t *testing.T) {
