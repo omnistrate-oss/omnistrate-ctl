@@ -2,7 +2,6 @@ package deploymentcell
 
 import (
 	"github.com/omnistrate-oss/omnistrate-ctl/internal/model"
-	"github.com/omnistrate-oss/omnistrate-ctl/internal/utils"
 	openapiclientfleet "github.com/omnistrate-oss/omnistrate-sdk-go/fleet"
 	"github.com/spf13/cobra"
 )
@@ -19,7 +18,6 @@ var Cmd = &cobra.Command{
 
 func init() {
 	Cmd.AddCommand(adoptCmd)
-	Cmd.AddCommand(describeCmd)
 	Cmd.AddCommand(statusCmd)
 	Cmd.AddCommand(listCmd)
 	Cmd.AddCommand(deleteCmd)
@@ -46,15 +44,6 @@ func run(cmd *cobra.Command, args []string) {
 }
 
 func formatDeploymentCell(cluster *openapiclientfleet.HostCluster) model.DeploymentCell {
-	// SDK v0.1.0 preserves response fields it does not model in AdditionalProperties.
-	var currentManagedArtifactVersion, effectiveManagedArtifactVersion *string
-	if value, ok := cluster.AdditionalProperties["currentManagedArtifactVersion"].(string); ok {
-		currentManagedArtifactVersion = utils.ToPtr(value)
-	}
-	if value, ok := cluster.AdditionalProperties["effectiveManagedArtifactVersion"].(string); ok {
-		effectiveManagedArtifactVersion = utils.ToPtr(value)
-	}
-
 	return model.DeploymentCell{
 		// Basic identification
 		ID:          cluster.GetId(),
@@ -72,9 +61,7 @@ func formatDeploymentCell(cluster *openapiclientfleet.HostCluster) model.Deploym
 		IsCustomDeployment: cluster.GetIsCustomDeployment(),
 
 		// Deployment information
-		CurrentManagedArtifactVersion:   currentManagedArtifactVersion,
-		EffectiveManagedArtifactVersion: effectiveManagedArtifactVersion,
-		CurrentNumberOfDeployments:      cluster.GetCurrentNumberOfDeployments(),
+		CurrentNumberOfDeployments: cluster.GetCurrentNumberOfDeployments(),
 
 		// Health status
 		HealthStatus: formatHealthStatus(cluster.HealthStatus),
