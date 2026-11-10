@@ -31,6 +31,7 @@ omnistrate-ctl deployment-cell [operation] [flags]
 * [omnistrate-ctl deployment-cell debug](omnistrate-ctl_deployment-cell_debug.md)	 - Debug deployment cell resources and retrieve custom helm execution logs
 * [omnistrate-ctl deployment-cell delete](omnistrate-ctl_deployment-cell_delete.md)	 - Delete a deployment cell
 * [omnistrate-ctl deployment-cell delete-nodepool](omnistrate-ctl_deployment-cell_delete-nodepool.md)	 - Delete a nodepool from a deployment cell
+* [omnistrate-ctl deployment-cell describe](omnistrate-ctl_deployment-cell_describe.md)	 - Describe a deployment cell
 * [omnistrate-ctl deployment-cell describe-config-template](omnistrate-ctl_deployment-cell_describe-config-template.md)	 - Describe deployment cell configuration template
 * [omnistrate-ctl deployment-cell describe-nodepool](omnistrate-ctl_deployment-cell_describe-nodepool.md)	 - Describe a nodepool in a deployment cell
 * [omnistrate-ctl deployment-cell generate-config-template](omnistrate-ctl_deployment-cell_generate-config-template.md)	 - Generate deployment cell configuration template

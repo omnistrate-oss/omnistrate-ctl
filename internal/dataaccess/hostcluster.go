@@ -3,6 +3,7 @@ package dataaccess
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"strings"
@@ -12,6 +13,25 @@ import (
 	"github.com/omnistrate-oss/omnistrate-ctl/internal/utils"
 	openapiclientfleet "github.com/omnistrate-oss/omnistrate-sdk-go/fleet"
 )
+
+type hostClusterAPIError struct {
+	statusCode int
+	err        error
+}
+
+func (e *hostClusterAPIError) Error() string {
+	return e.err.Error()
+}
+
+func (e *hostClusterAPIError) Unwrap() error {
+	return e.err
+}
+
+// IsHostClusterNotFound reports whether a host-cluster API request returned 404.
+func IsHostClusterNotFound(err error) bool {
+	var apiError *hostClusterAPIError
+	return errors.As(err, &apiError) && apiError.statusCode == http.StatusNotFound
+}
 
 func DebugHostCluster(ctx context.Context, token string, hostClusterID string) (*openapiclientfleet.DebugHostClusterResult, error) {
 	ctxWithToken := context.WithValue(ctx, openapiclientfleet.ContextAccessToken, token)
@@ -51,7 +71,11 @@ func DescribeHostCluster(ctx context.Context, token string, hostClusterID string
 
 	hostCluster, r, err := req.Execute()
 	if err != nil {
-		return nil, handleFleetError(err)
+		handledErr := handleFleetError(err)
+		if r != nil {
+			return nil, &hostClusterAPIError{statusCode: r.StatusCode, err: handledErr}
+		}
+		return nil, handledErr
 	}
 
 	return hostCluster, nil
