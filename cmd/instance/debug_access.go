@@ -64,17 +64,8 @@ func instanceDebugToken(cmd *cobra.Command) (string, error) {
 	return token, nil
 }
 
-func instanceDebugContext(parent context.Context) context.Context {
-	// Initial collection inherits caller cancellation instead of sharing one
-	// deadline across all of the API and cluster requests it performs.
-	if parent == nil {
-		return context.Background()
-	}
-	return parent
-}
-
 func instanceDebugFetchContext(parent context.Context, timeout time.Duration) (context.Context, context.CancelFunc) {
-	return context.WithTimeout(instanceDebugContext(parent), timeout)
+	return context.WithTimeout(parent, timeout)
 }
 
 func instanceDebugAccessReason(instanceID string) string {
