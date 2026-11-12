@@ -15,10 +15,7 @@ import (
 
 type instanceDebugTokenContextKey struct{}
 
-const (
-	instanceDebugInitialFetchTimeout  = 2 * time.Minute
-	instanceDebugProgressFetchTimeout = 30 * time.Second
-)
+const instanceDebugProgressFetchTimeout = 30 * time.Second
 
 func ensureInstanceDebugAccess(cmd *cobra.Command, args []string) error {
 	if len(args) != 1 {
@@ -67,11 +64,17 @@ func instanceDebugToken(cmd *cobra.Command) (string, error) {
 	return token, nil
 }
 
-func instanceDebugFetchContext(parent context.Context, timeout time.Duration) (context.Context, context.CancelFunc) {
+func instanceDebugContext(parent context.Context) context.Context {
+	// Initial collection inherits caller cancellation instead of sharing one
+	// deadline across all of the API and cluster requests it performs.
 	if parent == nil {
-		parent = context.Background()
+		return context.Background()
 	}
-	return context.WithTimeout(parent, timeout)
+	return parent
+}
+
+func instanceDebugFetchContext(parent context.Context, timeout time.Duration) (context.Context, context.CancelFunc) {
+	return context.WithTimeout(instanceDebugContext(parent), timeout)
 }
 
 func instanceDebugAccessReason(instanceID string) string {

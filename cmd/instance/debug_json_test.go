@@ -350,6 +350,23 @@ func TestInstanceDebugFetchContextHasDeadline(t *testing.T) {
 	require.WithinDuration(t, time.Now().Add(time.Minute), deadline, time.Second)
 }
 
+func TestInstanceDebugContextHasNoAggregateDeadline(t *testing.T) {
+	ctx := instanceDebugContext(nil)
+
+	_, ok := ctx.Deadline()
+
+	require.False(t, ok)
+}
+
+func TestInstanceDebugContextPreservesParent(t *testing.T) {
+	parent, cancel := context.WithCancel(context.Background())
+	ctx := instanceDebugContext(parent)
+
+	cancel()
+
+	require.ErrorIs(t, ctx.Err(), context.Canceled)
+}
+
 func composeOnlyDebugFixture() (*PlanDAG, *openapiclientfleet.ResourceInstance) {
 	planDAG := &PlanDAG{
 		Nodes: map[string]PlanDAGNode{

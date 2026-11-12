@@ -98,8 +98,7 @@ func (m loadingModel) View() string {
 
 func fetchDebugData(parent context.Context, instanceID, token string) tea.Cmd {
 	return func() tea.Msg {
-		ctx, cancel := instanceDebugFetchContext(parent, instanceDebugInitialFetchTimeout)
-		defer cancel()
+		ctx := instanceDebugContext(parent)
 
 		serviceID, environmentID, _, _, err := getInstance(ctx, token, instanceID)
 		if err != nil {
@@ -207,8 +206,7 @@ func runDebug(cmd *cobra.Command, args []string) error {
 }
 
 func runDebugJSON(parent context.Context, instanceID, token string) error {
-	ctx, cancel := instanceDebugFetchContext(parent, instanceDebugInitialFetchTimeout)
-	defer cancel()
+	ctx := instanceDebugContext(parent)
 
 	serviceID, environmentID, _, _, err := getInstance(ctx, token, instanceID)
 	if err != nil {
