@@ -65,6 +65,9 @@ func instanceDebugToken(cmd *cobra.Command) (string, error) {
 }
 
 func instanceDebugFetchContext(parent context.Context, timeout time.Duration) (context.Context, context.CancelFunc) {
+	if parent == nil {
+		parent = context.Background()
+	}
 	return context.WithTimeout(parent, timeout)
 }
 
