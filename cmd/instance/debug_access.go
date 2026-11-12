@@ -15,10 +15,7 @@ import (
 
 type instanceDebugTokenContextKey struct{}
 
-const (
-	instanceDebugInitialFetchTimeout  = 2 * time.Minute
-	instanceDebugProgressFetchTimeout = 30 * time.Second
-)
+const instanceDebugProgressFetchTimeout = 30 * time.Second
 
 func ensureInstanceDebugAccess(cmd *cobra.Command, args []string) error {
 	if len(args) != 1 {

@@ -96,11 +96,8 @@ func (m loadingModel) View() string {
 	return fmt.Sprintf("\n  %s %s\n", m.spinner.View(), m.status)
 }
 
-func fetchDebugData(parent context.Context, instanceID, token string) tea.Cmd {
+func fetchDebugData(ctx context.Context, instanceID, token string) tea.Cmd {
 	return func() tea.Msg {
-		ctx, cancel := instanceDebugFetchContext(parent, instanceDebugInitialFetchTimeout)
-		defer cancel()
-
 		serviceID, environmentID, _, _, err := getInstance(ctx, token, instanceID)
 		if err != nil {
 			return debugDataMsg{err: fmt.Errorf("failed to get instance: %w", err)}
@@ -206,10 +203,7 @@ func runDebug(cmd *cobra.Command, args []string) error {
 	return launchDebugTUI(m.result.data)
 }
 
-func runDebugJSON(parent context.Context, instanceID, token string) error {
-	ctx, cancel := instanceDebugFetchContext(parent, instanceDebugInitialFetchTimeout)
-	defer cancel()
-
+func runDebugJSON(ctx context.Context, instanceID, token string) error {
 	serviceID, environmentID, _, _, err := getInstance(ctx, token, instanceID)
 	if err != nil {
 		return fmt.Errorf("failed to get instance: %w", err)

@@ -337,8 +337,7 @@ func (m terraformDetailModel) fetchProgressOnly() tea.Cmd {
 
 func (m terraformDetailModel) fetchData() tea.Cmd {
 	return func() tea.Msg {
-		ctx, cancel := instanceDebugFetchContext(context.Background(), instanceDebugInitialFetchTimeout)
-		defer cancel()
+		ctx := context.Background()
 		instanceData, err := fetchInstanceDataForResource(
 			ctx, m.debugData.Token, m.debugData.ServiceID, m.debugData.EnvironmentID, m.debugData.InstanceID,
 		)
