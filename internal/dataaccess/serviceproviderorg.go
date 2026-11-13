@@ -257,6 +257,12 @@ func GetConfiguredAccessRequestApprovers(ctx context.Context, token, environment
 func convertTemplateToOpenAPIFormat(deploymentConfig model.DeploymentCellTemplate, cloudProvider string) openapiclient.DeploymentCellConfigurations {
 	apiModel := openapiclient.DeploymentCellConfigurations{}
 	configPerCloudProvider := make(map[string]openapiclient.DeploymentCellConfiguration)
+	managedReleaseVersion := deploymentConfig.ManagedReleaseVersion
+	if managedReleaseVersion == nil {
+		// Organization template updates are full applies. A missing or YAML null
+		// managedReleaseVersion therefore selects automatic release adoption.
+		managedReleaseVersion = utils.ToPtr("")
+	}
 
 	var amenitiesAPI []openapiclient.Amenity
 	for _, amenity := range deploymentConfig.ManagedAmenities {
@@ -284,10 +290,9 @@ func convertTemplateToOpenAPIFormat(deploymentConfig model.DeploymentCellTemplat
 		amenitiesAPI = append(amenitiesAPI, apiAmenity)
 	}
 	configPerCloudProvider[cloudProvider] = openapiclient.DeploymentCellConfiguration{
-		Amenities:          amenitiesAPI,
-		WorkloadIdentities: ConvertManagedWorkloadIdentitiesToOpenAPI(deploymentConfig.ManagedIdentities),
-		// ManagedReleaseVersion is intentionally omitted. Template files can be
-		// stale, so release selection is updated only through managed-artifact policy.
+		Amenities:             amenitiesAPI,
+		WorkloadIdentities:    ConvertManagedWorkloadIdentitiesToOpenAPI(deploymentConfig.ManagedIdentities),
+		ManagedReleaseVersion: managedReleaseVersion,
 	}
 
 	apiModel.DeploymentCellConfigurationPerCloudProvider = utils.ToPtr(configPerCloudProvider)
@@ -296,7 +301,7 @@ func convertTemplateToOpenAPIFormat(deploymentConfig model.DeploymentCellTemplat
 }
 
 // ConvertDeploymentCellConfigurationFromOpenAPI converts an organization
-// template response, including read-only managed release policy metadata.
+// template response, including managed release policy metadata.
 func ConvertDeploymentCellConfigurationFromOpenAPI(config openapiclient.DeploymentCellConfiguration) model.DeploymentCellTemplate {
 	template := model.DeploymentCellTemplate{
 		ManagedReleaseVersion: config.ManagedReleaseVersion,
@@ -362,32 +367,6 @@ func ConvertManagedWorkloadIdentitiesFromOpenAPI(identities []openapiclient.Mana
 	}
 
 	return result
-}
-
-func ConvertToInternalManagedWorkloadIdentityList(data interface{}) ([]model.ManagedWorkloadIdentity, error) {
-	jsonBytes, err := json.Marshal(data)
-	if err != nil {
-		return nil, err
-	}
-
-	var rawObject map[string]json.RawMessage
-	if err = json.Unmarshal(jsonBytes, &rawObject); err == nil {
-		if rawIdentities, ok := rawObject["WorkloadIdentities"]; ok {
-			var identities []openapiclient.ManagedWorkloadIdentity
-			if err = json.Unmarshal(rawIdentities, &identities); err != nil {
-				return nil, err
-			}
-			return ConvertManagedWorkloadIdentitiesFromOpenAPI(identities), nil
-		}
-		return nil, nil
-	}
-
-	var identities []openapiclient.ManagedWorkloadIdentity
-	if err = json.Unmarshal(jsonBytes, &identities); err != nil {
-		return nil, err
-	}
-
-	return ConvertManagedWorkloadIdentitiesFromOpenAPI(identities), nil
 }
 
 func convertManagedWorkloadIdentityBindingsToOpenAPI(bindings []model.ManagedWorkloadIdentityBinding) []openapiclient.ManagedWorkloadIdentityBinding {

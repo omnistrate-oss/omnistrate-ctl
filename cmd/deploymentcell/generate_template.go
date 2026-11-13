@@ -26,8 +26,9 @@ This command creates a YAML template file containing all available amenities (He
 that can be configured for deployment cells. The template includes both managed amenities 
 (maintained by Omnistrate) and custom amenities based on the organization's current configuration.
 
-When present, managedReleaseVersion is read-only metadata. Update release selection with
-the managed-artifact policy commands instead of editing the generated template.
+When updating a generated template, omit managedReleaseVersion, set it to null, or set it
+to an empty string for automatic selection. Set a published bundle version such as
+r0000020 to pin that release.
 
 The generated template can be customized and used with the update-config-template command 
 to configure deployment cell amenities for your organization.
@@ -149,11 +150,7 @@ func deploymentCellTemplateForCloudProvider(
 		if normalizeDeploymentCellTemplateCloudProviderName(cloudProvider) != cloudProviderName {
 			continue // Skip if the cloud provider does not match
 		}
-		convertedConfig, err := convertToDeploymentCellConfiguration(cellConfig)
-		if err != nil {
-			return model.DeploymentCellTemplate{}, fmt.Errorf("failed to convert deployment cell configuration for cloud provider '%s': %w", cloudProvider, err)
-		}
-		return convertedConfig, nil
+		return dataaccess.ConvertDeploymentCellConfigurationFromOpenAPI(cellConfig), nil
 	}
 
 	return model.DeploymentCellTemplate{}, fmt.Errorf("no configuration found for cloud provider '%s'", cloudProviderName)
@@ -161,18 +158,4 @@ func deploymentCellTemplateForCloudProvider(
 
 func normalizeDeploymentCellTemplateCloudProviderName(cloudProviderName string) string {
 	return strings.ToLower(strings.TrimSpace(cloudProviderName))
-}
-
-func convertToDeploymentCellConfiguration(cellConfig interface{}) (model.DeploymentCellTemplate, error) {
-	// Handle the case where apiResponse is nil
-	if cellConfig == nil {
-		return model.DeploymentCellTemplate{}, nil
-	}
-
-	config, ok := cellConfig.(openapiclient.DeploymentCellConfiguration)
-	if !ok {
-		return model.DeploymentCellTemplate{}, fmt.Errorf("unsupported deployment cell configuration type %T", cellConfig)
-	}
-
-	return dataaccess.ConvertDeploymentCellConfigurationFromOpenAPI(config), nil
 }

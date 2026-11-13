@@ -2,7 +2,6 @@ package dataaccess
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -298,35 +297,6 @@ func GetOrganizationDeploymentCellTemplate(ctx context.Context, token string, en
 
 	template := ConvertDeploymentCellConfigurationFromOpenAPI(cloudProviderConfiguration)
 	return &template, nil
-}
-
-func ConvertToInternalAmenitiesList(data interface{}) ([]model.InternalAmenity, error) {
-	// Marshal to JSON
-	jsonBytes, err := json.Marshal(data)
-	if err != nil {
-		return nil, err
-	}
-
-	var rawObject map[string]json.RawMessage
-	if err = json.Unmarshal(jsonBytes, &rawObject); err == nil {
-		if rawAmenities, ok := rawObject["Amenities"]; ok {
-			var amenities []model.InternalAmenity
-			if err = json.Unmarshal(rawAmenities, &amenities); err != nil {
-				return nil, err
-			}
-			return amenities, nil
-		}
-		return nil, nil
-	}
-
-	// If that fails, try to unmarshal directly as an array
-	var result []model.InternalAmenity
-	err = json.Unmarshal(jsonBytes, &result)
-	if err != nil {
-		return nil, err
-	}
-
-	return result, nil
 }
 
 func hostClusterNodepoolEntityType(cloudProvider string) (string, error) {

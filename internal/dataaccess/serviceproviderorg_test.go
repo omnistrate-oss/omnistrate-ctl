@@ -99,7 +99,7 @@ func TestConvertTemplateToOpenAPIFormatPreservesManagedIdentities(t *testing.T) 
 	require.Equal(t, "queue-writer", identity.Bindings[0].ServiceAccount.Name)
 }
 
-func TestConvertTemplateToOpenAPIFormatOmitsManagedReleaseVersion(t *testing.T) {
+func TestConvertTemplateToOpenAPIFormatPreservesManagedReleaseVersion(t *testing.T) {
 	template := model.DeploymentCellTemplate{
 		ManagedReleaseVersion: utils.ToPtr("r0000020"),
 	}
@@ -107,7 +107,20 @@ func TestConvertTemplateToOpenAPIFormatOmitsManagedReleaseVersion(t *testing.T) 
 	converted := convertTemplateToOpenAPIFormat(template, "aws")
 	configs := converted.GetDeploymentCellConfigurationPerCloudProvider()
 	require.Contains(t, configs, "aws")
-	require.Nil(t, configs["aws"].ManagedReleaseVersion)
+	require.NotNil(t, configs["aws"].ManagedReleaseVersion)
+	require.Equal(t, "r0000020", *configs["aws"].ManagedReleaseVersion)
+}
+
+func TestConvertTemplateToOpenAPIFormatNormalizesOmittedManagedReleaseVersionToAutomatic(t *testing.T) {
+	omitted := convertTemplateToOpenAPIFormat(model.DeploymentCellTemplate{}, "aws")
+	omittedConfigs := omitted.GetDeploymentCellConfigurationPerCloudProvider()
+	require.NotNil(t, omittedConfigs["aws"].ManagedReleaseVersion)
+	require.Empty(t, *omittedConfigs["aws"].ManagedReleaseVersion)
+
+	automatic := convertTemplateToOpenAPIFormat(model.DeploymentCellTemplate{ManagedReleaseVersion: utils.ToPtr("")}, "aws")
+	automaticConfigs := automatic.GetDeploymentCellConfigurationPerCloudProvider()
+	require.NotNil(t, automaticConfigs["aws"].ManagedReleaseVersion)
+	require.Empty(t, *automaticConfigs["aws"].ManagedReleaseVersion)
 }
 
 func TestConvertDeploymentCellConfigurationFromOpenAPIPreservesManagedReleaseVersion(t *testing.T) {

@@ -14,8 +14,8 @@ type DeploymentCellRestartResult struct {
 
 // DeploymentCellTemplate represents a template structure for API responses
 type DeploymentCellTemplate struct {
-	// ManagedReleaseVersion is read-only template metadata. Update the release
-	// selection through the managed-artifact policy commands.
+	// ManagedReleaseVersion controls the template's managed release policy.
+	// Missing, null, or empty selects automatic mode; a bundle version pins it.
 	ManagedReleaseVersion *string                   `json:"managed_release_version,omitempty" yaml:"managedReleaseVersion,omitempty"`
 	ManagedIdentities     []ManagedWorkloadIdentity `json:"managed_identities,omitempty" yaml:"managedIdentities,omitempty"`
 	ManagedAmenities      []Amenity                 `json:"managed_amenities,omitempty" yaml:"managedAmenities,omitempty"`
