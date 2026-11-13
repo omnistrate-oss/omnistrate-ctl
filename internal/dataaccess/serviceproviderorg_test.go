@@ -5,6 +5,7 @@ import (
 
 	"github.com/omnistrate-oss/omnistrate-ctl/internal/model"
 	"github.com/omnistrate-oss/omnistrate-ctl/internal/utils"
+	openapiclient "github.com/omnistrate-oss/omnistrate-sdk-go/v1"
 	"github.com/stretchr/testify/require"
 )
 
@@ -96,4 +97,37 @@ func TestConvertTemplateToOpenAPIFormatPreservesManagedIdentities(t *testing.T) 
 	require.Len(t, identity.Bindings, 1)
 	require.Equal(t, "queue-system", identity.Bindings[0].ServiceAccount.Namespace)
 	require.Equal(t, "queue-writer", identity.Bindings[0].ServiceAccount.Name)
+}
+
+func TestConvertTemplateToOpenAPIFormatPreservesManagedReleaseVersion(t *testing.T) {
+	template := model.DeploymentCellTemplate{
+		ManagedReleaseVersion: utils.ToPtr("r0000020"),
+	}
+
+	converted := convertTemplateToOpenAPIFormat(template, "aws")
+	configs := converted.GetDeploymentCellConfigurationPerCloudProvider()
+	require.Contains(t, configs, "aws")
+	require.NotNil(t, configs["aws"].ManagedReleaseVersion)
+	require.Equal(t, "r0000020", *configs["aws"].ManagedReleaseVersion)
+}
+
+func TestConvertTemplateToOpenAPIFormatNormalizesOmittedManagedReleaseVersionToAutomatic(t *testing.T) {
+	omitted := convertTemplateToOpenAPIFormat(model.DeploymentCellTemplate{}, "aws")
+	omittedConfigs := omitted.GetDeploymentCellConfigurationPerCloudProvider()
+	require.NotNil(t, omittedConfigs["aws"].ManagedReleaseVersion)
+	require.Empty(t, *omittedConfigs["aws"].ManagedReleaseVersion)
+
+	automatic := convertTemplateToOpenAPIFormat(model.DeploymentCellTemplate{ManagedReleaseVersion: utils.ToPtr("")}, "aws")
+	automaticConfigs := automatic.GetDeploymentCellConfigurationPerCloudProvider()
+	require.NotNil(t, automaticConfigs["aws"].ManagedReleaseVersion)
+	require.Empty(t, *automaticConfigs["aws"].ManagedReleaseVersion)
+}
+
+func TestConvertDeploymentCellConfigurationFromOpenAPIPreservesManagedReleaseVersion(t *testing.T) {
+	template := ConvertDeploymentCellConfigurationFromOpenAPI(openapiclient.DeploymentCellConfiguration{
+		ManagedReleaseVersion: utils.ToPtr("r0000020"),
+	})
+
+	require.NotNil(t, template.ManagedReleaseVersion)
+	require.Equal(t, "r0000020", *template.ManagedReleaseVersion)
 }

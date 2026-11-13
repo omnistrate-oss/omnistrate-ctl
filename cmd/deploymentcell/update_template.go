@@ -29,6 +29,8 @@ This command allows you to:
 
 When updating the organization template, you must specify the environment and cloud provider.
 When updating a specific deployment cell, provide the deployment cell ID as an argument or use the --id flag.
+For organization templates, omit managedReleaseVersion, set it to null, or set it to an empty
+string for automatic selection. Set a published bundle version to pin that release.
 
 Examples:
 

@@ -257,6 +257,12 @@ func GetConfiguredAccessRequestApprovers(ctx context.Context, token, environment
 func convertTemplateToOpenAPIFormat(deploymentConfig model.DeploymentCellTemplate, cloudProvider string) openapiclient.DeploymentCellConfigurations {
 	apiModel := openapiclient.DeploymentCellConfigurations{}
 	configPerCloudProvider := make(map[string]openapiclient.DeploymentCellConfiguration)
+	managedReleaseVersion := deploymentConfig.ManagedReleaseVersion
+	if managedReleaseVersion == nil {
+		// Organization template updates are full applies. A missing or YAML null
+		// managedReleaseVersion therefore selects automatic release adoption.
+		managedReleaseVersion = utils.ToPtr("")
+	}
 
 	var amenitiesAPI []openapiclient.Amenity
 	for _, amenity := range deploymentConfig.ManagedAmenities {
@@ -284,13 +290,41 @@ func convertTemplateToOpenAPIFormat(deploymentConfig model.DeploymentCellTemplat
 		amenitiesAPI = append(amenitiesAPI, apiAmenity)
 	}
 	configPerCloudProvider[cloudProvider] = openapiclient.DeploymentCellConfiguration{
-		Amenities:          amenitiesAPI,
-		WorkloadIdentities: ConvertManagedWorkloadIdentitiesToOpenAPI(deploymentConfig.ManagedIdentities),
+		Amenities:             amenitiesAPI,
+		WorkloadIdentities:    ConvertManagedWorkloadIdentitiesToOpenAPI(deploymentConfig.ManagedIdentities),
+		ManagedReleaseVersion: managedReleaseVersion,
 	}
 
 	apiModel.DeploymentCellConfigurationPerCloudProvider = utils.ToPtr(configPerCloudProvider)
 
 	return apiModel
+}
+
+// ConvertDeploymentCellConfigurationFromOpenAPI converts an organization
+// template response, including managed release policy metadata.
+func ConvertDeploymentCellConfigurationFromOpenAPI(config openapiclient.DeploymentCellConfiguration) model.DeploymentCellTemplate {
+	template := model.DeploymentCellTemplate{
+		ManagedReleaseVersion: config.ManagedReleaseVersion,
+		ManagedIdentities:     ConvertManagedWorkloadIdentitiesFromOpenAPI(config.WorkloadIdentities),
+	}
+
+	for _, amenity := range config.Amenities {
+		externalModel := model.Amenity{
+			Name:        utils.FromPtr(amenity.Name),
+			Description: amenity.Description,
+			Type:        amenity.Type,
+			Disable:     amenity.Disable,
+			DependsOn:   amenity.DependsOn,
+			Properties:  amenity.Properties,
+		}
+		if utils.FromPtr(amenity.IsManaged) {
+			template.ManagedAmenities = append(template.ManagedAmenities, externalModel)
+		} else {
+			template.CustomAmenities = append(template.CustomAmenities, externalModel)
+		}
+	}
+
+	return template
 }
 
 func ConvertManagedWorkloadIdentitiesToOpenAPI(identities []model.ManagedWorkloadIdentity) []openapiclient.ManagedWorkloadIdentity {
@@ -333,32 +367,6 @@ func ConvertManagedWorkloadIdentitiesFromOpenAPI(identities []openapiclient.Mana
 	}
 
 	return result
-}
-
-func ConvertToInternalManagedWorkloadIdentityList(data interface{}) ([]model.ManagedWorkloadIdentity, error) {
-	jsonBytes, err := json.Marshal(data)
-	if err != nil {
-		return nil, err
-	}
-
-	var rawObject map[string]json.RawMessage
-	if err = json.Unmarshal(jsonBytes, &rawObject); err == nil {
-		if rawIdentities, ok := rawObject["WorkloadIdentities"]; ok {
-			var identities []openapiclient.ManagedWorkloadIdentity
-			if err = json.Unmarshal(rawIdentities, &identities); err != nil {
-				return nil, err
-			}
-			return ConvertManagedWorkloadIdentitiesFromOpenAPI(identities), nil
-		}
-		return nil, nil
-	}
-
-	var identities []openapiclient.ManagedWorkloadIdentity
-	if err = json.Unmarshal(jsonBytes, &identities); err != nil {
-		return nil, err
-	}
-
-	return ConvertManagedWorkloadIdentitiesFromOpenAPI(identities), nil
 }
 
 func convertManagedWorkloadIdentityBindingsToOpenAPI(bindings []model.ManagedWorkloadIdentityBinding) []openapiclient.ManagedWorkloadIdentityBinding {

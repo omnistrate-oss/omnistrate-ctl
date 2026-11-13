@@ -14,9 +14,12 @@ type DeploymentCellRestartResult struct {
 
 // DeploymentCellTemplate represents a template structure for API responses
 type DeploymentCellTemplate struct {
-	ManagedIdentities []ManagedWorkloadIdentity `json:"managed_identities,omitempty" yaml:"managedIdentities,omitempty"`
-	ManagedAmenities  []Amenity                 `json:"managed_amenities,omitempty" yaml:"managedAmenities,omitempty"`
-	CustomAmenities   []Amenity                 `json:"custom_amenities,omitempty" yaml:"customAmenities,omitempty"`
+	// ManagedReleaseVersion controls the template's managed release policy.
+	// Missing, null, or empty selects automatic mode; a bundle version pins it.
+	ManagedReleaseVersion *string                   `json:"managed_release_version,omitempty" yaml:"managedReleaseVersion,omitempty"`
+	ManagedIdentities     []ManagedWorkloadIdentity `json:"managed_identities,omitempty" yaml:"managedIdentities,omitempty"`
+	ManagedAmenities      []Amenity                 `json:"managed_amenities,omitempty" yaml:"managedAmenities,omitempty"`
+	CustomAmenities       []Amenity                 `json:"custom_amenities,omitempty" yaml:"customAmenities,omitempty"`
 }
 
 // DeploymentCell represents a complete view of a host cluster/deployment cell
