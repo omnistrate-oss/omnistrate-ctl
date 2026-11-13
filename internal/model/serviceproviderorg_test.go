@@ -65,3 +65,17 @@ managedIdentities:
 	require.Equal(t, "queue-system", identity.Bindings[0].ServiceAccount.Namespace)
 	require.Equal(t, "queue-writer", identity.Bindings[0].ServiceAccount.Name)
 }
+
+func TestDeploymentCellTemplateYAMLPreservesManagedReleaseVersion(t *testing.T) {
+	data := []byte("managedReleaseVersion: r0000020\n")
+
+	var template DeploymentCellTemplate
+	err := yaml.Unmarshal(data, &template)
+	require.NoError(t, err)
+	require.NotNil(t, template.ManagedReleaseVersion)
+	require.Equal(t, "r0000020", *template.ManagedReleaseVersion)
+
+	encoded, err := yaml.Marshal(template)
+	require.NoError(t, err)
+	require.Contains(t, string(encoded), "managedReleaseVersion: r0000020")
+}

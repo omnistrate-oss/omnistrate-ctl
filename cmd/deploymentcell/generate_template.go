@@ -26,6 +26,9 @@ This command creates a YAML template file containing all available amenities (He
 that can be configured for deployment cells. The template includes both managed amenities 
 (maintained by Omnistrate) and custom amenities based on the organization's current configuration.
 
+When present, managedReleaseVersion is read-only metadata. Update release selection with
+the managed-artifact policy commands instead of editing the generated template.
+
 The generated template can be customized and used with the update-config-template command 
 to configure deployment cell amenities for your organization.
 
@@ -161,42 +164,15 @@ func normalizeDeploymentCellTemplateCloudProviderName(cloudProviderName string) 
 }
 
 func convertToDeploymentCellConfiguration(cellConfig interface{}) (model.DeploymentCellTemplate, error) {
-	result := model.DeploymentCellTemplate{}
-
 	// Handle the case where apiResponse is nil
 	if cellConfig == nil {
-		return result, nil
+		return model.DeploymentCellTemplate{}, nil
 	}
 
-	internalAmenities, err := dataaccess.ConvertToInternalAmenitiesList(cellConfig)
-	if err != nil {
-		return result, fmt.Errorf("failed to convert amenities list: %w", err)
-	}
-	managedIdentities, err := dataaccess.ConvertToInternalManagedWorkloadIdentityList(cellConfig)
-	if err != nil {
-		return result, fmt.Errorf("failed to convert managed workload identities list: %w", err)
+	config, ok := cellConfig.(openapiclient.DeploymentCellConfiguration)
+	if !ok {
+		return model.DeploymentCellTemplate{}, fmt.Errorf("unsupported deployment cell configuration type %T", cellConfig)
 	}
 
-	var managedAmenities []model.Amenity
-	var customAmenities []model.Amenity
-	for _, amenity := range internalAmenities {
-		externalModel := model.Amenity{
-			Name:        amenity.Name,
-			Description: amenity.Description,
-			Type:        amenity.Type,
-			Disable:     amenity.Disable,
-			DependsOn:   amenity.DependsOn,
-			Properties:  amenity.Properties,
-		}
-		if utils.FromPtr(amenity.IsManaged) {
-			managedAmenities = append(managedAmenities, externalModel)
-		} else {
-			customAmenities = append(customAmenities, externalModel)
-		}
-	}
-
-	result.ManagedIdentities = managedIdentities
-	result.ManagedAmenities = managedAmenities
-	result.CustomAmenities = customAmenities
-	return result, nil
+	return dataaccess.ConvertDeploymentCellConfigurationFromOpenAPI(config), nil
 }

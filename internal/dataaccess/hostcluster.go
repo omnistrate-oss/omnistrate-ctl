@@ -285,62 +285,19 @@ func GetOrganizationDeploymentCellTemplate(ctx context.Context, token string, en
 		return nil, fmt.Errorf("no deployment cell configurations found for environment '%s'", environment)
 	}
 
-	// Convert to map to access the DeploymentCellConfigurationPerCloudProvider
-	deploymentCellConfigsMap, err := interfaceToMap(deploymentCellConfigs)
-	if err != nil {
-		return nil, fmt.Errorf("failed to convert deployment cell configurations to map: %w", err)
-	}
-
-	// Access the DeploymentCellConfigurationPerCloudProvider level
-	deploymentCellConfigPerCloudProvider, exists := deploymentCellConfigsMap["DeploymentCellConfigurationPerCloudProvider"]
-	if !exists {
+	deploymentCellConfigPerCloudProvider, exists := deploymentCellConfigs.GetDeploymentCellConfigurationPerCloudProviderOk()
+	if !exists || deploymentCellConfigPerCloudProvider == nil {
 		return nil, fmt.Errorf("no DeploymentCellConfigurationPerCloudProvider found for environment '%s'", environment)
 	}
 
-	// Convert the cloud provider configurations to map
-	cloudProviderConfigsMap, err := interfaceToMap(deploymentCellConfigPerCloudProvider)
-	if err != nil {
-		return nil, fmt.Errorf("failed to convert cloud provider configurations to map: %w", err)
-	}
-
 	// Access the specific cloud provider configuration
-	amenitiesPerCloudProvider, exists := cloudProviderConfigsMap[cloudProvider]
+	cloudProviderConfiguration, exists := (*deploymentCellConfigPerCloudProvider)[cloudProvider]
 	if !exists {
 		return nil, fmt.Errorf("no deployment cell configurations found for cloud provider '%s'", cloudProvider)
 	}
 
-	amenitiesInternalModel, err := ConvertToInternalAmenitiesList(amenitiesPerCloudProvider)
-	if err != nil {
-		return nil, fmt.Errorf("failed to convert amenities list: %w", err)
-	}
-	managedIdentities, err := ConvertToInternalManagedWorkloadIdentityList(amenitiesPerCloudProvider)
-	if err != nil {
-		return nil, fmt.Errorf("failed to convert managed workload identities list: %w", err)
-	}
-
-	var managedAmenities []model.Amenity
-	var customAmenities []model.Amenity
-	for _, amenity := range amenitiesInternalModel {
-		externalModel := model.Amenity{
-			Name:        amenity.Name,
-			Description: amenity.Description,
-			Type:        amenity.Type,
-			Disable:     amenity.Disable,
-			DependsOn:   amenity.DependsOn,
-			Properties:  amenity.Properties,
-		}
-		if utils.FromPtr(amenity.IsManaged) {
-			managedAmenities = append(managedAmenities, externalModel)
-		} else {
-			customAmenities = append(customAmenities, externalModel)
-		}
-	}
-
-	return &model.DeploymentCellTemplate{
-		ManagedIdentities: managedIdentities,
-		ManagedAmenities:  managedAmenities,
-		CustomAmenities:   customAmenities,
-	}, nil
+	template := ConvertDeploymentCellConfigurationFromOpenAPI(cloudProviderConfiguration)
+	return &template, nil
 }
 
 func ConvertToInternalAmenitiesList(data interface{}) ([]model.InternalAmenity, error) {
@@ -364,23 +321,6 @@ func ConvertToInternalAmenitiesList(data interface{}) ([]model.InternalAmenity, 
 
 	// If that fails, try to unmarshal directly as an array
 	var result []model.InternalAmenity
-	err = json.Unmarshal(jsonBytes, &result)
-	if err != nil {
-		return nil, err
-	}
-
-	return result, nil
-}
-
-func interfaceToMap(data interface{}) (map[string]interface{}, error) {
-	// Marshal to JSON
-	jsonBytes, err := json.Marshal(data)
-	if err != nil {
-		return nil, err
-	}
-
-	// Unmarshal to map[string]interface{}
-	var result map[string]interface{}
 	err = json.Unmarshal(jsonBytes, &result)
 	if err != nil {
 		return nil, err

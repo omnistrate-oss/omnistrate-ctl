@@ -10,6 +10,9 @@ This command creates a YAML template file containing all available amenities (He
 that can be configured for deployment cells. The template includes both managed amenities 
 (maintained by Omnistrate) and custom amenities based on the organization's current configuration.
 
+When present, managedReleaseVersion is read-only metadata. Update release selection with
+the managed-artifact policy commands instead of editing the generated template.
+
 The generated template can be customized and used with the update-config-template command 
 to configure deployment cell amenities for your organization.
 

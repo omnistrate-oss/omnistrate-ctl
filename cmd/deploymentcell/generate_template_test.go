@@ -100,6 +100,19 @@ func TestDeploymentCellTemplateForCloudProviderPreservesManagedIdentities(t *tes
 	require.Equal(t, "queue-writer", identity.Bindings[0].ServiceAccount.Name)
 }
 
+func TestDeploymentCellTemplateForCloudProviderPreservesManagedReleaseVersion(t *testing.T) {
+	configs := map[string]openapiclient.DeploymentCellConfiguration{
+		"aws": {
+			ManagedReleaseVersion: utils.ToPtr("r0000020"),
+		},
+	}
+
+	template, err := deploymentCellTemplateForCloudProvider(&configs, "aws")
+	require.NoError(t, err)
+	require.NotNil(t, template.ManagedReleaseVersion)
+	require.Equal(t, "r0000020", *template.ManagedReleaseVersion)
+}
+
 func TestDeploymentCellTemplateForCloudProviderReturnsErrorForMissingNonBYOCConfig(t *testing.T) {
 	configs := map[string]openapiclient.DeploymentCellConfiguration{
 		"aws": {
