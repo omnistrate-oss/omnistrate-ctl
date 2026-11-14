@@ -80,7 +80,7 @@ func TestDeploymentCellTemplateYAMLPreservesManagedReleaseVersion(t *testing.T) 
 	require.Contains(t, string(encoded), "managedReleaseVersion: r0000020")
 }
 
-func TestDeploymentCellTemplateYAMLNullManagedReleaseVersionSelectsAutomatic(t *testing.T) {
+func TestDeploymentCellTemplateYAMLNullManagedReleaseVersionIsOmitted(t *testing.T) {
 	var template DeploymentCellTemplate
 	err := yaml.Unmarshal([]byte("managedReleaseVersion: null\n"), &template)
 	require.NoError(t, err)

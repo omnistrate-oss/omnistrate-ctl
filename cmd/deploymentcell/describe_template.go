@@ -177,7 +177,7 @@ func describeOrganizationTemplate(ctx context.Context, token string, environment
 	fmt.Printf("Cloud Provider: %s\n", cloudProvider)
 	managedReleaseVersion := strings.TrimSpace(utils.FromPtr(template.ManagedReleaseVersion))
 	if managedReleaseVersion == "" {
-		managedReleaseVersion = "automatic"
+		managedReleaseVersion = model.ManagedReleaseVersionAuto
 	}
 	fmt.Printf("Managed Release Version: %s\n", managedReleaseVersion)
 	fmt.Printf("Total Amenities: %d (Managed: %d, Custom: %d)\n\n", totalAmenities, len(template.ManagedAmenities), len(template.CustomAmenities))

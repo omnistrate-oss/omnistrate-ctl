@@ -257,11 +257,13 @@ func GetConfiguredAccessRequestApprovers(ctx context.Context, token, environment
 func convertTemplateToOpenAPIFormat(deploymentConfig model.DeploymentCellTemplate, cloudProvider string) openapiclient.DeploymentCellConfigurations {
 	apiModel := openapiclient.DeploymentCellConfigurations{}
 	configPerCloudProvider := make(map[string]openapiclient.DeploymentCellConfiguration)
-	managedReleaseVersion := deploymentConfig.ManagedReleaseVersion
-	if managedReleaseVersion == nil {
-		// Organization template updates are full applies. A missing or YAML null
-		// managedReleaseVersion therefore selects automatic release adoption.
+	// The API preserves the policy when the field is omitted and selects
+	// automatic adoption when it is an explicit empty string.
+	var managedReleaseVersion *string
+	if version := strings.TrimSpace(utils.FromPtr(deploymentConfig.ManagedReleaseVersion)); strings.EqualFold(version, model.ManagedReleaseVersionAuto) {
 		managedReleaseVersion = utils.ToPtr("")
+	} else if version != "" {
+		managedReleaseVersion = utils.ToPtr(version)
 	}
 
 	var amenitiesAPI []openapiclient.Amenity
@@ -304,8 +306,14 @@ func convertTemplateToOpenAPIFormat(deploymentConfig model.DeploymentCellTemplat
 // template response, including managed release policy metadata.
 func ConvertDeploymentCellConfigurationFromOpenAPI(config openapiclient.DeploymentCellConfiguration) model.DeploymentCellTemplate {
 	template := model.DeploymentCellTemplate{
-		ManagedReleaseVersion: config.ManagedReleaseVersion,
-		ManagedIdentities:     ConvertManagedWorkloadIdentitiesFromOpenAPI(config.WorkloadIdentities),
+		ManagedIdentities: ConvertManagedWorkloadIdentitiesFromOpenAPI(config.WorkloadIdentities),
+	}
+	if config.ManagedReleaseVersion != nil {
+		managedReleaseVersion := strings.TrimSpace(*config.ManagedReleaseVersion)
+		if managedReleaseVersion == "" {
+			managedReleaseVersion = model.ManagedReleaseVersionAuto
+		}
+		template.ManagedReleaseVersion = utils.ToPtr(managedReleaseVersion)
 	}
 
 	for _, amenity := range config.Amenities {
@@ -460,6 +468,12 @@ func UpdateServiceProviderOrganization(ctx context.Context, token string, deploy
 	apiClient := getV1Client()
 
 	apiModel := convertTemplateToOpenAPIFormat(deploymentConfig, cloudProvider)
+	pinnedVersion := utils.FromPtr(apiModel.GetDeploymentCellConfigurationPerCloudProvider()[cloudProvider].ManagedReleaseVersion)
+	if pinnedVersion != "" {
+		if _, err = DescribeManagedArtifactRelease(ctx, token, pinnedVersion); err != nil {
+			return fmt.Errorf("managed release version %q was not found: %w", pinnedVersion, err)
+		}
+	}
 
 	configMap := map[string]openapiclient.DeploymentCellConfigurations{
 		envType: apiModel,

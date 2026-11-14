@@ -1,6 +1,9 @@
 package dataaccess
 
 import (
+	"context"
+	"net/http"
+	"net/http/httptest"
 	"testing"
 
 	"github.com/omnistrate-oss/omnistrate-ctl/internal/model"
@@ -111,16 +114,54 @@ func TestConvertTemplateToOpenAPIFormatPreservesManagedReleaseVersion(t *testing
 	require.Equal(t, "r0000020", *configs["aws"].ManagedReleaseVersion)
 }
 
-func TestConvertTemplateToOpenAPIFormatNormalizesOmittedManagedReleaseVersionToAutomatic(t *testing.T) {
-	omitted := convertTemplateToOpenAPIFormat(model.DeploymentCellTemplate{}, "aws")
-	omittedConfigs := omitted.GetDeploymentCellConfigurationPerCloudProvider()
-	require.NotNil(t, omittedConfigs["aws"].ManagedReleaseVersion)
-	require.Empty(t, *omittedConfigs["aws"].ManagedReleaseVersion)
+func TestConvertTemplateToOpenAPIFormatManagedReleaseVersionPolicy(t *testing.T) {
+	tests := []struct {
+		name      string
+		requested *string
+		want      *string
+	}{
+		{name: "omitted keeps current policy", requested: nil, want: nil},
+		{name: "empty keeps current policy", requested: utils.ToPtr("  "), want: nil},
+		{name: "auto selects automatic adoption", requested: utils.ToPtr(" Auto "), want: utils.ToPtr("")},
+		{name: "bundle version pins release", requested: utils.ToPtr(" r0000020 "), want: utils.ToPtr("r0000020")},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			converted := convertTemplateToOpenAPIFormat(model.DeploymentCellTemplate{ManagedReleaseVersion: test.requested}, "aws")
+			require.Equal(t, test.want, converted.GetDeploymentCellConfigurationPerCloudProvider()["aws"].ManagedReleaseVersion)
+		})
+	}
+}
 
-	automatic := convertTemplateToOpenAPIFormat(model.DeploymentCellTemplate{ManagedReleaseVersion: utils.ToPtr("")}, "aws")
-	automaticConfigs := automatic.GetDeploymentCellConfigurationPerCloudProvider()
-	require.NotNil(t, automaticConfigs["aws"].ManagedReleaseVersion)
-	require.Empty(t, *automaticConfigs["aws"].ManagedReleaseVersion)
+func TestConvertDeploymentCellConfigurationFromOpenAPIReportsAutomaticAsAuto(t *testing.T) {
+	template := ConvertDeploymentCellConfigurationFromOpenAPI(openapiclient.DeploymentCellConfiguration{
+		ManagedReleaseVersion: utils.ToPtr(""),
+	})
+
+	require.Equal(t, utils.ToPtr(model.ManagedReleaseVersionAuto), template.ManagedReleaseVersion)
+}
+
+func TestUpdateServiceProviderOrganizationRejectsUnknownManagedReleaseVersion(t *testing.T) {
+	var organizationUpdated bool
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/2022-09-01-00/managed-artifact/releases/r9999999" {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusNotFound)
+			_, _ = w.Write([]byte(`{"name":"not_found","message":"managed artifact release r9999999 was not found"}`))
+			return
+		}
+		organizationUpdated = true
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+	setManagedArtifactTestHost(t, server.URL)
+
+	err := UpdateServiceProviderOrganization(context.Background(), "test-token", model.DeploymentCellTemplate{
+		ManagedReleaseVersion: utils.ToPtr("r9999999"),
+	}, "GLOBAL", "aws")
+
+	require.ErrorContains(t, err, `managed release version "r9999999" was not found`)
+	require.False(t, organizationUpdated)
 }
 
 func TestConvertDeploymentCellConfigurationFromOpenAPIPreservesManagedReleaseVersion(t *testing.T) {
