@@ -2,8 +2,10 @@ package dataaccess
 
 import (
 	"context"
+	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/omnistrate-oss/omnistrate-ctl/internal/model"
@@ -122,7 +124,7 @@ func TestConvertTemplateToOpenAPIFormatManagedReleaseVersionPolicy(t *testing.T)
 	}{
 		{name: "omitted keeps current policy", requested: nil, want: nil},
 		{name: "empty keeps current policy", requested: utils.ToPtr("  "), want: nil},
-		{name: "auto selects automatic adoption", requested: utils.ToPtr(" Auto "), want: utils.ToPtr("")},
+		{name: "autoUpgrade selects automatic adoption", requested: utils.ToPtr(" AUTOUPGRADE "), want: utils.ToPtr(model.ManagedReleaseVersionAutoUpgrade)},
 		{name: "bundle version pins release", requested: utils.ToPtr(" r0000020 "), want: utils.ToPtr("r0000020")},
 	}
 	for _, test := range tests {
@@ -133,12 +135,39 @@ func TestConvertTemplateToOpenAPIFormatManagedReleaseVersionPolicy(t *testing.T)
 	}
 }
 
-func TestConvertDeploymentCellConfigurationFromOpenAPIReportsAutomaticAsAuto(t *testing.T) {
-	template := ConvertDeploymentCellConfigurationFromOpenAPI(openapiclient.DeploymentCellConfiguration{
-		ManagedReleaseVersion: utils.ToPtr(""),
-	})
+func TestConvertDeploymentCellConfigurationFromOpenAPIReportsAutomaticAsAutoUpgrade(t *testing.T) {
+	for _, reported := range []string{"", "autoUpgrade", "autoupgrade"} {
+		template := ConvertDeploymentCellConfigurationFromOpenAPI(openapiclient.DeploymentCellConfiguration{
+			ManagedReleaseVersion: utils.ToPtr(reported),
+		})
 
-	require.Equal(t, utils.ToPtr(model.ManagedReleaseVersionAuto), template.ManagedReleaseVersion)
+		require.Equal(t, utils.ToPtr(model.ManagedReleaseVersionAutoUpgrade), template.ManagedReleaseVersion, reported)
+	}
+}
+
+func TestUpdateServiceProviderOrganizationSendsAutoUpgradeWithoutReleaseLookup(t *testing.T) {
+	var releaseLookedUp bool
+	var body string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.Contains(r.URL.Path, "/managed-artifact/releases/") {
+			releaseLookedUp = true
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+		payload, _ := io.ReadAll(r.Body)
+		body = string(payload)
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+	setManagedArtifactTestHost(t, server.URL)
+
+	err := UpdateServiceProviderOrganization(context.Background(), "test-token", model.DeploymentCellTemplate{
+		ManagedReleaseVersion: utils.ToPtr("AutoUpgrade"),
+	}, "GLOBAL", "aws")
+
+	require.NoError(t, err)
+	require.False(t, releaseLookedUp)
+	require.Contains(t, body, `"ManagedReleaseVersion":"autoUpgrade"`)
 }
 
 func TestUpdateServiceProviderOrganizationRejectsUnknownManagedReleaseVersion(t *testing.T) {

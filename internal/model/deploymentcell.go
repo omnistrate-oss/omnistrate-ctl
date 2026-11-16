@@ -12,15 +12,15 @@ type DeploymentCellRestartResult struct {
 	Message string `json:"message"`
 }
 
-// ManagedReleaseVersionAuto selects automatic managed release adoption in a
-// deployment cell template.
-const ManagedReleaseVersionAuto = "auto"
+// ManagedReleaseVersionAutoUpgrade selects automatic managed release adoption
+// in a deployment cell template. It is matched case-insensitively.
+const ManagedReleaseVersionAutoUpgrade = "autoUpgrade"
 
 // DeploymentCellTemplate represents a template structure for API responses
 type DeploymentCellTemplate struct {
 	// ManagedReleaseVersion controls the template's managed release policy.
-	// Missing, null, or empty leaves the current policy unchanged, "auto" selects
-	// automatic adoption, and any other value pins that published bundle version.
+	// Missing, null, or empty leaves the current policy unchanged, "autoUpgrade"
+	// selects automatic adoption, and any other value pins that published bundle version.
 	ManagedReleaseVersion *string                   `json:"managed_release_version,omitempty" yaml:"managedReleaseVersion,omitempty"`
 	ManagedIdentities     []ManagedWorkloadIdentity `json:"managed_identities,omitempty" yaml:"managedIdentities,omitempty"`
 	ManagedAmenities      []Amenity                 `json:"managed_amenities,omitempty" yaml:"managedAmenities,omitempty"`

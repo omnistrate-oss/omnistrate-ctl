@@ -257,11 +257,11 @@ func GetConfiguredAccessRequestApprovers(ctx context.Context, token, environment
 func convertTemplateToOpenAPIFormat(deploymentConfig model.DeploymentCellTemplate, cloudProvider string) openapiclient.DeploymentCellConfigurations {
 	apiModel := openapiclient.DeploymentCellConfigurations{}
 	configPerCloudProvider := make(map[string]openapiclient.DeploymentCellConfiguration)
-	// The API preserves the policy when the field is omitted and selects
-	// automatic adoption when it is an explicit empty string.
+	// The API preserves the policy when the field is omitted or empty and selects
+	// automatic adoption for autoUpgrade.
 	var managedReleaseVersion *string
-	if version := strings.TrimSpace(utils.FromPtr(deploymentConfig.ManagedReleaseVersion)); strings.EqualFold(version, model.ManagedReleaseVersionAuto) {
-		managedReleaseVersion = utils.ToPtr("")
+	if version := strings.TrimSpace(utils.FromPtr(deploymentConfig.ManagedReleaseVersion)); strings.EqualFold(version, model.ManagedReleaseVersionAutoUpgrade) {
+		managedReleaseVersion = utils.ToPtr(model.ManagedReleaseVersionAutoUpgrade)
 	} else if version != "" {
 		managedReleaseVersion = utils.ToPtr(version)
 	}
@@ -310,8 +310,9 @@ func ConvertDeploymentCellConfigurationFromOpenAPI(config openapiclient.Deployme
 	}
 	if config.ManagedReleaseVersion != nil {
 		managedReleaseVersion := strings.TrimSpace(*config.ManagedReleaseVersion)
-		if managedReleaseVersion == "" {
-			managedReleaseVersion = model.ManagedReleaseVersionAuto
+		// Older API versions report automatic adoption as an empty value.
+		if managedReleaseVersion == "" || strings.EqualFold(managedReleaseVersion, model.ManagedReleaseVersionAutoUpgrade) {
+			managedReleaseVersion = model.ManagedReleaseVersionAutoUpgrade
 		}
 		template.ManagedReleaseVersion = utils.ToPtr(managedReleaseVersion)
 	}
@@ -469,7 +470,7 @@ func UpdateServiceProviderOrganization(ctx context.Context, token string, deploy
 
 	apiModel := convertTemplateToOpenAPIFormat(deploymentConfig, cloudProvider)
 	pinnedVersion := utils.FromPtr(apiModel.GetDeploymentCellConfigurationPerCloudProvider()[cloudProvider].ManagedReleaseVersion)
-	if pinnedVersion != "" {
+	if pinnedVersion != "" && pinnedVersion != model.ManagedReleaseVersionAutoUpgrade {
 		if _, err = DescribeManagedArtifactRelease(ctx, token, pinnedVersion); err != nil {
 			return fmt.Errorf("managed release version %q was not found: %w", pinnedVersion, err)
 		}

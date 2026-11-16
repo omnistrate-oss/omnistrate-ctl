@@ -10,9 +10,9 @@ This command creates a YAML template file containing all available amenities (He
 that can be configured for deployment cells. The template includes both managed amenities 
 (maintained by Omnistrate) and custom amenities based on the organization's current configuration.
 
-The generated template reports managedReleaseVersion as "auto" for automatic release adoption
+The generated template reports managedReleaseVersion as "autoUpgrade" for automatic release adoption
 or as the pinned bundle version. When updating, omit it or leave it empty to keep the current
-release policy, set it to "auto" for automatic adoption, or set a published bundle version
+release policy, set it to "autoUpgrade" (case-insensitive) for automatic adoption, or set a published bundle version
 such as r0000020 to pin that release. An unknown bundle version is rejected.
 
 The generated template can be customized and used with the update-config-template command 
