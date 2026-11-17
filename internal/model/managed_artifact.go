@@ -24,6 +24,7 @@ type ManagedArtifactTargetStatus struct {
 	ReadyTargetCount      int `json:"readyTargetCount"`
 	FailedTargetCount     int `json:"failedTargetCount"`
 	SkippedTargetCount    int `json:"skippedTargetCount"`
+	ManualTargetCount     int `json:"manualTargetCount,omitempty"`
 }
 
 // ManagedArtifactReleaseArtifact is a chart or image used by a managed amenity.
@@ -90,23 +91,42 @@ type ManagedArtifactSyncArtifact struct {
 	FailureMessage    string `json:"failureMessage,omitempty"`
 }
 
+type ManagedArtifactManualCopyArtifact struct {
+	ArtifactKey    string `json:"artifactKey"`
+	Type           string `json:"type"`
+	Version        string `json:"version"`
+	SourceRef      string `json:"sourceRef"`
+	CopySourceRef  string `json:"copySourceRef"`
+	SourceDigest   string `json:"sourceDigest"`
+	SourceChecksum string `json:"sourceChecksum,omitempty"`
+	RelativePath   string `json:"relativePath"`
+}
+
+type ManagedArtifactManualCopyPlan struct {
+	DestinationRegistry         string                              `json:"destinationRegistry"`
+	DestinationRegion           string                              `json:"destinationRegion"`
+	DestinationRepositoryPrefix string                              `json:"destinationRepositoryPrefix"`
+	Artifacts                   []ManagedArtifactManualCopyArtifact `json:"artifacts"`
+}
+
 // ManagedArtifactSync describes a private target sync or public account publication.
 type ManagedArtifactSync struct {
-	ID                     string                        `json:"id"`
-	RegistryType           string                        `json:"registryType,omitempty"`
-	Destination            *ManagedArtifactDestination   `json:"destination,omitempty"`
-	BundleVersion          string                        `json:"bundleVersion"`
-	Target                 *ManagedArtifactTarget        `json:"target,omitempty"`
-	Status                 string                        `json:"status"`
-	ArtifactCount          int                           `json:"artifactCount"`
-	CompletedArtifactCount int                           `json:"completedArtifactCount"`
-	FailedArtifactCount    int                           `json:"failedArtifactCount"`
-	FailureCategory        string                        `json:"failureCategory,omitempty"`
-	FailureMessage         string                        `json:"failureMessage,omitempty"`
-	LastTransitionTime     string                        `json:"lastTransitionTime,omitempty"`
-	CreatedAt              string                        `json:"createdAt,omitempty"`
-	UpdatedAt              string                        `json:"updatedAt,omitempty"`
-	Artifacts              []ManagedArtifactSyncArtifact `json:"artifacts,omitempty"`
+	ID                     string                         `json:"id"`
+	RegistryType           string                         `json:"registryType,omitempty"`
+	Destination            *ManagedArtifactDestination    `json:"destination,omitempty"`
+	BundleVersion          string                         `json:"bundleVersion"`
+	Target                 *ManagedArtifactTarget         `json:"target,omitempty"`
+	Status                 string                         `json:"status"`
+	ArtifactCount          int                            `json:"artifactCount"`
+	CompletedArtifactCount int                            `json:"completedArtifactCount"`
+	FailedArtifactCount    int                            `json:"failedArtifactCount"`
+	FailureCategory        string                         `json:"failureCategory,omitempty"`
+	FailureMessage         string                         `json:"failureMessage,omitempty"`
+	LastTransitionTime     string                         `json:"lastTransitionTime,omitempty"`
+	CreatedAt              string                         `json:"createdAt,omitempty"`
+	UpdatedAt              string                         `json:"updatedAt,omitempty"`
+	Artifacts              []ManagedArtifactSyncArtifact  `json:"artifacts,omitempty"`
+	ManualCopyPlan         *ManagedArtifactManualCopyPlan `json:"manualCopyPlan,omitempty"`
 }
 
 // ManagedArtifactSyncList contains one page of synchronization records.

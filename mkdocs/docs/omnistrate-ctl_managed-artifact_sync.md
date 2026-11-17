@@ -22,6 +22,7 @@ omnistrate-ctl managed-artifact sync [operation] [flags]
 ### SEE ALSO
 
 * [omnistrate-ctl managed-artifact](omnistrate-ctl_managed-artifact.md)	 - Manage Base Amenities artifact releases
+* [omnistrate-ctl managed-artifact sync copy](omnistrate-ctl_managed-artifact_sync_copy.md)	 - Copy and optionally sign a MANUAL managed artifact sync
 * [omnistrate-ctl managed-artifact sync describe](omnistrate-ctl_managed-artifact_sync_describe.md)	 - Describe a managed artifact synchronization record
 * [omnistrate-ctl managed-artifact sync list](omnistrate-ctl_managed-artifact_sync_list.md)	 - List managed artifact synchronization records
 

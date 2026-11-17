@@ -26,6 +26,7 @@ func TestManagedArtifactCommands(t *testing.T) {
 		{name: "release describe", args: []string{"release", "describe"}},
 		{name: "sync list", args: []string{"sync", "list"}},
 		{name: "sync describe", args: []string{"sync", "describe"}},
+		{name: "sync copy", args: []string{"sync", "copy"}},
 	} {
 		t.Run(command.name, func(t *testing.T) {
 			found, _, err := Cmd.Find(command.args)
@@ -44,6 +45,10 @@ func TestManagedArtifactCommands(t *testing.T) {
 	require.Equal(t, "", syncListCmd.Flags().Lookup("registry-type").DefValue)
 	require.NotNil(t, syncListCmd.Flags().Lookup("destination-account-id"))
 	require.NotNil(t, syncDescribeCmd.Flags().Lookup("id"))
+	require.NotNil(t, syncCopyCmd.Flags().Lookup("id"))
+	require.NotNil(t, syncCopyCmd.Flags().Lookup("aws-profile"))
+	require.NotNil(t, syncCopyCmd.Flags().Lookup("vetter"))
+	require.NotNil(t, syncCopyCmd.Flags().Lookup("signer"))
 }
 
 func TestManagedArtifactCommandsRequireParameters(t *testing.T) {
@@ -55,6 +60,7 @@ func TestManagedArtifactCommandsRequireParameters(t *testing.T) {
 		{name: "policy update", cmd: policyUpdateCmd},
 		{name: "release describe", cmd: releaseDescribeCmd},
 		{name: "sync describe", cmd: syncDescribeCmd},
+		{name: "sync copy", cmd: syncCopyCmd},
 	}
 
 	for _, tt := range tests {
@@ -108,6 +114,9 @@ func TestManagedArtifactNormalization(t *testing.T) {
 	status, err := normalizeSyncStatus("in_progress")
 	require.NoError(t, err)
 	require.Equal(t, "IN_PROGRESS", status)
+	status, err = normalizeSyncStatus("manual")
+	require.NoError(t, err)
+	require.Equal(t, "MANUAL", status)
 
 	_, err = normalizeSyncStatus("cancelled")
 	require.Error(t, err)

@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"github.com/omnistrate-oss/omnistrate-ctl/cmd/common"
+	"github.com/omnistrate-oss/omnistrate-ctl/internal/artifactsync"
 	"github.com/omnistrate-oss/omnistrate-ctl/internal/config"
 	"github.com/omnistrate-oss/omnistrate-ctl/internal/dataaccess"
 	"github.com/omnistrate-oss/omnistrate-ctl/internal/model"
@@ -46,6 +47,18 @@ var syncDescribeCmd = &cobra.Command{
 	SilenceUsage: true,
 }
 
+var syncCopyCmd = &cobra.Command{
+	Use:   "copy [flags]",
+	Short: "Copy and optionally sign a MANUAL managed artifact sync",
+	Long: `Fetch the server-authored copy plan, copy every versioned artifact to the persisted destination prefix, optionally invoke customer vetting and signing executables, and publish final tags only after both hooks succeed.
+
+Hooks run directly without a shell, receive one JSON object on stdin, and inherit AWS_PROFILE, AWS_REGION, and AWS_DEFAULT_REGION for the selected destination. The JSON includes artifactKey, sourceRef, destinationRef, destinationDigest, destinationRegion, and awsProfile. The vetter runs before the signer while only a staging tag is present; canonical and immutable version tags are published only after both hooks succeed.`,
+	Example:      "omnistrate-ctl managed-artifact sync copy --id spabs-123 --aws-profile customer-prod --vetter ./vet-artifact --signer ./sign-artifact",
+	Args:         cobra.NoArgs,
+	RunE:         runSyncCopy,
+	SilenceUsage: true,
+}
+
 type syncTableRow struct {
 	ID                   string `json:"id"`
 	BundleVersion        string `json:"bundle_version"`
@@ -74,9 +87,10 @@ type syncArtifactTableRow struct {
 func init() {
 	syncCmd.AddCommand(syncListCmd)
 	syncCmd.AddCommand(syncDescribeCmd)
+	syncCmd.AddCommand(syncCopyCmd)
 
 	syncListCmd.Flags().String("bundle-version", "", "Filter by bundle version, for example r0000020")
-	syncListCmd.Flags().String("status", "", "Filter by status: pending, in_progress, ready, failed, or skipped")
+	syncListCmd.Flags().String("status", "", "Filter by status: pending, in_progress, ready, failed, skipped, or manual")
 	syncListCmd.Flags().String("registry-type", "", "Registry type: private_ecr or public_ecr (omitted defaults to private ECR)")
 	syncListCmd.Flags().String("destination-account-id", "", "Filter either ECR registry type by 12-digit destination AWS account ID")
 	syncListCmd.Flags().String("target-id", "", "Filter by execution provisioner ID; must also match any destination account filter")
@@ -87,6 +101,42 @@ func init() {
 
 	syncDescribeCmd.Flags().String("id", "", "Private sync (spabs-*) or public publication (sppap-*) ID (required)")
 	_ = syncDescribeCmd.MarkFlagRequired("id")
+
+	syncCopyCmd.Flags().String("id", "", "Private MANUAL sync ID (spabs-*) (required)")
+	syncCopyCmd.Flags().String("aws-profile", "", "AWS shared-config profile for the destination account")
+	syncCopyCmd.Flags().String("vetter", "", "Customer vetting executable; receives one JSON object on stdin per staged artifact")
+	syncCopyCmd.Flags().String("signer", "", "Customer signing executable; receives one JSON object on stdin per artifact")
+	_ = syncCopyCmd.MarkFlagRequired("id")
+}
+
+func runSyncCopy(cmd *cobra.Command, args []string) error {
+	defer config.CleanupArgsAndFlags(cmd, &args)
+	syncID, _ := cmd.Flags().GetString("id")
+	awsProfile, _ := cmd.Flags().GetString("aws-profile")
+	vetter, _ := cmd.Flags().GetString("vetter")
+	signer, _ := cmd.Flags().GetString("signer")
+	if err := validateSyncID(syncID); err != nil {
+		return err
+	}
+	if len(syncID) < len("spabs-") || syncID[:len("spabs-")] != "spabs-" {
+		return fmt.Errorf("manual copy requires a private spabs-* sync ID")
+	}
+	token, err := common.GetTokenWithLogin()
+	if err != nil {
+		return fmt.Errorf("failed to get user token: %w", err)
+	}
+	sync, err := dataaccess.DescribeManagedArtifactSync(cmd.Context(), token, syncID)
+	if err != nil {
+		return fmt.Errorf("failed to describe managed artifact sync: %w", err)
+	}
+	if sync.Status != "MANUAL" || sync.ManualCopyPlan == nil {
+		return fmt.Errorf("managed artifact sync %s is not ready for manual copy", syncID)
+	}
+	if err = artifactsync.Run(cmd.Context(), *sync.ManualCopyPlan, artifactsync.Options{AWSProfile: awsProfile, Vetter: vetter, Signer: signer}); err != nil {
+		return fmt.Errorf("failed to copy managed artifacts: %w", err)
+	}
+	utils.PrintSuccess(fmt.Sprintf("Successfully copied managed artifact sync %s; the periodic verifier will mark it READY after all destination tags are visible.", syncID))
+	return nil
 }
 
 func runSyncList(cmd *cobra.Command, args []string) error {
