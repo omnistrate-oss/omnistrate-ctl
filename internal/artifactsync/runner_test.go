@@ -46,7 +46,7 @@ func TestExecuteHookPassesArtifactAndAWSContext(t *testing.T) {
 	environmentPath := filepath.Join(tempDir, "environment.txt")
 	hookPath := filepath.Join(tempDir, "hook")
 	hook := "#!/bin/sh\ncat > \"$HOOK_INPUT_PATH\"\nprintf '%s\\n%s\\n%s\\n' \"$AWS_PROFILE\" \"$AWS_REGION\" \"$AWS_DEFAULT_REGION\" > \"$HOOK_ENVIRONMENT_PATH\"\n"
-	require.NoError(t, os.WriteFile(hookPath, []byte(hook), 0o700))
+	require.NoError(t, os.WriteFile(hookPath, []byte(hook), 0o700)) // #nosec G306 -- the test hook must be executable by its owner.
 	t.Setenv("HOOK_INPUT_PATH", inputPath)
 	t.Setenv("HOOK_ENVIRONMENT_PATH", environmentPath)
 
