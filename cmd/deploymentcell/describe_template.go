@@ -3,7 +3,6 @@ package deploymentcell
 import (
 	"context"
 	"fmt"
-	"strings"
 
 	"github.com/omnistrate-oss/omnistrate-ctl/internal/model"
 	"github.com/omnistrate-oss/omnistrate-sdk-go/fleet"
@@ -175,11 +174,7 @@ func describeOrganizationTemplate(ctx context.Context, token string, environment
 	fmt.Printf("Organization: %s\n", utils.FromPtr(spOrg.Id))
 	fmt.Printf("Environment: %s\n", environment)
 	fmt.Printf("Cloud Provider: %s\n", cloudProvider)
-	managedReleaseVersion := strings.TrimSpace(utils.FromPtr(template.ManagedReleaseVersion))
-	if managedReleaseVersion == "" || strings.EqualFold(managedReleaseVersion, model.ManagedReleaseVersionAutoUpgrade) {
-		managedReleaseVersion = model.ManagedReleaseVersionAutoUpgrade
-	}
-	fmt.Printf("Managed Release Version: %s\n", managedReleaseVersion)
+	fmt.Printf("Managed Release Version: %s\n", managedReleaseVersionDisplay(template.ManagedReleaseVersion))
 	fmt.Printf("Total Amenities: %d (Managed: %d, Custom: %d)\n\n", totalAmenities, len(template.ManagedAmenities), len(template.CustomAmenities))
 
 	// Print output based on format - always show output even when saving to file
@@ -355,4 +350,14 @@ func printDeploymentCellTemplateAsTable(template *model.DeploymentCellTemplate) 
 	}
 
 	return utils.PrintTextTableJsonArrayOutput("table", tableData)
+}
+
+// managedReleaseVersionDisplay matches the exported template: servers without
+// managed release policy support omit the field, and exported templates omit it
+// too, so applying them leaves the current policy unchanged.
+func managedReleaseVersionDisplay(version *string) string {
+	if version == nil {
+		return "not reported by API"
+	}
+	return *version
 }

@@ -207,3 +207,13 @@ func TestConvertDeploymentCellConfigurationFromOpenAPIPreservesManagedReleaseVer
 	require.NotNil(t, template.ManagedReleaseVersion)
 	require.Equal(t, "r0000020", *template.ManagedReleaseVersion)
 }
+
+func TestConvertDeploymentCellConfigurationFromOpenAPIOmitsUnreportedManagedReleaseVersion(t *testing.T) {
+	template := ConvertDeploymentCellConfigurationFromOpenAPI(openapiclient.DeploymentCellConfiguration{})
+	require.Nil(t, template.ManagedReleaseVersion)
+
+	// Servers without managed release policy support reject autoUpgrade, so an
+	// unreported policy must stay omitted and leave the current policy unchanged.
+	converted := convertTemplateToOpenAPIFormat(template, "aws")
+	require.Nil(t, converted.GetDeploymentCellConfigurationPerCloudProvider()["aws"].ManagedReleaseVersion)
+}
