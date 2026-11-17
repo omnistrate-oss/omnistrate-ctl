@@ -469,12 +469,6 @@ func UpdateServiceProviderOrganization(ctx context.Context, token string, deploy
 	apiClient := getV1Client()
 
 	apiModel := convertTemplateToOpenAPIFormat(deploymentConfig, cloudProvider)
-	pinnedVersion := utils.FromPtr(apiModel.GetDeploymentCellConfigurationPerCloudProvider()[cloudProvider].ManagedReleaseVersion)
-	if pinnedVersion != "" && pinnedVersion != model.ManagedReleaseVersionAutoUpgrade {
-		if _, err = DescribeManagedArtifactRelease(ctx, token, pinnedVersion); err != nil {
-			return fmt.Errorf("managed release version %q was not found: %w", pinnedVersion, err)
-		}
-	}
 
 	configMap := map[string]openapiclient.DeploymentCellConfigurations{
 		envType: apiModel,

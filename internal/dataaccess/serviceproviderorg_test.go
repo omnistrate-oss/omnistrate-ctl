@@ -170,27 +170,33 @@ func TestUpdateServiceProviderOrganizationSendsAutoUpgradeWithoutReleaseLookup(t
 	require.Contains(t, body, `"ManagedReleaseVersion":"autoUpgrade"`)
 }
 
-func TestUpdateServiceProviderOrganizationRejectsUnknownManagedReleaseVersion(t *testing.T) {
-	var organizationUpdated bool
+func TestUpdateServiceProviderOrganizationSendsPinnedVersionWithoutReleaseLookup(t *testing.T) {
+	var releaseLookedUp bool
+	var body string
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/2022-09-01-00/managed-artifact/releases/r9999999" {
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusNotFound)
-			_, _ = w.Write([]byte(`{"name":"not_found","message":"managed artifact release r9999999 was not found"}`))
+		if strings.Contains(r.URL.Path, "/managed-artifact/") {
+			// Release lookups need managed-artifact access that template
+			// updates do not, so the organization API must validate the pin.
+			releaseLookedUp = true
+			w.WriteHeader(http.StatusForbidden)
 			return
 		}
-		organizationUpdated = true
-		w.WriteHeader(http.StatusOK)
+		payload, _ := io.ReadAll(r.Body)
+		body = string(payload)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		_, _ = w.Write([]byte(`{"name":"bad_request","message":"managed artifact release r9999999 is not published"}`))
 	}))
 	defer server.Close()
 	setManagedArtifactTestHost(t, server.URL)
 
 	err := UpdateServiceProviderOrganization(context.Background(), "test-token", model.DeploymentCellTemplate{
-		ManagedReleaseVersion: utils.ToPtr("r9999999"),
+		ManagedReleaseVersion: utils.ToPtr(" r9999999 "),
 	}, "GLOBAL", "aws")
 
-	require.ErrorContains(t, err, `managed release version "r9999999" was not found`)
-	require.False(t, organizationUpdated)
+	require.ErrorContains(t, err, "managed artifact release r9999999 is not published")
+	require.False(t, releaseLookedUp)
+	require.Contains(t, body, `"ManagedReleaseVersion":"r9999999"`)
 }
 
 func TestConvertDeploymentCellConfigurationFromOpenAPIPreservesManagedReleaseVersion(t *testing.T) {
