@@ -26,6 +26,11 @@ This command creates a YAML template file containing all available amenities (He
 that can be configured for deployment cells. The template includes both managed amenities 
 (maintained by Omnistrate) and custom amenities based on the organization's current configuration.
 
+The generated template reports managedReleaseVersion as "autoUpgrade" for automatic release adoption
+or as the pinned bundle version. When updating, omit it or leave it empty to keep the current
+release policy, set it to "autoUpgrade" (case-insensitive) for automatic adoption, or set a published bundle version
+such as r0000020 to pin that release. An unknown bundle version is rejected.
+
 The generated template can be customized and used with the update-config-template command 
 to configure deployment cell amenities for your organization.
 
@@ -76,7 +81,7 @@ func runGenerateTemplate(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	// Generate template for specified cloud providers
+	// Generate the organization's GLOBAL template for the requested cloud provider.
 	template, err := generateDeploymentCellTemplate(ctx, token, cloudProvider)
 	if err != nil {
 		utils.PrintError(fmt.Errorf("failed to generate template: %w", err))
@@ -122,13 +127,23 @@ func generateDeploymentCellTemplate(ctx context.Context, token string, cloudProv
 		return model.DeploymentCellTemplate{}, fmt.Errorf("failed to get service provider organization: %w", err)
 	}
 
-	if res.DefaultDeploymentCellConfigurations == nil ||
-		res.DefaultDeploymentCellConfigurations.DeploymentCellConfigurationPerCloudProvider == nil {
-		return deploymentCellTemplateForCloudProvider(nil, cloudProviderName)
+	return deploymentCellTemplateForGlobalCloudProvider(
+		res.GetDeploymentCellConfigurationsPerEnv(),
+		cloudProviderName,
+	)
+}
+
+func deploymentCellTemplateForGlobalCloudProvider(
+	configs map[string]openapiclient.DeploymentCellConfigurations,
+	cloudProviderName string,
+) (model.DeploymentCellTemplate, error) {
+	environmentConfigs, ok := configs[defaultEnvironment]
+	if !ok {
+		return model.DeploymentCellTemplate{}, fmt.Errorf("no deployment cell configurations found for environment '%s'", defaultEnvironment)
 	}
 
 	return deploymentCellTemplateForCloudProvider(
-		res.DefaultDeploymentCellConfigurations.DeploymentCellConfigurationPerCloudProvider,
+		environmentConfigs.DeploymentCellConfigurationPerCloudProvider,
 		cloudProviderName,
 	)
 }
@@ -139,18 +154,14 @@ func deploymentCellTemplateForCloudProvider(
 ) (model.DeploymentCellTemplate, error) {
 	cloudProviderName = normalizeDeploymentCellTemplateCloudProviderName(cloudProviderName)
 	if configs == nil {
-		return model.DeploymentCellTemplate{}, fmt.Errorf("no default deployment cell configurations found in service provider organization")
+		return model.DeploymentCellTemplate{}, fmt.Errorf("no deployment cell configurations found in service provider organization")
 	}
 
 	for cloudProvider, cellConfig := range *configs {
 		if normalizeDeploymentCellTemplateCloudProviderName(cloudProvider) != cloudProviderName {
 			continue // Skip if the cloud provider does not match
 		}
-		convertedConfig, err := convertToDeploymentCellConfiguration(cellConfig)
-		if err != nil {
-			return model.DeploymentCellTemplate{}, fmt.Errorf("failed to convert deployment cell configuration for cloud provider '%s': %w", cloudProvider, err)
-		}
-		return convertedConfig, nil
+		return dataaccess.ConvertDeploymentCellConfigurationFromOpenAPI(cellConfig), nil
 	}
 
 	return model.DeploymentCellTemplate{}, fmt.Errorf("no configuration found for cloud provider '%s'", cloudProviderName)
@@ -158,45 +169,4 @@ func deploymentCellTemplateForCloudProvider(
 
 func normalizeDeploymentCellTemplateCloudProviderName(cloudProviderName string) string {
 	return strings.ToLower(strings.TrimSpace(cloudProviderName))
-}
-
-func convertToDeploymentCellConfiguration(cellConfig interface{}) (model.DeploymentCellTemplate, error) {
-	result := model.DeploymentCellTemplate{}
-
-	// Handle the case where apiResponse is nil
-	if cellConfig == nil {
-		return result, nil
-	}
-
-	internalAmenities, err := dataaccess.ConvertToInternalAmenitiesList(cellConfig)
-	if err != nil {
-		return result, fmt.Errorf("failed to convert amenities list: %w", err)
-	}
-	managedIdentities, err := dataaccess.ConvertToInternalManagedWorkloadIdentityList(cellConfig)
-	if err != nil {
-		return result, fmt.Errorf("failed to convert managed workload identities list: %w", err)
-	}
-
-	var managedAmenities []model.Amenity
-	var customAmenities []model.Amenity
-	for _, amenity := range internalAmenities {
-		externalModel := model.Amenity{
-			Name:        amenity.Name,
-			Description: amenity.Description,
-			Type:        amenity.Type,
-			Disable:     amenity.Disable,
-			DependsOn:   amenity.DependsOn,
-			Properties:  amenity.Properties,
-		}
-		if utils.FromPtr(amenity.IsManaged) {
-			managedAmenities = append(managedAmenities, externalModel)
-		} else {
-			customAmenities = append(customAmenities, externalModel)
-		}
-	}
-
-	result.ManagedIdentities = managedIdentities
-	result.ManagedAmenities = managedAmenities
-	result.CustomAmenities = customAmenities
-	return result, nil
 }

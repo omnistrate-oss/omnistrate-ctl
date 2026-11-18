@@ -9,9 +9,34 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestDeploymentCellTemplateForCloudProviderReturnsErrorForMissingDefaults(t *testing.T) {
+func TestDeploymentCellTemplateForCloudProviderReturnsErrorForMissingConfigs(t *testing.T) {
 	_, err := deploymentCellTemplateForCloudProvider(nil, " BYOC-ONPREM ")
-	require.ErrorContains(t, err, "no default deployment cell configurations found in service provider organization")
+	require.ErrorContains(t, err, "no deployment cell configurations found in service provider organization")
+}
+
+func TestDeploymentCellTemplateForGlobalCloudProviderSelectsOrganizationTemplate(t *testing.T) {
+	configs := map[string]openapiclient.DeploymentCellConfigurations{
+		"GLOBAL": {
+			DeploymentCellConfigurationPerCloudProvider: &map[string]openapiclient.DeploymentCellConfiguration{
+				"aws": {ManagedReleaseVersion: utils.ToPtr("r0000020")},
+			},
+		},
+		"DEV": {
+			DeploymentCellConfigurationPerCloudProvider: &map[string]openapiclient.DeploymentCellConfiguration{
+				"aws": {ManagedReleaseVersion: utils.ToPtr("r0000021")},
+			},
+		},
+	}
+
+	template, err := deploymentCellTemplateForGlobalCloudProvider(configs, " AWS ")
+	require.NoError(t, err)
+	require.NotNil(t, template.ManagedReleaseVersion)
+	require.Equal(t, "r0000020", *template.ManagedReleaseVersion)
+}
+
+func TestDeploymentCellTemplateForGlobalCloudProviderReturnsErrorForMissingGlobalEnvironment(t *testing.T) {
+	_, err := deploymentCellTemplateForGlobalCloudProvider(nil, "aws")
+	require.ErrorContains(t, err, "no deployment cell configurations found for environment 'GLOBAL'")
 }
 
 func TestDeploymentCellTemplateForCloudProviderReturnsErrorForMissingBYOCOnPremConfig(t *testing.T) {
@@ -98,6 +123,19 @@ func TestDeploymentCellTemplateForCloudProviderPreservesManagedIdentities(t *tes
 	require.Len(t, identity.Bindings, 1)
 	require.Equal(t, "queue-system", identity.Bindings[0].ServiceAccount.Namespace)
 	require.Equal(t, "queue-writer", identity.Bindings[0].ServiceAccount.Name)
+}
+
+func TestDeploymentCellTemplateForCloudProviderPreservesManagedReleaseVersion(t *testing.T) {
+	configs := map[string]openapiclient.DeploymentCellConfiguration{
+		"aws": {
+			ManagedReleaseVersion: utils.ToPtr("r0000020"),
+		},
+	}
+
+	template, err := deploymentCellTemplateForCloudProvider(&configs, "aws")
+	require.NoError(t, err)
+	require.NotNil(t, template.ManagedReleaseVersion)
+	require.Equal(t, "r0000020", *template.ManagedReleaseVersion)
 }
 
 func TestDeploymentCellTemplateForCloudProviderReturnsErrorForMissingNonBYOCConfig(t *testing.T) {
