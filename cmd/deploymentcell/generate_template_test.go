@@ -14,7 +14,7 @@ func TestDeploymentCellTemplateForCloudProviderReturnsErrorForMissingConfigs(t *
 	require.ErrorContains(t, err, "no deployment cell configurations found in service provider organization")
 }
 
-func TestDeploymentCellTemplateForEnvironmentAndCloudProviderSelectsRequestedTemplate(t *testing.T) {
+func TestDeploymentCellTemplateForGlobalCloudProviderSelectsOrganizationTemplate(t *testing.T) {
 	configs := map[string]openapiclient.DeploymentCellConfigurations{
 		"GLOBAL": {
 			DeploymentCellConfigurationPerCloudProvider: &map[string]openapiclient.DeploymentCellConfiguration{
@@ -28,21 +28,15 @@ func TestDeploymentCellTemplateForEnvironmentAndCloudProviderSelectsRequestedTem
 		},
 	}
 
-	template, err := deploymentCellTemplateForEnvironmentAndCloudProvider(configs, " dev ", " AWS ")
+	template, err := deploymentCellTemplateForGlobalCloudProvider(configs, " AWS ")
 	require.NoError(t, err)
 	require.NotNil(t, template.ManagedReleaseVersion)
-	require.Equal(t, "r0000021", *template.ManagedReleaseVersion)
+	require.Equal(t, "r0000020", *template.ManagedReleaseVersion)
 }
 
-func TestDeploymentCellTemplateForEnvironmentAndCloudProviderReturnsErrorForMissingEnvironment(t *testing.T) {
-	_, err := deploymentCellTemplateForEnvironmentAndCloudProvider(nil, "dev", "aws")
-	require.ErrorContains(t, err, "no deployment cell configurations found for environment 'DEV'")
-}
-
-func TestGenerateTemplateEnvironmentFlagDefaultsToGlobal(t *testing.T) {
-	flag := generateTemplateCmd.Flags().Lookup("environment")
-	require.NotNil(t, flag)
-	require.Equal(t, defaultEnvironment, flag.DefValue)
+func TestDeploymentCellTemplateForGlobalCloudProviderReturnsErrorForMissingGlobalEnvironment(t *testing.T) {
+	_, err := deploymentCellTemplateForGlobalCloudProvider(nil, "aws")
+	require.ErrorContains(t, err, "no deployment cell configurations found for environment 'GLOBAL'")
 }
 
 func TestDeploymentCellTemplateForCloudProviderReturnsErrorForMissingBYOCOnPremConfig(t *testing.T) {
