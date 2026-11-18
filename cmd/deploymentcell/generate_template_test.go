@@ -9,9 +9,40 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestDeploymentCellTemplateForCloudProviderReturnsErrorForMissingDefaults(t *testing.T) {
+func TestDeploymentCellTemplateForCloudProviderReturnsErrorForMissingConfigs(t *testing.T) {
 	_, err := deploymentCellTemplateForCloudProvider(nil, " BYOC-ONPREM ")
-	require.ErrorContains(t, err, "no default deployment cell configurations found in service provider organization")
+	require.ErrorContains(t, err, "no deployment cell configurations found in service provider organization")
+}
+
+func TestDeploymentCellTemplateForEnvironmentAndCloudProviderSelectsRequestedTemplate(t *testing.T) {
+	configs := map[string]openapiclient.DeploymentCellConfigurations{
+		"GLOBAL": {
+			DeploymentCellConfigurationPerCloudProvider: &map[string]openapiclient.DeploymentCellConfiguration{
+				"aws": {ManagedReleaseVersion: utils.ToPtr("r0000020")},
+			},
+		},
+		"DEV": {
+			DeploymentCellConfigurationPerCloudProvider: &map[string]openapiclient.DeploymentCellConfiguration{
+				"aws": {ManagedReleaseVersion: utils.ToPtr("r0000021")},
+			},
+		},
+	}
+
+	template, err := deploymentCellTemplateForEnvironmentAndCloudProvider(configs, " dev ", " AWS ")
+	require.NoError(t, err)
+	require.NotNil(t, template.ManagedReleaseVersion)
+	require.Equal(t, "r0000021", *template.ManagedReleaseVersion)
+}
+
+func TestDeploymentCellTemplateForEnvironmentAndCloudProviderReturnsErrorForMissingEnvironment(t *testing.T) {
+	_, err := deploymentCellTemplateForEnvironmentAndCloudProvider(nil, "dev", "aws")
+	require.ErrorContains(t, err, "no deployment cell configurations found for environment 'DEV'")
+}
+
+func TestGenerateTemplateEnvironmentFlagDefaultsToGlobal(t *testing.T) {
+	flag := generateTemplateCmd.Flags().Lookup("environment")
+	require.NotNil(t, flag)
+	require.Equal(t, defaultEnvironment, flag.DefValue)
 }
 
 func TestDeploymentCellTemplateForCloudProviderReturnsErrorForMissingBYOCOnPremConfig(t *testing.T) {

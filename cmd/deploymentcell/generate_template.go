@@ -20,7 +20,7 @@ import (
 var generateTemplateCmd = &cobra.Command{
 	Use:   "generate-config-template",
 	Short: "Generate deployment cell configuration template",
-	Long: `Generate a deployment cell configuration template with available amenities for a specific cloud provider.
+	Long: `Generate a deployment cell configuration template with available amenities for a specific environment and cloud provider.
 
 This command creates a YAML template file containing all available amenities (Helm charts) 
 that can be configured for deployment cells. The template includes both managed amenities 
@@ -38,6 +38,9 @@ Examples:
   # Generate template for AWS cloud provider
   omnistrate-ctl deployment-cell generate-config-template --cloud aws --output template-aws.yaml
 
+  # Generate template for DEV and AWS
+  omnistrate-ctl deployment-cell generate-config-template --environment DEV --cloud aws --output template-dev-aws.yaml
+
   # Generate template for Nebius cloud provider
   omnistrate-ctl deployment-cell generate-config-template --cloud nebius --output template-nebius.yaml
 
@@ -54,6 +57,7 @@ Examples:
 }
 
 func init() {
+	generateTemplateCmd.Flags().StringP("environment", "e", defaultEnvironment, "Environment type (e.g., GLOBAL, DEV, PROD) to generate the template for")
 	generateTemplateCmd.Flags().StringP("cloud", "c", "", "Cloud provider to generate template for (aws, azure, gcp, nebius, byoc-onprem).")
 	generateTemplateCmd.Flags().StringP("output", "o", "", "Output file path for the template (if not specified, outputs to stdout)")
 	_ = generateTemplateCmd.MarkFlagRequired("cloud")
@@ -61,6 +65,12 @@ func init() {
 
 func runGenerateTemplate(cmd *cobra.Command, args []string) error {
 	defer config.CleanupArgsAndFlags(cmd, &args)
+
+	environment, err := cmd.Flags().GetString("environment")
+	if err != nil {
+		utils.PrintError(err)
+		return err
+	}
 
 	cloudProvider, err := cmd.Flags().GetString("cloud")
 	if err != nil {
@@ -81,8 +91,8 @@ func runGenerateTemplate(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	// Generate template for specified cloud providers
-	template, err := generateDeploymentCellTemplate(ctx, token, cloudProvider)
+	// Generate the organization's template for the requested environment and cloud provider.
+	template, err := generateDeploymentCellTemplate(ctx, token, environment, cloudProvider)
 	if err != nil {
 		utils.PrintError(fmt.Errorf("failed to generate template: %w", err))
 		return err
@@ -121,21 +131,37 @@ func runGenerateTemplate(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
-func generateDeploymentCellTemplate(ctx context.Context, token string, cloudProviderName string) (model.DeploymentCellTemplate, error) {
+func generateDeploymentCellTemplate(ctx context.Context, token string, environment string, cloudProviderName string) (model.DeploymentCellTemplate, error) {
 	res, err := dataaccess.GetServiceProviderOrganization(ctx, token)
 	if err != nil {
 		return model.DeploymentCellTemplate{}, fmt.Errorf("failed to get service provider organization: %w", err)
 	}
 
-	if res.DefaultDeploymentCellConfigurations == nil ||
-		res.DefaultDeploymentCellConfigurations.DeploymentCellConfigurationPerCloudProvider == nil {
-		return deploymentCellTemplateForCloudProvider(nil, cloudProviderName)
-	}
-
-	return deploymentCellTemplateForCloudProvider(
-		res.DefaultDeploymentCellConfigurations.DeploymentCellConfigurationPerCloudProvider,
+	return deploymentCellTemplateForEnvironmentAndCloudProvider(
+		res.GetDeploymentCellConfigurationsPerEnv(),
+		environment,
 		cloudProviderName,
 	)
+}
+
+func deploymentCellTemplateForEnvironmentAndCloudProvider(
+	configs map[string]openapiclient.DeploymentCellConfigurations,
+	environment string,
+	cloudProviderName string,
+) (model.DeploymentCellTemplate, error) {
+	environment = strings.ToUpper(strings.TrimSpace(environment))
+	for environmentType, environmentConfigs := range configs {
+		if strings.ToUpper(strings.TrimSpace(environmentType)) != environment {
+			continue
+		}
+
+		return deploymentCellTemplateForCloudProvider(
+			environmentConfigs.DeploymentCellConfigurationPerCloudProvider,
+			cloudProviderName,
+		)
+	}
+
+	return model.DeploymentCellTemplate{}, fmt.Errorf("no deployment cell configurations found for environment '%s'", environment)
 }
 
 func deploymentCellTemplateForCloudProvider(
@@ -144,7 +170,7 @@ func deploymentCellTemplateForCloudProvider(
 ) (model.DeploymentCellTemplate, error) {
 	cloudProviderName = normalizeDeploymentCellTemplateCloudProviderName(cloudProviderName)
 	if configs == nil {
-		return model.DeploymentCellTemplate{}, fmt.Errorf("no default deployment cell configurations found in service provider organization")
+		return model.DeploymentCellTemplate{}, fmt.Errorf("no deployment cell configurations found in service provider organization")
 	}
 
 	for cloudProvider, cellConfig := range *configs {

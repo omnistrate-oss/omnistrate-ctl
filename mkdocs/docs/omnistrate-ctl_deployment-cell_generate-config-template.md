@@ -4,7 +4,7 @@ Generate deployment cell configuration template
 
 ### Synopsis
 
-Generate a deployment cell configuration template with available amenities for a specific cloud provider.
+Generate a deployment cell configuration template with available amenities for a specific environment and cloud provider.
 
 This command creates a YAML template file containing all available amenities (Helm charts) 
 that can be configured for deployment cells. The template includes both managed amenities 
@@ -21,6 +21,9 @@ to configure deployment cell amenities for your organization.
 Examples:
   # Generate template for AWS cloud provider
   omnistrate-ctl deployment-cell generate-config-template --cloud aws --output template-aws.yaml
+
+  # Generate template for DEV and AWS
+  omnistrate-ctl deployment-cell generate-config-template --environment DEV --cloud aws --output template-dev-aws.yaml
 
   # Generate template for Nebius cloud provider
   omnistrate-ctl deployment-cell generate-config-template --cloud nebius --output template-nebius.yaml
@@ -41,9 +44,10 @@ omnistrate-ctl deployment-cell generate-config-template [flags]
 ### Options
 
 ```
-  -c, --cloud string    Cloud provider to generate template for (aws, azure, gcp, nebius, byoc-onprem).
-  -h, --help            help for generate-config-template
-  -o, --output string   Output file path for the template (if not specified, outputs to stdout)
+  -c, --cloud string         Cloud provider to generate template for (aws, azure, gcp, nebius, byoc-onprem).
+  -e, --environment string   Environment type (e.g., GLOBAL, DEV, PROD) to generate the template for (default "GLOBAL")
+  -h, --help                 help for generate-config-template
+  -o, --output string        Output file path for the template (if not specified, outputs to stdout)
 ```
 
 ### Options inherited from parent commands
