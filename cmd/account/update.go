@@ -14,11 +14,16 @@ import (
 )
 
 const (
+	privateArtifactPublicationEnabledFlag = "private-artifact-publication-enabled"
+
 	updateExample = `# Update account name and description
 omnistrate-ctl account update [account-name or account-id] --name=[new-name] --description=[new-description]
 
 # Replace Nebius bindings on an existing Nebius account
-omnistrate-ctl account update [account-name or account-id] --nebius-bindings-file=[bindings-file]`
+omnistrate-ctl account update [account-name or account-id] --nebius-bindings-file=[bindings-file]
+
+# Enable private managed-artifact publication for an AWS non-BYOA account
+omnistrate-ctl account update [account-name or account-id] --private-artifact-publication-enabled=true`
 )
 
 var updateCmd = &cobra.Command{
@@ -37,16 +42,18 @@ func init() {
 	updateCmd.Flags().String("description", "", "Updated account description")
 	updateCmd.Flags().String("nebius-bindings-file", "", "Path to a YAML file describing the full replacement Nebius bindings")
 	updateCmd.Flags().String(tagsFlag, "", `Full replacement set of custom tags for the account in key=value format, separated by commas (e.g. env=prod,team=platform). Escape commas inside values with \,`)
+	updateCmd.Flags().Bool(privateArtifactPublicationEnabledFlag, false, "Whether an AWS non-BYOA account may publish managed artifacts to private ECR")
 	updateCmd.Flags().Bool("skip-wait", false, "Skip waiting for account to become READY after replacing Nebius bindings")
 	_ = updateCmd.MarkFlagFilename("nebius-bindings-file")
 }
 
 type UpdateCloudAccountParams struct {
-	ID             string
-	Name           *string
-	Description    *string
-	NebiusBindings []openapiclient.NebiusAccountBindingInput
-	CustomTags     []openapiclient.CustomTag
+	ID                                string
+	Name                              *string
+	Description                       *string
+	NebiusBindings                    []openapiclient.NebiusAccountBindingInput
+	CustomTags                        []openapiclient.CustomTag
+	PrivateArtifactPublicationEnabled *bool
 }
 
 func runUpdate(cmd *cobra.Command, args []string) error {
@@ -66,9 +73,16 @@ func runUpdate(cmd *cobra.Command, args []string) error {
 	name, _ := cmd.Flags().GetString("name")
 	description, _ := cmd.Flags().GetString("description")
 	nebiusBindingsFile, _ := cmd.Flags().GetString("nebius-bindings-file")
+	privateArtifactPublicationEnabled, _ := cmd.Flags().GetBool(privateArtifactPublicationEnabledFlag)
 	skipWait, _ := cmd.Flags().GetBool("skip-wait")
+	var privateArtifactPublicationEnabledValue *bool
+	if cmd.Flags().Changed(privateArtifactPublicationEnabledFlag) {
+		privateArtifactPublicationEnabledValue = &privateArtifactPublicationEnabled
+	}
 
-	params, err := buildUpdateAccountParams(cmd, args[0], name, description, nebiusBindingsFile)
+	params, err := buildUpdateAccountParams(
+		cmd, args[0], name, description, nebiusBindingsFile, privateArtifactPublicationEnabledValue,
+	)
 	if err != nil {
 		utils.PrintError(err)
 		return err
@@ -115,11 +129,12 @@ func runUpdate(cmd *cobra.Command, args []string) error {
 	}
 
 	accountConfigID, err := dataaccess.UpdateAccount(cmd.Context(), token, dataaccess.UpdateAccountParams{
-		AccountConfigID: params.ID,
-		Name:            params.Name,
-		Description:     params.Description,
-		NebiusBindings:  params.NebiusBindings,
-		CustomTags:      params.CustomTags,
+		AccountConfigID:                   params.ID,
+		Name:                              params.Name,
+		Description:                       params.Description,
+		NebiusBindings:                    params.NebiusBindings,
+		CustomTags:                        params.CustomTags,
+		PrivateArtifactPublicationEnabled: params.PrivateArtifactPublicationEnabled,
 	})
 	if err != nil {
 		utils.HandleSpinnerError(spinner, sm, err)
@@ -169,9 +184,11 @@ func buildUpdateAccountParams(
 	name string,
 	description string,
 	nebiusBindingsFile string,
+	privateArtifactPublicationEnabled *bool,
 ) (UpdateCloudAccountParams, error) {
 	params := UpdateCloudAccountParams{
-		ID: strings.TrimSpace(accountNameOrID),
+		ID:                                strings.TrimSpace(accountNameOrID),
+		PrivateArtifactPublicationEnabled: privateArtifactPublicationEnabled,
 	}
 
 	if cmd.Flags().Changed("name") {
@@ -218,8 +235,9 @@ func validateUpdateAccountParams(params UpdateCloudAccountParams) error {
 		return errors.New("description cannot be empty")
 	}
 
-	if params.Name == nil && params.Description == nil && len(params.NebiusBindings) == 0 && len(params.CustomTags) == 0 {
-		return errors.New("at least one of --name, --description, --nebius-bindings-file, or --tags must be provided")
+	if params.Name == nil && params.Description == nil && len(params.NebiusBindings) == 0 && len(params.CustomTags) == 0 &&
+		params.PrivateArtifactPublicationEnabled == nil {
+		return errors.New("at least one of --name, --description, --nebius-bindings-file, --tags, or --private-artifact-publication-enabled must be provided")
 	}
 
 	return nil

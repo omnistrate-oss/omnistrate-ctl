@@ -18,17 +18,21 @@ omnistrate-ctl account update [account-name or account-id] --name=[new-name] --d
 
 # Replace Nebius bindings on an existing Nebius account
 omnistrate-ctl account update [account-name or account-id] --nebius-bindings-file=[bindings-file]
+
+# Enable private managed-artifact publication for an AWS non-BYOA account
+omnistrate-ctl account update [account-name or account-id] --private-artifact-publication-enabled=true
 ```
 
 ### Options
 
 ```
-      --description string            Updated account description
-  -h, --help                          help for update
-      --name string                   Updated account name
-      --nebius-bindings-file string   Path to a YAML file describing the full replacement Nebius bindings
-      --skip-wait                     Skip waiting for account to become READY after replacing Nebius bindings
-      --tags string                   Full replacement set of custom tags for the account in key=value format, separated by commas (e.g. env=prod,team=platform). Escape commas inside values with \,
+      --description string                     Updated account description
+  -h, --help                                   help for update
+      --name string                            Updated account name
+      --nebius-bindings-file string            Path to a YAML file describing the full replacement Nebius bindings
+      --private-artifact-publication-enabled   Whether an AWS non-BYOA account may publish managed artifacts to private ECR
+      --skip-wait                              Skip waiting for account to become READY after replacing Nebius bindings
+      --tags string                            Full replacement set of custom tags for the account in key=value format, separated by commas (e.g. env=prod,team=platform). Escape commas inside values with \,
 ```
 
 ### Options inherited from parent commands

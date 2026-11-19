@@ -83,11 +83,12 @@ func CreateAccount(ctx context.Context, token string, accountConfig openapiclien
 }
 
 type UpdateAccountParams struct {
-	AccountConfigID string
-	Name            *string
-	Description     *string
-	NebiusBindings  []openapiclient.NebiusAccountBindingInput
-	CustomTags      []openapiclient.CustomTag
+	AccountConfigID                   string
+	Name                              *string
+	Description                       *string
+	NebiusBindings                    []openapiclient.NebiusAccountBindingInput
+	CustomTags                        []openapiclient.CustomTag
+	PrivateArtifactPublicationEnabled *bool
 }
 
 func UpdateAccount(ctx context.Context, token string, params UpdateAccountParams) (string, error) {
@@ -102,6 +103,17 @@ func UpdateAccount(ctx context.Context, token string, params UpdateAccountParams
 	}
 	if len(params.CustomTags) > 0 {
 		request.CustomTags = params.CustomTags
+	}
+	if params.PrivateArtifactPublicationEnabled != nil {
+		// The API supports this forward-compatible governance field, while the
+		// current generated SDK still exposes it through AdditionalProperties.
+		request.Settings = &openapiclient.AccountConfigSettings{
+			AccountGovernanceControls: &openapiclient.AccountGovernanceControls{
+				AdditionalProperties: map[string]interface{}{
+					"privateArtifactPublicationEnabled": *params.PrivateArtifactPublicationEnabled,
+				},
+			},
+		}
 	}
 
 	apiClient := getV1Client()

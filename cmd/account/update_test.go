@@ -46,11 +46,18 @@ func TestValidateUpdateAccountParams(t *testing.T) {
 			},
 		},
 		{
+			name: "private artifact publication setting is allowed",
+			params: UpdateCloudAccountParams{
+				ID:                                "ac-123",
+				PrivateArtifactPublicationEnabled: ptr(false),
+			},
+		},
+		{
 			name: "requires mutable fields",
 			params: UpdateCloudAccountParams{
 				ID: "ac-123",
 			},
-			wantErr: "at least one of --name, --description, --nebius-bindings-file, or --tags must be provided",
+			wantErr: "at least one of --name, --description, --nebius-bindings-file, --tags, or --private-artifact-publication-enabled must be provided",
 		},
 		{
 			name: "rejects empty name",
@@ -102,7 +109,8 @@ bindings:
 	cmd.Flags().String("description", "", "")
 	require.NoError(t, cmd.Flags().Set("name", "updated-name"))
 
-	params, err := buildUpdateAccountParams(cmd, "ac-123", "updated-name", "", bindingsPath)
+	publicationEnabled := false
+	params, err := buildUpdateAccountParams(cmd, "ac-123", "updated-name", "", bindingsPath, &publicationEnabled)
 	require.NoError(t, err)
 	require.Equal(t, "ac-123", params.ID)
 	require.NotNil(t, params.Name)
@@ -110,4 +118,13 @@ bindings:
 	require.Len(t, params.NebiusBindings, 1)
 	assert.Equal(t, "project-1", params.NebiusBindings[0].ProjectID)
 	assert.Equal(t, "PEM DATA", params.NebiusBindings[0].PrivateKeyPEM)
+	require.NotNil(t, params.PrivateArtifactPublicationEnabled)
+	assert.False(t, *params.PrivateArtifactPublicationEnabled)
+}
+
+func TestUpdateCommandIncludesPrivateArtifactPublicationFlag(t *testing.T) {
+	flag := updateCmd.Flags().Lookup(privateArtifactPublicationEnabledFlag)
+	require.NotNil(t, flag)
+	assert.Equal(t, "false", flag.DefValue)
+	assert.Equal(t, "bool", flag.Value.Type())
 }
