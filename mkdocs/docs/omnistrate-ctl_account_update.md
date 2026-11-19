@@ -21,6 +21,9 @@ omnistrate-ctl account update [account-name or account-id] --nebius-bindings-fil
 
 # Enable private managed-artifact publication for an AWS non-BYOA account
 omnistrate-ctl account update [account-name or account-id] --private-artifact-publication-enabled=true
+
+# Disable private managed-artifact publication (use = with false)
+omnistrate-ctl account update [account-name or account-id] --private-artifact-publication-enabled=false
 ```
 
 ### Options

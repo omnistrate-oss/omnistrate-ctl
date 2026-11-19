@@ -122,9 +122,79 @@ bindings:
 	assert.False(t, *params.PrivateArtifactPublicationEnabled)
 }
 
-func TestUpdateCommandIncludesPrivateArtifactPublicationFlag(t *testing.T) {
-	flag := updateCmd.Flags().Lookup(privateArtifactPublicationEnabledFlag)
-	require.NotNil(t, flag)
-	assert.Equal(t, "false", flag.DefValue)
-	assert.Equal(t, "bool", flag.Value.Type())
+func TestOptionalBoolFlag(t *testing.T) {
+	tests := []struct {
+		name string
+		args []string
+		want *bool
+	}{
+		{name: "unset flag is omitted"},
+		{name: "explicit true is sent", args: []string{"--enabled"}, want: ptr(true)},
+		{name: "explicit false is sent", args: []string{"--enabled=false"}, want: ptr(false)},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cmd := &cobra.Command{}
+			cmd.Flags().Bool("enabled", false, "")
+			require.NoError(t, cmd.Flags().Parse(tt.args))
+
+			got, err := optionalBoolFlag(cmd, "enabled")
+			require.NoError(t, err)
+			assert.Equal(t, tt.want, got)
+		})
+	}
+}
+
+func TestValidateUpdateTargetAccount(t *testing.T) {
+	publicationParams := UpdateCloudAccountParams{ID: "ac-123", PrivateArtifactPublicationEnabled: ptr(true)}
+
+	tests := []struct {
+		name    string
+		params  UpdateCloudAccountParams
+		account openapiclient.DescribeAccountConfigResult
+		wantErr string
+	}{
+		{
+			name:    "AWS non-BYOA account accepts private artifact publication",
+			params:  publicationParams,
+			account: openapiclient.DescribeAccountConfigResult{AwsAccountID: ptr("123456789012")},
+		},
+		{
+			name:    "non-AWS account rejects private artifact publication",
+			params:  publicationParams,
+			account: openapiclient.DescribeAccountConfigResult{GcpProjectID: ptr("project-1")},
+			wantErr: "--private-artifact-publication-enabled is only supported for AWS accounts",
+		},
+		{
+			name:   "BYOA account rejects private artifact publication",
+			params: publicationParams,
+			account: openapiclient.DescribeAccountConfigResult{
+				AwsAccountID:    ptr("123456789012"),
+				ByoaInstanceIDs: []string{"instance-1"},
+			},
+			wantErr: "--private-artifact-publication-enabled is not supported for BYOA accounts",
+		},
+		{
+			name: "non-Nebius account rejects Nebius bindings",
+			params: UpdateCloudAccountParams{
+				ID:             "ac-123",
+				NebiusBindings: []openapiclient.NebiusAccountBindingInput{{ProjectID: "project-1"}},
+			},
+			account: openapiclient.DescribeAccountConfigResult{AwsAccountID: ptr("123456789012")},
+			wantErr: "Nebius bindings can only be updated for Nebius accounts",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := validateUpdateTargetAccount(tt.params, &tt.account)
+			if tt.wantErr == "" {
+				require.NoError(t, err)
+				return
+			}
+
+			require.EqualError(t, err, tt.wantErr)
+		})
+	}
 }

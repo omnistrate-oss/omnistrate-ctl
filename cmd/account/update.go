@@ -23,7 +23,16 @@ omnistrate-ctl account update [account-name or account-id] --name=[new-name] --d
 omnistrate-ctl account update [account-name or account-id] --nebius-bindings-file=[bindings-file]
 
 # Enable private managed-artifact publication for an AWS non-BYOA account
-omnistrate-ctl account update [account-name or account-id] --private-artifact-publication-enabled=true`
+omnistrate-ctl account update [account-name or account-id] --private-artifact-publication-enabled=true
+
+# Disable private managed-artifact publication (use = with false)
+omnistrate-ctl account update [account-name or account-id] --private-artifact-publication-enabled=false`
+
+	nextStepPrivateArtifactPublicationMsgTemplate = `
+Next step:
+Apply the private artifact publication setting to account %s.
+Update the existing AWS CloudFormation stack or Terraform deployment for this account; do not create a new one.%s
+Track progress with: omnistrate-ctl account describe %s`
 )
 
 var updateCmd = &cobra.Command{
@@ -73,15 +82,15 @@ func runUpdate(cmd *cobra.Command, args []string) error {
 	name, _ := cmd.Flags().GetString("name")
 	description, _ := cmd.Flags().GetString("description")
 	nebiusBindingsFile, _ := cmd.Flags().GetString("nebius-bindings-file")
-	privateArtifactPublicationEnabled, _ := cmd.Flags().GetBool(privateArtifactPublicationEnabledFlag)
 	skipWait, _ := cmd.Flags().GetBool("skip-wait")
-	var privateArtifactPublicationEnabledValue *bool
-	if cmd.Flags().Changed(privateArtifactPublicationEnabledFlag) {
-		privateArtifactPublicationEnabledValue = &privateArtifactPublicationEnabled
+	privateArtifactPublicationEnabled, err := optionalBoolFlag(cmd, privateArtifactPublicationEnabledFlag)
+	if err != nil {
+		utils.PrintError(err)
+		return err
 	}
 
 	params, err := buildUpdateAccountParams(
-		cmd, args[0], name, description, nebiusBindingsFile, privateArtifactPublicationEnabledValue,
+		cmd, args[0], name, description, nebiusBindingsFile, privateArtifactPublicationEnabled,
 	)
 	if err != nil {
 		utils.PrintError(err)
@@ -108,14 +117,14 @@ func runUpdate(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	if len(params.NebiusBindings) > 0 {
+	// Validate provider-specific fields before the API persists any metadata changes.
+	if len(params.NebiusBindings) > 0 || params.PrivateArtifactPublicationEnabled != nil {
 		existingAccount, describeErr := dataaccess.DescribeAccount(cmd.Context(), token, params.ID)
 		if describeErr != nil {
 			utils.HandleSpinnerError(spinner, sm, describeErr)
 			return describeErr
 		}
-		if existingAccount.NebiusTenantID == nil {
-			err = errors.New("Nebius bindings can only be updated for Nebius accounts")
+		if err = validateUpdateTargetAccount(params, existingAccount); err != nil {
 			utils.HandleSpinnerError(spinner, sm, err)
 			return err
 		}
@@ -172,10 +181,62 @@ func runUpdate(cmd *cobra.Command, args []string) error {
 	}
 
 	if output != "json" && account.Status != "READY" {
-		dataaccess.PrintNextStepVerifyAccountMsg(account)
+		if params.PrivateArtifactPublicationEnabled != nil {
+			printNextStepPrivateArtifactPublicationMsg(account)
+		} else {
+			dataaccess.PrintNextStepVerifyAccountMsg(account)
+		}
 	}
 
 	return nil
+}
+
+// optionalBoolFlag returns nil when the flag was not supplied so explicit false values are preserved.
+func optionalBoolFlag(cmd *cobra.Command, name string) (*bool, error) {
+	if !cmd.Flags().Changed(name) {
+		return nil, nil
+	}
+
+	value, err := cmd.Flags().GetBool(name)
+	if err != nil {
+		return nil, err
+	}
+
+	return &value, nil
+}
+
+func validateUpdateTargetAccount(params UpdateCloudAccountParams, account *openapiclient.DescribeAccountConfigResult) error {
+	if len(params.NebiusBindings) > 0 && account.NebiusTenantID == nil {
+		return errors.New("Nebius bindings can only be updated for Nebius accounts")
+	}
+
+	if params.PrivateArtifactPublicationEnabled != nil {
+		if account.AwsAccountID == nil {
+			return errors.Errorf("--%s is only supported for AWS accounts", privateArtifactPublicationEnabledFlag)
+		}
+		if len(account.ByoaInstanceIDs) > 0 {
+			return errors.Errorf("--%s is not supported for BYOA accounts", privateArtifactPublicationEnabledFlag)
+		}
+	}
+
+	return nil
+}
+
+func printNextStepPrivateArtifactPublicationMsg(account *openapiclient.DescribeAccountConfigResult) {
+	name := account.Name
+	if name == "" {
+		name = "Unnamed Account"
+	}
+
+	var details string
+	if account.StatusMessage != "" {
+		details += fmt.Sprintf("\nStatus: %s (%s)", account.Status, account.StatusMessage)
+	}
+	if updateURL := utils.FromPtr(account.AwsCloudFormationUpdateURL); updateURL != "" {
+		details += fmt.Sprintf("\nCloudFormation stack update URL: %s", updateURL)
+	}
+
+	fmt.Printf(nextStepPrivateArtifactPublicationMsgTemplate+"\n", name, details, account.Id)
 }
 
 func buildUpdateAccountParams(
