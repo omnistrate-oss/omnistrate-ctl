@@ -156,11 +156,18 @@ func TestGetPrivateArtifactPublicationState(t *testing.T) {
 	}
 
 	tests := []struct {
-		name    string
-		account openapiclient.DescribeAccountConfigResult
-		want    privateArtifactPublicationState
-		wantErr string
+		name     string
+		account  openapiclient.DescribeAccountConfigResult
+		disabled bool
+		want     privateArtifactPublicationState
+		wantErr  string
 	}{
+		{
+			name:     "ready without observed value matches default false",
+			account:  openapiclient.DescribeAccountConfigResult{Status: "READY"},
+			disabled: true,
+			want:     privateArtifactPublicationApplied,
+		},
 		{
 			name:    "ready with requested value applied",
 			account: openapiclient.DescribeAccountConfigResult{Status: "READY", AppliedSettings: applied(true)},
@@ -206,7 +213,7 @@ func TestGetPrivateArtifactPublicationState(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := getPrivateArtifactPublicationState(&tt.account, true)
+			got, err := getPrivateArtifactPublicationState(&tt.account, !tt.disabled)
 			if tt.wantErr != "" {
 				require.EqualError(t, err, tt.wantErr)
 				return
@@ -216,6 +223,19 @@ func TestGetPrivateArtifactPublicationState(t *testing.T) {
 			assert.Equal(t, tt.want, got)
 		})
 	}
+}
+
+func TestPrintPrivateArtifactPublicationResult_ReturnsFailure(t *testing.T) {
+	t.Setenv("OMNISTRATE_DRY_RUN", "true")
+
+	err := printPrivateArtifactPublicationResult("json", &openapiclient.DescribeAccountConfigResult{
+		Id:            "ac-123",
+		Status:        "FAILED",
+		StatusMessage: "access denied",
+	}, true)
+
+	require.EqualError(t, err,
+		"account update was submitted, but the private artifact publication setting was not applied: account settings update failed: access denied")
 }
 
 func TestValidateUpdateTargetAccount(t *testing.T) {

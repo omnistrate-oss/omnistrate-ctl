@@ -204,8 +204,8 @@ func runUpdate(cmd *cobra.Command, args []string) error {
 			cmd.Context(), token, accountConfigID, *params.PrivateArtifactPublicationEnabled,
 		)
 		if err != nil {
+			err = errors.Wrap(err, "account update was submitted, but the private artifact publication setting was not verified")
 			utils.HandleSpinnerError(waitSpinner, sm, err)
-			utils.PrintError(fmt.Errorf("private artifact publication setting was not verified: %v", err))
 			return err
 		}
 
@@ -222,21 +222,47 @@ func runUpdate(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
+	if params.PrivateArtifactPublicationEnabled != nil {
+		return printPrivateArtifactPublicationResult(output, account, *params.PrivateArtifactPublicationEnabled)
+	}
+
 	if err = printDescribeOutput(output, account); err != nil {
 		utils.PrintError(err)
 		return err
 	}
 
-	if output != "json" {
-		if params.PrivateArtifactPublicationEnabled != nil {
-			// A failed account is reported through the pending message with its status details.
-			state, _ := getPrivateArtifactPublicationState(account, *params.PrivateArtifactPublicationEnabled)
-			if state != privateArtifactPublicationApplied {
-				printPrivateArtifactPublicationNextStepMsg(account, state)
-			}
-		} else if account.Status != "READY" {
-			dataaccess.PrintNextStepVerifyAccountMsg(account)
+	if output != "json" && account.Status != "READY" {
+		dataaccess.PrintNextStepVerifyAccountMsg(account)
+	}
+
+	return nil
+}
+
+func printPrivateArtifactPublicationResult(
+	output string, account *openapiclient.DescribeAccountConfigResult, enabled bool,
+) error {
+	state, err := getPrivateArtifactPublicationState(account, enabled)
+	if err != nil {
+		err = errors.Wrap(err, "account update was submitted, but the private artifact publication setting was not applied")
+		utils.PrintError(err)
+		return err
+	}
+
+	if output == "json" {
+		if err = printDescribeOutput(output, account); err != nil {
+			utils.PrintError(err)
+			return err
 		}
+		return nil
+	}
+
+	// Print a static snapshot so the interactive view cannot hide the next step.
+	snapshot := renderAccountDescribeSnapshot(account)
+	utils.LastPrintedString = snapshot
+	fmt.Println(snapshot)
+
+	if state != privateArtifactPublicationApplied {
+		printPrivateArtifactPublicationNextStepMsg(account, state)
 	}
 
 	return nil
@@ -245,21 +271,31 @@ func runUpdate(cmd *cobra.Command, args []string) error {
 func waitForPrivateArtifactPublicationSetting(
 	ctx context.Context, token, accountID string, enabled bool,
 ) (privateArtifactPublicationState, error) {
-	timeout := time.After(privateArtifactPublicationWaitTimeout)
+	// The deadline also cancels an in-flight describe request.
+	waitCtx, cancel := context.WithTimeout(ctx, privateArtifactPublicationWaitTimeout)
+	defer cancel()
 	ticker := time.NewTicker(privateArtifactPublicationPollInterval)
 	defer ticker.Stop()
 
+	waitErr := func() error {
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
+		return errors.Errorf(
+			"account %s did not finish verifying the setting after %s; check it with 'omnistrate-ctl account describe %s'",
+			accountID, privateArtifactPublicationWaitTimeout, accountID)
+	}
+
 	for {
 		select {
-		case <-ctx.Done():
-			return privateArtifactPublicationPending, ctx.Err()
-		case <-timeout:
-			return privateArtifactPublicationPending, errors.Errorf(
-				"account %s did not finish verifying the setting after %s; check it with 'omnistrate-ctl account describe %s'",
-				accountID, privateArtifactPublicationWaitTimeout, accountID)
+		case <-waitCtx.Done():
+			return privateArtifactPublicationPending, waitErr()
 		case <-ticker.C:
-			account, err := dataaccess.DescribeAccount(ctx, token, accountID)
+			account, err := dataaccess.DescribeAccount(waitCtx, token, accountID)
 			if err != nil {
+				if waitCtx.Err() != nil {
+					return privateArtifactPublicationPending, waitErr()
+				}
 				return privateArtifactPublicationPending, err
 			}
 
@@ -279,7 +315,7 @@ func getPrivateArtifactPublicationState(
 		return privateArtifactPublicationPending, errors.Errorf("account settings update failed: %s", account.StatusMessage)
 	case "READY":
 		// READY can be stale until the server starts verifying the requested setting.
-		if applied, ok := appliedPrivateArtifactPublicationEnabled(account); ok && applied == enabled {
+		if appliedPrivateArtifactPublicationEnabled(account) == enabled {
 			return privateArtifactPublicationApplied, nil
 		}
 	case "PENDING_UPDATE":
@@ -291,14 +327,16 @@ func getPrivateArtifactPublicationState(
 	return privateArtifactPublicationPending, nil
 }
 
-func appliedPrivateArtifactPublicationEnabled(account *openapiclient.DescribeAccountConfigResult) (bool, bool) {
+// appliedPrivateArtifactPublicationEnabled treats an unobserved value as the AWS
+// default of false, which the server also uses when comparing requested settings.
+func appliedPrivateArtifactPublicationEnabled(account *openapiclient.DescribeAccountConfigResult) bool {
 	if account.AppliedSettings == nil || account.AppliedSettings.AccountGovernanceControls == nil {
-		return false, false
+		return false
 	}
 
-	enabled, ok := account.AppliedSettings.AccountGovernanceControls.
+	enabled, _ := account.AppliedSettings.AccountGovernanceControls.
 		AdditionalProperties[dataaccess.PrivateArtifactPublicationEnabledSettingKey].(bool)
-	return enabled, ok
+	return enabled
 }
 
 // optionalBoolFlag returns nil when the flag was not supplied so explicit false values are preserved.
