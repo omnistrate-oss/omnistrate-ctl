@@ -3,6 +3,8 @@ package account
 import (
 	"context"
 	"fmt"
+	"io"
+	"os"
 	"strings"
 	"time"
 
@@ -256,21 +258,23 @@ func printPrivateArtifactPublicationResult(
 		return err
 	}
 
+	nextStepWriter := io.Writer(os.Stdout)
 	if output == "json" {
 		if err = printDescribeOutput(output, account); err != nil {
 			utils.PrintError(err)
 			return err
 		}
-		return nil
+		// Keep stdout valid JSON while still warning about an unconfirmed setting.
+		nextStepWriter = os.Stderr
+	} else {
+		// Print a static snapshot so the interactive view cannot hide the next step.
+		snapshot := renderAccountDescribeSnapshot(account)
+		utils.LastPrintedString = snapshot
+		fmt.Println(snapshot)
 	}
 
-	// Print a static snapshot so the interactive view cannot hide the next step.
-	snapshot := renderAccountDescribeSnapshot(account)
-	utils.LastPrintedString = snapshot
-	fmt.Println(snapshot)
-
 	if state != privateArtifactPublicationApplied {
-		printPrivateArtifactPublicationNextStepMsg(account, state)
+		printPrivateArtifactPublicationNextStepMsg(nextStepWriter, account, state)
 	}
 
 	return nil
@@ -379,7 +383,7 @@ func validateUpdateTargetAccount(params UpdateCloudAccountParams, account *opena
 }
 
 func printPrivateArtifactPublicationNextStepMsg(
-	account *openapiclient.DescribeAccountConfigResult, state privateArtifactPublicationState,
+	w io.Writer, account *openapiclient.DescribeAccountConfigResult, state privateArtifactPublicationState,
 ) {
 	name := account.Name
 	if name == "" {
@@ -402,7 +406,7 @@ func printPrivateArtifactPublicationNextStepMsg(
 		template = privateArtifactPublicationUnverifiedMsgTemplate
 	}
 
-	fmt.Printf(template+"\n", name, details, account.Id)
+	_, _ = fmt.Fprintf(w, template+"\n", name, details, account.Id)
 }
 
 func buildUpdateAccountParams(

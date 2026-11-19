@@ -1,6 +1,8 @@
 package account
 
 import (
+	"encoding/json"
+	"io"
 	"os"
 	"path/filepath"
 	"testing"
@@ -242,6 +244,29 @@ func TestPrintPrivateArtifactPublicationResult_ReturnsFailure(t *testing.T) {
 
 	require.EqualError(t, err,
 		"account update was submitted, but the private artifact publication setting was not applied: account settings update failed: access denied")
+}
+
+func TestPrintPrivateArtifactPublicationResult_JSONWarnsOnStderr(t *testing.T) {
+	oldStderr := os.Stderr
+	stderrReader, stderrWriter, err := os.Pipe()
+	require.NoError(t, err)
+	os.Stderr = stderrWriter
+	t.Cleanup(func() { os.Stderr = oldStderr })
+
+	stdout := captureDescribeOutput(t, func() {
+		require.NoError(t, printPrivateArtifactPublicationResult("json", &openapiclient.DescribeAccountConfigResult{
+			Id:     "ac-123",
+			Name:   "account",
+			Status: "READY",
+		}, false))
+	})
+	require.NoError(t, stderrWriter.Close())
+	stderr, err := io.ReadAll(stderrReader)
+	require.NoError(t, err)
+
+	assert.True(t, json.Valid([]byte(stdout)), stdout)
+	assert.Contains(t, string(stderr), "the setting could not be confirmed")
+	assert.Contains(t, string(stderr), "update the existing AWS CloudFormation stack")
 }
 
 func TestValidateUpdateTargetAccount(t *testing.T) {
