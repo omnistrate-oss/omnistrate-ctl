@@ -163,8 +163,14 @@ func TestGetPrivateArtifactPublicationState(t *testing.T) {
 		wantErr  string
 	}{
 		{
-			name:     "ready without observed value matches default false",
+			name:     "ready without observed value is not verified",
 			account:  openapiclient.DescribeAccountConfigResult{Status: "READY"},
+			disabled: true,
+			want:     privateArtifactPublicationPending,
+		},
+		{
+			name:     "ready with observed disabled value is applied",
+			account:  openapiclient.DescribeAccountConfigResult{Status: "READY", AppliedSettings: applied(false)},
 			disabled: true,
 			want:     privateArtifactPublicationApplied,
 		},

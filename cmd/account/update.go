@@ -40,6 +40,11 @@ The private artifact publication setting for account %s is pending verification.
 If verification reports that the setting is not applied, update the existing AWS CloudFormation stack or Terraform deployment; do not create a new one.
 Track progress with: omnistrate-ctl account describe %s`
 
+	privateArtifactPublicationUnverifiedMsgTemplate = `
+Account %s finished verification, but it does not report the requested private artifact publication value, so the setting could not be confirmed.%s
+If the account stack predates this setting, update the existing AWS CloudFormation stack or Terraform deployment; do not create a new one.
+Check the applied value with: omnistrate-ctl account describe %s`
+
 	// Matches commons accountconfig settings.SettingsPendingStatusMessage, which the
 	// server reports when the account is verified but its stack must still be updated.
 	accountSettingsPendingStatusMessage = "account verified; waiting for requested settings"
@@ -209,10 +214,13 @@ func runUpdate(cmd *cobra.Command, args []string) error {
 			return err
 		}
 
-		if state == privateArtifactPublicationApplied {
+		switch state {
+		case privateArtifactPublicationApplied:
 			utils.HandleSpinnerSuccess(waitSpinner, sm, "Private artifact publication setting is applied")
-		} else {
+		case privateArtifactPublicationStackUpdateRequired:
 			utils.HandleSpinnerSuccess(waitSpinner, sm, "Account verified; existing stack update required")
+		default:
+			utils.HandleSpinnerSuccess(waitSpinner, sm, "Account verified; requested value not reported")
 		}
 	}
 
@@ -300,7 +308,8 @@ func waitForPrivateArtifactPublicationSetting(
 			}
 
 			state, err := getPrivateArtifactPublicationState(account, enabled)
-			if err != nil || state != privateArtifactPublicationPending {
+			// The update request moves the account out of READY, so READY means verification finished.
+			if err != nil || state != privateArtifactPublicationPending || account.Status == "READY" {
 				return state, err
 			}
 		}
@@ -314,8 +323,8 @@ func getPrivateArtifactPublicationState(
 	case "FAILED":
 		return privateArtifactPublicationPending, errors.Errorf("account settings update failed: %s", account.StatusMessage)
 	case "READY":
-		// READY can be stale until the server starts verifying the requested setting.
-		if appliedPrivateArtifactPublicationEnabled(account) == enabled {
+		// Success requires an observed value; applied settings are never defaulted.
+		if applied, ok := appliedPrivateArtifactPublicationEnabled(account); ok && applied == enabled {
 			return privateArtifactPublicationApplied, nil
 		}
 	case "PENDING_UPDATE":
@@ -327,16 +336,15 @@ func getPrivateArtifactPublicationState(
 	return privateArtifactPublicationPending, nil
 }
 
-// appliedPrivateArtifactPublicationEnabled treats an unobserved value as the AWS
-// default of false, which the server also uses when comparing requested settings.
-func appliedPrivateArtifactPublicationEnabled(account *openapiclient.DescribeAccountConfigResult) bool {
+// appliedPrivateArtifactPublicationEnabled reports whether the account observed the setting.
+func appliedPrivateArtifactPublicationEnabled(account *openapiclient.DescribeAccountConfigResult) (bool, bool) {
 	if account.AppliedSettings == nil || account.AppliedSettings.AccountGovernanceControls == nil {
-		return false
+		return false, false
 	}
 
-	enabled, _ := account.AppliedSettings.AccountGovernanceControls.
+	enabled, ok := account.AppliedSettings.AccountGovernanceControls.
 		AdditionalProperties[dataaccess.PrivateArtifactPublicationEnabledSettingKey].(bool)
-	return enabled
+	return enabled, ok
 }
 
 // optionalBoolFlag returns nil when the flag was not supplied so explicit false values are preserved.
@@ -387,8 +395,11 @@ func printPrivateArtifactPublicationNextStepMsg(
 	}
 
 	template := privateArtifactPublicationPendingMsgTemplate
-	if state == privateArtifactPublicationStackUpdateRequired {
+	switch {
+	case state == privateArtifactPublicationStackUpdateRequired:
 		template = nextStepPrivateArtifactPublicationStackUpdateMsgTemplate
+	case account.Status == "READY":
+		template = privateArtifactPublicationUnverifiedMsgTemplate
 	}
 
 	fmt.Printf(template+"\n", name, details, account.Id)
