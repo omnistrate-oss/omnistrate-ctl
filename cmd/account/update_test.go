@@ -146,6 +146,78 @@ func TestOptionalBoolFlag(t *testing.T) {
 	}
 }
 
+func TestGetPrivateArtifactPublicationState(t *testing.T) {
+	applied := func(enabled bool) *openapiclient.AccountConfigSettings {
+		return &openapiclient.AccountConfigSettings{
+			AccountGovernanceControls: &openapiclient.AccountGovernanceControls{
+				AdditionalProperties: map[string]interface{}{"privateArtifactPublicationEnabled": enabled},
+			},
+		}
+	}
+
+	tests := []struct {
+		name    string
+		account openapiclient.DescribeAccountConfigResult
+		want    privateArtifactPublicationState
+		wantErr string
+	}{
+		{
+			name:    "ready with requested value applied",
+			account: openapiclient.DescribeAccountConfigResult{Status: "READY", AppliedSettings: applied(true)},
+			want:    privateArtifactPublicationApplied,
+		},
+		{
+			name:    "stale ready with previous value is pending",
+			account: openapiclient.DescribeAccountConfigResult{Status: "READY", AppliedSettings: applied(false)},
+			want:    privateArtifactPublicationPending,
+		},
+		{
+			name:    "ready without applied settings is pending",
+			account: openapiclient.DescribeAccountConfigResult{Status: "READY"},
+			want:    privateArtifactPublicationPending,
+		},
+		{
+			name: "verified account waiting for stack update",
+			account: openapiclient.DescribeAccountConfigResult{
+				Status:        "PENDING_UPDATE",
+				StatusMessage: accountSettingsPendingStatusMessage,
+			},
+			want: privateArtifactPublicationStackUpdateRequired,
+		},
+		{
+			name: "update before verification is pending",
+			account: openapiclient.DescribeAccountConfigResult{
+				Status:        "PENDING_UPDATE",
+				StatusMessage: "update CloudFormation account stack to match requested settings",
+			},
+			want: privateArtifactPublicationPending,
+		},
+		{
+			name:    "verifying is pending",
+			account: openapiclient.DescribeAccountConfigResult{Status: "VERIFYING"},
+			want:    privateArtifactPublicationPending,
+		},
+		{
+			name:    "failed verification returns an error",
+			account: openapiclient.DescribeAccountConfigResult{Status: "FAILED", StatusMessage: "access denied"},
+			wantErr: "account settings update failed: access denied",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := getPrivateArtifactPublicationState(&tt.account, true)
+			if tt.wantErr != "" {
+				require.EqualError(t, err, tt.wantErr)
+				return
+			}
+
+			require.NoError(t, err)
+			assert.Equal(t, tt.want, got)
+		})
+	}
+}
+
 func TestValidateUpdateTargetAccount(t *testing.T) {
 	publicationParams := UpdateCloudAccountParams{ID: "ac-123", PrivateArtifactPublicationEnabled: ptr(true)}
 

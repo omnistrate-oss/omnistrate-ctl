@@ -82,6 +82,10 @@ func CreateAccount(ctx context.Context, token string, accountConfig openapiclien
 	return strings.Trim(res, "\"\n"), nil
 }
 
+// PrivateArtifactPublicationEnabledSettingKey is the account governance control key
+// that the generated SDK does not model yet.
+const PrivateArtifactPublicationEnabledSettingKey = "privateArtifactPublicationEnabled"
+
 type UpdateAccountParams struct {
 	AccountConfigID                   string
 	Name                              *string
@@ -110,7 +114,7 @@ func UpdateAccount(ctx context.Context, token string, params UpdateAccountParams
 		request.Settings = &openapiclient.AccountConfigSettings{
 			AccountGovernanceControls: &openapiclient.AccountGovernanceControls{
 				AdditionalProperties: map[string]interface{}{
-					"privateArtifactPublicationEnabled": *params.PrivateArtifactPublicationEnabled,
+					PrivateArtifactPublicationEnabledSettingKey: *params.PrivateArtifactPublicationEnabled,
 				},
 			},
 		}

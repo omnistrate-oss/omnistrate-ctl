@@ -1,8 +1,10 @@
 package account
 
 import (
+	"context"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/omnistrate-oss/omnistrate-ctl/cmd/common"
 	"github.com/omnistrate-oss/omnistrate-ctl/internal/config"
@@ -28,11 +30,30 @@ omnistrate-ctl account update [account-name or account-id] --private-artifact-pu
 # Disable private managed-artifact publication (use = with false)
 omnistrate-ctl account update [account-name or account-id] --private-artifact-publication-enabled=false`
 
-	nextStepPrivateArtifactPublicationMsgTemplate = `
+	nextStepPrivateArtifactPublicationStackUpdateMsgTemplate = `
 Next step:
-Apply the private artifact publication setting to account %s.
-Update the existing AWS CloudFormation stack or Terraform deployment for this account; do not create a new one.%s
+Update the existing AWS CloudFormation stack or Terraform deployment for account %s to apply the private artifact publication setting; do not create a new one.%s
 Track progress with: omnistrate-ctl account describe %s`
+
+	privateArtifactPublicationPendingMsgTemplate = `
+The private artifact publication setting for account %s is pending verification.%s
+If verification reports that the setting is not applied, update the existing AWS CloudFormation stack or Terraform deployment; do not create a new one.
+Track progress with: omnistrate-ctl account describe %s`
+
+	// Matches commons accountconfig settings.SettingsPendingStatusMessage, which the
+	// server reports when the account is verified but its stack must still be updated.
+	accountSettingsPendingStatusMessage = "account verified; waiting for requested settings"
+
+	privateArtifactPublicationWaitTimeout  = 10 * time.Minute
+	privateArtifactPublicationPollInterval = 10 * time.Second
+)
+
+type privateArtifactPublicationState int
+
+const (
+	privateArtifactPublicationPending privateArtifactPublicationState = iota
+	privateArtifactPublicationApplied
+	privateArtifactPublicationStackUpdateRequired
 )
 
 var updateCmd = &cobra.Command{
@@ -52,7 +73,7 @@ func init() {
 	updateCmd.Flags().String("nebius-bindings-file", "", "Path to a YAML file describing the full replacement Nebius bindings")
 	updateCmd.Flags().String(tagsFlag, "", `Full replacement set of custom tags for the account in key=value format, separated by commas (e.g. env=prod,team=platform). Escape commas inside values with \,`)
 	updateCmd.Flags().Bool(privateArtifactPublicationEnabledFlag, false, "Whether an AWS non-BYOA account may publish managed artifacts to private ECR")
-	updateCmd.Flags().Bool("skip-wait", false, "Skip waiting for account to become READY after replacing Nebius bindings")
+	updateCmd.Flags().Bool("skip-wait", false, "Skip waiting for account to become READY after replacing Nebius bindings or changing private artifact publication")
 	_ = updateCmd.MarkFlagFilename("nebius-bindings-file")
 }
 
@@ -169,6 +190,32 @@ func runUpdate(cmd *cobra.Command, args []string) error {
 		utils.HandleSpinnerSuccess(waitSpinner, sm, "Account is now READY")
 	}
 
+	if params.PrivateArtifactPublicationEnabled != nil && !skipWait {
+		var waitSpinner *utils.Spinner
+		if output != "json" {
+			fmt.Printf("\n")
+			sm = utils.NewSpinnerManager()
+			waitSpinner = sm.AddSpinner("Waiting for the private artifact publication setting to be verified...")
+			sm.Start()
+		}
+
+		var state privateArtifactPublicationState
+		state, err = waitForPrivateArtifactPublicationSetting(
+			cmd.Context(), token, accountConfigID, *params.PrivateArtifactPublicationEnabled,
+		)
+		if err != nil {
+			utils.HandleSpinnerError(waitSpinner, sm, err)
+			utils.PrintError(fmt.Errorf("private artifact publication setting was not verified: %v", err))
+			return err
+		}
+
+		if state == privateArtifactPublicationApplied {
+			utils.HandleSpinnerSuccess(waitSpinner, sm, "Private artifact publication setting is applied")
+		} else {
+			utils.HandleSpinnerSuccess(waitSpinner, sm, "Account verified; existing stack update required")
+		}
+	}
+
 	account, err := dataaccess.DescribeAccount(cmd.Context(), token, accountConfigID)
 	if err != nil {
 		utils.PrintError(err)
@@ -180,15 +227,78 @@ func runUpdate(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	if output != "json" && account.Status != "READY" {
+	if output != "json" {
 		if params.PrivateArtifactPublicationEnabled != nil {
-			printNextStepPrivateArtifactPublicationMsg(account)
-		} else {
+			// A failed account is reported through the pending message with its status details.
+			state, _ := getPrivateArtifactPublicationState(account, *params.PrivateArtifactPublicationEnabled)
+			if state != privateArtifactPublicationApplied {
+				printPrivateArtifactPublicationNextStepMsg(account, state)
+			}
+		} else if account.Status != "READY" {
 			dataaccess.PrintNextStepVerifyAccountMsg(account)
 		}
 	}
 
 	return nil
+}
+
+func waitForPrivateArtifactPublicationSetting(
+	ctx context.Context, token, accountID string, enabled bool,
+) (privateArtifactPublicationState, error) {
+	timeout := time.After(privateArtifactPublicationWaitTimeout)
+	ticker := time.NewTicker(privateArtifactPublicationPollInterval)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return privateArtifactPublicationPending, ctx.Err()
+		case <-timeout:
+			return privateArtifactPublicationPending, errors.Errorf(
+				"account %s did not finish verifying the setting after %s; check it with 'omnistrate-ctl account describe %s'",
+				accountID, privateArtifactPublicationWaitTimeout, accountID)
+		case <-ticker.C:
+			account, err := dataaccess.DescribeAccount(ctx, token, accountID)
+			if err != nil {
+				return privateArtifactPublicationPending, err
+			}
+
+			state, err := getPrivateArtifactPublicationState(account, enabled)
+			if err != nil || state != privateArtifactPublicationPending {
+				return state, err
+			}
+		}
+	}
+}
+
+func getPrivateArtifactPublicationState(
+	account *openapiclient.DescribeAccountConfigResult, enabled bool,
+) (privateArtifactPublicationState, error) {
+	switch account.Status {
+	case "FAILED":
+		return privateArtifactPublicationPending, errors.Errorf("account settings update failed: %s", account.StatusMessage)
+	case "READY":
+		// READY can be stale until the server starts verifying the requested setting.
+		if applied, ok := appliedPrivateArtifactPublicationEnabled(account); ok && applied == enabled {
+			return privateArtifactPublicationApplied, nil
+		}
+	case "PENDING_UPDATE":
+		if account.StatusMessage == accountSettingsPendingStatusMessage {
+			return privateArtifactPublicationStackUpdateRequired, nil
+		}
+	}
+
+	return privateArtifactPublicationPending, nil
+}
+
+func appliedPrivateArtifactPublicationEnabled(account *openapiclient.DescribeAccountConfigResult) (bool, bool) {
+	if account.AppliedSettings == nil || account.AppliedSettings.AccountGovernanceControls == nil {
+		return false, false
+	}
+
+	enabled, ok := account.AppliedSettings.AccountGovernanceControls.
+		AdditionalProperties[dataaccess.PrivateArtifactPublicationEnabledSettingKey].(bool)
+	return enabled, ok
 }
 
 // optionalBoolFlag returns nil when the flag was not supplied so explicit false values are preserved.
@@ -222,7 +332,9 @@ func validateUpdateTargetAccount(params UpdateCloudAccountParams, account *opena
 	return nil
 }
 
-func printNextStepPrivateArtifactPublicationMsg(account *openapiclient.DescribeAccountConfigResult) {
+func printPrivateArtifactPublicationNextStepMsg(
+	account *openapiclient.DescribeAccountConfigResult, state privateArtifactPublicationState,
+) {
 	name := account.Name
 	if name == "" {
 		name = "Unnamed Account"
@@ -236,7 +348,12 @@ func printNextStepPrivateArtifactPublicationMsg(account *openapiclient.DescribeA
 		details += fmt.Sprintf("\nCloudFormation stack update URL: %s", updateURL)
 	}
 
-	fmt.Printf(nextStepPrivateArtifactPublicationMsgTemplate+"\n", name, details, account.Id)
+	template := privateArtifactPublicationPendingMsgTemplate
+	if state == privateArtifactPublicationStackUpdateRequired {
+		template = nextStepPrivateArtifactPublicationStackUpdateMsgTemplate
+	}
+
+	fmt.Printf(template+"\n", name, details, account.Id)
 }
 
 func buildUpdateAccountParams(
