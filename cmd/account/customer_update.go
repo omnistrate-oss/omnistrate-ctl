@@ -52,7 +52,7 @@ func runCustomerUpdate(cmd *cobra.Command, args []string) error {
 	nebiusBindingsFile, _ := cmd.Flags().GetString("nebius-bindings-file")
 	skipWait, _ := cmd.Flags().GetBool("skip-wait")
 
-	params, err := buildUpdateAccountParams(cmd, args[0], name, description, nebiusBindingsFile)
+	params, err := buildUpdateAccountParams(cmd, args[0], name, description, nebiusBindingsFile, nil)
 	if err != nil {
 		utils.PrintError(err)
 		return err

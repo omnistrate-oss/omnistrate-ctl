@@ -40,9 +40,10 @@ func TestUpdateAccount_ConstructsSDKUpdatePayload(t *testing.T) {
 	t.Setenv("CLIENT_TIMEOUT_IN_SECONDS", "5")
 
 	accountID, err := UpdateAccount(context.Background(), "test-token", UpdateAccountParams{
-		AccountConfigID: "ac-123",
-		Name:            ptr("updated-name"),
-		Description:     ptr("updated-description"),
+		AccountConfigID:                   "ac-123",
+		Name:                              ptr("updated-name"),
+		Description:                       ptr("updated-description"),
+		PrivateArtifactPublicationEnabled: ptr(false),
 		NebiusBindings: []openapiclient.NebiusAccountBindingInput{
 			{
 				ProjectID:        "project-1",
@@ -63,6 +64,11 @@ func TestUpdateAccount_ConstructsSDKUpdatePayload(t *testing.T) {
 
 	assert.Equal(t, "updated-name", capturedBody["name"])
 	assert.Equal(t, "updated-description", capturedBody["description"])
+	settings, ok := capturedBody["settings"].(map[string]any)
+	require.True(t, ok)
+	controls, ok := settings["accountGovernanceControls"].(map[string]any)
+	require.True(t, ok)
+	assert.Equal(t, false, controls["privateArtifactPublicationEnabled"])
 	_, hasID := capturedBody["id"]
 	assert.False(t, hasID)
 	_, hasTenantID := capturedBody["nebiusTenantID"]

@@ -7,7 +7,8 @@ Describe deployment cell configuration template
 Describe the current deployment cell configuration template for your organization.
 
 This command shows the current amenities configuration template that is applied to 
-new deployment cells in the specified environment and cloud provider.
+new deployment cells in the specified environment and cloud provider. Organization
+templates also show the managed release version selected by the release policy.
 
 You can also describe the configuration of a specific deployment cell by providing 
 its ID as an argument.

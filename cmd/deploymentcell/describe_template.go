@@ -20,7 +20,8 @@ var describeTemplateCmd = &cobra.Command{
 	Long: `Describe the current deployment cell configuration template for your organization.
 
 This command shows the current amenities configuration template that is applied to 
-new deployment cells in the specified environment and cloud provider.
+new deployment cells in the specified environment and cloud provider. Organization
+templates also show the managed release version selected by the release policy.
 
 You can also describe the configuration of a specific deployment cell by providing 
 its ID as an argument.
@@ -173,6 +174,7 @@ func describeOrganizationTemplate(ctx context.Context, token string, environment
 	fmt.Printf("Organization: %s\n", utils.FromPtr(spOrg.Id))
 	fmt.Printf("Environment: %s\n", environment)
 	fmt.Printf("Cloud Provider: %s\n", cloudProvider)
+	fmt.Printf("Managed Release Version: %s\n", managedReleaseVersionDisplay(template.ManagedReleaseVersion))
 	fmt.Printf("Total Amenities: %d (Managed: %d, Custom: %d)\n\n", totalAmenities, len(template.ManagedAmenities), len(template.CustomAmenities))
 
 	// Print output based on format - always show output even when saving to file
@@ -348,4 +350,14 @@ func printDeploymentCellTemplateAsTable(template *model.DeploymentCellTemplate) 
 	}
 
 	return utils.PrintTextTableJsonArrayOutput("table", tableData)
+}
+
+// managedReleaseVersionDisplay matches the exported template: servers without
+// managed release policy support omit the field, and exported templates omit it
+// too, so applying them leaves the current policy unchanged.
+func managedReleaseVersionDisplay(version *string) string {
+	if version == nil {
+		return "not reported by API"
+	}
+	return *version
 }
