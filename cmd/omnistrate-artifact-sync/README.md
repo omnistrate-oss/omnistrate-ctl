@@ -46,7 +46,7 @@ the control plane to verify the destination instead of waiting for periodic
 reconciliation:
 
 ```sh
-omnistrate-ctl managed-artifact sync verify --id spabs-123
+omnistrate-ctl managed-artifact sync refresh-status --id spabs-123
 ```
 
 `omnistrate-ctl managed-artifact sync copy` performs this verification

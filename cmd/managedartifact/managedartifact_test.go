@@ -27,7 +27,8 @@ func TestManagedArtifactCommands(t *testing.T) {
 		{name: "sync list", args: []string{"sync", "list"}},
 		{name: "sync describe", args: []string{"sync", "describe"}},
 		{name: "sync copy", args: []string{"sync", "copy"}},
-		{name: "sync verify", args: []string{"sync", "verify"}},
+		{name: "sync refresh-status", args: []string{"sync", "refresh-status"}},
+		{name: "sync reconcile", args: []string{"sync", "reconcile"}},
 	} {
 		t.Run(command.name, func(t *testing.T) {
 			found, _, err := Cmd.Find(command.args)
@@ -50,6 +51,8 @@ func TestManagedArtifactCommands(t *testing.T) {
 	require.NotNil(t, syncCopyCmd.Flags().Lookup("aws-profile"))
 	require.NotNil(t, syncCopyCmd.Flags().Lookup("vetter"))
 	require.NotNil(t, syncCopyCmd.Flags().Lookup("signer"))
+	require.NotNil(t, syncRefreshStatusCmd.Flags().Lookup("id"))
+	require.NotNil(t, syncReconcileCmd.Flags().Lookup("id"))
 }
 
 func TestManagedArtifactCommandsRequireParameters(t *testing.T) {
@@ -62,7 +65,8 @@ func TestManagedArtifactCommandsRequireParameters(t *testing.T) {
 		{name: "release describe", cmd: releaseDescribeCmd},
 		{name: "sync describe", cmd: syncDescribeCmd},
 		{name: "sync copy", cmd: syncCopyCmd},
-		{name: "sync verify", cmd: syncVerifyCmd},
+		{name: "sync refresh-status", cmd: syncRefreshStatusCmd},
+		{name: "sync reconcile", cmd: syncReconcileCmd},
 	}
 
 	for _, tt := range tests {

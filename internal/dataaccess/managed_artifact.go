@@ -243,16 +243,31 @@ func DescribeManagedArtifactSync(ctx context.Context, token, syncID string) (*mo
 	return &result, nil
 }
 
-// VerifyManagedArtifactSync asks the control plane to verify a MANUAL private
-// sync after the service provider copied its artifacts.
-func VerifyManagedArtifactSync(ctx context.Context, token, syncID string) (*model.ManagedArtifactSync, error) {
+// RefreshManagedArtifactSyncStatus verifies a customer-populated MANUAL sync
+// destination without starting a platform copy.
+func RefreshManagedArtifactSyncStatus(ctx context.Context, token, syncID string) (*model.ManagedArtifactSync, error) {
 	if strings.TrimSpace(syncID) == "" {
 		return nil, fmt.Errorf("sync ID is required")
 	}
 
 	var result model.ManagedArtifactSync
 	if err := doManagedArtifactRequest(ctx, token, http.MethodPost,
-		managedArtifactURL("syncs", syncID+":verify"), nil, &result); err != nil {
+		managedArtifactURL("syncs", syncID+":refresh-status"), nil, &result); err != nil {
+		return nil, err
+	}
+	return &result, nil
+}
+
+// ReconcileManagedArtifactSync runs one platform-managed copy and verification
+// attempt for the selected private sync and exact bundle version.
+func ReconcileManagedArtifactSync(ctx context.Context, token, syncID string) (*model.ManagedArtifactSync, error) {
+	if strings.TrimSpace(syncID) == "" {
+		return nil, fmt.Errorf("sync ID is required")
+	}
+
+	var result model.ManagedArtifactSync
+	if err := doManagedArtifactRequest(ctx, token, http.MethodPost,
+		managedArtifactURL("syncs", syncID+":reconcile"), nil, &result); err != nil {
 		return nil, err
 	}
 	return &result, nil

@@ -25,5 +25,6 @@ omnistrate-ctl managed-artifact sync [operation] [flags]
 * [omnistrate-ctl managed-artifact sync copy](omnistrate-ctl_managed-artifact_sync_copy.md)	 - Copy and optionally sign a MANUAL managed artifact sync
 * [omnistrate-ctl managed-artifact sync describe](omnistrate-ctl_managed-artifact_sync_describe.md)	 - Describe a managed artifact synchronization record
 * [omnistrate-ctl managed-artifact sync list](omnistrate-ctl_managed-artifact_sync_list.md)	 - List managed artifact synchronization records
-* [omnistrate-ctl managed-artifact sync verify](omnistrate-ctl_managed-artifact_sync_verify.md)	 - Ask the control plane to verify a MANUAL managed artifact sync
+* [omnistrate-ctl managed-artifact sync reconcile](omnistrate-ctl_managed-artifact_sync_reconcile.md)	 - Run one platform push for a private managed artifact sync
+* [omnistrate-ctl managed-artifact sync refresh-status](omnistrate-ctl_managed-artifact_sync_refresh-status.md)	 - Verify a customer-populated MANUAL sync destination
 

@@ -51,7 +51,7 @@ var syncDescribeCmd = &cobra.Command{
 var syncCopyCmd = &cobra.Command{
 	Use:   "copy [flags]",
 	Short: "Copy and optionally sign a MANUAL managed artifact sync",
-	Long: `Fetch the server-authored copy plan and copy every artifact by digest to the persisted destination prefix in the destination ECR registry. Every artifact is copied to a staging tag first; the optional customer vetter then runs for every artifact, followed by the optional signer. Canonical and immutable version tags are published only after both hooks succeed for every artifact, and staging tags are then removed. After a successful copy, the command asks the control plane to verify the sync and prints the result; use 'sync verify' to request verification again.
+	Long: `Fetch the server-authored copy plan and copy every artifact by digest to the persisted destination prefix in the destination ECR registry. Every artifact is copied to a staging tag first; the optional customer vetter then runs for every artifact, followed by the optional signer. Canonical and immutable version tags are published only after both hooks succeed for every artifact, and staging tags are then removed. After a successful copy, the command asks the control plane to refresh the sync status and prints the result; use 'sync refresh-status' to request destination verification again.
 
 Hooks run directly without a shell, receive one JSON object on stdin, and inherit AWS_PROFILE, AWS_REGION, and AWS_DEFAULT_REGION for the selected destination. The JSON includes artifactKey, sourceRef, destinationRef, destinationDigest, destinationRegion, and awsProfile. Hook output is written to stderr.
 
@@ -62,13 +62,23 @@ Re-running the command is safe: artifacts whose version tag already references t
 	SilenceUsage: true,
 }
 
-var syncVerifyCmd = &cobra.Command{
-	Use:          "verify [flags]",
-	Short:        "Ask the control plane to verify a MANUAL managed artifact sync",
-	Long:         `Ask the control plane to verify the destination artifacts of a private MANUAL sync now instead of waiting for periodic reconciliation. Per-artifact progress is retained while the sync remains MANUAL. A complete verification transitions the sync to READY. An incomplete verification remains MANUAL unless the applied account setting explicitly enables automatic publication, in which case the sync transitions to PENDING for a fresh automatic reconciliation attempt and clears the manual verification results.`,
-	Example:      "omnistrate-ctl managed-artifact sync verify --id spabs-123",
+var syncRefreshStatusCmd = &cobra.Command{
+	Use:          "refresh-status [flags]",
+	Short:        "Verify a customer-populated MANUAL sync destination",
+	Long:         `Refresh the status of one private MANUAL sync after the customer copies its artifacts. The control plane only verifies the existing destination and never starts a platform copy. A complete destination transitions to READY; an incomplete destination remains MANUAL with per-artifact results.`,
+	Example:      "omnistrate-ctl managed-artifact sync refresh-status --id spabs-123",
 	Args:         cobra.NoArgs,
-	RunE:         runSyncVerify,
+	RunE:         runSyncRefreshStatus,
+	SilenceUsage: true,
+}
+
+var syncReconcileCmd = &cobra.Command{
+	Use:          "reconcile [flags]",
+	Short:        "Run one platform push for a private managed artifact sync",
+	Long:         `Run one platform-managed copy and verification for a private MANUAL, FAILED, SKIPPED, or READY sync and its exact bundle version. Automatic private publication must not be explicitly disabled. Failed MANUAL, FAILED, and SKIPPED attempts restore their previous status. READY remains READY throughout and is unchanged if the republish fails. This command never retries other syncs or versions in the background.`,
+	Example:      "omnistrate-ctl managed-artifact sync reconcile --id spabs-123",
+	Args:         cobra.NoArgs,
+	RunE:         runSyncReconcile,
 	SilenceUsage: true,
 }
 
@@ -101,7 +111,8 @@ func init() {
 	syncCmd.AddCommand(syncListCmd)
 	syncCmd.AddCommand(syncDescribeCmd)
 	syncCmd.AddCommand(syncCopyCmd)
-	syncCmd.AddCommand(syncVerifyCmd)
+	syncCmd.AddCommand(syncRefreshStatusCmd)
+	syncCmd.AddCommand(syncReconcileCmd)
 
 	syncListCmd.Flags().String("bundle-version", "", "Filter by bundle version, for example r0000020")
 	syncListCmd.Flags().String("status", "", "Filter by status: pending, in_progress, ready, failed, skipped, or manual")
@@ -122,8 +133,10 @@ func init() {
 	syncCopyCmd.Flags().String("signer", "", "Customer signing executable; receives one JSON object on stdin per artifact")
 	_ = syncCopyCmd.MarkFlagRequired("id")
 
-	syncVerifyCmd.Flags().String("id", "", "Private MANUAL sync ID (spabs-*) (required)")
-	_ = syncVerifyCmd.MarkFlagRequired("id")
+	syncRefreshStatusCmd.Flags().String("id", "", "Private MANUAL sync ID (spabs-*) (required)")
+	_ = syncRefreshStatusCmd.MarkFlagRequired("id")
+	syncReconcileCmd.Flags().String("id", "", "Private MANUAL, FAILED, SKIPPED, or READY sync ID (spabs-*) (required)")
+	_ = syncReconcileCmd.MarkFlagRequired("id")
 }
 
 func runSyncCopy(cmd *cobra.Command, args []string) error {
@@ -151,16 +164,16 @@ func runSyncCopy(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to copy managed artifacts: %w", err)
 	}
 	if output != common.OutputTypeJson {
-		utils.PrintSuccess(fmt.Sprintf("Copied managed artifact sync %s; requesting control-plane verification", syncID))
+		utils.PrintSuccess(fmt.Sprintf("Copied managed artifact sync %s; refreshing control-plane status", syncID))
 	}
-	verified, err := dataaccess.VerifyManagedArtifactSync(cmd.Context(), token, syncID)
+	verified, err := dataaccess.RefreshManagedArtifactSyncStatus(cmd.Context(), token, syncID)
 	if err != nil {
-		return fmt.Errorf("artifacts were copied, but verification failed; retry with 'omnistrate-ctl managed-artifact sync verify --id %s': %w", syncID, err)
+		return fmt.Errorf("artifacts were copied, but status refresh failed; retry with 'omnistrate-ctl managed-artifact sync refresh-status --id %s': %w", syncID, err)
 	}
 	return printSync(output, *verified)
 }
 
-func runSyncVerify(cmd *cobra.Command, args []string) error {
+func runSyncRefreshStatus(cmd *cobra.Command, args []string) error {
 	defer config.CleanupArgsAndFlags(cmd, &args)
 	syncID, _ := cmd.Flags().GetString("id")
 	output, _ := cmd.Flags().GetString(common.OutputFlag)
@@ -171,9 +184,27 @@ func runSyncVerify(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return fmt.Errorf("failed to get user token: %w", err)
 	}
-	sync, err := dataaccess.VerifyManagedArtifactSync(cmd.Context(), token, syncID)
+	sync, err := dataaccess.RefreshManagedArtifactSyncStatus(cmd.Context(), token, syncID)
 	if err != nil {
-		return fmt.Errorf("failed to verify managed artifact sync: %w", err)
+		return fmt.Errorf("failed to refresh managed artifact sync status: %w", err)
+	}
+	return printSync(output, *sync)
+}
+
+func runSyncReconcile(cmd *cobra.Command, args []string) error {
+	defer config.CleanupArgsAndFlags(cmd, &args)
+	syncID, _ := cmd.Flags().GetString("id")
+	output, _ := cmd.Flags().GetString(common.OutputFlag)
+	if err := validateManualSyncID(syncID); err != nil {
+		return err
+	}
+	token, err := common.GetTokenWithLogin()
+	if err != nil {
+		return fmt.Errorf("failed to get user token: %w", err)
+	}
+	sync, err := dataaccess.ReconcileManagedArtifactSync(cmd.Context(), token, syncID)
+	if err != nil {
+		return fmt.Errorf("failed to reconcile managed artifact sync: %w", err)
 	}
 	return printSync(output, *sync)
 }
