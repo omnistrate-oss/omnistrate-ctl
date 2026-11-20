@@ -2,14 +2,25 @@ package artifactsync
 
 import (
 	"context"
+	"fmt"
+	"io"
 	"os"
+	"path"
 	"path/filepath"
 	"runtime"
 	"strings"
+	"sync"
 	"testing"
 
+	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/service/ecr"
+	"github.com/aws/aws-sdk-go-v2/service/ecr/types"
 	"github.com/omnistrate-oss/omnistrate-ctl/internal/model"
+	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
 	"github.com/stretchr/testify/require"
+	"oras.land/oras-go/v2"
+	"oras.land/oras-go/v2/content"
+	"oras.land/oras-go/v2/content/memory"
 )
 
 func TestLoadPlanAcceptsManagedSyncEnvelope(t *testing.T) {
@@ -20,16 +31,34 @@ func TestLoadPlanAcceptsManagedSyncEnvelope(t *testing.T) {
 	require.Len(t, plan.Artifacts, 1)
 }
 
-func TestValidatePlanRejectsTraversalAndMissingDigest(t *testing.T) {
+func TestValidatePlanRejectsUnsafePlans(t *testing.T) {
 	t.Parallel()
-	base := model.ManagedArtifactManualCopyPlan{
-		DestinationRegistry: "123.dkr.ecr.us-west-2.amazonaws.com", DestinationRegion: "us-west-2", DestinationRepositoryPrefix: "artifacts/system",
-		Artifacts: []model.ManagedArtifactManualCopyArtifact{{ArtifactKey: "image/agent", Version: "v1", CopySourceRef: "registry.example.com/agent:v1", SourceDigest: "sha256:abc", RelativePath: "../agent"}},
+	for _, tt := range []struct {
+		name   string
+		mutate func(*model.ManagedArtifactManualCopyPlan)
+		err    string
+	}{
+		{name: "parent path", mutate: func(plan *model.ManagedArtifactManualCopyPlan) { plan.Artifacts[0].RelativePath = ".." }, err: "invalid relative path"},
+		{name: "path collapsing to prefix", mutate: func(plan *model.ManagedArtifactManualCopyPlan) { plan.Artifacts[0].RelativePath = "images/.." }, err: "invalid relative path"},
+		{name: "nested traversal", mutate: func(plan *model.ManagedArtifactManualCopyPlan) { plan.Artifacts[0].RelativePath = "a/../../x" }, err: "invalid relative path"},
+		{name: "missing digest", mutate: func(plan *model.ManagedArtifactManualCopyPlan) { plan.Artifacts[0].SourceDigest = "" }, err: "missing key, source, digest, or version"},
+		{name: "malformed digest", mutate: func(plan *model.ManagedArtifactManualCopyPlan) { plan.Artifacts[0].SourceDigest = "sha256:abc" }, err: "invalid source digest"},
+		{name: "non-ECR registry", mutate: func(plan *model.ManagedArtifactManualCopyPlan) { plan.DestinationRegistry = "registry.example.com" }, err: "not a private ECR registry"},
+		{name: "registry outside region", mutate: func(plan *model.ManagedArtifactManualCopyPlan) { plan.DestinationRegion = "us-east-1" }, err: "not in destination region"},
+		{name: "HTTP source", mutate: func(plan *model.ManagedArtifactManualCopyPlan) {
+			plan.Artifacts[0].CopySourceRef = "https://charts.example.com/agent-1.0.0.tgz"
+		}, err: "non-OCI source"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			plan := testPlan("sha256:" + strings.Repeat("a", 64))
+			tt.mutate(&plan)
+			require.ErrorContains(t, ValidatePlan(plan), tt.err)
+		})
 	}
-	require.ErrorContains(t, ValidatePlan(base), "invalid relative path")
-	base.Artifacts[0].RelativePath = "images/agent"
-	base.Artifacts[0].SourceDigest = ""
-	require.ErrorContains(t, ValidatePlan(base), "missing key, source, digest, or version")
+	plan := testPlan("sha256:" + strings.Repeat("a", 64))
+	plan.DestinationRegistry += "/"
+	require.NoError(t, ValidatePlan(plan))
 }
 
 func TestImmutableAliasTag(t *testing.T) {
@@ -72,4 +101,194 @@ func TestExecuteHookPassesArtifactAndAWSContext(t *testing.T) {
 	environment, err := os.ReadFile(environmentPath)
 	require.NoError(t, err)
 	require.Equal(t, "customer-production\nus-west-2\nus-west-2\n", string(environment))
+}
+
+func TestRunStagesEveryArtifactBeforeHooksAndPublishesLast(t *testing.T) {
+	t.Parallel()
+	skipWithoutPOSIXShell(t)
+	env := newRunEnvironment(t, "image/a", "image/b")
+	env.ecr.existing["artifacts/system/images/a"] = true
+	logPath := filepath.Join(t.TempDir(), "hooks.log")
+	env.runner.options = Options{Vetter: writeHook(t, "vetter", logPath, ""), Signer: writeHook(t, "signer", logPath, "")}
+
+	require.NoError(t, env.runner.run(context.Background()))
+
+	require.Equal(t, []string{"vetter image/a", "vetter image/b", "signer image/a", "signer image/b"}, readHookLog(t, logPath))
+	require.Equal(t, []string{"artifacts/system/images/b"}, env.ecr.created)
+	for index, key := range env.keys {
+		destination := env.destinations[env.repositories[index]]
+		requireTag(t, destination, "v1", env.digests[key])
+		requireTag(t, destination, immutableAliasTag("v1", env.digests[key]), env.digests[key])
+	}
+	require.ElementsMatch(t, []string{stagingTag(env.runner.plan.Artifacts[0]), stagingTag(env.runner.plan.Artifacts[1])}, env.ecr.untagged)
+}
+
+func TestRunHookFailurePublishesNoArtifact(t *testing.T) {
+	t.Parallel()
+	skipWithoutPOSIXShell(t)
+	env := newRunEnvironment(t, "image/a", "image/b")
+	logPath := filepath.Join(t.TempDir(), "hooks.log")
+	env.runner.options = Options{Vetter: writeHook(t, "vetter", logPath, "image/b"), Signer: writeHook(t, "signer", logPath, "")}
+
+	require.ErrorContains(t, env.runner.run(context.Background()), "customer vetter failed")
+
+	require.Equal(t, []string{"vetter image/a", "vetter image/b"}, readHookLog(t, logPath))
+	for index, artifact := range env.runner.plan.Artifacts {
+		destination := env.destinations[env.repositories[index]]
+		requireTag(t, destination, stagingTag(artifact), env.digests[artifact.ArtifactKey])
+		_, found, err := resolveTag(context.Background(), destination, "v1")
+		require.NoError(t, err)
+		require.False(t, found)
+	}
+	require.Empty(t, env.ecr.untagged)
+}
+
+func TestRunSkipsArtifactsAlreadyPublished(t *testing.T) {
+	t.Parallel()
+	skipWithoutPOSIXShell(t)
+	env := newRunEnvironment(t, "image/a")
+	require.NoError(t, env.runner.run(context.Background()))
+
+	env.sourceOpens = 0
+	env.runner.options = Options{Vetter: writeHook(t, "vetter", filepath.Join(t.TempDir(), "hooks.log"), "image/a")}
+	require.NoError(t, env.runner.run(context.Background()))
+	require.Zero(t, env.sourceOpens)
+}
+
+func TestRunRejectsHelmChartChecksumMismatch(t *testing.T) {
+	t.Parallel()
+	env := newRunEnvironment(t, "chart/a")
+	env.runner.plan.Artifacts[0].Type = helmChartArtifactType
+	env.runner.plan.Artifacts[0].SourceChecksum = "sha256:" + strings.Repeat("0", 64)
+
+	require.ErrorContains(t, env.runner.run(context.Background()), "Helm chart checksum mismatch")
+	_, found, err := resolveTag(context.Background(), env.destinations[env.repositories[0]], "v1")
+	require.NoError(t, err)
+	require.False(t, found)
+}
+
+type fakeECR struct {
+	mu       sync.Mutex
+	existing map[string]bool
+	created  []string
+	untagged []string
+}
+
+func (f *fakeECR) DescribeRepositories(_ context.Context, input *ecr.DescribeRepositoriesInput, _ ...func(*ecr.Options)) (*ecr.DescribeRepositoriesOutput, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if aws.ToString(input.RegistryId) != "123456789012" {
+		return nil, fmt.Errorf("unexpected registry %q", aws.ToString(input.RegistryId))
+	}
+	if !f.existing[input.RepositoryNames[0]] {
+		return nil, &types.RepositoryNotFoundException{}
+	}
+	return &ecr.DescribeRepositoriesOutput{}, nil
+}
+
+func (f *fakeECR) CreateRepository(_ context.Context, input *ecr.CreateRepositoryInput, _ ...func(*ecr.Options)) (*ecr.CreateRepositoryOutput, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.existing[aws.ToString(input.RepositoryName)] = true
+	f.created = append(f.created, aws.ToString(input.RepositoryName))
+	return &ecr.CreateRepositoryOutput{}, nil
+}
+
+func (f *fakeECR) BatchDeleteImage(_ context.Context, input *ecr.BatchDeleteImageInput, _ ...func(*ecr.Options)) (*ecr.BatchDeleteImageOutput, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.untagged = append(f.untagged, aws.ToString(input.ImageIds[0].ImageTag))
+	return &ecr.BatchDeleteImageOutput{}, nil
+}
+
+type runEnvironment struct {
+	runner       *runner
+	ecr          *fakeECR
+	keys         []string
+	repositories []string
+	digests      map[string]string
+	destinations map[string]*memory.Store
+	sourceOpens  int
+}
+
+func newRunEnvironment(t *testing.T, keys ...string) *runEnvironment {
+	t.Helper()
+	ctx := context.Background()
+	source := memory.New()
+	env := &runEnvironment{ecr: &fakeECR{existing: map[string]bool{}}, keys: keys, digests: map[string]string{}, destinations: map[string]*memory.Store{}}
+	plan := model.ManagedArtifactManualCopyPlan{DestinationRegistry: "123456789012.dkr.ecr.us-west-2.amazonaws.com", DestinationRegion: "us-west-2", DestinationRepositoryPrefix: "artifacts/system"}
+	for _, key := range keys {
+		layer := content.NewDescriptorFromBytes("application/vnd.cncf.helm.chart.content.v1.tar+gzip", []byte(key))
+		require.NoError(t, source.Push(ctx, layer, strings.NewReader(key)))
+		manifest, err := oras.PackManifest(ctx, source, oras.PackManifestVersion1_1, "application/vnd.test", oras.PackManifestOptions{Layers: []ocispec.Descriptor{layer}})
+		require.NoError(t, err)
+		// The in-memory store resolves tags only, so expose each manifest under its digest.
+		require.NoError(t, source.Tag(ctx, manifest, manifest.Digest.String()))
+		env.digests[key] = manifest.Digest.String()
+		relativePath := "images/" + path.Base(key)
+		env.repositories = append(env.repositories, plan.DestinationRepositoryPrefix+"/"+relativePath)
+		plan.Artifacts = append(plan.Artifacts, model.ManagedArtifactManualCopyArtifact{
+			ArtifactKey: key, Type: "container-image", Version: "v1", SourceRef: "registry.example.com/" + key + ":v1",
+			CopySourceRef: "registry.example.com/" + key + ":v1", SourceDigest: manifest.Digest.String(), RelativePath: relativePath,
+		})
+	}
+	env.runner = &runner{
+		plan: plan, registryID: "123456789012", ecr: env.ecr, warnings: io.Discard,
+		openSource: func(string) (oras.ReadOnlyGraphTarget, error) {
+			env.sourceOpens++
+			return source, nil
+		},
+		openDestination: func(repositoryName string) (oras.Target, error) {
+			if destination, ok := env.destinations[repositoryName]; ok {
+				return destination, nil
+			}
+			destination := memory.New()
+			env.destinations[repositoryName] = destination
+			return destination, nil
+		},
+	}
+	return env
+}
+
+func testPlan(digest string) model.ManagedArtifactManualCopyPlan {
+	return model.ManagedArtifactManualCopyPlan{
+		DestinationRegistry: "123456789012.dkr.ecr.us-west-2.amazonaws.com", DestinationRegion: "us-west-2", DestinationRepositoryPrefix: "artifacts/system",
+		Artifacts: []model.ManagedArtifactManualCopyArtifact{{ArtifactKey: "image/agent", Version: "v1", CopySourceRef: "registry.example.com/agent:v1", SourceDigest: digest, RelativePath: "images/agent"}},
+	}
+}
+
+func skipWithoutPOSIXShell(t *testing.T) {
+	t.Helper()
+	if runtime.GOOS == "windows" {
+		t.Skip("test hook uses a POSIX shell script")
+	}
+}
+
+// writeHook creates a hook that logs "<name> <artifactKey>" and fails for failKey.
+func writeHook(t *testing.T, name, logPath, failKey string) string {
+	t.Helper()
+	hookPath := filepath.Join(t.TempDir(), name)
+	script := fmt.Sprintf(`#!/bin/sh
+input=$(cat)
+key=$(printf '%%s' "$input" | sed -e 's/.*"artifactKey":"\([^"]*\)".*/\1/')
+printf '%%s %%s\n' %q "$key" >> %q
+[ "$key" != %q ]
+`, name, logPath, failKey)
+	require.NoError(t, os.WriteFile(hookPath, []byte(script), 0o700)) // #nosec G306 -- the test hook must be executable by its owner.
+	return hookPath
+}
+
+func readHookLog(t *testing.T, logPath string) []string {
+	t.Helper()
+	payload, err := os.ReadFile(logPath) // #nosec G304 -- test-owned temporary file.
+	require.NoError(t, err)
+	return strings.Split(strings.TrimSpace(string(payload)), "\n")
+}
+
+func requireTag(t *testing.T, target oras.ReadOnlyTarget, tag, digest string) {
+	t.Helper()
+	descriptor, found, err := resolveTag(context.Background(), target, tag)
+	require.NoError(t, err)
+	require.True(t, found, "tag %s is missing", tag)
+	require.Equal(t, digest, descriptor.Digest.String())
 }

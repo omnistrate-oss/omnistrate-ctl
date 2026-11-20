@@ -21,13 +21,25 @@ omnistrate-artifact-sync \
   --signer ./sign-artifact
 ```
 
-The vetter and signer are optional customer executables. They run directly,
-without a shell, after each artifact is copied to a staging tag. Each receives
-one JSON object on stdin with `artifactKey`, `sourceRef`, `destinationRef`,
-`destinationDigest`, `destinationRegion`, and `awsProfile`. The runner also sets
-`AWS_PROFILE`, `AWS_REGION`, and `AWS_DEFAULT_REGION` for the hook process.
+The destination must be a private ECR registry in the plan's region, and the
+selected AWS profile must be able to describe, create, push to, and untag
+repositories in that registry account. Source registries are read with the
+local Docker credential store. Only OCI registry sources are supported.
 
-The vetter runs first and the signer second. The canonical version tag and its
-immutable digest alias are published only after both hooks succeed. A failed
-hook leaves the staging tag available for inspection and returns a non-zero
-exit status without publishing final tags.
+Every artifact is copied to a staging tag first. The vetter and signer are
+optional customer executables that run directly, without a shell. The vetter
+runs for every staged artifact, then the signer runs for every staged artifact.
+Each receives one JSON object on stdin with `artifactKey`, `sourceRef`,
+`destinationRef`, `destinationDigest`, `destinationRegion`, and `awsProfile`.
+The runner also sets `AWS_PROFILE`, `AWS_REGION`, and `AWS_DEFAULT_REGION` for
+the hook process, and writes hook output to stderr.
+
+The immutable digest alias and canonical version tag are published only after
+both hooks succeed for every artifact; staging tags are then removed. A failed
+hook leaves the staging tags available for inspection and returns a non-zero
+exit status without publishing final tags. Re-running is safe: artifacts whose
+version tag already references the planned digest are skipped, including their
+hooks.
+
+This tool does not manage repository policies. Grant pull access to any other
+accounts that must consume the artifacts separately.
