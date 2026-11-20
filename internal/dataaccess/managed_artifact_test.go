@@ -262,6 +262,22 @@ func TestDescribeManagedArtifactSync(t *testing.T) {
 	assert.Equal(t, "cert-manager", result.Artifacts[0].AmenityName)
 }
 
+func TestVerifyManagedArtifactSync(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, http.MethodPost, r.Method)
+		assert.Equal(t, "/2022-09-01-00/managed-artifact/syncs/spabs-123:verify", r.URL.Path)
+		assert.Equal(t, "Bearer test-token", r.Header.Get("Authorization"))
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{"id": "spabs-123", "bundleVersion": "r0000020", "status": "READY"})
+	}))
+	defer server.Close()
+	setManagedArtifactTestHost(t, server.URL)
+
+	result, err := VerifyManagedArtifactSync(context.Background(), "test-token", "spabs-123")
+	require.NoError(t, err)
+	assert.Equal(t, "READY", result.Status)
+}
+
 func TestManagedArtifactRequiredParameters(t *testing.T) {
 	tests := []struct {
 		name string
@@ -296,6 +312,14 @@ func TestManagedArtifactRequiredParameters(t *testing.T) {
 			name: "missing sync ID",
 			call: func() error {
 				_, err := DescribeManagedArtifactSync(context.Background(), "unused", "")
+				return err
+			},
+			want: "sync ID is required",
+		},
+		{
+			name: "missing verify sync ID",
+			call: func() error {
+				_, err := VerifyManagedArtifactSync(context.Background(), "unused", " ")
 				return err
 			},
 			want: "sync ID is required",

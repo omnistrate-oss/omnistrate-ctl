@@ -41,5 +41,16 @@ exit status without publishing final tags. Re-running is safe: artifacts whose
 version tag already references the planned digest are skipped, including their
 hooks.
 
+This standalone tool does not call the Omnistrate API. After it succeeds, ask
+the control plane to verify the destination instead of waiting for periodic
+reconciliation:
+
+```sh
+omnistrate-ctl managed-artifact sync verify --id spabs-123
+```
+
+`omnistrate-ctl managed-artifact sync copy` performs this verification
+automatically.
+
 This tool does not manage repository policies. Grant pull access to any other
 accounts that must consume the artifacts separately.

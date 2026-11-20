@@ -4,7 +4,7 @@ Copy and optionally sign a MANUAL managed artifact sync
 
 ### Synopsis
 
-Fetch the server-authored copy plan and copy every artifact by digest to the persisted destination prefix in the destination ECR registry. Every artifact is copied to a staging tag first; the optional customer vetter then runs for every artifact, followed by the optional signer. Canonical and immutable version tags are published only after both hooks succeed for every artifact, and staging tags are then removed.
+Fetch the server-authored copy plan and copy every artifact by digest to the persisted destination prefix in the destination ECR registry. Every artifact is copied to a staging tag first; the optional customer vetter then runs for every artifact, followed by the optional signer. Canonical and immutable version tags are published only after both hooks succeed for every artifact, and staging tags are then removed. After a successful copy, the command asks the control plane to verify the sync and prints the result; use 'sync verify' to request verification again.
 
 Hooks run directly without a shell, receive one JSON object on stdin, and inherit AWS_PROFILE, AWS_REGION, and AWS_DEFAULT_REGION for the selected destination. The JSON includes artifactKey, sourceRef, destinationRef, destinationDigest, destinationRegion, and awsProfile. Hook output is written to stderr.
 

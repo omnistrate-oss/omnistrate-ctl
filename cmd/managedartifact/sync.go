@@ -51,7 +51,7 @@ var syncDescribeCmd = &cobra.Command{
 var syncCopyCmd = &cobra.Command{
 	Use:   "copy [flags]",
 	Short: "Copy and optionally sign a MANUAL managed artifact sync",
-	Long: `Fetch the server-authored copy plan and copy every artifact by digest to the persisted destination prefix in the destination ECR registry. Every artifact is copied to a staging tag first; the optional customer vetter then runs for every artifact, followed by the optional signer. Canonical and immutable version tags are published only after both hooks succeed for every artifact, and staging tags are then removed.
+	Long: `Fetch the server-authored copy plan and copy every artifact by digest to the persisted destination prefix in the destination ECR registry. Every artifact is copied to a staging tag first; the optional customer vetter then runs for every artifact, followed by the optional signer. Canonical and immutable version tags are published only after both hooks succeed for every artifact, and staging tags are then removed. After a successful copy, the command asks the control plane to verify the sync and prints the result; use 'sync verify' to request verification again.
 
 Hooks run directly without a shell, receive one JSON object on stdin, and inherit AWS_PROFILE, AWS_REGION, and AWS_DEFAULT_REGION for the selected destination. The JSON includes artifactKey, sourceRef, destinationRef, destinationDigest, destinationRegion, and awsProfile. Hook output is written to stderr.
 
@@ -59,6 +59,16 @@ Re-running the command is safe: artifacts whose version tag already references t
 	Example:      "omnistrate-ctl managed-artifact sync copy --id spabs-123 --aws-profile customer-prod --vetter ./vet-artifact --signer ./sign-artifact",
 	Args:         cobra.NoArgs,
 	RunE:         runSyncCopy,
+	SilenceUsage: true,
+}
+
+var syncVerifyCmd = &cobra.Command{
+	Use:          "verify [flags]",
+	Short:        "Ask the control plane to verify a MANUAL managed artifact sync",
+	Long:         `Ask the control plane to verify the destination artifacts of a private MANUAL sync now instead of waiting for periodic reconciliation. Per-artifact progress is persisted; the sync stays MANUAL until every expected artifact is present, then transitions to READY.`,
+	Example:      "omnistrate-ctl managed-artifact sync verify --id spabs-123",
+	Args:         cobra.NoArgs,
+	RunE:         runSyncVerify,
 	SilenceUsage: true,
 }
 
@@ -91,6 +101,7 @@ func init() {
 	syncCmd.AddCommand(syncListCmd)
 	syncCmd.AddCommand(syncDescribeCmd)
 	syncCmd.AddCommand(syncCopyCmd)
+	syncCmd.AddCommand(syncVerifyCmd)
 
 	syncListCmd.Flags().String("bundle-version", "", "Filter by bundle version, for example r0000020")
 	syncListCmd.Flags().String("status", "", "Filter by status: pending, in_progress, ready, failed, skipped, or manual")
@@ -110,19 +121,20 @@ func init() {
 	syncCopyCmd.Flags().String("vetter", "", "Customer vetting executable; receives one JSON object on stdin per staged artifact")
 	syncCopyCmd.Flags().String("signer", "", "Customer signing executable; receives one JSON object on stdin per artifact")
 	_ = syncCopyCmd.MarkFlagRequired("id")
+
+	syncVerifyCmd.Flags().String("id", "", "Private MANUAL sync ID (spabs-*) (required)")
+	_ = syncVerifyCmd.MarkFlagRequired("id")
 }
 
 func runSyncCopy(cmd *cobra.Command, args []string) error {
 	defer config.CleanupArgsAndFlags(cmd, &args)
 	syncID, _ := cmd.Flags().GetString("id")
+	output, _ := cmd.Flags().GetString(common.OutputFlag)
 	awsProfile, _ := cmd.Flags().GetString("aws-profile")
 	vetter, _ := cmd.Flags().GetString("vetter")
 	signer, _ := cmd.Flags().GetString("signer")
-	if err := validateSyncID(syncID); err != nil {
+	if err := validateManualSyncID(syncID); err != nil {
 		return err
-	}
-	if !strings.HasPrefix(syncID, "spabs-") {
-		return fmt.Errorf("manual copy requires a private spabs-* sync ID")
 	}
 	token, err := common.GetTokenWithLogin()
 	if err != nil {
@@ -138,7 +150,41 @@ func runSyncCopy(cmd *cobra.Command, args []string) error {
 	if err = artifactsync.Run(cmd.Context(), *sync.ManualCopyPlan, artifactsync.Options{AWSProfile: awsProfile, Vetter: vetter, Signer: signer}); err != nil {
 		return fmt.Errorf("failed to copy managed artifacts: %w", err)
 	}
-	utils.PrintSuccess(fmt.Sprintf("Successfully copied managed artifact sync %s; the periodic verifier will mark it READY after all destination tags are visible.", syncID))
+	if output != common.OutputTypeJson {
+		utils.PrintSuccess(fmt.Sprintf("Copied managed artifact sync %s; requesting control-plane verification", syncID))
+	}
+	verified, err := dataaccess.VerifyManagedArtifactSync(cmd.Context(), token, syncID)
+	if err != nil {
+		return fmt.Errorf("artifacts were copied, but verification failed; retry with 'omnistrate-ctl managed-artifact sync verify --id %s': %w", syncID, err)
+	}
+	return printSync(output, *verified)
+}
+
+func runSyncVerify(cmd *cobra.Command, args []string) error {
+	defer config.CleanupArgsAndFlags(cmd, &args)
+	syncID, _ := cmd.Flags().GetString("id")
+	output, _ := cmd.Flags().GetString(common.OutputFlag)
+	if err := validateManualSyncID(syncID); err != nil {
+		return err
+	}
+	token, err := common.GetTokenWithLogin()
+	if err != nil {
+		return fmt.Errorf("failed to get user token: %w", err)
+	}
+	sync, err := dataaccess.VerifyManagedArtifactSync(cmd.Context(), token, syncID)
+	if err != nil {
+		return fmt.Errorf("failed to verify managed artifact sync: %w", err)
+	}
+	return printSync(output, *sync)
+}
+
+func validateManualSyncID(syncID string) error {
+	if err := validateSyncID(syncID); err != nil {
+		return err
+	}
+	if !strings.HasPrefix(syncID, "spabs-") {
+		return fmt.Errorf("manual copy requires a private spabs-* sync ID")
+	}
 	return nil
 }
 
@@ -264,11 +310,14 @@ func runSyncDescribe(cmd *cobra.Command, args []string) error {
 		return err
 	}
 	utils.HandleSpinnerSuccess(spinner, sm, fmt.Sprintf("Successfully described managed artifact sync %s", syncID))
+	return printSync(output, *sync)
+}
 
+func printSync(output string, sync model.ManagedArtifactSync) error {
 	if output != "table" {
 		return utils.PrintTextTableJsonOutput(output, sync)
 	}
-	if err := utils.PrintTextTableJsonOutput(output, syncSummary(*sync)); err != nil {
+	if err := utils.PrintTextTableJsonOutput(output, syncSummary(sync)); err != nil {
 		return err
 	}
 	artifacts := make([]syncArtifactTableRow, 0, len(sync.Artifacts))

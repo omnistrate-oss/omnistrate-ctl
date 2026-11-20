@@ -27,6 +27,7 @@ func TestManagedArtifactCommands(t *testing.T) {
 		{name: "sync list", args: []string{"sync", "list"}},
 		{name: "sync describe", args: []string{"sync", "describe"}},
 		{name: "sync copy", args: []string{"sync", "copy"}},
+		{name: "sync verify", args: []string{"sync", "verify"}},
 	} {
 		t.Run(command.name, func(t *testing.T) {
 			found, _, err := Cmd.Find(command.args)
@@ -61,6 +62,7 @@ func TestManagedArtifactCommandsRequireParameters(t *testing.T) {
 		{name: "release describe", cmd: releaseDescribeCmd},
 		{name: "sync describe", cmd: syncDescribeCmd},
 		{name: "sync copy", cmd: syncCopyCmd},
+		{name: "sync verify", cmd: syncVerifyCmd},
 	}
 
 	for _, tt := range tests {
