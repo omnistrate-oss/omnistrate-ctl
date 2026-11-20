@@ -65,7 +65,7 @@ Re-running the command is safe: artifacts whose version tag already references t
 var syncVerifyCmd = &cobra.Command{
 	Use:          "verify [flags]",
 	Short:        "Ask the control plane to verify a MANUAL managed artifact sync",
-	Long:         `Ask the control plane to verify the destination artifacts of a private MANUAL sync now instead of waiting for periodic reconciliation. Per-artifact progress is persisted. A complete verification transitions the sync to READY. An incomplete verification remains MANUAL unless the applied account setting explicitly enables automatic publication, in which case the sync transitions to PENDING and normal automatic reconciliation resumes.`,
+	Long:         `Ask the control plane to verify the destination artifacts of a private MANUAL sync now instead of waiting for periodic reconciliation. Per-artifact progress is retained while the sync remains MANUAL. A complete verification transitions the sync to READY. An incomplete verification remains MANUAL unless the applied account setting explicitly enables automatic publication, in which case the sync transitions to PENDING for a fresh automatic reconciliation attempt and clears the manual verification results.`,
 	Example:      "omnistrate-ctl managed-artifact sync verify --id spabs-123",
 	Args:         cobra.NoArgs,
 	RunE:         runSyncVerify,
