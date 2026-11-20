@@ -82,17 +82,17 @@ func CreateAccount(ctx context.Context, token string, accountConfig openapiclien
 	return strings.Trim(res, "\"\n"), nil
 }
 
-// PrivateArtifactPublicationEnabledSettingKey is the account governance control key
-// that the generated SDK does not model yet.
-const PrivateArtifactPublicationEnabledSettingKey = "privateArtifactPublicationEnabled"
+// PrivateArtifactPushEnabledSettingKey is the API account governance control key,
+// which the generated SDK does not model yet. The API still names it "publication".
+const PrivateArtifactPushEnabledSettingKey = "privateArtifactPublicationEnabled"
 
 type UpdateAccountParams struct {
-	AccountConfigID                   string
-	Name                              *string
-	Description                       *string
-	NebiusBindings                    []openapiclient.NebiusAccountBindingInput
-	CustomTags                        []openapiclient.CustomTag
-	PrivateArtifactPublicationEnabled *bool
+	AccountConfigID            string
+	Name                       *string
+	Description                *string
+	NebiusBindings             []openapiclient.NebiusAccountBindingInput
+	CustomTags                 []openapiclient.CustomTag
+	PrivateArtifactPushEnabled *bool
 }
 
 func UpdateAccount(ctx context.Context, token string, params UpdateAccountParams) (string, error) {
@@ -108,13 +108,13 @@ func UpdateAccount(ctx context.Context, token string, params UpdateAccountParams
 	if len(params.CustomTags) > 0 {
 		request.CustomTags = params.CustomTags
 	}
-	if params.PrivateArtifactPublicationEnabled != nil {
+	if params.PrivateArtifactPushEnabled != nil {
 		// The API supports this forward-compatible governance field, while the
 		// current generated SDK still exposes it through AdditionalProperties.
 		request.Settings = &openapiclient.AccountConfigSettings{
 			AccountGovernanceControls: &openapiclient.AccountGovernanceControls{
 				AdditionalProperties: map[string]interface{}{
-					PrivateArtifactPublicationEnabledSettingKey: *params.PrivateArtifactPublicationEnabled,
+					PrivateArtifactPushEnabledSettingKey: *params.PrivateArtifactPushEnabled,
 				},
 			},
 		}
