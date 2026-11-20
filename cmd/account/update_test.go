@@ -48,10 +48,10 @@ func TestValidateUpdateAccountParams(t *testing.T) {
 			},
 		},
 		{
-			name: "private artifact publication setting is allowed",
+			name: "private artifact push setting is allowed",
 			params: UpdateCloudAccountParams{
-				ID:                                "ac-123",
-				PrivateArtifactPublicationEnabled: ptr(false),
+				ID:                         "ac-123",
+				PrivateArtifactPushEnabled: ptr(false),
 			},
 		},
 		{
@@ -59,7 +59,7 @@ func TestValidateUpdateAccountParams(t *testing.T) {
 			params: UpdateCloudAccountParams{
 				ID: "ac-123",
 			},
-			wantErr: "at least one of --name, --description, --nebius-bindings-file, --tags, or --private-artifact-publication-enabled must be provided",
+			wantErr: "at least one of --name, --description, --nebius-bindings-file, --tags, or --private-artifact-push-enabled must be provided",
 		},
 		{
 			name: "rejects empty name",
@@ -111,8 +111,8 @@ bindings:
 	cmd.Flags().String("description", "", "")
 	require.NoError(t, cmd.Flags().Set("name", "updated-name"))
 
-	publicationEnabled := false
-	params, err := buildUpdateAccountParams(cmd, "ac-123", "updated-name", "", bindingsPath, &publicationEnabled)
+	pushEnabled := false
+	params, err := buildUpdateAccountParams(cmd, "ac-123", "updated-name", "", bindingsPath, &pushEnabled)
 	require.NoError(t, err)
 	require.Equal(t, "ac-123", params.ID)
 	require.NotNil(t, params.Name)
@@ -120,8 +120,8 @@ bindings:
 	require.Len(t, params.NebiusBindings, 1)
 	assert.Equal(t, "project-1", params.NebiusBindings[0].ProjectID)
 	assert.Equal(t, "PEM DATA", params.NebiusBindings[0].PrivateKeyPEM)
-	require.NotNil(t, params.PrivateArtifactPublicationEnabled)
-	assert.False(t, *params.PrivateArtifactPublicationEnabled)
+	require.NotNil(t, params.PrivateArtifactPushEnabled)
+	assert.False(t, *params.PrivateArtifactPushEnabled)
 }
 
 func TestOptionalBoolFlag(t *testing.T) {
@@ -148,7 +148,7 @@ func TestOptionalBoolFlag(t *testing.T) {
 	}
 }
 
-func TestGetPrivateArtifactPublicationState(t *testing.T) {
+func TestGetPrivateArtifactPushState(t *testing.T) {
 	applied := func(enabled bool) *openapiclient.AccountConfigSettings {
 		return &openapiclient.AccountConfigSettings{
 			AccountGovernanceControls: &openapiclient.AccountGovernanceControls{
@@ -161,35 +161,35 @@ func TestGetPrivateArtifactPublicationState(t *testing.T) {
 		name     string
 		account  openapiclient.DescribeAccountConfigResult
 		disabled bool
-		want     privateArtifactPublicationState
+		want     privateArtifactPushState
 		wantErr  string
 	}{
 		{
 			name:     "ready without observed value is not verified",
 			account:  openapiclient.DescribeAccountConfigResult{Status: "READY"},
 			disabled: true,
-			want:     privateArtifactPublicationPending,
+			want:     privateArtifactPushPending,
 		},
 		{
 			name:     "ready with observed disabled value is applied",
 			account:  openapiclient.DescribeAccountConfigResult{Status: "READY", AppliedSettings: applied(false)},
 			disabled: true,
-			want:     privateArtifactPublicationApplied,
+			want:     privateArtifactPushApplied,
 		},
 		{
 			name:    "ready with requested value applied",
 			account: openapiclient.DescribeAccountConfigResult{Status: "READY", AppliedSettings: applied(true)},
-			want:    privateArtifactPublicationApplied,
+			want:    privateArtifactPushApplied,
 		},
 		{
 			name:    "stale ready with previous value is pending",
 			account: openapiclient.DescribeAccountConfigResult{Status: "READY", AppliedSettings: applied(false)},
-			want:    privateArtifactPublicationPending,
+			want:    privateArtifactPushPending,
 		},
 		{
 			name:    "ready without applied settings is pending",
 			account: openapiclient.DescribeAccountConfigResult{Status: "READY"},
-			want:    privateArtifactPublicationPending,
+			want:    privateArtifactPushPending,
 		},
 		{
 			name: "verified account waiting for stack update",
@@ -197,7 +197,7 @@ func TestGetPrivateArtifactPublicationState(t *testing.T) {
 				Status:        "PENDING_UPDATE",
 				StatusMessage: accountSettingsPendingStatusMessage,
 			},
-			want: privateArtifactPublicationStackUpdateRequired,
+			want: privateArtifactPushStackUpdateRequired,
 		},
 		{
 			name: "update before verification is pending",
@@ -205,12 +205,12 @@ func TestGetPrivateArtifactPublicationState(t *testing.T) {
 				Status:        "PENDING_UPDATE",
 				StatusMessage: "update CloudFormation account stack to match requested settings",
 			},
-			want: privateArtifactPublicationPending,
+			want: privateArtifactPushPending,
 		},
 		{
 			name:    "verifying is pending",
 			account: openapiclient.DescribeAccountConfigResult{Status: "VERIFYING"},
-			want:    privateArtifactPublicationPending,
+			want:    privateArtifactPushPending,
 		},
 		{
 			name:    "failed verification returns an error",
@@ -221,7 +221,7 @@ func TestGetPrivateArtifactPublicationState(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := getPrivateArtifactPublicationState(&tt.account, !tt.disabled)
+			got, err := getPrivateArtifactPushState(&tt.account, !tt.disabled)
 			if tt.wantErr != "" {
 				require.EqualError(t, err, tt.wantErr)
 				return
@@ -233,20 +233,20 @@ func TestGetPrivateArtifactPublicationState(t *testing.T) {
 	}
 }
 
-func TestPrintPrivateArtifactPublicationResult_ReturnsFailure(t *testing.T) {
+func TestPrintPrivateArtifactPushResult_ReturnsFailure(t *testing.T) {
 	t.Setenv("OMNISTRATE_DRY_RUN", "true")
 
-	err := printPrivateArtifactPublicationResult("json", &openapiclient.DescribeAccountConfigResult{
+	err := printPrivateArtifactPushResult("json", &openapiclient.DescribeAccountConfigResult{
 		Id:            "ac-123",
 		Status:        "FAILED",
 		StatusMessage: "access denied",
 	}, true)
 
 	require.EqualError(t, err,
-		"account update was submitted, but the private artifact publication setting was not applied: account settings update failed: access denied")
+		"account update was submitted, but the private artifact push setting was not applied: account settings update failed: access denied")
 }
 
-func TestPrintPrivateArtifactPublicationResult_JSONWarnsOnStderr(t *testing.T) {
+func TestPrintPrivateArtifactPushResult_JSONWarnsOnStderr(t *testing.T) {
 	oldStderr := os.Stderr
 	stderrReader, stderrWriter, err := os.Pipe()
 	require.NoError(t, err)
@@ -254,7 +254,7 @@ func TestPrintPrivateArtifactPublicationResult_JSONWarnsOnStderr(t *testing.T) {
 	t.Cleanup(func() { os.Stderr = oldStderr })
 
 	stdout := captureDescribeOutput(t, func() {
-		require.NoError(t, printPrivateArtifactPublicationResult("json", &openapiclient.DescribeAccountConfigResult{
+		require.NoError(t, printPrivateArtifactPushResult("json", &openapiclient.DescribeAccountConfigResult{
 			Id:     "ac-123",
 			Name:   "account",
 			Status: "READY",
@@ -270,7 +270,7 @@ func TestPrintPrivateArtifactPublicationResult_JSONWarnsOnStderr(t *testing.T) {
 }
 
 func TestValidateUpdateTargetAccount(t *testing.T) {
-	publicationParams := UpdateCloudAccountParams{ID: "ac-123", PrivateArtifactPublicationEnabled: ptr(true)}
+	pushParams := UpdateCloudAccountParams{ID: "ac-123", PrivateArtifactPushEnabled: ptr(true)}
 
 	tests := []struct {
 		name    string
@@ -279,24 +279,24 @@ func TestValidateUpdateTargetAccount(t *testing.T) {
 		wantErr string
 	}{
 		{
-			name:    "AWS non-BYOA account accepts private artifact publication",
-			params:  publicationParams,
+			name:    "AWS non-BYOA account accepts private artifact push",
+			params:  pushParams,
 			account: openapiclient.DescribeAccountConfigResult{AwsAccountID: ptr("123456789012")},
 		},
 		{
-			name:    "non-AWS account rejects private artifact publication",
-			params:  publicationParams,
+			name:    "non-AWS account rejects private artifact push",
+			params:  pushParams,
 			account: openapiclient.DescribeAccountConfigResult{GcpProjectID: ptr("project-1")},
-			wantErr: "--private-artifact-publication-enabled is only supported for AWS accounts",
+			wantErr: "--private-artifact-push-enabled is only supported for AWS accounts",
 		},
 		{
-			name:   "BYOA account rejects private artifact publication",
-			params: publicationParams,
+			name:   "BYOA account rejects private artifact push",
+			params: pushParams,
 			account: openapiclient.DescribeAccountConfigResult{
 				AwsAccountID:    ptr("123456789012"),
 				ByoaInstanceIDs: []string{"instance-1"},
 			},
-			wantErr: "--private-artifact-publication-enabled is not supported for BYOA accounts",
+			wantErr: "--private-artifact-push-enabled is not supported for BYOA accounts",
 		},
 		{
 			name: "non-Nebius account rejects Nebius bindings",

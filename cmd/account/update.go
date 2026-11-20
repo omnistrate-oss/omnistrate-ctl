@@ -18,7 +18,7 @@ import (
 )
 
 const (
-	privateArtifactPublicationEnabledFlag = "private-artifact-publication-enabled"
+	privateArtifactPushEnabledFlag = "private-artifact-push-enabled"
 
 	updateExample = `# Update account name and description
 omnistrate-ctl account update [account-name or account-id] --name=[new-name] --description=[new-description]
@@ -26,24 +26,24 @@ omnistrate-ctl account update [account-name or account-id] --name=[new-name] --d
 # Replace Nebius bindings on an existing Nebius account
 omnistrate-ctl account update [account-name or account-id] --nebius-bindings-file=[bindings-file]
 
-# Enable private managed-artifact publication for an AWS non-BYOA account
-omnistrate-ctl account update [account-name or account-id] --private-artifact-publication-enabled=true
+# Enable private managed-artifact push for an AWS non-BYOA account
+omnistrate-ctl account update [account-name or account-id] --private-artifact-push-enabled=true
 
-# Disable private managed-artifact publication (use = with false)
-omnistrate-ctl account update [account-name or account-id] --private-artifact-publication-enabled=false`
+# Disable private managed-artifact push (use = with false)
+omnistrate-ctl account update [account-name or account-id] --private-artifact-push-enabled=false`
 
-	nextStepPrivateArtifactPublicationStackUpdateMsgTemplate = `
+	nextStepPrivateArtifactPushStackUpdateMsgTemplate = `
 Next step:
-Update the existing AWS CloudFormation stack or Terraform deployment for account %s to apply the private artifact publication setting; do not create a new one.%s
+Update the existing AWS CloudFormation stack or Terraform deployment for account %s to apply the private artifact push setting; do not create a new one.%s
 Track progress with: omnistrate-ctl account describe %s`
 
-	privateArtifactPublicationPendingMsgTemplate = `
-The private artifact publication setting for account %s is pending verification.%s
+	privateArtifactPushPendingMsgTemplate = `
+The private artifact push setting for account %s is pending verification.%s
 If verification reports that the setting is not applied, update the existing AWS CloudFormation stack or Terraform deployment; do not create a new one.
 Track progress with: omnistrate-ctl account describe %s`
 
-	privateArtifactPublicationUnverifiedMsgTemplate = `
-Account %s finished verification, but it does not report the requested private artifact publication value, so the setting could not be confirmed.%s
+	privateArtifactPushUnverifiedMsgTemplate = `
+Account %s finished verification, but it does not report the requested private artifact push value, so the setting could not be confirmed.%s
 If the account stack predates this setting, update the existing AWS CloudFormation stack or Terraform deployment; do not create a new one.
 Check the applied value with: omnistrate-ctl account describe %s`
 
@@ -51,16 +51,16 @@ Check the applied value with: omnistrate-ctl account describe %s`
 	// server reports when the account is verified but its stack must still be updated.
 	accountSettingsPendingStatusMessage = "account verified; waiting for requested settings"
 
-	privateArtifactPublicationWaitTimeout  = 10 * time.Minute
-	privateArtifactPublicationPollInterval = 10 * time.Second
+	privateArtifactPushWaitTimeout  = 10 * time.Minute
+	privateArtifactPushPollInterval = 10 * time.Second
 )
 
-type privateArtifactPublicationState int
+type privateArtifactPushState int
 
 const (
-	privateArtifactPublicationPending privateArtifactPublicationState = iota
-	privateArtifactPublicationApplied
-	privateArtifactPublicationStackUpdateRequired
+	privateArtifactPushPending privateArtifactPushState = iota
+	privateArtifactPushApplied
+	privateArtifactPushStackUpdateRequired
 )
 
 var updateCmd = &cobra.Command{
@@ -79,18 +79,18 @@ func init() {
 	updateCmd.Flags().String("description", "", "Updated account description")
 	updateCmd.Flags().String("nebius-bindings-file", "", "Path to a YAML file describing the full replacement Nebius bindings")
 	updateCmd.Flags().String(tagsFlag, "", `Full replacement set of custom tags for the account in key=value format, separated by commas (e.g. env=prod,team=platform). Escape commas inside values with \,`)
-	updateCmd.Flags().Bool(privateArtifactPublicationEnabledFlag, false, "Whether an AWS non-BYOA account may publish managed artifacts to private ECR")
-	updateCmd.Flags().Bool("skip-wait", false, "Skip waiting for account to become READY after replacing Nebius bindings or changing private artifact publication")
+	updateCmd.Flags().Bool(privateArtifactPushEnabledFlag, false, "Whether an AWS non-BYOA account may push managed artifacts to private ECR")
+	updateCmd.Flags().Bool("skip-wait", false, "Skip waiting for account to become READY after replacing Nebius bindings or changing private artifact push")
 	_ = updateCmd.MarkFlagFilename("nebius-bindings-file")
 }
 
 type UpdateCloudAccountParams struct {
-	ID                                string
-	Name                              *string
-	Description                       *string
-	NebiusBindings                    []openapiclient.NebiusAccountBindingInput
-	CustomTags                        []openapiclient.CustomTag
-	PrivateArtifactPublicationEnabled *bool
+	ID                         string
+	Name                       *string
+	Description                *string
+	NebiusBindings             []openapiclient.NebiusAccountBindingInput
+	CustomTags                 []openapiclient.CustomTag
+	PrivateArtifactPushEnabled *bool
 }
 
 func runUpdate(cmd *cobra.Command, args []string) error {
@@ -111,14 +111,14 @@ func runUpdate(cmd *cobra.Command, args []string) error {
 	description, _ := cmd.Flags().GetString("description")
 	nebiusBindingsFile, _ := cmd.Flags().GetString("nebius-bindings-file")
 	skipWait, _ := cmd.Flags().GetBool("skip-wait")
-	privateArtifactPublicationEnabled, err := optionalBoolFlag(cmd, privateArtifactPublicationEnabledFlag)
+	privateArtifactPushEnabled, err := optionalBoolFlag(cmd, privateArtifactPushEnabledFlag)
 	if err != nil {
 		utils.PrintError(err)
 		return err
 	}
 
 	params, err := buildUpdateAccountParams(
-		cmd, args[0], name, description, nebiusBindingsFile, privateArtifactPublicationEnabled,
+		cmd, args[0], name, description, nebiusBindingsFile, privateArtifactPushEnabled,
 	)
 	if err != nil {
 		utils.PrintError(err)
@@ -146,7 +146,7 @@ func runUpdate(cmd *cobra.Command, args []string) error {
 	}
 
 	// Validate provider-specific fields before the API persists any metadata changes.
-	if len(params.NebiusBindings) > 0 || params.PrivateArtifactPublicationEnabled != nil {
+	if len(params.NebiusBindings) > 0 || params.PrivateArtifactPushEnabled != nil {
 		existingAccount, describeErr := dataaccess.DescribeAccount(cmd.Context(), token, params.ID)
 		if describeErr != nil {
 			utils.HandleSpinnerError(spinner, sm, describeErr)
@@ -166,12 +166,12 @@ func runUpdate(cmd *cobra.Command, args []string) error {
 	}
 
 	accountConfigID, err := dataaccess.UpdateAccount(cmd.Context(), token, dataaccess.UpdateAccountParams{
-		AccountConfigID:                   params.ID,
-		Name:                              params.Name,
-		Description:                       params.Description,
-		NebiusBindings:                    params.NebiusBindings,
-		CustomTags:                        params.CustomTags,
-		PrivateArtifactPublicationEnabled: params.PrivateArtifactPublicationEnabled,
+		AccountConfigID:            params.ID,
+		Name:                       params.Name,
+		Description:                params.Description,
+		NebiusBindings:             params.NebiusBindings,
+		CustomTags:                 params.CustomTags,
+		PrivateArtifactPushEnabled: params.PrivateArtifactPushEnabled,
 	})
 	if err != nil {
 		utils.HandleSpinnerError(spinner, sm, err)
@@ -197,29 +197,29 @@ func runUpdate(cmd *cobra.Command, args []string) error {
 		utils.HandleSpinnerSuccess(waitSpinner, sm, "Account is now READY")
 	}
 
-	if params.PrivateArtifactPublicationEnabled != nil && !skipWait {
+	if params.PrivateArtifactPushEnabled != nil && !skipWait {
 		var waitSpinner *utils.Spinner
 		if output != "json" {
 			fmt.Printf("\n")
 			sm = utils.NewSpinnerManager()
-			waitSpinner = sm.AddSpinner("Waiting for the private artifact publication setting to be verified...")
+			waitSpinner = sm.AddSpinner("Waiting for the private artifact push setting to be verified...")
 			sm.Start()
 		}
 
-		var state privateArtifactPublicationState
-		state, err = waitForPrivateArtifactPublicationSetting(
-			cmd.Context(), token, accountConfigID, *params.PrivateArtifactPublicationEnabled,
+		var state privateArtifactPushState
+		state, err = waitForPrivateArtifactPushSetting(
+			cmd.Context(), token, accountConfigID, *params.PrivateArtifactPushEnabled,
 		)
 		if err != nil {
-			err = errors.Wrap(err, "account update was submitted, but the private artifact publication setting was not verified")
+			err = errors.Wrap(err, "account update was submitted, but the private artifact push setting was not verified")
 			utils.HandleSpinnerError(waitSpinner, sm, err)
 			return err
 		}
 
 		switch state {
-		case privateArtifactPublicationApplied:
-			utils.HandleSpinnerSuccess(waitSpinner, sm, "Private artifact publication setting is applied")
-		case privateArtifactPublicationStackUpdateRequired:
+		case privateArtifactPushApplied:
+			utils.HandleSpinnerSuccess(waitSpinner, sm, "Private artifact push setting is applied")
+		case privateArtifactPushStackUpdateRequired:
 			utils.HandleSpinnerSuccess(waitSpinner, sm, "Account verified; existing stack update required")
 		default:
 			utils.HandleSpinnerSuccess(waitSpinner, sm, "Account verified; requested value not reported")
@@ -232,8 +232,8 @@ func runUpdate(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	if params.PrivateArtifactPublicationEnabled != nil {
-		return printPrivateArtifactPublicationResult(output, account, *params.PrivateArtifactPublicationEnabled)
+	if params.PrivateArtifactPushEnabled != nil {
+		return printPrivateArtifactPushResult(output, account, *params.PrivateArtifactPushEnabled)
 	}
 
 	if err = printDescribeOutput(output, account); err != nil {
@@ -248,12 +248,12 @@ func runUpdate(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
-func printPrivateArtifactPublicationResult(
+func printPrivateArtifactPushResult(
 	output string, account *openapiclient.DescribeAccountConfigResult, enabled bool,
 ) error {
-	state, err := getPrivateArtifactPublicationState(account, enabled)
+	state, err := getPrivateArtifactPushState(account, enabled)
 	if err != nil {
-		err = errors.Wrap(err, "account update was submitted, but the private artifact publication setting was not applied")
+		err = errors.Wrap(err, "account update was submitted, but the private artifact push setting was not applied")
 		utils.PrintError(err)
 		return err
 	}
@@ -273,20 +273,20 @@ func printPrivateArtifactPublicationResult(
 		fmt.Println(snapshot)
 	}
 
-	if state != privateArtifactPublicationApplied {
-		printPrivateArtifactPublicationNextStepMsg(nextStepWriter, account, state)
+	if state != privateArtifactPushApplied {
+		printPrivateArtifactPushNextStepMsg(nextStepWriter, account, state)
 	}
 
 	return nil
 }
 
-func waitForPrivateArtifactPublicationSetting(
+func waitForPrivateArtifactPushSetting(
 	ctx context.Context, token, accountID string, enabled bool,
-) (privateArtifactPublicationState, error) {
+) (privateArtifactPushState, error) {
 	// The deadline also cancels an in-flight describe request.
-	waitCtx, cancel := context.WithTimeout(ctx, privateArtifactPublicationWaitTimeout)
+	waitCtx, cancel := context.WithTimeout(ctx, privateArtifactPushWaitTimeout)
 	defer cancel()
-	ticker := time.NewTicker(privateArtifactPublicationPollInterval)
+	ticker := time.NewTicker(privateArtifactPushPollInterval)
 	defer ticker.Stop()
 
 	waitErr := func() error {
@@ -295,59 +295,59 @@ func waitForPrivateArtifactPublicationSetting(
 		}
 		return errors.Errorf(
 			"account %s did not finish verifying the setting after %s; check it with 'omnistrate-ctl account describe %s'",
-			accountID, privateArtifactPublicationWaitTimeout, accountID)
+			accountID, privateArtifactPushWaitTimeout, accountID)
 	}
 
 	for {
 		select {
 		case <-waitCtx.Done():
-			return privateArtifactPublicationPending, waitErr()
+			return privateArtifactPushPending, waitErr()
 		case <-ticker.C:
 			account, err := dataaccess.DescribeAccount(waitCtx, token, accountID)
 			if err != nil {
 				if waitCtx.Err() != nil {
-					return privateArtifactPublicationPending, waitErr()
+					return privateArtifactPushPending, waitErr()
 				}
-				return privateArtifactPublicationPending, err
+				return privateArtifactPushPending, err
 			}
 
-			state, err := getPrivateArtifactPublicationState(account, enabled)
+			state, err := getPrivateArtifactPushState(account, enabled)
 			// The update request moves the account out of READY, so READY means verification finished.
-			if err != nil || state != privateArtifactPublicationPending || account.Status == "READY" {
+			if err != nil || state != privateArtifactPushPending || account.Status == "READY" {
 				return state, err
 			}
 		}
 	}
 }
 
-func getPrivateArtifactPublicationState(
+func getPrivateArtifactPushState(
 	account *openapiclient.DescribeAccountConfigResult, enabled bool,
-) (privateArtifactPublicationState, error) {
+) (privateArtifactPushState, error) {
 	switch account.Status {
 	case "FAILED":
-		return privateArtifactPublicationPending, errors.Errorf("account settings update failed: %s", account.StatusMessage)
+		return privateArtifactPushPending, errors.Errorf("account settings update failed: %s", account.StatusMessage)
 	case "READY":
 		// Success requires an observed value; applied settings are never defaulted.
-		if applied, ok := appliedPrivateArtifactPublicationEnabled(account); ok && applied == enabled {
-			return privateArtifactPublicationApplied, nil
+		if applied, ok := appliedPrivateArtifactPushEnabled(account); ok && applied == enabled {
+			return privateArtifactPushApplied, nil
 		}
 	case "PENDING_UPDATE":
 		if account.StatusMessage == accountSettingsPendingStatusMessage {
-			return privateArtifactPublicationStackUpdateRequired, nil
+			return privateArtifactPushStackUpdateRequired, nil
 		}
 	}
 
-	return privateArtifactPublicationPending, nil
+	return privateArtifactPushPending, nil
 }
 
-// appliedPrivateArtifactPublicationEnabled reports whether the account observed the setting.
-func appliedPrivateArtifactPublicationEnabled(account *openapiclient.DescribeAccountConfigResult) (bool, bool) {
+// appliedPrivateArtifactPushEnabled reports whether the account observed the setting.
+func appliedPrivateArtifactPushEnabled(account *openapiclient.DescribeAccountConfigResult) (bool, bool) {
 	if account.AppliedSettings == nil || account.AppliedSettings.AccountGovernanceControls == nil {
 		return false, false
 	}
 
 	enabled, ok := account.AppliedSettings.AccountGovernanceControls.
-		AdditionalProperties[dataaccess.PrivateArtifactPublicationEnabledSettingKey].(bool)
+		AdditionalProperties[dataaccess.PrivateArtifactPushEnabledSettingKey].(bool)
 	return enabled, ok
 }
 
@@ -370,20 +370,20 @@ func validateUpdateTargetAccount(params UpdateCloudAccountParams, account *opena
 		return errors.New("Nebius bindings can only be updated for Nebius accounts")
 	}
 
-	if params.PrivateArtifactPublicationEnabled != nil {
+	if params.PrivateArtifactPushEnabled != nil {
 		if account.AwsAccountID == nil {
-			return errors.Errorf("--%s is only supported for AWS accounts", privateArtifactPublicationEnabledFlag)
+			return errors.Errorf("--%s is only supported for AWS accounts", privateArtifactPushEnabledFlag)
 		}
 		if len(account.ByoaInstanceIDs) > 0 {
-			return errors.Errorf("--%s is not supported for BYOA accounts", privateArtifactPublicationEnabledFlag)
+			return errors.Errorf("--%s is not supported for BYOA accounts", privateArtifactPushEnabledFlag)
 		}
 	}
 
 	return nil
 }
 
-func printPrivateArtifactPublicationNextStepMsg(
-	w io.Writer, account *openapiclient.DescribeAccountConfigResult, state privateArtifactPublicationState,
+func printPrivateArtifactPushNextStepMsg(
+	w io.Writer, account *openapiclient.DescribeAccountConfigResult, state privateArtifactPushState,
 ) {
 	name := account.Name
 	if name == "" {
@@ -398,12 +398,12 @@ func printPrivateArtifactPublicationNextStepMsg(
 		details += fmt.Sprintf("\nCloudFormation stack update URL: %s", updateURL)
 	}
 
-	template := privateArtifactPublicationPendingMsgTemplate
+	template := privateArtifactPushPendingMsgTemplate
 	switch {
-	case state == privateArtifactPublicationStackUpdateRequired:
-		template = nextStepPrivateArtifactPublicationStackUpdateMsgTemplate
+	case state == privateArtifactPushStackUpdateRequired:
+		template = nextStepPrivateArtifactPushStackUpdateMsgTemplate
 	case account.Status == "READY":
-		template = privateArtifactPublicationUnverifiedMsgTemplate
+		template = privateArtifactPushUnverifiedMsgTemplate
 	}
 
 	_, _ = fmt.Fprintf(w, template+"\n", name, details, account.Id)
@@ -415,11 +415,11 @@ func buildUpdateAccountParams(
 	name string,
 	description string,
 	nebiusBindingsFile string,
-	privateArtifactPublicationEnabled *bool,
+	privateArtifactPushEnabled *bool,
 ) (UpdateCloudAccountParams, error) {
 	params := UpdateCloudAccountParams{
-		ID:                                strings.TrimSpace(accountNameOrID),
-		PrivateArtifactPublicationEnabled: privateArtifactPublicationEnabled,
+		ID:                         strings.TrimSpace(accountNameOrID),
+		PrivateArtifactPushEnabled: privateArtifactPushEnabled,
 	}
 
 	if cmd.Flags().Changed("name") {
@@ -467,8 +467,8 @@ func validateUpdateAccountParams(params UpdateCloudAccountParams) error {
 	}
 
 	if params.Name == nil && params.Description == nil && len(params.NebiusBindings) == 0 && len(params.CustomTags) == 0 &&
-		params.PrivateArtifactPublicationEnabled == nil {
-		return errors.New("at least one of --name, --description, --nebius-bindings-file, --tags, or --private-artifact-publication-enabled must be provided")
+		params.PrivateArtifactPushEnabled == nil {
+		return errors.New("at least one of --name, --description, --nebius-bindings-file, --tags, or --private-artifact-push-enabled must be provided")
 	}
 
 	return nil
