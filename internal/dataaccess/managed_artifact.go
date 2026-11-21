@@ -242,3 +242,33 @@ func DescribeManagedArtifactSync(ctx context.Context, token, syncID string) (*mo
 	}
 	return &result, nil
 }
+
+// RefreshManagedArtifactSyncStatus verifies a customer-populated MANUAL sync
+// destination without starting a platform copy.
+func RefreshManagedArtifactSyncStatus(ctx context.Context, token, syncID string) (*model.ManagedArtifactSync, error) {
+	if strings.TrimSpace(syncID) == "" {
+		return nil, fmt.Errorf("sync ID is required")
+	}
+
+	var result model.ManagedArtifactSync
+	if err := doManagedArtifactRequest(ctx, token, http.MethodPost,
+		managedArtifactURL("syncs", syncID+":refresh-status"), nil, &result); err != nil {
+		return nil, err
+	}
+	return &result, nil
+}
+
+// ReconcileManagedArtifactSync runs one platform-managed copy and verification
+// attempt for the selected private sync and exact bundle version.
+func ReconcileManagedArtifactSync(ctx context.Context, token, syncID string) (*model.ManagedArtifactSync, error) {
+	if strings.TrimSpace(syncID) == "" {
+		return nil, fmt.Errorf("sync ID is required")
+	}
+
+	var result model.ManagedArtifactSync
+	if err := doManagedArtifactRequest(ctx, token, http.MethodPost,
+		managedArtifactURL("syncs", syncID+":reconcile"), nil, &result); err != nil {
+		return nil, err
+	}
+	return &result, nil
+}

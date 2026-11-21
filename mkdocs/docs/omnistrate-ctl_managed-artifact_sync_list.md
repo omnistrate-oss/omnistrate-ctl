@@ -35,7 +35,7 @@ omnistrate-ctl managed-artifact sync list --target-id hc-123 -o json
       --limit int                       Maximum number of syncs to return (1-100) (default 20)
       --next-page-token string          Opaque token returned by the previous page
       --registry-type string            Registry type: private_ecr or public_ecr (omitted defaults to private ECR)
-      --status string                   Filter by status: pending, in_progress, ready, failed, or skipped
+      --status string                   Filter by status: pending, in_progress, ready, failed, skipped, or manual
       --target-id string                Filter by execution provisioner ID; must also match any destination account filter
       --updated-after string            Filter syncs updated at or after this RFC3339 timestamp
       --updated-before string           Filter syncs updated before this RFC3339 timestamp

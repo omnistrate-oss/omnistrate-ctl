@@ -34,8 +34,10 @@ var policyUpdateCmd = &cobra.Command{
 
 Enabling auto-upgrade clears a stored release pin. Disabling auto-upgrade pins the
 release set by --preferred-bundle-version, or the current effective release if the
-flag is omitted. The CLI forwards the requested policy for every supported cloud
-provider and leaves authorization and availability checks to the Omnistrate API.
+flag is omitted. Only a release whose private sync is READY can be pinned or
+rendered as effective; auto-upgrade follows the newest READY release. The CLI
+forwards the requested policy for every supported cloud provider and leaves
+authorization and readiness checks to the Omnistrate API.
 
 Requires the root, admin, or editor role.`,
 	Example: `omnistrate-ctl managed-artifact policy update --environment-type prod --cloud-provider aws --auto-upgrade=true
@@ -52,8 +54,8 @@ func init() {
 
 	addPolicyScopeFlags(policyDescribeCmd)
 	addPolicyScopeFlags(policyUpdateCmd)
-	policyUpdateCmd.Flags().Bool("auto-upgrade", false, "Automatically adopt the newest published managed artifact release (required)")
-	policyUpdateCmd.Flags().String("preferred-bundle-version", "", "Release to pin when auto-upgrade is disabled")
+	policyUpdateCmd.Flags().Bool("auto-upgrade", false, "Automatically adopt the newest READY managed artifact release (required)")
+	policyUpdateCmd.Flags().String("preferred-bundle-version", "", "READY release to pin when auto-upgrade is disabled")
 	_ = policyUpdateCmd.MarkFlagRequired("auto-upgrade")
 }
 
