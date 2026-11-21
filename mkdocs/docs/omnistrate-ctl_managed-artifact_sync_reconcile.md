@@ -4,7 +4,7 @@ Run one platform push for a private managed artifact sync
 
 ### Synopsis
 
-Run one platform-managed copy and verification for a private MANUAL, FAILED, SKIPPED, or READY sync and its exact bundle version. Automatic private publication must not be explicitly disabled. Failed MANUAL, FAILED, and SKIPPED attempts restore their previous status. READY remains READY throughout and is unchanged if the republish fails. This command never retries other syncs or versions in the background.
+Run one platform-managed copy and verification for a private MANUAL, FAILED, SKIPPED, or READY sync and its exact bundle version. Automatic private publication must not be explicitly disabled. MANUAL, FAILED, and SKIPPED enter IN_PROGRESS after dispatch, become READY on success, and restore their previous status on failure. READY remains READY throughout and is unchanged if the republish fails. IN_PROGRESS requests and READY requests with an active republish are rejected. This command never retries other syncs or versions in the background.
 
 ```
 omnistrate-ctl managed-artifact sync reconcile [flags]

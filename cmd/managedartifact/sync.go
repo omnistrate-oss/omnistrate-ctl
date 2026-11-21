@@ -65,7 +65,7 @@ Re-running the command is safe: artifacts whose version tag already references t
 var syncRefreshStatusCmd = &cobra.Command{
 	Use:          "refresh-status [flags]",
 	Short:        "Verify a customer-populated MANUAL sync destination",
-	Long:         `Refresh the status of one private MANUAL sync after the customer copies its artifacts. The control plane only verifies the existing destination and never starts a platform copy. A complete destination transitions to READY; an incomplete destination remains MANUAL with per-artifact results.`,
+	Long:         `Refresh the status of one private MANUAL sync after the customer copies its artifacts. The control plane only verifies the existing destination and never starts a platform copy. A complete destination transitions to READY; an incomplete destination remains MANUAL with per-artifact results. Requests for any other status are rejected.`,
 	Example:      "omnistrate-ctl managed-artifact sync refresh-status --id spabs-123",
 	Args:         cobra.NoArgs,
 	RunE:         runSyncRefreshStatus,
@@ -75,7 +75,7 @@ var syncRefreshStatusCmd = &cobra.Command{
 var syncReconcileCmd = &cobra.Command{
 	Use:          "reconcile [flags]",
 	Short:        "Run one platform push for a private managed artifact sync",
-	Long:         `Run one platform-managed copy and verification for a private MANUAL, FAILED, SKIPPED, or READY sync and its exact bundle version. Automatic private publication must not be explicitly disabled. Failed MANUAL, FAILED, and SKIPPED attempts restore their previous status. READY remains READY throughout and is unchanged if the republish fails. This command never retries other syncs or versions in the background.`,
+	Long:         `Run one platform-managed copy and verification for a private MANUAL, FAILED, SKIPPED, or READY sync and its exact bundle version. Automatic private publication must not be explicitly disabled. MANUAL, FAILED, and SKIPPED enter IN_PROGRESS after dispatch, become READY on success, and restore their previous status on failure. READY remains READY throughout and is unchanged if the republish fails. IN_PROGRESS requests and READY requests with an active republish are rejected. This command never retries other syncs or versions in the background.`,
 	Example:      "omnistrate-ctl managed-artifact sync reconcile --id spabs-123",
 	Args:         cobra.NoArgs,
 	RunE:         runSyncReconcile,

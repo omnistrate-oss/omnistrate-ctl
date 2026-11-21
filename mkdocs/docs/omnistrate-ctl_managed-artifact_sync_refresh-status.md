@@ -4,7 +4,7 @@ Verify a customer-populated MANUAL sync destination
 
 ### Synopsis
 
-Refresh the status of one private MANUAL sync after the customer copies its artifacts. The control plane only verifies the existing destination and never starts a platform copy. A complete destination transitions to READY; an incomplete destination remains MANUAL with per-artifact results.
+Refresh the status of one private MANUAL sync after the customer copies its artifacts. The control plane only verifies the existing destination and never starts a platform copy. A complete destination transitions to READY; an incomplete destination remains MANUAL with per-artifact results. Requests for any other status are rejected.
 
 ```
 omnistrate-ctl managed-artifact sync refresh-status [flags]
