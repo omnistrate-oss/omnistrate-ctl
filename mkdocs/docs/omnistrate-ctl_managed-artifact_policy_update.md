@@ -8,8 +8,10 @@ Update automatic managed artifact release adoption for one Base Amenities enviro
 
 Enabling auto-upgrade clears a stored release pin. Disabling auto-upgrade pins the
 release set by --preferred-bundle-version, or the current effective release if the
-flag is omitted. The CLI forwards the requested policy for every supported cloud
-provider and leaves authorization and availability checks to the Omnistrate API.
+flag is omitted. Only a release whose private sync is READY can be pinned or
+rendered as effective; auto-upgrade follows the newest READY release. The CLI
+forwards the requested policy for every supported cloud provider and leaves
+authorization and readiness checks to the Omnistrate API.
 
 Requires the root, admin, or editor role.
 
@@ -28,11 +30,11 @@ omnistrate-ctl managed-artifact policy update --environment-type dev --cloud-pro
 ### Options
 
 ```
-      --auto-upgrade                      Automatically adopt the newest published managed artifact release (required)
+      --auto-upgrade                      Automatically adopt the newest READY managed artifact release (required)
       --cloud-provider string             Cloud provider (aws, azure, gcp, nebius, oci, or byoc-onprem) (required)
       --environment-type string           Environment type (dev, qa, staging, canary, prod, private, or global) (required)
   -h, --help                              help for update
-      --preferred-bundle-version string   Release to pin when auto-upgrade is disabled
+      --preferred-bundle-version string   READY release to pin when auto-upgrade is disabled
 ```
 
 ### Options inherited from parent commands

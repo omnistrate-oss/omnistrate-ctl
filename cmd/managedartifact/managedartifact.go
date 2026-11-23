@@ -62,10 +62,10 @@ func normalizeSyncStatus(value string) (string, error) {
 	}
 	normalized := strings.ToUpper(strings.TrimSpace(value))
 	switch normalized {
-	case "PENDING", "IN_PROGRESS", "READY", "FAILED", "SKIPPED":
+	case "PENDING", "IN_PROGRESS", "READY", "FAILED", "SKIPPED", "MANUAL":
 		return normalized, nil
 	default:
-		return "", fmt.Errorf("invalid sync status %q: expected pending, in_progress, ready, failed, or skipped", value)
+		return "", fmt.Errorf("invalid sync status %q: expected pending, in_progress, ready, failed, skipped, or manual", value)
 	}
 }
 

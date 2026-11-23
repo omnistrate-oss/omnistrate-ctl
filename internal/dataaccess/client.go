@@ -92,6 +92,17 @@ func handleFleetError(err error) error {
 // Configure retryable http client
 // retryablehttp gives us automatic retries with exponential backoff.
 func getRetryableHttpClient() *http.Client {
+	return newHttpClient(config.GetRetryMax())
+}
+
+// getNonRetryingHttpClient sends each request exactly once. Use it for
+// non-idempotent actions where a replay after an ambiguous failure could
+// repeat the action or report a false conflict.
+func getNonRetryingHttpClient() *http.Client {
+	return newHttpClient(0)
+}
+
+func newHttpClient(retryMax int) *http.Client {
 	// retryablehttp gives us automatic retries with exponential backoff.
 	httpClient := retryablehttp.NewClient()
 	// HTTP requests are logged at DEBUG level.
@@ -100,7 +111,7 @@ func getRetryableHttpClient() *http.Client {
 	httpClient.Backoff = retryablehttp.DefaultBackoff
 	httpClient.RetryWaitMin = config.GetRetryWaitMin()
 	httpClient.RetryWaitMax = config.GetRetryWaitMax()
-	httpClient.RetryMax = config.GetRetryMax()
+	httpClient.RetryMax = retryMax
 	httpClient.HTTPClient.Timeout = config.GetClientTimeout()
 	httpClient.Logger = NewLeveledLogger()
 	httpClient.RequestLogHook = func(logger retryablehttp.Logger, req *http.Request, retryNumber int) {

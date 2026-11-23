@@ -170,6 +170,62 @@ func TestManagedArtifactPublicECRCommands(t *testing.T) {
 	}
 }
 
+// TestManagedArtifactManualSyncActionCommands uses the same dedicated fixture
+// as the data-access integration test: an incomplete MANUAL private sync whose
+// target disables automatic publication, so refresh-status is repeatable and
+// reconcile is rejected without starting a workflow.
+func TestManagedArtifactManualSyncActionCommands(t *testing.T) {
+	testutils.SmokeTest(t)
+
+	syncID := os.Getenv("MANAGED_ARTIFACT_MANUAL_SYNC_TEST_ID")
+	if syncID == "" {
+		t.Skip("set MANAGED_ARTIFACT_MANUAL_SYNC_TEST_ID to a dedicated incomplete MANUAL private sync whose target disables automatic publication")
+	}
+	t.Cleanup(testutils.Cleanup)
+	testEmail, testPassword, err := testutils.GetTestAccount()
+	require.NoError(t, err)
+	ctx := context.Background()
+	cmd.RootCmd.SetArgs([]string{"login", fmt.Sprintf("--email=%s", testEmail), fmt.Sprintf("--password=%s", testPassword)})
+	require.NoError(t, cmd.RootCmd.ExecuteContext(ctx))
+
+	var refreshed model.ManagedArtifactSync
+	runManagedArtifactJSON(t, ctx, &refreshed, "managed-artifact", "sync", "refresh-status", "--id", syncID)
+	assert.Equal(t, syncID, refreshed.ID)
+	assert.Equal(t, "MANUAL", refreshed.Status, "an incomplete destination must remain MANUAL")
+	assert.Len(t, refreshed.Artifacts, refreshed.ArtifactCount)
+
+	utils.LastPrintedString = ""
+	cmd.RootCmd.SetArgs([]string{"managed-artifact", "sync", "refresh-status", "--id", syncID, "--output", "table"})
+	require.NoError(t, cmd.RootCmd.ExecuteContext(ctx))
+	require.NotEmpty(t, utils.LastPrintedString)
+
+	for _, output := range []string{"json", "table"} {
+		cmd.RootCmd.SetArgs([]string{"managed-artifact", "sync", "reconcile", "--id", syncID, "--output", output})
+		err = cmd.RootCmd.ExecuteContext(ctx)
+		require.Error(t, err, "reconcile must be rejected in %s mode", output)
+		assert.Contains(t, err.Error(), "invalid_state")
+	}
+
+	var after model.ManagedArtifactSync
+	runManagedArtifactJSON(t, ctx, &after, "managed-artifact", "sync", "describe", "--id", syncID)
+	assert.Equal(t, "MANUAL", after.Status, "rejected reconciles must not change the sync")
+
+	var ready model.ManagedArtifactSyncList
+	runManagedArtifactJSON(t, ctx, &ready, "managed-artifact", "sync", "list", "--status", "ready", "--limit", "1")
+	if len(ready.Syncs) == 0 {
+		t.Log("no READY private sync is available to verify that refresh-status rejects non-MANUAL syncs")
+		return
+	}
+	readyID := ready.Syncs[0].ID
+	cmd.RootCmd.SetArgs([]string{"managed-artifact", "sync", "refresh-status", "--id", readyID, "--output", "json"})
+	err = cmd.RootCmd.ExecuteContext(ctx)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "invalid_state")
+	var unchanged model.ManagedArtifactSync
+	runManagedArtifactJSON(t, ctx, &unchanged, "managed-artifact", "sync", "describe", "--id", readyID)
+	assert.Equal(t, "READY", unchanged.Status)
+}
+
 func runManagedArtifactJSON(t *testing.T, ctx context.Context, result any, args ...string) {
 	t.Helper()
 

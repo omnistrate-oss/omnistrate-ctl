@@ -72,7 +72,13 @@ func doManagedArtifactRequest(ctx context.Context, token, method, requestURL str
 		request.Header.Set("Content-Type", "application/json")
 	}
 
-	response, err := getRetryableHttpClient().Do(request) //nolint:gosec // CLI intentionally targets the configured Omnistrate API host.
+	httpClient := getRetryableHttpClient()
+	if method == http.MethodPost {
+		// Sync actions dispatch workflows or transition state without an
+		// idempotency key, so a replay could start another copy or return 409.
+		httpClient = getNonRetryingHttpClient()
+	}
+	response, err := httpClient.Do(request) //nolint:gosec // CLI intentionally targets the configured Omnistrate API host.
 	if err != nil {
 		return fmt.Errorf("managed artifact request failed: %w", err)
 	}
@@ -238,6 +244,36 @@ func DescribeManagedArtifactSync(ctx context.Context, token, syncID string) (*mo
 	var result model.ManagedArtifactSync
 	if err := doManagedArtifactRequest(ctx, token, http.MethodGet,
 		managedArtifactURL("syncs", syncID), nil, &result); err != nil {
+		return nil, err
+	}
+	return &result, nil
+}
+
+// RefreshManagedArtifactSyncStatus verifies a customer-populated MANUAL sync
+// destination without starting a platform copy.
+func RefreshManagedArtifactSyncStatus(ctx context.Context, token, syncID string) (*model.ManagedArtifactSync, error) {
+	if strings.TrimSpace(syncID) == "" {
+		return nil, fmt.Errorf("sync ID is required")
+	}
+
+	var result model.ManagedArtifactSync
+	if err := doManagedArtifactRequest(ctx, token, http.MethodPost,
+		managedArtifactURL("syncs", syncID+":refresh-status"), nil, &result); err != nil {
+		return nil, err
+	}
+	return &result, nil
+}
+
+// ReconcileManagedArtifactSync runs one platform-managed copy and verification
+// attempt for the selected private sync and exact bundle version.
+func ReconcileManagedArtifactSync(ctx context.Context, token, syncID string) (*model.ManagedArtifactSync, error) {
+	if strings.TrimSpace(syncID) == "" {
+		return nil, fmt.Errorf("sync ID is required")
+	}
+
+	var result model.ManagedArtifactSync
+	if err := doManagedArtifactRequest(ctx, token, http.MethodPost,
+		managedArtifactURL("syncs", syncID+":reconcile"), nil, &result); err != nil {
 		return nil, err
 	}
 	return &result, nil

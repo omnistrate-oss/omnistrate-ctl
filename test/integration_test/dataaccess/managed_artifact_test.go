@@ -111,6 +111,102 @@ func TestManagedArtifactPublicECRReadOnlyOperations(t *testing.T) {
 	}
 }
 
+func TestManagedArtifactSyncActionsRejectInvalidToken(t *testing.T) {
+	testutils.IntegrationTest(t)
+
+	ctx := context.Background()
+	for name, call := range map[string]func(context.Context, string, string) (*model.ManagedArtifactSync, error){
+		"refresh status": dataaccess.RefreshManagedArtifactSyncStatus,
+		"reconcile":      dataaccess.ReconcileManagedArtifactSync,
+	} {
+		t.Run(name, func(t *testing.T) {
+			result, err := call(ctx, "invalid-token", "spabs-invalid-token-check")
+			require.Error(t, err)
+			assert.Nil(t, result)
+		})
+	}
+}
+
+// MANAGED_ARTIFACT_MANUAL_SYNC_TEST_ID must name a private MANUAL sync dedicated
+// to these tests, with an intentionally incomplete destination and automatic
+// private publication disabled for its target. Refreshing it then leaves it
+// MANUAL, and reconciling it is rejected without starting a workflow.
+func TestManagedArtifactManualSyncActions(t *testing.T) {
+	testutils.IntegrationTest(t)
+
+	syncID := os.Getenv("MANAGED_ARTIFACT_MANUAL_SYNC_TEST_ID")
+	if syncID == "" {
+		t.Skip("set MANAGED_ARTIFACT_MANUAL_SYNC_TEST_ID to a dedicated incomplete MANUAL private sync whose target disables automatic publication")
+	}
+	testEmail, testPassword, err := testutils.GetTestAccount()
+	require.NoError(t, err)
+	ctx := context.Background()
+	login, err := dataaccess.LoginWithPassword(ctx, testEmail, testPassword)
+	require.NoError(t, err)
+
+	before, err := dataaccess.DescribeManagedArtifactSync(ctx, login.JWTToken, syncID)
+	require.NoError(t, err)
+	require.Equal(t, "MANUAL", before.Status, "the fixture must start MANUAL")
+
+	refreshed, err := dataaccess.RefreshManagedArtifactSyncStatus(ctx, login.JWTToken, syncID)
+	require.NoError(t, err)
+	assert.Equal(t, syncID, refreshed.ID)
+	assert.Equal(t, before.BundleVersion, refreshed.BundleVersion)
+	assert.Equal(t, "MANUAL", refreshed.Status, "an incomplete destination must remain MANUAL")
+	assert.Len(t, refreshed.Artifacts, refreshed.ArtifactCount)
+
+	_, err = dataaccess.ReconcileManagedArtifactSync(ctx, login.JWTToken, syncID)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "invalid_state")
+
+	after, err := dataaccess.DescribeManagedArtifactSync(ctx, login.JWTToken, syncID)
+	require.NoError(t, err)
+	assert.Equal(t, "MANUAL", after.Status, "a rejected reconcile must not change the sync")
+
+	ready, err := dataaccess.ListManagedArtifactSyncs(ctx, login.JWTToken, dataaccess.ListManagedArtifactSyncsOptions{Status: "ready", Limit: 1})
+	require.NoError(t, err)
+	if len(ready.Syncs) == 0 {
+		t.Log("no READY private sync is available to verify that refresh-status rejects non-MANUAL syncs")
+		return
+	}
+	readySync := ready.Syncs[0]
+	require.Equal(t, "READY", readySync.Status)
+	_, err = dataaccess.RefreshManagedArtifactSyncStatus(ctx, login.JWTToken, readySync.ID)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "invalid_state")
+	unchanged, err := dataaccess.DescribeManagedArtifactSync(ctx, login.JWTToken, readySync.ID)
+	require.NoError(t, err)
+	assert.Equal(t, "READY", unchanged.Status)
+}
+
+// MANAGED_ARTIFACT_RECONCILE_SYNC_TEST_ID must name a private READY sync
+// dedicated to this test whose target allows automatic private publication.
+// Reconcile republishes it in the background while it remains READY, and a
+// failed republish leaves the record unchanged.
+func TestManagedArtifactReconcileReadySync(t *testing.T) {
+	testutils.IntegrationTest(t)
+
+	syncID := os.Getenv("MANAGED_ARTIFACT_RECONCILE_SYNC_TEST_ID")
+	if syncID == "" {
+		t.Skip("set MANAGED_ARTIFACT_RECONCILE_SYNC_TEST_ID to a dedicated READY private sync whose target allows automatic publication")
+	}
+	testEmail, testPassword, err := testutils.GetTestAccount()
+	require.NoError(t, err)
+	ctx := context.Background()
+	login, err := dataaccess.LoginWithPassword(ctx, testEmail, testPassword)
+	require.NoError(t, err)
+
+	before, err := dataaccess.DescribeManagedArtifactSync(ctx, login.JWTToken, syncID)
+	require.NoError(t, err)
+	require.Equal(t, "READY", before.Status, "the fixture must start READY")
+
+	reconciled, err := dataaccess.ReconcileManagedArtifactSync(ctx, login.JWTToken, syncID)
+	require.NoError(t, err)
+	assert.Equal(t, syncID, reconciled.ID)
+	assert.Equal(t, before.BundleVersion, reconciled.BundleVersion)
+	assert.Equal(t, "READY", reconciled.Status, "a READY republish must remain READY")
+}
+
 func TestManagedArtifactRequiredParameters(t *testing.T) {
 	testutils.IntegrationTest(t)
 
