@@ -34,17 +34,17 @@ omnistrate-ctl account update [account-name or account-id] --private-artifact-pu
 
 	nextStepPrivateArtifactPushStackUpdateMsgTemplate = `
 Next step:
-Update the existing AWS CloudFormation stack or Terraform deployment for account %s to apply the private artifact push setting; do not create a new one.%s
+Update the existing AWS CloudFormation stack for account %s to apply the private artifact push setting; do not create a new one.%s
 Track progress with: omnistrate-ctl account describe %s`
 
 	privateArtifactPushPendingMsgTemplate = `
 The private artifact push setting for account %s is pending verification.%s
-If verification reports that the setting is not applied, update the existing AWS CloudFormation stack or Terraform deployment; do not create a new one.
+If verification reports that the setting is not applied, update the existing AWS CloudFormation stack; do not create a new one.
 Track progress with: omnistrate-ctl account describe %s`
 
 	privateArtifactPushUnverifiedMsgTemplate = `
 Account %s finished verification, but it does not report the requested private artifact push value, so the setting could not be confirmed.%s
-If the account stack predates this setting, update the existing AWS CloudFormation stack or Terraform deployment; do not create a new one.
+If the account stack predates this setting, update the existing AWS CloudFormation stack; do not create a new one.
 Check the applied value with: omnistrate-ctl account describe %s`
 
 	// Matches commons accountconfig settings.SettingsPendingStatusMessage, which the
