@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"sync/atomic"
 	"testing"
 
 	"github.com/omnistrate-oss/omnistrate-ctl/internal/model"
@@ -285,6 +286,33 @@ func TestManagedArtifactSyncActions(t *testing.T) {
 			result, err := testCase.call(context.Background(), "test-token", "spabs-123")
 			require.NoError(t, err)
 			assert.Equal(t, "READY", result.Status)
+		})
+	}
+}
+
+func TestManagedArtifactSyncActionsAreNotRetried(t *testing.T) {
+	for _, testCase := range []struct {
+		name string
+		call func(context.Context, string, string) (*model.ManagedArtifactSync, error)
+	}{
+		{name: "refresh status", call: RefreshManagedArtifactSyncStatus},
+		{name: "reconcile", call: ReconcileManagedArtifactSync},
+	} {
+		t.Run(testCase.name, func(t *testing.T) {
+			var requests atomic.Int32
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				requests.Add(1)
+				w.WriteHeader(http.StatusBadGateway)
+			}))
+			defer server.Close()
+			setManagedArtifactTestHost(t, server.URL)
+			t.Setenv("OMNISTRATE_RETRY_MAX", "2")
+			t.Setenv("OMNISTRATE_RETRY_WAIT_MIN_IN_SECONDS", "0")
+			t.Setenv("OMNISTRATE_RETRY_WAIT_MAX_IN_SECONDS", "0")
+
+			_, err := testCase.call(context.Background(), "test-token", "spabs-123")
+			require.Error(t, err)
+			assert.Equal(t, int32(1), requests.Load(), "a replayed action could repeat a workflow dispatch or report a false conflict")
 		})
 	}
 }

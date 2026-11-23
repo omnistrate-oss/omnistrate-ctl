@@ -11,6 +11,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/ecr"
@@ -86,7 +87,7 @@ func TestExecuteHookPassesArtifactAndAWSContext(t *testing.T) {
 		DestinationDigest: "sha256:" + strings.Repeat("a", 64),
 		DestinationRegion: "us-west-2",
 		AWSProfile:        "customer-production",
-	})
+	}, nil)
 	require.NoError(t, err)
 	payload, err := os.ReadFile(inputPath)
 	require.NoError(t, err)
@@ -101,6 +102,59 @@ func TestExecuteHookPassesArtifactAndAWSContext(t *testing.T) {
 	environment, err := os.ReadFile(environmentPath)
 	require.NoError(t, err)
 	require.Equal(t, "customer-production\nus-west-2\nus-west-2\n", string(environment))
+}
+
+func TestExecuteHookReplacesInheritedAWSCredentials(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("test hook uses a POSIX shell script")
+	}
+	tempDir := t.TempDir()
+	environmentPath := filepath.Join(tempDir, "environment.txt")
+	hookPath := filepath.Join(tempDir, "hook")
+	hook := "#!/bin/sh\nprintf '%s|%s|%s|%s|%s|%s\\n' \"$AWS_PROFILE\" \"$AWS_ACCESS_KEY_ID\" \"$AWS_SECRET_ACCESS_KEY\" \"${AWS_SESSION_TOKEN-unset}\" \"${AWS_ROLE_ARN-unset}\" \"${AWS_CREDENTIAL_EXPIRATION-unset}\" > \"$HOOK_ENVIRONMENT_PATH\"\n"
+	require.NoError(t, os.WriteFile(hookPath, []byte(hook), 0o700)) // #nosec G306 -- the test hook must be executable by its owner.
+	t.Setenv("HOOK_ENVIRONMENT_PATH", environmentPath)
+	t.Setenv("AWS_ACCESS_KEY_ID", "inherited-key")
+	t.Setenv("AWS_SECRET_ACCESS_KEY", "inherited-secret")
+	t.Setenv("AWS_SESSION_TOKEN", "inherited-token")
+	t.Setenv("AWS_ROLE_ARN", "arn:aws:iam::111111111111:role/inherited")
+	t.Setenv("AWS_PROFILE", "")
+	t.Setenv("AWS_CREDENTIAL_EXPIRATION", "")
+	require.NoError(t, os.Unsetenv("AWS_CREDENTIAL_EXPIRATION"))
+	for _, tt := range []struct {
+		name        string
+		credentials *aws.Credentials
+		want        string
+	}{
+		{
+			name: "inherited credentials without a selected profile",
+			want: "|inherited-key|inherited-secret|inherited-token|arn:aws:iam::111111111111:role/inherited|unset\n",
+		},
+		{
+			name:        "static profile credentials",
+			credentials: &aws.Credentials{AccessKeyID: "profile-key", SecretAccessKey: "profile-secret"},
+			want:        "customer-production|profile-key|profile-secret|unset|unset|unset\n",
+		},
+		{
+			name: "assumed role profile credentials",
+			credentials: &aws.Credentials{
+				AccessKeyID: "role-key", SecretAccessKey: "role-secret", SessionToken: "role-token",
+				CanExpire: true, Expires: time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC),
+			},
+			want: "customer-production|role-key|role-secret|role-token|unset|2026-01-02T03:04:05Z\n",
+		},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			input := HookInput{DestinationRegion: "us-west-2"}
+			if tt.credentials != nil {
+				input.AWSProfile = "customer-production"
+			}
+			require.NoError(t, executeHook(context.Background(), hookPath, "customer signer", input, tt.credentials))
+			environment, err := os.ReadFile(environmentPath)
+			require.NoError(t, err)
+			require.Equal(t, tt.want, string(environment))
+		})
+	}
 }
 
 func TestRunStagesEveryArtifactBeforeHooksAndPublishesLast(t *testing.T) {

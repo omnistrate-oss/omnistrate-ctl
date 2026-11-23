@@ -72,7 +72,13 @@ func doManagedArtifactRequest(ctx context.Context, token, method, requestURL str
 		request.Header.Set("Content-Type", "application/json")
 	}
 
-	response, err := getRetryableHttpClient().Do(request) //nolint:gosec // CLI intentionally targets the configured Omnistrate API host.
+	httpClient := getRetryableHttpClient()
+	if method == http.MethodPost {
+		// Sync actions dispatch workflows or transition state without an
+		// idempotency key, so a replay could start another copy or return 409.
+		httpClient = getNonRetryingHttpClient()
+	}
+	response, err := httpClient.Do(request) //nolint:gosec // CLI intentionally targets the configured Omnistrate API host.
 	if err != nil {
 		return fmt.Errorf("managed artifact request failed: %w", err)
 	}

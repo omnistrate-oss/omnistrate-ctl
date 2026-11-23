@@ -12,7 +12,9 @@ import (
 	"os"
 	"os/exec"
 	"regexp"
+	"slices"
 	"strings"
+	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	awsconfig "github.com/aws/aws-sdk-go-v2/config"
@@ -41,6 +43,12 @@ var (
 	repositoryNamePattern     = regexp.MustCompile(`^[a-z0-9]+(?:[._-][a-z0-9]+)*(?:/[a-z0-9]+(?:[._-][a-z0-9]+)*)*$`)
 	tagPattern                = regexp.MustCompile(`^[A-Za-z0-9_][A-Za-z0-9._-]{0,127}$`)
 	sha256DigestPattern       = regexp.MustCompile(`^sha256:[a-f0-9]{64}$`)
+	// Inherited sources that could otherwise outrank the runner's credentials in a hook.
+	hookCredentialEnvironmentKeys = []string{
+		"AWS_ACCESS_KEY_ID", "AWS_ACCESS_KEY", "AWS_SECRET_ACCESS_KEY", "AWS_SECRET_KEY",
+		"AWS_SESSION_TOKEN", "AWS_SECURITY_TOKEN", "AWS_CREDENTIAL_EXPIRATION",
+		"AWS_WEB_IDENTITY_TOKEN_FILE", "AWS_ROLE_ARN", "AWS_ROLE_SESSION_NAME",
+	}
 )
 
 type Options struct {
@@ -69,6 +77,7 @@ type runner struct {
 	registryID      string
 	options         Options
 	ecr             ecrAPI
+	hookCredentials aws.CredentialsProvider
 	openSource      func(copySourceRef string) (oras.ReadOnlyGraphTarget, error)
 	openDestination func(repositoryName string) (oras.Target, error)
 	warnings        io.Writer
@@ -149,6 +158,13 @@ func Run(ctx context.Context, plan model.ManagedArtifactManualCopyPlan, options 
 			return destination, nil
 		},
 	}
+	if options.AWSProfile != "" {
+		// A programmatic profile outranks inherited AWS_ACCESS_KEY_ID in the SDK,
+		// while hooks resolving AWS_PROFILE prefer those keys. Hand hooks the
+		// runner's resolved credentials so both act as the same identity,
+		// including profiles that use credential_source=Environment.
+		r.hookCredentials = cfg.Credentials
+	}
 	return r.run(ctx)
 }
 
@@ -225,7 +241,15 @@ func (r *runner) run(ctx context.Context) error {
 			if item.published {
 				continue
 			}
-			if err := executeHook(ctx, hook.executable, hook.name, r.hookInput(item)); err != nil {
+			var credentials *aws.Credentials
+			if r.hookCredentials != nil {
+				resolved, err := r.hookCredentials.Retrieve(ctx)
+				if err != nil {
+					return errors.Wrap(err, "retrieve AWS credentials for customer hooks")
+				}
+				credentials = &resolved
+			}
+			if err := executeHook(ctx, hook.executable, hook.name, r.hookInput(item), credentials); err != nil {
 				return errors.Wrapf(err, "managed artifact %s", item.artifact.ArtifactKey)
 			}
 		}
@@ -443,7 +467,9 @@ func destinationAuthClient(ctx context.Context, client *ecr.Client, registryHost
 }
 
 // executeHook writes hook output to stderr so it never mixes with command output.
-func executeHook(ctx context.Context, executable, name string, input HookInput) error {
+// Non-nil credentials replace any inherited AWS credential variables so hooks
+// authenticate as the same identity as the copy.
+func executeHook(ctx context.Context, executable, name string, input HookInput, credentials *aws.Credentials) error {
 	payload, err := json.Marshal(input)
 	if err != nil {
 		return errors.Wrap(err, "encode customer hook input")
@@ -452,10 +478,27 @@ func executeHook(ctx context.Context, executable, name string, input HookInput) 
 	command.Stdin = bytes.NewReader(payload)
 	command.Stdout = os.Stderr
 	command.Stderr = os.Stderr
-	command.Env = append(os.Environ(), "AWS_REGION="+input.DestinationRegion, "AWS_DEFAULT_REGION="+input.DestinationRegion)
-	if input.AWSProfile != "" {
-		command.Env = append(command.Env, "AWS_PROFILE="+input.AWSProfile)
+	environment := os.Environ()
+	if credentials != nil {
+		environment = slices.DeleteFunc(environment, func(entry string) bool {
+			key, _, _ := strings.Cut(entry, "=")
+			return slices.Contains(hookCredentialEnvironmentKeys, strings.ToUpper(key))
+		})
+		environment = append(environment,
+			"AWS_ACCESS_KEY_ID="+credentials.AccessKeyID,
+			"AWS_SECRET_ACCESS_KEY="+credentials.SecretAccessKey)
+		if credentials.SessionToken != "" {
+			environment = append(environment, "AWS_SESSION_TOKEN="+credentials.SessionToken)
+		}
+		if credentials.CanExpire {
+			environment = append(environment, "AWS_CREDENTIAL_EXPIRATION="+credentials.Expires.UTC().Format(time.RFC3339))
+		}
 	}
+	environment = append(environment, "AWS_REGION="+input.DestinationRegion, "AWS_DEFAULT_REGION="+input.DestinationRegion)
+	if input.AWSProfile != "" {
+		environment = append(environment, "AWS_PROFILE="+input.AWSProfile)
+	}
+	command.Env = environment
 	if err = command.Run(); err != nil {
 		return errors.Wrapf(err, "%s failed", name)
 	}

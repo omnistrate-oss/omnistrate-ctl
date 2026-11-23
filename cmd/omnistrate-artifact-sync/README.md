@@ -32,7 +32,10 @@ runs for every staged artifact, then the signer runs for every staged artifact.
 Each receives one JSON object on stdin with `artifactKey`, `sourceRef`,
 `destinationRef`, `destinationDigest`, `destinationRegion`, and `awsProfile`.
 The runner also sets `AWS_PROFILE`, `AWS_REGION`, and `AWS_DEFAULT_REGION` for
-the hook process, and writes hook output to stderr.
+the hook process, and writes hook output to stderr. With `--aws-profile`, hooks
+also receive the profile's resolved credentials as `AWS_ACCESS_KEY_ID`,
+`AWS_SECRET_ACCESS_KEY`, and `AWS_SESSION_TOKEN` in place of any inherited AWS
+credential variables, so they authenticate as the same identity as the copy.
 
 The immutable digest alias and canonical version tag are published only after
 both hooks succeed for every artifact; staging tags are then removed. A failed
