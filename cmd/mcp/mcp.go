@@ -48,6 +48,8 @@ var excludedCommands = []string{
 	"instance disable-debug-mode",
 	"instance patch-deployment",
 	"instance version-upgrade",
+	// Copy runs operator-selected local hook executables with the CLI's AWS credentials.
+	"managed-artifact sync copy",
 	"environment",
 	"help",
 	"completion",
